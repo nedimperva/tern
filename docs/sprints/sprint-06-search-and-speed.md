@@ -2,12 +2,21 @@
 
 **Status:** todo
 
-**Week 7.** Make the speed table true at 100,000 messages, and make search the fastest way to get anywhere.
+## Delivery scope
+
+**M1 search basics; M2 scale/refinement.** Local search and honest coverage indicators belong in the alpha. Advanced operators, optimizations and warm-cache startup are separate slices. Measure first useful page separately from complete backfill, and engine latency separately from visible response; the roadmap performance section controls release evidence.
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+Make the speed table true at 100,000 messages, and make search the fastest way to get anywhere.
 
 ## Goal
 
-Search results update under 10 ms per keystroke on a 100k-message mailbox with operators; cold start under
-400 ms; a 100k mailbox syncs its list in under 60 s; nothing in the app ever blocks on the network.
+Aim for local engine search under 10 ms at 100k messages; record end-to-end response and packaged
+cold-start separately. Measure first useful page and full backfill separately with provider-specific
+limits; no universal 100k-message/60-second full-sync guarantee. Cached interactions do not wait on network.
 
 ## Tasks
 
@@ -18,7 +27,7 @@ Search results update under 10 ms per keystroke on a 100k-message mailbox with o
 ### Search
 - [ ] Query language → FTS5 + SQL: free text (FTS, prefix on the last token), `from:`, `to:`, `cc:`, `subject:`, `has:attachment`, `is:unread|starred|snoozed`, `in:inbox|archive|sent|drafts|trash|spam|<label>`, `label:`, `before:`/`after:`/`newer_than:7d`, `larger:`/`smaller:`, quoted phrases, `-` negation, `OR`.
 - [ ] Results as you type; `↓` enters the results; `Enter` opens; `Esc` back to the query. Search is a split-like view, so `e`/`s`/`#` work on results.
-- [ ] Highlight matches (`snippet()` from FTS for the body, own highlighter for subject/from).
+- [ ] Highlight matches using stored source text and a tested strategy; contentless FTS cannot reconstruct body snippets by itself. Use external-content FTS or stored text/offsets if needed; measure before changing the index.
 - [ ] Suggestions row: contacts matching the token, labels matching, "Search Gmail for …" when the account is Gmail.
 - [ ] FTS: index `to_addrs` and `cc` too; add a `trigram` secondary index? Measure first; only if prefix search on body is too slow.
 

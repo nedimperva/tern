@@ -22,14 +22,25 @@ decisions that aren't visible from the code.
 - The user is moving to Linux first: **Omarchy** (Arch + Hyprland, Wayland). Linux is now the primary target;
   Windows comes later.
 
+## Planning decisions (2026-10-13)
+
+The owner approved a narrower first release and milestone delivery order in `docs/PLAN.md`:
+safe foundation → Linux private alpha → focused Linux beta → Windows release → expansion.
+Existing sprint numbers are work-package IDs, not weeks. Read each package's Delivery scope before its
+checkboxes; deferred work does not automatically block a milestone. Keep Windows compiling/tested and
+perform an early WebView2/keyring smoke test in M0; release polish is M3, not gated on calendar or AI.
+Run the early Gmail IMAP/API comparison in M0 and choose one Gmail path for M2. No choice has been made.
+Optional AI remains wanted, off by default, in expansion; remote transfers need accurate privacy/Google
+policy review. No implementation or real-provider acceptance was completed by this documentation revision.
+
 ## First steps for the next session
 
 1. `cargo test -p tern-core` and fix until it compiles and the store/mime/sync tests pass.
 2. `cargo run --release -p tern-core --example store_bench` and compare against the speed targets in the README.
 3. `npm install && npm run tauri dev`. Check the window opens on Hyprland (see Linux notes below).
-4. Add a real IMAP account (Fastmail or Gmail with an app password are the easiest) and check: folders appear, inbox
+4. Use a dedicated Fastmail test account after the M0 mutation/recovery safety checks (do not start with a primary inbox). Check: folders appear, inbox
    fills newest-first, archive/star/read reach the server after the 5-second undo window, send works.
-5. Then work down "Next" in the README, starting with IMAP IDLE.
+5. Establish Linux/Windows CI and the early Windows smoke test. Follow milestone-selected slices in PLAN.md, not numeric sprint order or every item in README Next.
 
 ## Design decisions to keep
 
@@ -77,7 +88,7 @@ decisions that aren't visible from the code.
 
 ## Roadmap
 
-The sprint-by-sprint plan lives in `docs/PLAN.md` with one file per sprint in `docs/sprints/` and the
+The milestone plan lives in `docs/PLAN.md` with retained work-package files in `docs/sprints/` and the
 research behind the decisions in `docs/research/`. Start a session by reading the current sprint file.
 Work on a `sprint/NN-name` branch and open a PR to `main`; `main` must always build.
 Before any UI work, read `docs/design/ui.md`; it holds the tokens, layout and review checklist. How to tick

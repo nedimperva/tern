@@ -2,15 +2,24 @@
 
 **Status:** todo
 
-**Week 2.** New mail within two seconds, cheap re-checks, headers before bodies, real conversations.
+## Delivery scope
+
+**M0 safety; M1 reliable sync; later optimizations.** Split this package into small PRs: (1) transport probe and correctness/recovery tests, (2) reliable incremental sync/IDLE and headers-first first page, (3) conversations, (4) measured QRESYNC/prefetch optimizations. No requirement to finish every optimization before the alpha. Safety and recovery checks are never deferred for speed.
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+New mail within two seconds, cheap re-checks, headers before bodies, real conversations.
 
 ## Goal
 
-A mailbox with 50,000 messages fills its inbox list in under 10 seconds on a normal connection (headers +
-snippets), bodies trickle in behind, new mail appears via IDLE, and re-checking an unchanged folder is one
-round trip. Messages are grouped into conversations in the store.
+On a representative 50,000-message Fastmail account, aim to show the first useful page (100 newest
+headers/snippets) within 10 seconds on the recorded test connection. Backfill progresses separately with
+visible state; this is not a complete-mailbox time guarantee. New mail appears via IDLE. Measure cheap
+unchanged-folder checks where capabilities permit. Group messages into conversations in the store.
 
-## Decision gate (day 1–2): IMAP library
+## Decision gate (early probe): IMAP library
 
 Time-box one day. Build a tiny probe binary (`crates/tern-core/examples/imap_probe.rs`) that connects to
 Fastmail (and later Gmail) and tries, with each candidate:
@@ -71,7 +80,9 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 - [ ] `store_bench`: add "thread list page" and "thread open" timings.
 
 ### Outbox
-- [ ] `MOVE` (RFC 6851) when advertised, else `COPY` + `STORE \Deleted` + `UID EXPUNGE`.
+- [ ] `MOVE` (RFC 6851) when advertised, else `COPY` + `STORE \Deleted` + targeted `UID EXPUNGE` when supported. Without UIDPLUS, choose a conservative fallback; never globally EXPUNGE unrelated deleted mail.
+- [ ] Validate mailbox identity/UIDVALIDITY before queued mutations; reconcile stale IDs. Preserve dependencies for actions on messages with pending moves.
+- [ ] Persist send identity/MIME and distinguish confirmed, failed and unknown outcomes; stable Message-ID alone does not make SMTP exactly-once.
 - [ ] `APPEND` sent mail to the Sent folder when the server does not copy it (detect via the preset / a one-time check).
 - [ ] Retry policy: 5 attempts with backoff, then surface in a "Sync problems" list in the UI; never drop silently.
 
@@ -79,7 +90,7 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetch (keep on-demand).
 
 ## Acceptance
-- A fresh Fastmail account shows its inbox list within 10 s of login (headers + snippets), bodies arrive behind.
+- A fresh Fastmail account shows the first useful page (100 newest headers/snippets) within the measured 10 s target; complete-backfill timing is recorded separately.
 - Send yourself a message: it appears in the list in under 2 s without touching anything.
 - Toggle a flag in Fastmail's web UI: Tern reflects it within the IDLE notification (inbox) or 5 minutes (other folders).
 - `store_bench` thread-list page < 1 ms, thread open < 50 ms at 50,000 messages.

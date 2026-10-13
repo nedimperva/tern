@@ -2,7 +2,15 @@
 
 **Status:** todo
 
-**Week 14.** Same app, native on Windows 10/11.
+## Delivery scope
+
+**M0 compile/smoke; M3 Windows release.** Compile/test CI plus a basic WebView2/compose/keyring smoke test starts in M0. Installer, notifications/tray, scaling, sleep/resume and release polish follow the focused Linux beta in M3. Calendar, AI, Outlook and a second Gmail backend are not prerequisites.
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+Same app, native on Windows 10/11.
 
 ## Goal
 
@@ -28,7 +36,7 @@ WebView2, Windows notifications and tray; `mailto:` registration works; fonts an
 - [ ] Paths: `app_data_dir()` under `%APPDATA%\app.tern.mail`; attachments cache under `%LOCALAPPDATA%`.
 
 ### CI
-- [ ] GitHub Actions `windows-latest` job: `cargo test --workspace`, `npm run tauri build`, upload artifacts. Runs on PRs to `main` from this sprint on.
+- [ ] GitHub Actions `windows-latest` job: `cargo test --workspace`, `npm run tauri build`, upload artifacts. Compile/test checks run on PRs from M0; add installer artifacts for M3.
 
 ## Cut first
 NSIS (keep MSI), ms-settings deep link.

@@ -2,7 +2,17 @@
 
 **Status:** todo
 
-Ordered roughly by value. Pull into a sprint when the owner says so.
+## Delivery scope
+
+**M4 and later — owner-prioritized expansion.** The narrower initial release and milestone order in PLAN.md control scope. Do not automatically pull every deferred item into the next milestone. Optional AI is retained; calendar, advanced contacts/previews and additional backends stay demand-driven.
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+Candidate expansion work, not a mandatory queue. Pull into a milestone when the owner approves.
+Optional AI remains in package 10; calendar in package 09. Advanced contact imports/merging and embedded
+attachment previews from package 07 are deferred here in priority terms, not lost requirements.
 
 ## Mail
 - Microsoft Graph backend (`MailBackend` impl): categories, Focused Inbox, better threading, calendar via Graph.
