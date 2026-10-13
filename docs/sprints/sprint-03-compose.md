@@ -2,7 +2,15 @@
 
 **Status:** todo
 
-**Week 4.** Writing mail should be as fast as reading it. Rich text that stays out of the way, replies
+## Delivery scope
+
+**M1 core; editor extras later.** Required: basic compose/reply/forward, correct recipients/MIME, durable local and server drafts, attachment round-trip, signatures, header-derived autocomplete, safe send/undo and visible failures. Stage a rich editor separately after draft/send reliability is proven. Aliases, image paste and pop-out compose are deferred; they do not block M1.
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+Writing mail should be as fast as reading it. Rich text that stays out of the way, replies
 that quote correctly, drafts that survive, attachments, signatures, autocomplete.
 
 ## Goal
@@ -13,7 +21,7 @@ marks done. Drafts land in the server's Drafts folder.
 
 ## Tasks
 
-### Editor
+### Rich editor (separate slice after core draft/send gate)
 - [ ] ProseMirror core (`prosemirror-model`, `-state`, `-view`, `-schema-basic`, `-keymap`, `-history`,
       `-inputrules`) with a small schema: paragraph, bold, italic, underline, strike, link, bullet/ordered list,
       blockquote, code (inline), hard break. No tables, no headings, no colours in v1.
@@ -29,7 +37,7 @@ marks done. Drafts land in the server's Drafts folder.
 - [ ] Recipient chips; `Backspace` on an empty field edits the last chip; invalid addresses highlighted; paste a list of addresses splits them.
 - [ ] "Send & Mark Done", "Send Later" (stub until Sprint 5), "Remind me" (stub until Sprint 5) in a footer with their keys.
 
-### Reply, reply-all, forward
+### Reply, reply-all, forward (core; rich quoting follows editor slice)
 - [ ] Reply-all excludes our own addresses (all aliases from the account), honours `Reply-To`, `Mail-Followup-To`.
 - [ ] Quote header `On <date>, <name> <<addr>> wrote:` then `<blockquote>` of the original HTML (sanitised) or text; collapsed in the editor behind "···", editable on click.
 - [ ] Forward includes original attachments; subject `Fwd:`; original headers block.

@@ -2,7 +2,15 @@
 
 **Status:** todo
 
-**Week 10.** See your day without leaving the inbox, answer invites with a key, create events from mail.
+## Delivery scope
+
+**M4 — expansion, deferred from first release.** Calendar is retained as a future feature, not a Linux beta or Windows prerequisite. Select a smaller read-only/RSVP slice before implementing this full candidate list.
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+See your day without leaving the inbox, answer invites with a key, create events from mail.
 
 CalDAV first because it works today with Fastmail, and with Google through `apidata.googleusercontent.com`
 using the same OAuth token plus the `https://www.googleapis.com/auth/calendar` scope. Native Google /

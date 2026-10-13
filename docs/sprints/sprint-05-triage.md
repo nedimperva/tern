@@ -2,7 +2,15 @@
 
 **Status:** todo
 
-**Week 6.** The features that make Superhuman Superhuman.
+## Delivery scope
+
+**M2 basics; advanced automation later.** Required for beta: simple Important/Other splits, manual correction and snooze/reminders with explicit app-closed limitations. Advanced rule builders, unsubscribe automation, mute, follow-up automation and send-later can be staged later. They do not block Windows. Acceptance applies only to the selected slice.
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+The features that make Superhuman Superhuman.
 
 ## Goal
 

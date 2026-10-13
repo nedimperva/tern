@@ -1,6 +1,13 @@
 # Gmail: OAuth, scopes, verification
 
-## Setup (owner, before Sprint 4) — about 20 minutes
+## Release sequencing
+
+Choose the initial transport during M0 using [the decision checklist](gmail-backend-decision.md). Only one
+Gmail transport ships initially. Begin project/domain/privacy/scope preparation early; complete the
+implementation in M2, submit verification when the selected flow is demonstrable, and distinguish a
+controlled test-user beta from unrestricted public distribution.
+
+## Setup (owner, during M0)
 
 1. **Google Cloud Console** → New project, e.g. `tern-mail`.
 2. **APIs & Services → Library**: enable **Gmail API** (needed even for IMAP XOAUTH2 so the scope is valid). Later: **Google Calendar API**, **People API** / CardDAV (Sprint 7/9).
@@ -8,7 +15,7 @@
    - User type: **External**. Publishing status: **Testing**.
    - App name `Tern`, support email, developer contact. Logo optional (adds review time later).
    - Audience → **Test users**: add your Gmail address(es). Up to 100 while in Testing.
-   - Data access → Scopes: add `https://mail.google.com/` (IMAP/SMTP). For Sprint 12 also `https://www.googleapis.com/auth/gmail.modify`; Sprint 9 `…/auth/calendar`; Sprint 7 `…/auth/carddav`.
+   - Data access → Scopes: choose `https://mail.google.com/` for the IMAP/SMTP path **or** `https://www.googleapis.com/auth/gmail.modify` for the API path. Do not request both by default. Calendar/Contacts scopes are deferred and requested incrementally only if those features are implemented/enabled.
 4. **Credentials → Create credentials → OAuth client ID**:
    - Application type: **Desktop app**. Name `Tern desktop`.
    - Download the JSON. The `client_id` ends in `.apps.googleusercontent.com`; the `client_secret` for Desktop clients is **not a secret** by Google's own definition ("installed apps cannot keep secrets") and is fine in an open-source repo. Thunderbird, GNOME Online Accounts and others ship theirs.
@@ -16,7 +23,7 @@
 
 Refresh tokens issued while the app is in **Testing** expire after **7 days**. Expect to re-consent weekly during development; this goes away once the consent screen is **In production** (even before verification completes).
 
-## Flow (RFC 8252 — native apps)
+## Flow (RFC 8252 — native apps; IMAP example below)
 
 ```
 1. Tern binds 127.0.0.1:<random port> and opens the system browser at
@@ -33,6 +40,9 @@ Refresh tokens issued while the app is in **Testing** expire after **7 days**. E
 5. Refresh with grant_type=refresh_token before expiry. On invalid_grant → re-consent.
 ```
 
+If the API path is selected, use its chosen Gmail API scopes instead of the example full-mail scope,
+and replace steps 4–5 transport authentication with authorized API calls plus token renewal.
+
 Google requires the loopback **IP literal** (`127.0.0.1`), not `localhost`, for Desktop clients. The port is free-form.
 
 Error challenge from XOAUTH2 is base64 JSON `{"status":"400|401","schemes":"bearer","scope":"https://mail.google.com/"}`; the client must send an empty line to finish the exchange, then can retry after a refresh.
@@ -42,7 +52,7 @@ Error challenge from XOAUTH2 is base64 JSON `{"status":"400|401","schemes":"bear
 | Scope | Class | Used for |
 |---|---|---|
 | `https://mail.google.com/` | restricted | IMAP + SMTP (the only scope IMAP accepts) |
-| `https://www.googleapis.com/auth/gmail.modify` | restricted | Gmail API backend (Sprint 12). Covers read, labels, drafts, send, trash. Not permanent delete. |
+| `https://www.googleapis.com/auth/gmail.modify` | restricted | Gmail API path if selected in M0 (package 12). Covers read, labels, drafts, send, trash. Not permanent delete. |
 | `…/auth/calendar` | sensitive | CalDAV / Calendar API (Sprint 9) |
 | `…/auth/carddav` | sensitive | Google Contacts via CardDAV (Sprint 7) |
 | `openid email` | — | Know which account was signed in |
@@ -54,21 +64,21 @@ Request only what the enabled features need; add Calendar/Contacts scopes increm
 - Consent screen shows "Google hasn't verified this app" with an **Advanced → Go to Tern (unsafe)** link. Only test users can get through while in Testing; once In production and unverified, anyone can, up to a cap of 100 users total.
 - Document this in README with a screenshot. Offer "Use your own Google client ID" in advanced settings so power users and distro packagers are not blocked by the cap.
 
-## Verification (Sprint 14)
+## Verification (prepare M0; submit as soon as the selected flow is demonstrable)
 
 Requirements for restricted scopes:
 1. Verified domain ownership (Search Console) for the homepage and privacy policy URLs.
-2. Homepage describing the app; **privacy policy** that states what data is accessed and that it stays on the device.
+2. Homepage describing the app; **privacy policy** stating what data is accessed, stored locally and transmitted. Optional remote AI transfers must be disclosed when implemented; do not make an unconditional on-device-only claim.
 3. A YouTube video showing the OAuth flow in the app and how each scope is used.
 4. Written justification per scope ("IMAP access requires the full mail scope; Tern is a mail client").
-5. **Security assessment (CASA)**: required when the app *stores or transmits restricted-scope data on servers*. Tern has no server; all mail stays in the user's SQLite. Make this explicit in the submission and ask for the exemption. If Google still requires it, CASA Tier 2 via a lab costs roughly $500–$4,500/year as of 2026 — a decision for then, possibly funded by sponsors.
+5. **Security assessment (CASA)**: evaluate the actual data flow against [Google's current guidance](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification). Local storage alone is not the whole question: optional remote AI can transmit restricted data to third-party servers. BYOK and opt-in are not blanket exemptions. Ask Google which requirements apply; do not promise an exemption or assessment price before confirmation.
 
-Timeline: 2–8 weeks with back-and-forth. Start it the day the privacy policy page exists.
+Treat review as an external dependency with variable timing. Start preparation in M0 and submit when the selected implemented flow, scope justification and accurate privacy material are ready; do not wait for the launch package.
 
 ## Gmail IMAP specifics worth remembering
 
 - Capabilities: `IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584`. **CONDSTORE is advertised, QRESYNC is not.** Verify in the Sprint 1 probe; the plan assumes flag re-scans on All Mail.
-- `[Gmail]/All Mail` has `\All`; it is the only folder you need to sync for messages. Inbox membership is the `\Inbox` label.
+- `[Gmail]/All Mail` has `\All`; use it for ordinary message storage and label membership. Trash and Spam need separate sync; do not claim All Mail includes them. Inbox membership is the `\Inbox` label.
 - Labels with "Show in IMAP" off are invisible to IMAP. The API backend sees them all.
 - `X-GM-MSGID` (decimal) = Gmail API message `id` (hex). Same for thread ids.
 - Deleting from a label folder removes the label; deleting from All Mail or Trash deletes. Our "trash" action must `COPY` to `[Gmail]/Trash`.

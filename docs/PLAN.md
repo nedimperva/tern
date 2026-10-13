@@ -1,137 +1,154 @@
 # Tern roadmap
 
-A Superhuman-class mail client for Linux and Windows: local-first, keyboard-first, fast, and good-looking.
-Open source (MIT). Linux (Omarchy / Hyprland / Wayland) is the primary target until the core is complete;
-Windows lands in Sprint 13.
+A fast, local-first, keyboard-first mail client for Linux, then Windows. Inspired by Superhuman's workflow,
+not gated on feature parity. Rust + SQLite + Tauri 2 + SolidJS remain the foundation. MIT licensing is
+planned; adding the license is a foundation task.
 
-This file is the map. Each sprint has its own file in `docs/sprints/` with tasks, acceptance criteria and
-decision gates. Research notes that back the decisions live in `docs/research/`.
+## Agreed direction (2026-10-13)
 
-Sprints are one week each, on the assumption that an agent does most of the implementation and the owner
-reviews, tests against real accounts, and decides at the gates. If a sprint overruns, cut scope rather than
-extend the week; carry the remainder into the next sprint's file.
+- Deliver in this order: **safe foundation → Linux private alpha → focused Linux beta → Windows release → expansion**.
+- Keep Windows compiling and smoke-tested early; defer Windows release polish, not discovery of platform bugs.
+- Keep **optional AI** in the product roadmap: off by default, usable with local inference or a user-chosen
+  remote provider. AI is not a dependency for the Linux beta or Windows release.
+- Choose **one Gmail backend** for the initial release through an early measured decision. Do not build
+  both or promise backend switching before proving the core client.
+- Defer calendar, advanced CardDAV/contacts, most attachment previews, and broad arbitrary-IMAP compatibility.
+- Replace fixed one-week delivery promises with milestone exit criteria and small, reviewable PRs.
 
-## Where we are (2026-10-13)
+This file defines release scope and order. Existing `docs/sprints/sprint-NN-*.md` filenames are retained
+as **work-package IDs**, not chronological weeks. A package can contribute a selected slice to a milestone
+and retain later tasks. Its **Delivery scope** section says which tasks are in scope; future tasks do not
+block a milestone. Do not automatically implement every checkbox in numeric order.
 
-- ~3,100 lines: Rust engine (`crates/tern-core`), Tauri 2 shell (`src-tauri`), SolidJS UI (`src`).
-- The Rust has **never been compiled**. The UI has only run against a fake mailbox in a browser.
-- Design is sound and worth keeping: SQLite-only reads, outbox with 5-second undo, keyset paging,
-  contentless FTS5, sandboxed HTML, passwords in the OS keyring. See `CLAUDE.md`.
-- Only a Fastmail (plain IMAP) test account is available today. A Gmail account and a Google Cloud project
-  arrive before Sprint 4. Outlook test account is needed before Sprint 11.
+## Current evidence
 
-## Product definition
+- The engine has not been compiled in a verified agent run. The frontend production build passed during
+  the plan review; the real Tauri bridge and provider behavior still need acceptance testing.
+- Fastmail is the first available test account. Acquire a Gmail test account and Cloud project during the
+  foundation phase, not just before Gmail implementation. Outlook testing is expansion work.
+- Local-first reads, the outbox, keyset paging, FTS5, sandboxed HTML, and OS-keyring credentials remain the
+  design direction. Reliability and performance claims must be demonstrated, not inferred from that design.
 
-Tern should feel like Superhuman: one list, one conversation, everything reachable from the keyboard in
-under 100 ms, a command palette for everything else, and an inbox that is empty most of the time.
+## Milestones and release gates
 
-**Must have (Sprints 0–8)**
-- Any IMAP account, Gmail with OAuth (labels, Gmail threads, Gmail search syntax), unified inbox.
-- Conversation list, split inbox (Important / Other / custom), snooze & reminders, follow-up reminders,
-  send later, undo send, snippets, signatures, recipient autocomplete, attachments, instant search.
-- Notifications, tray, `mailto:` handler, start at login.
-- Speed targets in the table below, measured and enforced.
+| Milestone | Required scope | Exit evidence | Status |
+|---|---|---|---|
+| M0 — Safe foundation | Compile engine/shell; Linux + Windows CI; Linux boot and early Windows WebView2/keyring smoke test; safe outbox and UID handling; migration/restart/offline tests; early Gmail comparison and verification preparation | Tests/builds pass on both OSes; Fastmail round-trips safely; failure/recovery checks recorded; Gmail decision evidence reviewed by owner | todo |
+| M1 — Linux private alpha | Fastmail first; conversations; keyboard triage; safe HTML; basic compose/reply/forward; durable local and server drafts; send/undo; attachments saved/opened through system; signatures; header-derived autocomplete; local search; visible sync/outbox failures | Owner uses a test mailbox and then daily mail with a backup client; restart retains drafts; attachments round-trip; offline actions reconcile; common tasks work without mouse | todo |
+| M2 — Focused Linux beta | One chosen Gmail backend + OAuth; native label/thread semantics; unified inbox; notifications/background mode; mailto; basic snippets, splits, snooze/reminders; Linux packages/update path; accurate partial-search/sync progress; small external tester group | Real Fastmail + Gmail checks pass; testers use the app for several weeks; no known mail-loss/unsafe retry blockers; installation/recovery documented; OAuth distribution is appropriate for the audience | todo |
+| M3 — Windows release | Installer and update flow; WebView2 rendering/compose; Credential Manager; notifications/tray/mailto; scaling; sleep/resume; regression test the same supported providers | Clean Windows installation passes the mail-core acceptance suite; existing Linux behavior remains green | todo |
+| M4 — Expansion | Optional AI first slice; calendar; Outlook/Graph; advanced contacts/previews; additional provider support; second Gmail backend only if justified | Separate owner-approved scope and acceptance per feature; no dependency back into M1–M3 | deferred |
 
-**Should have (Sprints 9–12)**
-- Calendar (CalDAV first), RSVP from invites, "see your day".
-- AI with your own API key: summarize, draft, ask, auto-label. Opt-in, off by default.
-- Outlook / Microsoft 365 via IMAP+OAuth; Gmail API backend behind a backend trait.
+**First release** means the focused mail core in M1–M3, not every work-package checkbox. Remote AI,
+calendar, Outlook, a second Gmail backend, and advanced previews cannot delay those milestones.
+Optional AI remains an intended follow-on feature, not a rejected idea. Order other expansion work by demand.
 
-**Later (Sprints 13+)**
-- Windows build and installers, auto-update, AUR / Flatpak, Microsoft Graph, multiple windows/tabs.
+### Scope boundaries
 
-**Not planned**
-- Read statuses / open tracking. Team features (shared conversations, comments). Any server component.
+- **Supported providers:** Fastmail in the private alpha; Fastmail and Gmail in the beta. Custom IMAP may be
+  experimental. “Any IMAP server” is not a release guarantee without a tested capability/provider matrix.
+- **Compose:** preserve drafts and send correct mail before adding a sophisticated editor, aliases, or
+  automatic voice matching. Basic formatting may follow once the reliability gate holds.
+- **Attachments:** sending, downloading, saving, and opening with the system are core; embedded PDF/media
+  viewers, drag-out, and advanced browsing are expansion work.
+- **Contacts:** autocomplete from received/sent headers is core; CardDAV imports/merging are expansion work.
+- **Triage:** basic snippets/splits/snooze are beta scope. Advanced rule builders, unsubscribe automation,
+  mute, follow-up automation and send-later can follow; none may hide sync failures or lose pending work.
+- **Local scheduling:** timers run only while Tern runs. Explain overdue actions and app-closed behavior
+  for snooze/reminders as well as send-later. Do not imply cross-device synchronization of local timers.
+- **Security/reliability:** unsafe deletion, ambiguous-send handling, draft persistence, migration safety,
+  and visible failed work are release blockers, never “cut first” to meet a date.
 
-## Speed targets
+## Gmail: decide early, implement once
 
-These are the product. Every sprint ends with `store_bench` and the UI perf overlay showing green.
+Use [the decision checklist](research/gmail-backend-decision.md) during M0. Compare IMAP + Gmail extensions
+with Gmail API using the actual test account and Cloud project. Assess labels/threads/drafts, deletion,
+initial useful page, full-backfill cost, freshness, recovery, scopes and verification. The owner chooses
+one path before provider-specific implementation. No backend is selected by this plan revision.
 
-| What | Target | How we measure |
+- If **IMAP** wins, use package 04's IMAP path; package 12 stays deferred.
+- If **API** wins, combine package 04's common OAuth/UI/model work with package 12's API path in M2;
+  skip Gmail-specific IMAP implementation. Fastmail still uses IMAP.
+- A minimal scripted transport seam belongs in M0 for tests. Extract a production `MailBackend` boundary
+  when the selected second transport requires it, not automatically after Outlook.
+- Use the actual Cloud project quotas. The research notes include Google's 2026 new-project limits and
+  legacy exceptions. Batch requests do not remove individual-call quota costs.
+- Measure **time to first useful page** separately from **full backfill**. Do not promise 20,000 fetched
+  messages in 30 seconds. Show background progress and partial search coverage honestly.
+- IMAP IDLE and API polling have different freshness guarantees. A 30-second poll is not a two-second push.
+- Start scope/domain/privacy/verification preparation in M0; submit once the implemented flow can be
+  demonstrated. Do not wait for the launch package to begin an external approval dependency.
+
+## Optional AI contract
+
+Package 10 remains planned for M4. Start with user-triggered **summarize** and **draft/rewrite**, then
+consider Ask AI, automatic labels, voice matching, and additional providers separately.
+
+- Fully off by default; no provider key, model download, AI account, or AI request required for normal mail.
+- Support a tested local endpoint and a user-chosen remote provider with keys in the OS keyring.
+- Explain exactly which mail/draft content leaves the device, the recipient provider, and how to disable it.
+- No claim that “all data stays on-device” when remote AI is enabled. Opt-in/BYOK does not automatically
+  remove Google's restricted-data obligations or guarantee a security-assessment exemption.
+- Explicit enablement per account/feature; user confirms send and destructive actions. Email content is
+  untrusted input, not instructions granting the model authority over the inbox.
+- Provider failures/cost limits must never block reading, composing, searching, syncing, or sending manually.
+
+## Performance evidence
+
+Targets are measured on named reference hardware with release builds and representative mailboxes.
+Keep store microbenchmarks separate from end-to-end interaction latency. Record p50/p95 and regressions;
+measure input-to-visible-response, not just the duration of a signal update.
+
+| What | Initial target / evidence |
+|---|---|
+| Navigation | No visible lag or focus jumps; record input-to-paint p95 while syncing; a sub-5-ms handler is not a universal sub-5-ms paint guarantee |
+| SQLite list page | < 1 ms benchmark target at 100k messages |
+| Local search | < 10 ms engine target; report IPC/render and partial-body coverage separately |
+| Open local conversation | < 50 ms target, measured end to end |
+| Archive 50 conversations | < 20 ms local store target; server completion tracked independently |
+| Startup | < 400 ms aspirational packaged cold-start target; record measured result, not `tauri dev` startup |
+| New mail | < 2 s target for healthy IDLE path; API path uses documented/observed poll interval |
+| JS bundle | < 150 kB gzipped including the eventual compose editor |
+
+## Work-package map (IDs are not delivery order)
+
+| ID | Work package | Delivery scope |
 |---|---|---|
-| Keypress to list moved (`j`/`k`) | < 5 ms | perf overlay, `performance.now()` around the signal update |
-| One page of a list from SQLite | < 1 ms | `store_bench` |
-| Search as you type, 100k messages | < 10 ms per keystroke | `store_bench` + overlay |
-| Open a conversation | < 50 ms (bodies local) | overlay |
-| Archive 50 conversations | < 20 ms local, server later | `store_bench` |
-| Cold start to interactive inbox | < 400 ms | `tauri dev` log line at first paint |
-| New mail on server to row on screen | < 2 s with IDLE | manual, Sprint 1 |
-| JS bundle | < 150 kB gzipped (compose editor included) | `vite build` |
-
-## Architecture (decisions, with the sprint that makes them)
-
-Full reasoning in `docs/research/stack.md`.
-
-| Area | Decision | Sprint |
-|---|---|---|
-| IMAP | Upgrade `async-imap` 0.10 → 0.11. Spike `imap-next`/`imap-client` in Sprint 1; switch only if async-imap cannot do IDLE + QRESYNC + Gmail extensions cleanly. | 0, gate in 1 |
-| TLS | Move to `rustls` everywhere (IMAP, SMTP, HTTP). No OpenSSL on Windows, one root store (`rustls-platform-verifier`). | 1 |
-| HTTP | `reqwest` (rustls) for OAuth, Gmail API, CalDAV, AI providers. | 4 |
-| OAuth | `oauth2` crate, authorization code + PKCE, loopback redirect on `127.0.0.1:<random>`, system browser via opener. Tokens in keyring. | 4 |
-| Threading | Our own: `References`/`In-Reply-To`, subject fallback; Gmail `X-GM-THRID` wins when present. Materialized `threads` table. | 1, 2 |
-| Labels | First-class `labels` + `message_labels` tables. IMAP folders map to one label each; Gmail labels map directly. Archive = remove Inbox label. | 4 |
-| HTML mail | Sanitize once in Rust (`ammonia`) at insert time, render in `<iframe sandbox>` with CSP. Remote images blocked until click. | 2 |
-| Compose editor | ProseMirror (core packages only). Small, keyboard-first, controllable schema. | 3 |
-| UI | SolidJS, no state library, CSS custom properties for themes, Inter + JetBrains Mono bundled. | 2 |
-| Calendar | `libdav` (CalDAV/CardDAV) + `icalendar` crate. Native Google/Graph calendar later. | 9 |
-| AI | Provider trait in Rust (OpenAI / Anthropic / Gemini), keys in keyring, results cached in SQLite. | 10 |
-| Backends | `MailBackend` trait so Gmail API and Graph can sit beside IMAP. Introduced when the second backend arrives, not before. | 12 |
-| Packaging | AppImage + .deb + .rpm from `tauri build`, AUR PKGBUILD, Tauri updater with signing key. MSI/NSIS on Windows. | 13, 14 |
-
-## Sprint map
-
-| # | Week | Theme | Outcome you can see | Status |
-|---|---|---|---|---|
-| 0 | 1 | [Compile and boot](sprints/sprint-00-compile-and-boot.md) | App opens on Hyprland, Fastmail inbox fills, archive/star/send round-trip | todo |
-| 1 | 2 | [Sync engine v2](sprints/sprint-01-sync-engine.md) | New mail in < 2 s (IDLE), cheap re-checks (QRESYNC), headers first, real threads | todo |
-| 2 | 3 | [Conversation list and the Superhuman shell](sprints/sprint-02-conversation-ui.md) | One row per thread, Superhuman keys, command palette, dark/light, perf overlay | todo |
-| 3 | 4 | [Compose](sprints/sprint-03-compose.md) | Rich compose, reply/forward with quoting, drafts to server, attachments, signatures, autocomplete | todo |
-| 4 | 5 | [Gmail via IMAP + OAuth](sprints/sprint-04-gmail-oauth.md) | "Sign in with Google", labels, Gmail threads, Gmail search syntax | todo |
-| 5 | 6 | [Triage: split inbox, snooze, send later](sprints/sprint-05-triage.md) | Important/Other, custom splits, `h` to snooze, follow-up reminders, send later, unsubscribe, mute | todo |
-| 6 | 7 | [Search and speed](sprints/sprint-06-search-and-speed.md) | Instant search with operators, 100k-message mailbox under targets, body download policy | todo |
-| 7 | 8 | [Attachments, contacts, snippets](sprints/sprint-07-attachments-contacts-snippets.md) | Attachment viewer and drag/drop, contact ranking, snippets with `;`, Instant Intro | todo |
-| 8 | 9 | [Desktop integration](sprints/sprint-08-desktop-integration.md) | Notifications, tray, `mailto:`, start at login, single instance, offline indicator | todo |
-| 9 | 10 | [Calendar v1](sprints/sprint-09-calendar.md) | CalDAV sync, day/week panel on `0`, RSVP from invites, create event from mail | todo |
-| 10 | 11 | [AI with your own key](sprints/sprint-10-ai.md) | Summaries above threads, write with AI, Ask AI over local mail, auto-labels into splits | todo |
-| 11 | 12 | [Outlook and backend abstraction](sprints/sprint-11-outlook.md) | Microsoft sign-in, outlook.office365.com IMAP+OAuth, `MailBackend` trait, Gmail API go/no-go | todo |
-| 12 | 13 | [Gmail API backend](sprints/sprint-12-gmail-api.md) | history-based incremental sync, native labels/threads/drafts, send via API | todo |
-| 13 | 14 | [Windows](sprints/sprint-13-windows.md) | Builds on Windows, WebView2, Credential Manager, MSI/NSIS, tray, notifications | todo |
-| 14 | 15 | [Open-source launch](sprints/sprint-14-launch.md) | CI matrix, signed releases, updater, AUR, docs, Google verification submitted | todo |
-| 15+ | — | [Backlog](sprints/sprint-15-plus-backlog.md) | Graph API, Flatpak, tabs, themes, accessibility, i18n | todo |
+| 00 | [Compile and boot](sprints/sprint-00-compile-and-boot.md) | M0; both-OS checks, early Windows smoke test, first Fastmail account |
+| 01 | [Sync engine](sprints/sprint-01-sync-engine.md) | M0 safety/transport tests; M1 reliable sync and threading; optimizations staged |
+| 02 | [Conversation UI](sprints/sprint-02-conversation-ui.md) | M1; no future-feature placeholders required |
+| 03 | [Compose](sprints/sprint-03-compose.md) | M1 reliable compose/drafts/attachments; rich-editor extras later |
+| 04 | [Gmail OAuth and selected transport](sprints/sprint-04-gmail-oauth.md) | M0 decision/preparation; M2 chosen Gmail path |
+| 06 | [Search and speed](sprints/sprint-06-search-and-speed.md) | M1 search basics; M2 scale/performance refinement |
+| 07 | [Attachments, contacts, snippets](sprints/sprint-07-attachments-contacts-snippets.md) | M1 basic attachments/autocomplete; M2 snippets; advanced previews/CardDAV M4 |
+| 08 | [Desktop integration](sprints/sprint-08-desktop-integration.md) | M1 error/outbox visibility; M2 Linux integration; M3 Windows parity |
+| 05 | [Triage](sprints/sprint-05-triage.md) | M2 basic splits/snooze; advanced automation later |
+| 14 | [Distribution and launch](sprints/sprint-14-launch.md) | M0 CI/verification prep; M2 Linux beta distribution; M3 Windows distribution |
+| 13 | [Windows](sprints/sprint-13-windows.md) | M0 compile + smoke; M3 public release, no calendar/AI prerequisite |
+| 10 | [Optional AI](sprints/sprint-10-ai.md) | M4 staged opt-in feature, off by default |
+| 09 | [Calendar](sprints/sprint-09-calendar.md) | M4, deferred from first release |
+| 11 | [Outlook](sprints/sprint-11-outlook.md) | M4; does not gate Gmail or a backend boundary |
+| 12 | [Gmail API candidate](sprints/sprint-12-gmail-api.md) | M0 spike; M2 only if selected; otherwise deferred |
+| 15+ | [Backlog](sprints/sprint-15-plus-backlog.md) | Owner-prioritized expansion |
 
 ## Working agreement
 
-The step-by-step process for a sprint — branches, checkbox conventions, how a sprint is marked complete —
-is in [`docs/sprints/README.md`](sprints/README.md). The UI spec every screen is held to is
-[`docs/design/ui.md`](design/ui.md).
+See [the work-package process](sprints/README.md) and [UI spec](design/ui.md).
 
-- **Branch per sprint**: `sprint/NN-short-name`, PR into `main` at the end of the week, owner reviews.
-  Small follow-up PRs are fine. `main` must always compile and pass `cargo test` + `npm run build`.
-- **Definition of done** for a task: code compiles, tests for engine changes, tried against a real account
-  where it touches the network, `CLAUDE.md` updated if a decision changed, speed targets still green.
-- **Decision gates** are marked in sprint files. The agent proposes with evidence; the owner decides.
-- **Commits**: imperative, one topic each, body says why. Author is the owner.
-- **Keep the bundle small, keep the engine synchronous where it can be.** Measure before optimizing,
-  but never ship a regression against the table above.
+- Small branches/PRs per tested slice; do not accumulate a week's unrelated work into one review.
+- A milestone completes on evidence and owner acceptance, not elapsed weeks or implementation volume.
+- Select required task slices before implementation; explicitly defer the remainder without pretending it
+  is complete. Do not automatically carry all deferred work into the next milestone.
+- Keep `main` building on Linux and Windows once M0 establishes the baseline. Engine changes require tests;
+  network behavior requires real-provider evidence. Record environmental limits honestly.
+- Owner decides gates. No acceptance check is marked complete merely because an agent wrote code.
 
-## Risks
+## Decision record
 
-| Risk | Mitigation |
-|---|---|
-| Rust code written blind has deeper problems than API mismatches | Sprint 0 is only about compiling and the first real sync; nothing else is scheduled that week |
-| `async-imap` cannot parse `MODSEQ` / `X-GM-*` FETCH items | Sprint 1 spike with raw commands and a second parser; switch to `imap-next` if needed before Sprint 4 depends on it |
-| Google OAuth verification takes months; CASA may be demanded | Testing mode (100 users) covers development; local-first should exempt us from CASA; start the submission in Sprint 14, not later |
-| Outlook.com IMAP OAuth quirks (opaque tokens, scope prefixes, intermittent `AUTHENTICATE failed`) | Sprint 11 budgets a day for it; Graph is the fallback path |
-| WebKitGTK on Wayland/NVIDIA renders blank | `WEBKIT_DISABLE_DMABUF_RENDERER=1` fallback set from `main.rs` when detected; documented in Sprint 0 |
-| Scope creep from the Superhuman feature list | Every sprint has a "cut first" line; the backlog file exists so nothing has to be squeezed in |
-| One developer-reviewer | One PR per sprint, concise, with a "how to test" section; agent writes the test plan |
+2026-10-13 — Owner agreed to a narrower initial release, early Windows validation, revisiting Gmail, and
+the milestone delivery order. Owner reaffirmed that AI is wanted but optional. This revision records those
+product decisions; it does not claim an implemented feature, selected Gmail transport, or passed release gate.
 
-## Reference material
-
-- `docs/research/stack.md` — library choices and alternatives.
-- `docs/research/gmail-oauth.md` — Google Cloud setup, scopes, loopback flow, verification.
-- `docs/research/microsoft-oauth.md` — Entra app registration and the Outlook IMAP quirks.
-- `docs/research/superhuman-reference.md` — features, shortcuts and UI patterns we are matching.
-- `docs/research/data-model.md` — schema changes across sprints.
-- `docs/design/ui.md` — the UI spec: tokens, layout, components, states, review checklist.
-- `docs/sprints/README.md` — how to run a sprint and mark it complete.
+Research: [stack](research/stack.md), [Gmail OAuth](research/gmail-oauth.md),
+[Gmail decision](research/gmail-backend-decision.md), [Microsoft OAuth](research/microsoft-oauth.md),
+[data model](research/data-model.md), [Superhuman reference](research/superhuman-reference.md).
