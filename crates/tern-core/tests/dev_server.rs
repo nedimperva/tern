@@ -62,3 +62,41 @@ async fn move_to_archive_and_back() {
     assert_eq!(s.uids().await.unwrap().len(), before.len());
     s.logout().await.unwrap();
 }
+
+#[tokio::test]
+#[ignore = "needs scripts/dev-mail-server.sh start"]
+async fn sends_over_smtp_and_arrives() {
+    let config = tern_core::models::AccountConfig {
+        email: "test@localhost".into(),
+        display_name: "Tern test".into(),
+        username: "test@localhost".into(),
+        imap_host: "localhost".into(),
+        imap_port: 1993,
+        smtp_host: "localhost".into(),
+        // Tern picks implicit TLS only for port 465, so the dev server's 1465 would be spoken to with STARTTLS
+        // and hang. 1587 is the dev server's STARTTLS submission port.
+        smtp_port: 1587,
+    };
+    let subject = format!("smtp check {}", std::process::id());
+    let draft = tern_core::models::Draft {
+        to: vec!["test@localhost".into()],
+        cc: vec![],
+        subject: subject.clone(),
+        body: "Sent by sends_over_smtp_and_arrives.".into(),
+        in_reply_to: None,
+    };
+    tern_core::smtp::send(&config, &password(), &draft).await.unwrap();
+
+    let mut s = sign_in().await;
+    for _ in 0..20 {
+        s.select("INBOX").await.unwrap();
+        let newest = *s.uids().await.unwrap().iter().max().unwrap();
+        let body = s.bodies(&newest.to_string()).await.unwrap().remove(0).body.unwrap();
+        if String::from_utf8_lossy(&body).contains(&subject) {
+            s.logout().await.unwrap();
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    panic!("the message did not arrive in 5 s");
+}
