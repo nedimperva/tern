@@ -45,6 +45,14 @@ pub fn start_account(app: &AppHandle, state: &AppState, account: Account) {
 }
 
 fn main() {
+    // WebKitGTK's DMA-BUF renderer leaves the window blank or crashes on some Wayland setups (NVIDIA among them).
+    // Set before any thread starts; someone who sets the variable themselves keeps their choice.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WAYLAND_DISPLAY").is_some()
+        && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
+    {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
     // Errors from the sync workers go to stderr; RUST_LOG=tern_core=debug shows each fetch as well.
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     tauri::Builder::default()

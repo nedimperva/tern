@@ -45,7 +45,8 @@ rustup default stable
 ```
 
 Passwords are stored through the Secret Service, so a keyring such as gnome-keyring must be running and unlocked.
-If the window comes up blank on Wayland or NVIDIA, start it with `WEBKIT_DISABLE_DMABUF_RENDERER=1`.
+On Wayland, Tern sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` itself, because WebKitGTK's DMA-BUF renderer can leave
+the window blank or crash on some setups (NVIDIA among them). Set the variable to `0` before starting Tern to opt out.
 
 **Linux (Debian/Ubuntu)**
 
