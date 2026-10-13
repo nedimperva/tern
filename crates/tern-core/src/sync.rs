@@ -237,23 +237,37 @@ async fn sync_folder(
 }
 
 /// Sends everything due. Returns true when there was anything.
+///
+/// Work the server refuses is recorded and the rest goes on, and so does the pass: one bad message must not hold
+/// up new mail. Only a connection that broke ends the pass, so it can reconnect; what was claimed and not tried
+/// goes back in the queue.
 async fn drain_outbox(s: &mut Session, store: &Store, account: &Account, password: &str) -> Result<bool> {
     let due = store.claim_due(account.id)?;
     let any = !due.is_empty();
-    let mut first_error = None;
     for (id, op) in due {
-        match run_op(s, &account.config, password, &op).await {
-            Ok(()) => store.outbox_done(id)?,
-            Err(e) => {
-                store.outbox_failed(id, &format!("{e:#}"))?;
-                first_error.get_or_insert(e);
-            }
+        let Err(e) = run_op(s, &account.config, password, &op).await else {
+            store.outbox_done(id)?;
+            continue;
+        };
+        let permanent = smtp::is_permanent(&e);
+        store.outbox_failed(id, &format!("{e:#}"), permanent)?;
+        log::warn!(
+            "{}: queued work {id} failed{}: {e:#}",
+            account.config.email,
+            if permanent { " for good" } else { "" }
+        );
+        // A Send uses its own SMTP connection, so only IMAP work can leave this session broken.
+        if !matches!(op, OutboxOp::Send(_)) && connection_broke(&e) {
+            store.release_claims(account.id)?;
+            return Err(e);
         }
     }
-    match first_error {
-        Some(e) => Err(e),
-        None => Ok(any),
-    }
+    Ok(any)
+}
+
+/// Whether an error means the connection is gone (I/O error or no answer), not that the server said no.
+fn connection_broke(e: &anyhow::Error) -> bool {
+    imap::connection_lost(e) || e.chain().any(|c| c.is::<tokio::time::error::Elapsed>())
 }
 
 async fn run_op(s: &mut Session, config: &AccountConfig, password: &str, op: &OutboxOp) -> Result<()> {

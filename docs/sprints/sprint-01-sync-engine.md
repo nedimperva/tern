@@ -133,3 +133,8 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   follow the port (993/465 TLS, 143/587 STARTTLS). IMAP STARTTLS implemented, refusing bytes injected before TLS.
   Real-server checks: IMAP STARTTLS on 1143, SMTP over TLS on 1465 (the port-guessing case) and STARTTLS on 1587.
   UI checked by `npm run build` only; owner to look at the form in `tauri dev`.
+- 2026-10-14 — Outbox failures no longer stall sync. Found live: a reply to a nonexistent seed address failed with
+  SMTP 550 and aborted every pass, so new mail stopped. Now a refused item is recorded and the pass goes on; only a
+  lost connection ends it (claimed work is released). Permanent refusals stop at once, others after 5 tries; given-up
+  work waits in `Store::outbox_problems` (retry or discard, discard reverts like undo). Schema v3 (`gave_up_at`).
+  Still open for the Retry-policy task: the "Sync problems" list in the UI (package 08, M1).

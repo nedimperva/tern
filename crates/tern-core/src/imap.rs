@@ -256,6 +256,16 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
     }
 }
 
+/// Whether `e` came from the connection itself failing (reading or writing the socket), rather than from the
+/// server answering NO or BAD. io-imap wraps the I/O error transparently, so it is not in the error's source
+/// chain and has to be recognised by its variant.
+pub fn connection_lost(e: &anyhow::Error) -> bool {
+    e.chain().any(|c| {
+        c.is::<std::io::Error>()
+            || matches!(c.downcast_ref::<ImapClientError>(), Some(ImapClientError::Io(_)))
+    })
+}
+
 fn mailbox(name: &str) -> Result<Mailbox<'static>> {
     Ok(Mailbox::try_from(name.to_string())?)
 }
@@ -545,5 +555,19 @@ mod tests {
         });
         let err = connect("localhost", port, Security::Starttls, "ada", "x").await.err().unwrap();
         assert!(format!("{err:#}").contains("before TLS started"), "{err:#}");
+    }
+
+    #[tokio::test]
+    async fn a_dropped_connection_counts_as_lost_and_a_no_does_not() {
+        let (stream, _) = signed_in(
+            "{tag} OK [CAPABILITY IMAP4rev1] in\r\n",
+            vec![("SELECT Gone", "{tag} NO no such folder\r\n")],
+        );
+        let mut imap = Imap::open(stream, "ada", "x").await.unwrap();
+        let refused = imap.select("Gone").await.err().unwrap();
+        assert!(!connection_lost(&refused), "{refused:#}");
+        // The script is used up, so the fake server goes away: the next command hits a closed socket.
+        let dropped = imap.select("INBOX").await.err().unwrap();
+        assert!(connection_lost(&dropped), "{dropped:#}");
     }
 }
