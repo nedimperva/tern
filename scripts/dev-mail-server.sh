@@ -11,6 +11,7 @@
 #   scripts/dev-mail-server.sh seed [n]   add an Archive folder and send n test messages (default 20)
 #   scripts/dev-mail-server.sh account    print what to type into Tern's "Add an account" form
 #   scripts/dev-mail-server.sh tern       start `npm run tauri dev` trusting the test CA
+#   scripts/dev-mail-server.sh test       run the engine's checks against the running server
 #   scripts/dev-mail-server.sh reset      delete all mail on the server, keep the setup
 #
 # Stalwart 0.16 keeps its settings in its database behind a separate CLI, so this stays on 0.15.
@@ -167,6 +168,12 @@ tern() {
   SSL_CERT_FILE="$DIR/tls/trust-bundle.pem" exec npm run tauri dev
 }
 
+run_tests() {
+  [ -f "$DIR/tls/trust-bundle.pem" ] || die "run setup first"
+  cd "$REPO"
+  SSL_CERT_FILE="$DIR/tls/trust-bundle.pem" exec cargo test -p tern-core --test dev_server -- --ignored
+}
+
 reset() {
   pgrep -x stalwart >/dev/null && die "stop the server first"
   rm -rf "${DIR:?}/data" && mkdir -p "$DIR/data"
@@ -176,5 +183,6 @@ reset() {
 case ${1:-} in
   setup | start | account | tern | reset) "$1" ;;
   seed) seed "${2:-20}" ;;
-  *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  test) run_tests ;;
+  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
