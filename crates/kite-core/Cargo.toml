@@ -1,0 +1,20 @@
+[package]
+name = "kite-core"
+version = "0.1.0"
+edition = "2021"
+description = "Local-first mail engine: SQLite store, IMAP sync, SMTP send, outbox with undo."
+
+[dependencies]
+anyhow = "1"
+async-imap = { version = "0.10", default-features = false, features = ["runtime-tokio"] }
+async-native-tls = { version = "0.5", default-features = false, features = ["runtime-tokio"] }
+futures = "0.3"
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service", "crypto-rust"] }
+lettre = { version = "0.11", default-features = false, features = ["builder", "hostname", "smtp-transport", "tokio1", "tokio1-native-tls"] }
+log = "0.4"
+mail-parser = "0.9"
+# Bundled SQLite is new enough for FTS5 contentless-delete and RETURNING, on every platform.
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "net", "rt", "sync", "time"] }
