@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/tern-core", "src-tauri"]
+members = ["crates/tern-core", "crates/imap-probe", "src-tauri"]
 
 [profile.release]
 lto = true

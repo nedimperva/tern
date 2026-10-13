@@ -8,7 +8,7 @@ release scope; calendar, advanced contacts and optional AI are expansion, not co
 
 | Need | Choice | Alternatives considered | Why |
 |---|---|---|---|
-| IMAP | `async-imap` 0.11 (upgrade in Sprint 0); **gate in Sprint 1** | `imap-next` 0.3 + `imap-client` (duesee/soywod); `imap` (sync, same lineage); `imap-codec` directly | `async-imap` is in the code already and had releases in Jul 2025 → Feb 2026. `imap-next` is the most correct codebase in the ecosystem (NLnet-funded, fuzzed, `ext_condstore_qresync` and `starttls` features) but has a small API surface area to build on. The Sprint 1 probe decides on evidence. |
+| IMAP | **pending owner decision** (package 01 gate, probed 2026-10-13): `async-imap` 0.12 or `io-imap` 0.7 | `imap-next` 0.3 alone (sans-I/O, no command layer); `imap-client` (archived May 2026, moved to `io-imap`); `imap` (sync) | Both pass the probe at equal speed. `io-imap` has first-class QRESYNC and COPYUID but drops Gmail X-GM-* FETCHes; `async-imap` parses X-GM-* but loses QRESYNC changes past 100 unless drained. See the probe results below. |
 | TLS | `rustls` (`tokio-rustls`, `rustls-platform-verifier`) | `native-tls` (current) | No OpenSSL on Windows/CI, OS trust store via the platform verifier, one code path. `lettre` has `tokio1-rustls-tls`. |
 | SMTP | `lettre` 0.11 | own minimal client | Mature, async, MIME builder, XOAUTH2 via `Mechanism::Xoauth2`. |
 | MIME parse | `mail-parser` (bump to latest 0.11.x) | `mailparse` | Fast, zero-copy, handles broken mail; used by Stalwart. |
@@ -25,20 +25,37 @@ release scope; calendar, advanced contacts and optional AI are expansion, not co
 | Logging | `tracing` + `tracing-subscriber` | `log` + `env_logger` (current) | Spans with durations for sync phases; `log` facade still works through `tracing-log`. |
 | Async | `tokio` | — | Already in. Store stays sync behind a mutex; move to `spawn_blocking` only where measured. |
 
-### IMAP probe checklist (Sprint 1)
+### IMAP library probe (package 01 gate, 2026-10-13)
 
-```
-imap_probe --host imap.fastmail.com --user … 
-  [ ] CAPABILITY parsed; ENABLE CONDSTORE QRESYNC accepted
-  [ ] SELECT INBOX (QRESYNC (uidvalidity modseq)) → VANISHED + FETCH FLAGS MODSEQ parsed
-  [ ] IDLE → wait for an EXISTS → DONE in < 100 ms
-  [ ] UID FETCH 1:* (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (…)]) in 1,000-UID batches
-  [ ] UID MOVE
-  [ ] AUTHENTICATE XOAUTH2 (against Gmail when the account exists)
-  [ ] UID FETCH (X-GM-LABELS X-GM-THRID X-GM-MSGID) tolerated/parsed (Gmail)
-  [ ] STARTTLS on 143
-Result (fill in): async-imap: … / imap-next: … / Decision: …
-```
+`crates/imap-probe`: the same checks for each library over tokio-rustls with `TCP_NODELAY`, against the local
+Stalwart 0.15.5 server (`scripts/dev-mail-server.sh`), plus a scripted fake server for Gmail-only responses.
+Run: `cargo run --release -p imap-probe --bin probe_async_imap` (or `probe_io_imap`). Folder: 200 small messages
+and one 20 MB message; out of band, 150 flagged and 3 expunged before the QRESYNC resync.
+
+| Check | async-imap 0.12 | io-imap 0.7.1 |
+|---|---|---|
+| TLS connect + login | pass, 5 ms | pass, 4 ms |
+| STARTTLS on 1143 | pass; by hand (no helper) | pass; `starttls()` reads the greeting itself (undocumented) |
+| XOAUTH2, rejected token (server + Gmail's JSON challenge) | pass, no hang | pass, no hang |
+| Headers-first `UID FETCH 1:*` (201 msgs, BODYSTRUCTURE + HEADER.FIELDS) | pass, 135 ms | pass, 129 ms |
+| QRESYNC resync: 3 VANISHED, 150 changed | pass **only with a drain task**; read afterwards: **98 of 150 arrive, no error** (side channel holds 100, `try_send(..).ok()`) | pass, 10 ms; `select_qresync` returns `vanished_earlier` and `changed` |
+| IDLE: new mail → wake, then DONE | pass, immediate | pass, immediate; IDLE is a coroutine Tern drives (no client method); default refresh 29 s |
+| UID MOVE | pass; COPYUID **not returned** | pass; COPYUID returned |
+| 20 MB body, buffered | pass; +19 MB RSS | pass; +38 MB RSS (streaming fetch exists on the blocking client only) |
+| Gmail `X-GM-MSGID/THRID/LABELS` in FETCH | pass; parsed by imap-proto (no `Fetch` accessor) | **FAIL: the whole FETCH is dropped silently**; imap-codec has no X-GM grammar (control without X-GM-* passes) |
+| Probe code for the same checks | 232 lines | 321 lines (typed item names, a 35-line async driver, the IDLE loop) |
+| Build / maturity | 52 crates; established | 115 crates (default features); 0.7, 5 months old, mostly one maintainer, imap-codec 2.0 **alpha**; fresh resolve **does not compile** without enabling `nom/alloc` |
+
+Not checked here: Gmail and Fastmail behaviour against real accounts, and IDLE across a 29-minute refresh.
+
+**Speed:** equal once `TCP_NODELAY` is set. Without it, async-imap's split writes cost ~40 ms per command on
+loopback (Nagle + delayed ACK). Tern's current `sync.rs` does not set it: fix regardless of the library.
+
+**Recommendation:** tied to the Gmail backend decision.
+- Gmail via **API** (Fastmail and others on IMAP): **io-imap**. QRESYNC and COPYUID are what package 01's sync
+  design needs, built in and typed; X-GM-* does not matter. Pin versions and keep the `nom/alloc` workaround.
+- Gmail via **IMAP**: **async-imap**, unless io-imap gains X-GM-* support first (upstream change in imap-codec).
+  QRESYNC then needs a drain task on the unsolicited channel and a raw command for COPYUID.
 
 ## Frontend
 
