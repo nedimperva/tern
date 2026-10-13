@@ -1,12 +1,12 @@
 //! Times what the UI asks the store for, on a mailbox of 50,000 messages.
 //!
-//!     cargo run --release -p kite-core --example store_bench
+//!     cargo run --release -p tern-core --example store_bench
 //!
 //! Targets: a list page under 1 ms, search under 5 ms, archiving 50 under 20 ms.
 
 use std::time::{Duration, Instant};
 
-use kite_core::{Action, AccountConfig, Cursor, ListTarget, NewMessage, Store};
+use tern_core::{Action, AccountConfig, Cursor, ListTarget, NewMessage, Store};
 
 const MESSAGES: u32 = 50_000;
 const WORDS: &[&str] = &[
@@ -15,7 +15,7 @@ const WORDS: &[&str] = &[
 ];
 
 fn main() -> anyhow::Result<()> {
-    let path = std::env::temp_dir().join("kite-bench.db");
+    let path = std::env::temp_dir().join("tern-bench.db");
     for suffix in ["", "-wal", "-shm"] {
         let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
     }

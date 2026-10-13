@@ -1,4 +1,4 @@
-//! Kite's mail engine. The UI only ever reads from [`store::Store`], which answers in microseconds; the network
+//! Tern's mail engine. The UI only ever reads from [`store::Store`], which answers in microseconds; the network
 //! happens behind it in [`sync::run_account`], and everything a person does goes through the outbox so it shows at
 //! once, can be undone for a few seconds, and survives being offline.
 

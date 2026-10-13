@@ -5,7 +5,7 @@ mod commands;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use kite_core::{secrets, sync, Account, Store};
+use tern_core::{secrets, sync, Account, Store};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Notify;
 
@@ -70,5 +70,5 @@ fn main() {
             commands::send,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Kite");
+        .expect("error while running Tern");
 }

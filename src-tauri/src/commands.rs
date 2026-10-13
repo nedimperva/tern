@@ -1,7 +1,7 @@
 //! What the UI can ask for. Reads answer from the store and never touch the network.
 
-use kite_core::presets::{self, Preset};
-use kite_core::{
+use tern_core::presets::{self, Preset};
+use tern_core::{
     secrets, sync, Account, AccountConfig, Action, Applied, Cursor, Draft, Folder, ListTarget, MessageRow,
     ThreadMessage,
 };

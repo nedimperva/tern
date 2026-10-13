@@ -1,4 +1,4 @@
-# Kite
+# Tern
 
 A fast, local-first mail app for Windows and Linux (and macOS) that works with any IMAP account.
 
@@ -9,7 +9,7 @@ When you archive, star or send, the change shows immediately and goes to the ser
 ## Layout
 
 ```
-crates/kite-core/        the engine (Rust, no UI)
+crates/tern-core/        the engine (Rust, no UI)
   src/store.rs           SQLite schema, list/thread/search queries, the outbox with undo
   src/sync.rs            IMAP sync worker: folders, new mail, flags, sending the outbox
   src/mime.rs            parsing raw messages
@@ -60,8 +60,8 @@ To work on the UI alone, run `npm run dev` and open http://localhost:1420. With 
 against a fake mailbox of 5,000 messages.
 
 ```sh
-cargo test -p kite-core                                      # engine tests
-cargo run --release -p kite-core --example store_bench       # timings
+cargo test -p tern-core                                      # engine tests
+cargo run --release -p tern-core --example store_bench       # timings
 ```
 
 ## Keys

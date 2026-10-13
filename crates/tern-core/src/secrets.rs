@@ -3,7 +3,7 @@
 
 use anyhow::{Context, Result};
 
-const SERVICE: &str = "kite-mail";
+const SERVICE: &str = "tern-mail";
 
 pub fn set_password(email: &str, password: &str) -> Result<()> {
     keyring::Entry::new(SERVICE, email)?

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/kite-core", "src-tauri"]
+members = ["crates/tern-core", "src-tauri"]
 
 [profile.release]
 lto = true
