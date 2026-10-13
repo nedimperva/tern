@@ -89,6 +89,8 @@ pub struct ThreadMessage {
     pub to_addrs: String,
     pub body_text: Option<String>,
     pub body_html: Option<String>,
+    /// False while only the headers are here; the body is on its way (or fetched when the message is opened).
+    pub body_loaded: bool,
 }
 
 /// A message as it came off the server, parsed.
@@ -109,6 +111,10 @@ pub struct NewMessage {
     pub has_attachments: bool,
     pub body_text: Option<String>,
     pub body_html: Option<String>,
+    /// Size on the server (RFC822.SIZE), when known.
+    pub size: Option<u32>,
+    /// Only the headers were fetched: no body, no snippet yet.
+    pub headers_only: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

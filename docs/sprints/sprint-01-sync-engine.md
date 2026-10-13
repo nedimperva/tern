@@ -71,7 +71,9 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 - [ ] Phase B: fetch the text part only (from `BODYSTRUCTURE`, prefer `text/plain`, else `text/html`) for the
       snippet, newest first, 200 at a time.
 - [ ] Phase C: full bodies for the last 90 days (configurable), newest first, low priority, pausable when the user is active.
-- [ ] On demand: opening a message without a body fetches it immediately on the worker connection and emits `body-ready`.
+- [x] On demand: opening a message without a body fetches it immediately on the worker connection and emits `body-ready`.
+      Done as: the `thread` command marks it `wanted` and wakes the worker, which fetches wanted bodies first;
+      the existing `mail-changed` event reloads the open thread (no separate `body-ready`).
 - [ ] Store `size`, `bodystructure` (JSON) and `body_state` (`none | snippet | full`) on `messages`. Schema migration v2 (see `docs/research/data-model.md`).
 
 ### Conversations
@@ -143,3 +145,9 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   on the dev server: new mail in Tern's database 16, 64 and 72 ms after SMTP accepted it (was up to 60 s). Tests:
   two fake-server IDLE cases, one real-server IDLE check. Open in "Connections": jittered 1 s → 60 s reconnect and
   the `sync-state` event; sleep/resume.
+- 2026-10-14 — Headers first (schema v4: `messages.size`, `messages.body_state` none|wanted|full). New mail arrives as
+  header fields + size + flags in 500-message FETCHes and shows at once (no snippet yet); bodies follow within the
+  15 s budget, opened ones first, then the newest; mail older than 90 days gets its body only when opened. Done of
+  Phase A: everything except LIST-* headers and BODYSTRUCTURE (the attachment marker appears with the body).
+  Phase B (text part only) skipped for now: the body brings the snippet. Phase C: 90 days, not yet pausable.
+  Found: io-imap drops a FETCH response it cannot parse without error; sync now warns when fewer came back.

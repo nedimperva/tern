@@ -65,8 +65,10 @@ export function ThreadView(props: { messages: ThreadMessage[]; onReply: (m: Thre
               </div>
               <time>{when(m.date)}</time>
             </header>
-            <Show when={m.bodyHtml} fallback={<pre class="plain">{m.bodyText ?? ""}</pre>}>
-              <HtmlBody html={m.bodyHtml!} />
+            <Show when={m.bodyLoaded} fallback={<p class="loading">Loading message…</p>}>
+              <Show when={m.bodyHtml} fallback={<pre class="plain">{m.bodyText ?? ""}</pre>}>
+                <HtmlBody html={m.bodyHtml!} />
+              </Show>
             </Show>
           </article>
         )}
