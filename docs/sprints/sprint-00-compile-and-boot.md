@@ -29,7 +29,7 @@ archive / star / mark-read / send reach the server after the 5-second undo windo
 - [-] ~~Bump `async-imap` to `0.11`~~ — moved to package 01. 0.12 is out, and package 01's library gate compares
       `async-imap` with `imap-next`, so an upgrade here could be thrown away. Owner approved 2026-10-13.
       Destination: package 01, decision gate "IMAP library".
-- [ ] `mail-parser` 0.9 → check current (0.11.x). Fix `MessageParser`, `body_text`/`body_html`, address accessors in `mime.rs`.
+- [x] `mail-parser` 0.9 → check current (0.11.x). Fix `MessageParser`, `body_text`/`body_html`, address accessors in `mime.rs`.
 - [x] `keyring` 3: `Entry::new(service, user)?`, `set_password`, `get_password`, `delete_credential`.
 - [x] `lettre` 0.11: `AsyncSmtpTransport::<Tokio1Executor>::relay(host)?` / `starttls_relay`, `.credentials(...)`, `.build()`.
 - [x] `cargo test -p tern-core` green. Existing tests: store (insert/list/thread/search/outbox/undo), mime, sync batching and roles.

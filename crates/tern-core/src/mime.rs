@@ -82,4 +82,23 @@ Date: Mon, 12 Oct 2026 10:00:00 +0000\r\n\r\nHi Bob,\r\n> quoted\r\nsee you.\r\n
         assert_eq!(m.snippet, "Hi Bob, see you.");
         assert!(m.date > 0);
     }
+
+    #[test]
+    fn decodes_headers_and_finds_attachments() {
+        let raw = b"From: =?UTF-8?Q?Ned=C5=BEad?= <n@example.ba>\r\nTo: a@example.com, B <b@example.com>\r\n\
+Subject: =?UTF-8?B?xI1lxaFuamk=?=\r\nDate: Mon, 12 Oct 2026 10:00:00 +0200\r\nMIME-Version: 1.0\r\n\
+Content-Type: multipart/mixed; boundary=\"b1\"\r\n\r\n\
+--b1\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Only <b>HTML</b> here</p>\r\n\
+--b1\r\nContent-Type: application/pdf; name=\"r.pdf\"\r\nContent-Disposition: attachment; filename=\"r.pdf\"\r\n\
+Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b1--\r\n";
+        let m = parse(1, raw, false, true).unwrap();
+        assert_eq!(m.from_name, "Nedžad");
+        assert_eq!(m.subject, "češnji");
+        assert_eq!(m.to_addrs, "a@example.com, b@example.com");
+        assert!(m.has_attachments);
+        assert!(m.body_html.as_deref().unwrap().contains("<b>HTML</b>"));
+        // mail-parser derives a text body from HTML-only mail, so the list still gets a snippet.
+        assert_eq!(m.snippet, "Only HTML here");
+        assert_eq!(m.date, 1_791_792_000);
+    }
 }
