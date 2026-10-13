@@ -6,12 +6,13 @@
 
 use std::time::{Duration, Instant};
 
-use tern_core::{Action, AccountConfig, Cursor, ListTarget, NewMessage, Store};
+use tern_core::{AccountConfig, Action, Cursor, ListTarget, NewMessage, Store};
 
 const MESSAGES: u32 = 50_000;
 const WORDS: &[&str] = &[
-    "invoice", "meeting", "lunch", "release", "budget", "travel", "report", "design", "review", "contract", "launch",
-    "offer", "update", "receipt", "schedule", "draft", "feedback", "question", "deadline", "weekend",
+    "invoice", "meeting", "lunch", "release", "budget", "travel", "report", "design", "review", "contract",
+    "launch", "offer", "update", "receipt", "schedule", "draft", "feedback", "question", "deadline",
+    "weekend",
 ];
 
 fn main() -> anyhow::Result<()> {

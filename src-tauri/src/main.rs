@@ -5,8 +5,8 @@ mod commands;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use tern_core::{secrets, sync, Account, Store};
 use tauri::{AppHandle, Emitter, Manager};
+use tern_core::{secrets, sync, Account, Store};
 use tokio::sync::Notify;
 
 /// Seconds an action waits in the outbox before it goes to the server: the undo window.
@@ -52,7 +52,8 @@ fn main() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
-            let state = AppState { store: Arc::new(Store::open(&dir.join("mail.db"))?), wakers: Default::default() };
+            let state =
+                AppState { store: Arc::new(Store::open(&dir.join("mail.db"))?), wakers: Default::default() };
             for account in state.store.accounts()? {
                 start_account(app.handle(), &state, account);
             }

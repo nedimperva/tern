@@ -1,11 +1,11 @@
 //! What the UI can ask for. Reads answer from the store and never touch the network.
 
+use tauri::{AppHandle, Emitter, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
     secrets, sync, Account, AccountConfig, Action, Applied, Cursor, Draft, Folder, ListTarget, MessageRow,
     ThreadMessage,
 };
-use tauri::{AppHandle, Emitter, State};
 
 use crate::{start_account, AppState, UNDO_SECONDS};
 
@@ -67,7 +67,12 @@ pub async fn search(state: State<'_, AppState>, query: String, limit: i64) -> Re
 
 /// Applies at once; the server hears about it after the undo window.
 #[tauri::command]
-pub async fn apply(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>, action: Action) -> Reply<Applied> {
+pub async fn apply(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    action: Action,
+) -> Reply<Applied> {
     let applied = state.store.apply(&ids, action, UNDO_SECONDS).map_err(text)?;
     for account in &applied.accounts {
         state.wake(*account);
