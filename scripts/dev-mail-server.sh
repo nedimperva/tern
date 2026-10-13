@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # A local IMAP + SMTP server for developing Tern, so nothing is tested against a real mailbox.
 #
-# Stalwart 0.15 runs as your user on 127.0.0.1 only: IMAPS on 1993, SMTPS submission on 1465.
+# Stalwart 0.15 runs as your user on 127.0.0.1 only: IMAPS on 1993, IMAP + STARTTLS on 1143, SMTPS
+# submission on 1465.
 # Its certificate comes from a local test CA that Tern trusts only when started through `tern`,
 # which sets SSL_CERT_FILE; the system trust store is never touched.
 #
@@ -79,6 +80,11 @@ hostname = "localhost"
 bind = ["127.0.0.1:1993"]
 protocol = "imap"
 tls.implicit = true
+
+# Plain IMAP that upgrades with STARTTLS, for testing that path.
+[server.listener.imap]
+bind = ["127.0.0.1:1143"]
+protocol = "imap"
 
 [server.listener.submissions]
 bind = ["127.0.0.1:1465"]
