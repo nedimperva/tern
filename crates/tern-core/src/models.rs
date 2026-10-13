@@ -171,6 +171,19 @@ pub enum OutboxOp {
     Send(Draft),
 }
 
+/// Queued work Tern stopped retrying, waiting for the person to retry or discard it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutboxProblem {
+    pub id: i64,
+    pub account_id: i64,
+    /// What the work was, in a few words: "Send “Lunch?”", "Archive 3 messages".
+    pub what: String,
+    pub attempts: i64,
+    pub last_error: String,
+    pub gave_up_at: i64,
+}
+
 /// What `Store::apply` did: hand `token` to `Store::undo` to take it back.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

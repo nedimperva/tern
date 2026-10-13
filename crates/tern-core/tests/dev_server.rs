@@ -127,3 +127,17 @@ async fn sends_over_smtp_tls() {
 async fn sends_over_smtp_starttls() {
     send_and_find(&account(1587, Security::Starttls)).await;
 }
+
+#[tokio::test]
+#[ignore = "needs scripts/dev-mail-server.sh start"]
+async fn unknown_recipient_is_a_permanent_failure() {
+    let draft = Draft {
+        to: vec!["nobody-here@localhost".into()],
+        cc: vec![],
+        subject: "to nobody".into(),
+        body: "This address does not exist on the dev server.".into(),
+        in_reply_to: None,
+    };
+    let err = tern_core::smtp::send(&account(1465, Security::Tls), &password(), &draft).await.err().unwrap();
+    assert!(tern_core::smtp::is_permanent(&err), "{err:#}");
+}

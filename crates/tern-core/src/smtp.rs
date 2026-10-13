@@ -36,3 +36,9 @@ pub async fn send(config: &AccountConfig, password: &str, draft: &Draft) -> Resu
         .await?;
     Ok(())
 }
+
+/// Whether a failed send was refused for good (an SMTP 5xx answer, such as an unknown recipient). Sending it again
+/// cannot help; anything else might work on a later try.
+pub fn is_permanent(e: &anyhow::Error) -> bool {
+    e.chain().any(|c| c.downcast_ref::<lettre::transport::smtp::Error>().is_some_and(|e| e.is_permanent()))
+}
