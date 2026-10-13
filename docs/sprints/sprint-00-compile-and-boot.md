@@ -140,3 +140,6 @@ Search misses by about 7x. It belongs to package 06 (search and speed); recorded
   checks (waiting on the test account), Windows smoke test (owner, 2026-10-14), reliability gate.
 - 2026-10-13 — Wayland default verified: window renders with no variable set; Hyprland class is `tern`.
   Fastmail trial has no app passwords; switched M0 testing to a local Stalwart server (see Decisions).
+- 2026-10-13 — `scripts/dev-mail-server.sh`: Stalwart 0.15.5 (0.16 moved settings into its database behind a
+  separate CLI), checksum-pinned, loopback only, local test CA via `SSL_CERT_FILE`. Advertises MOVE, UIDPLUS,
+  CONDSTORE, QRESYNC and IDLE. Default limit of 5 SMTP connections a second per IP; seeding is paced.
