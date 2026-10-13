@@ -1,5 +1,7 @@
 # Sprint 13 — Windows
 
+**Status:** todo
+
 **Week 14.** Same app, native on Windows 10/11.
 
 ## Goal
@@ -35,3 +37,11 @@ NSIS (keep MSI), ms-settings deep link.
 - Install from the MSI on a clean Windows 11 VM; add Fastmail and Gmail; everything from the Sprint 0 acceptance list passes.
 - Notification click opens the right conversation; tray menu works; `mailto:` from Edge opens compose.
 - No OpenSSL DLLs in the install directory.
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

@@ -1,5 +1,7 @@
 # Sprint 9 — Calendar v1 (CalDAV)
 
+**Status:** todo
+
 **Week 10.** See your day without leaving the inbox, answer invites with a key, create events from mail.
 
 CalDAV first because it works today with Fastmail, and with Google through `apidata.googleusercontent.com`
@@ -42,3 +44,11 @@ Share availability, week view, quick-create NLP (use a form).
 - Fastmail calendar syncs; an event created in Tern shows in Fastmail web within a minute and vice versa.
 - Accept a real Google Calendar invite received in Fastmail: organiser sees "accepted".
 - A recurring weekly event appears on the right days across a DST change.
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

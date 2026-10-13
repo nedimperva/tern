@@ -1,5 +1,7 @@
 # Sprint 0 — Compile and boot on Linux
 
+**Status:** todo
+
 **Week 1.** Nothing new. Make what exists real: compile the Rust, run the Tauri bridge, sync a Fastmail account.
 
 ## Goal
@@ -67,3 +69,11 @@ store_bench, 50,000 messages:
 - Fix against the real crate docs; do not redesign. The design is in `CLAUDE.md`.
 - If `async-imap` 0.11 is missing something (for example `Session::idle` shape changed), note it here; Sprint 1 decides on the library.
 - Keep `commands.rs` thin. Anything that is not glue belongs in `tern-core`.
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

@@ -1,5 +1,7 @@
 # Sprint 2 — Conversation list and the Superhuman shell
 
+**Status:** todo
+
 **Week 3.** The app starts to look and feel like the product. One row per conversation, the full
 keyboard model, a real command palette, light and dark, and a perf overlay that keeps us honest.
 
@@ -77,3 +79,11 @@ Label chips on rows, then the empty-state artwork (use a solid colour), then `Cm
 - `j`/`k` keypress-to-paint under 5 ms in the overlay on a 10,000-thread list.
 - Light and dark both pass a contrast check (WCAG AA on text).
 - Bundle under 120 kB gzipped (editor not yet included).
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

@@ -1,5 +1,7 @@
 # Sprint 3 — Compose
 
+**Status:** todo
+
 **Week 4.** Writing mail should be as fast as reading it. Rich text that stays out of the way, replies
 that quote correctly, drafts that survive, attachments, signatures, autocomplete.
 
@@ -67,3 +69,11 @@ Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
 - Close the app mid-draft, reopen, draft is there; Fastmail Drafts folder shows one copy, not several.
 - Send with two attachments; receive them intact in another client.
 - Bundle under 150 kB gzipped including the editor.
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

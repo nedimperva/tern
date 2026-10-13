@@ -1,5 +1,7 @@
 # Sprint 6 — Search and speed
 
+**Status:** todo
+
 **Week 7.** Make the speed table true at 100,000 messages, and make search the fastest way to get anywhere.
 
 ## Goal
@@ -49,3 +51,11 @@ Trigram index, warm-cache startup (keep if it is under a day).
 - Generated 100k mailbox: every row of the speed table green on the Omarchy machine, numbers recorded here.
 - Typing `from:ali has:att` renders results between keystrokes without visible lag.
 - `cargo run --example store_bench` exits 0.
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

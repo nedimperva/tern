@@ -1,5 +1,7 @@
 # Sprint 8 — Desktop integration
 
+**Status:** todo
+
 **Week 9.** Tern behaves like a native Linux app: notifications, tray, `mailto:`, start at login, one
 instance, honest offline behaviour.
 
@@ -51,3 +53,11 @@ Notification actions, NetworkManager D-Bus (keep backoff), quiet hours.
 - `xdg-open 'mailto:a@b.c?subject=Hi'` opens compose in the running instance; also when Tern is not running.
 - Log out and back in: Tern is running in the tray.
 - Pull the cable: status says offline, archive still works, cable back → outbox drains, status clears.
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

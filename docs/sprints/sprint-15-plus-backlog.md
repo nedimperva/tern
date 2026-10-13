@@ -1,5 +1,7 @@
 # Sprint 15+ — Backlog
 
+**Status:** todo
+
 Ordered roughly by value. Pull into a sprint when the owner says so.
 
 ## Mail
@@ -40,3 +42,11 @@ Ordered roughly by value. Pull into a sprint when the owner says so.
 - Read statuses / open tracking pixels.
 - Team features (shared threads, comments, shared drafts).
 - Any hosted service, telemetry, or accounts with Tern itself.
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

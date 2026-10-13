@@ -1,5 +1,7 @@
 # Sprint 5 — Triage: split inbox, snooze, reminders, send later
 
+**Status:** todo
+
 **Week 6.** The features that make Superhuman Superhuman.
 
 ## Goal
@@ -60,3 +62,11 @@ Team split, "teaches the rule" from Move, RFC 8058 POST (keep mailto/URL).
 - Snooze to +2 minutes; the thread leaves and returns, unread, in both Tern and the server's view.
 - Send-later a message to yourself for +2 minutes; it arrives then.
 - Unsubscribe from a real newsletter via one-click; no further mail (verify the next day).
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

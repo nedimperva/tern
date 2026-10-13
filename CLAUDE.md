@@ -80,3 +80,5 @@ decisions that aren't visible from the code.
 The sprint-by-sprint plan lives in `docs/PLAN.md` with one file per sprint in `docs/sprints/` and the
 research behind the decisions in `docs/research/`. Start a session by reading the current sprint file.
 Work on a `sprint/NN-name` branch and open a PR to `main`; `main` must always build.
+Before any UI work, read `docs/design/ui.md`; it holds the tokens, layout and review checklist. How to tick
+tasks and mark a sprint complete is in `docs/sprints/README.md`.

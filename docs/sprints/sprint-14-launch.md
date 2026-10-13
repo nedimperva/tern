@@ -1,5 +1,7 @@
 # Sprint 14 — Open-source launch
 
+**Status:** todo
+
 **Week 15.** Make it something other people can install, trust and contribute to.
 
 ## Goal
@@ -46,3 +48,11 @@ Flatpak manifest, `tern` from-source PKGBUILD, website polish.
 - `git tag v0.1.0 && git push --tags` → GitHub Release with all artifacts within 30 minutes; an installed 0.0.x updates itself to 0.1.0.
 - `yay -S tern-bin` on a fresh Omarchy install works.
 - Verification submitted; privacy policy live.
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

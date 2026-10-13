@@ -1,5 +1,7 @@
 # Sprint 11 — Outlook / Microsoft 365, and the backend abstraction
 
+**Status:** todo
+
 **Week 12.** Microsoft accounts through IMAP + OAuth, and the `MailBackend` trait so the Gmail API (and
 later Graph) can sit next to IMAP.
 
@@ -58,3 +60,11 @@ Throttling hints, M365 MX detection.
 - Add an Outlook.com account via the browser; inbox syncs; send and receive work; archive lands in `Archive`.
 - Revoke the app at `account.live.com/consent/Manage` → "Sign in again" banner, no crash.
 - All engine tests pass against `FakeBackend`; the IMAP integration path is unchanged (Fastmail and Gmail re-tested).
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

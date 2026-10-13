@@ -1,5 +1,7 @@
 # Sprint 10 — AI with your own key
 
+**Status:** todo
+
 **Week 11.** Superhuman AI features, opt-in, with the user's own provider key. Nothing leaves the machine
 unless the user turned a feature on and chose a provider.
 
@@ -36,3 +38,11 @@ Instant Reply, voice matching, Ask AI (keep Summaries, Write with AI, Auto Label
 - With an OpenAI key: open a 10-message thread → a summary appears in under 3 s and is cached on reopen.
 - With Ollama via the compatible provider: same summary, no outbound traffic to anything but `localhost` (verify with `ss -tnp`).
 - Auto Label "invoices" catches 9/10 of a seeded set.
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

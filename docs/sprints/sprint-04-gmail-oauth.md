@@ -1,5 +1,7 @@
 # Sprint 4 — Gmail via IMAP + OAuth
 
+**Status:** todo
+
 **Week 5.** "Sign in with Google" instead of app passwords, and a Gmail account that behaves like Gmail:
 labels, Gmail's own threads, Gmail search syntax, archive that means "remove from Inbox".
 
@@ -66,3 +68,11 @@ Workspace MX detection, Gmail deep links, the "which results came from the serve
 - Threads in Tern match Gmail's grouping for 20 random conversations.
 - Revoke access at myaccount.google.com → Tern shows "Sign in again" within one sync cycle, no crash, no data loss.
 - Token refresh observed in the log after an hour of running.
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

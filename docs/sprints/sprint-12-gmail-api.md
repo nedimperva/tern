@@ -1,5 +1,7 @@
 # Sprint 12 — Gmail API backend
 
+**Status:** todo
+
 **Week 13.** Only if Sprint 11's gate said "go". A second `MailBackend` for Gmail using the REST API.
 
 Scopes: `gmail.modify` (read, label, archive, trash, drafts, send) is enough and is narrower than
@@ -43,3 +45,11 @@ Send-as aliases, backend switching in-place (require re-adding the account inste
 - Fresh Gmail account via API: 20,000-message inbox list in under 30 s; label colours visible.
 - Label change in Gmail web shows in Tern within 30 s; archive in Tern shows in Gmail web immediately.
 - Quota: a full day of normal use stays under 10 % of the per-user quota (log the unit count).
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

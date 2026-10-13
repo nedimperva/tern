@@ -1,5 +1,7 @@
 # Sprint 1 — Sync engine v2
 
+**Status:** todo
+
 **Week 2.** New mail within two seconds, cheap re-checks, headers before bodies, real conversations.
 
 ## Goal
@@ -82,3 +84,11 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
 - Toggle a flag in Fastmail's web UI: Tern reflects it within the IDLE notification (inbox) or 5 minutes (other folders).
 - `store_bench` thread-list page < 1 ms, thread open < 50 ms at 50,000 messages.
 - `cargo tree` shows no `openssl-sys`.
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._

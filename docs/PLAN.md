@@ -80,26 +80,30 @@ Full reasoning in `docs/research/stack.md`.
 
 ## Sprint map
 
-| # | Week | Theme | Outcome you can see |
-|---|---|---|---|
-| 0 | 1 | [Compile and boot](sprints/sprint-00-compile-and-boot.md) | App opens on Hyprland, Fastmail inbox fills, archive/star/send round-trip |
-| 1 | 2 | [Sync engine v2](sprints/sprint-01-sync-engine.md) | New mail in < 2 s (IDLE), cheap re-checks (QRESYNC), headers first, real threads |
-| 2 | 3 | [Conversation list and the Superhuman shell](sprints/sprint-02-conversation-ui.md) | One row per thread, Superhuman keys, command palette, dark/light, perf overlay |
-| 3 | 4 | [Compose](sprints/sprint-03-compose.md) | Rich compose, reply/forward with quoting, drafts to server, attachments, signatures, autocomplete |
-| 4 | 5 | [Gmail via IMAP + OAuth](sprints/sprint-04-gmail-oauth.md) | "Sign in with Google", labels, Gmail threads, Gmail search syntax |
-| 5 | 6 | [Triage: split inbox, snooze, send later](sprints/sprint-05-triage.md) | Important/Other, custom splits, `h` to snooze, follow-up reminders, send later, unsubscribe, mute |
-| 6 | 7 | [Search and speed](sprints/sprint-06-search-and-speed.md) | Instant search with operators, 100k-message mailbox under targets, body download policy |
-| 7 | 8 | [Attachments, contacts, snippets](sprints/sprint-07-attachments-contacts-snippets.md) | Attachment viewer and drag/drop, contact ranking, snippets with `;`, Instant Intro |
-| 8 | 9 | [Desktop integration](sprints/sprint-08-desktop-integration.md) | Notifications, tray, `mailto:`, start at login, single instance, offline indicator |
-| 9 | 10 | [Calendar v1](sprints/sprint-09-calendar.md) | CalDAV sync, day/week panel on `0`, RSVP from invites, create event from mail |
-| 10 | 11 | [AI with your own key](sprints/sprint-10-ai.md) | Summaries above threads, write with AI, Ask AI over local mail, auto-labels into splits |
-| 11 | 12 | [Outlook and backend abstraction](sprints/sprint-11-outlook.md) | Microsoft sign-in, outlook.office365.com IMAP+OAuth, `MailBackend` trait, Gmail API go/no-go |
-| 12 | 13 | [Gmail API backend](sprints/sprint-12-gmail-api.md) | history-based incremental sync, native labels/threads/drafts, send via API |
-| 13 | 14 | [Windows](sprints/sprint-13-windows.md) | Builds on Windows, WebView2, Credential Manager, MSI/NSIS, tray, notifications |
-| 14 | 15 | [Open-source launch](sprints/sprint-14-launch.md) | CI matrix, signed releases, updater, AUR, docs, Google verification submitted |
-| 15+ | — | [Backlog](sprints/sprint-15-plus-backlog.md) | Graph API, Flatpak, tabs, themes, accessibility, i18n |
+| # | Week | Theme | Outcome you can see | Status |
+|---|---|---|---|---|
+| 0 | 1 | [Compile and boot](sprints/sprint-00-compile-and-boot.md) | App opens on Hyprland, Fastmail inbox fills, archive/star/send round-trip | todo |
+| 1 | 2 | [Sync engine v2](sprints/sprint-01-sync-engine.md) | New mail in < 2 s (IDLE), cheap re-checks (QRESYNC), headers first, real threads | todo |
+| 2 | 3 | [Conversation list and the Superhuman shell](sprints/sprint-02-conversation-ui.md) | One row per thread, Superhuman keys, command palette, dark/light, perf overlay | todo |
+| 3 | 4 | [Compose](sprints/sprint-03-compose.md) | Rich compose, reply/forward with quoting, drafts to server, attachments, signatures, autocomplete | todo |
+| 4 | 5 | [Gmail via IMAP + OAuth](sprints/sprint-04-gmail-oauth.md) | "Sign in with Google", labels, Gmail threads, Gmail search syntax | todo |
+| 5 | 6 | [Triage: split inbox, snooze, send later](sprints/sprint-05-triage.md) | Important/Other, custom splits, `h` to snooze, follow-up reminders, send later, unsubscribe, mute | todo |
+| 6 | 7 | [Search and speed](sprints/sprint-06-search-and-speed.md) | Instant search with operators, 100k-message mailbox under targets, body download policy | todo |
+| 7 | 8 | [Attachments, contacts, snippets](sprints/sprint-07-attachments-contacts-snippets.md) | Attachment viewer and drag/drop, contact ranking, snippets with `;`, Instant Intro | todo |
+| 8 | 9 | [Desktop integration](sprints/sprint-08-desktop-integration.md) | Notifications, tray, `mailto:`, start at login, single instance, offline indicator | todo |
+| 9 | 10 | [Calendar v1](sprints/sprint-09-calendar.md) | CalDAV sync, day/week panel on `0`, RSVP from invites, create event from mail | todo |
+| 10 | 11 | [AI with your own key](sprints/sprint-10-ai.md) | Summaries above threads, write with AI, Ask AI over local mail, auto-labels into splits | todo |
+| 11 | 12 | [Outlook and backend abstraction](sprints/sprint-11-outlook.md) | Microsoft sign-in, outlook.office365.com IMAP+OAuth, `MailBackend` trait, Gmail API go/no-go | todo |
+| 12 | 13 | [Gmail API backend](sprints/sprint-12-gmail-api.md) | history-based incremental sync, native labels/threads/drafts, send via API | todo |
+| 13 | 14 | [Windows](sprints/sprint-13-windows.md) | Builds on Windows, WebView2, Credential Manager, MSI/NSIS, tray, notifications | todo |
+| 14 | 15 | [Open-source launch](sprints/sprint-14-launch.md) | CI matrix, signed releases, updater, AUR, docs, Google verification submitted | todo |
+| 15+ | — | [Backlog](sprints/sprint-15-plus-backlog.md) | Graph API, Flatpak, tabs, themes, accessibility, i18n | todo |
 
 ## Working agreement
+
+The step-by-step process for a sprint — branches, checkbox conventions, how a sprint is marked complete —
+is in [`docs/sprints/README.md`](sprints/README.md). The UI spec every screen is held to is
+[`docs/design/ui.md`](design/ui.md).
 
 - **Branch per sprint**: `sprint/NN-short-name`, PR into `main` at the end of the week, owner reviews.
   Small follow-up PRs are fine. `main` must always compile and pass `cargo test` + `npm run build`.
@@ -129,3 +133,5 @@ Full reasoning in `docs/research/stack.md`.
 - `docs/research/microsoft-oauth.md` — Entra app registration and the Outlook IMAP quirks.
 - `docs/research/superhuman-reference.md` — features, shortcuts and UI patterns we are matching.
 - `docs/research/data-model.md` — schema changes across sprints.
+- `docs/design/ui.md` — the UI spec: tokens, layout, components, states, review checklist.
+- `docs/sprints/README.md` — how to run a sprint and mark it complete.

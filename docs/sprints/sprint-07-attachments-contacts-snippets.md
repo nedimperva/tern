@@ -1,5 +1,7 @@
 # Sprint 7 — Attachments, contacts, snippets
 
+**Status:** todo
+
 **Week 8.** The surrounding features that save seconds many times a day.
 
 ## Goal
@@ -44,3 +46,11 @@ Google Contacts via CardDAV (keep Fastmail), attachments browser, drag out.
 - Drag a PNG from the file manager onto a conversation → reply with the file attached.
 - `;thanks` + `Space` expands a snippet with `{first_name}` filled.
 - Fastmail CardDAV contacts show up in autocomplete with their names.
+
+## Decisions
+
+_None yet._
+
+## Log
+
+_No sessions yet._
