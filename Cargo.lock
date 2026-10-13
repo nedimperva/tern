@@ -142,29 +142,6 @@ dependencies = [
 
 [[package]]
 name = "async-imap"
-version = "0.10.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca726c61b73c471f531b65e83e161776ba62c2b6ba4ec73d51fad357009ed00a"
-dependencies = [
- "async-channel 2.5.0",
- "async-compression",
- "base64 0.22.1",
- "bytes",
- "chrono",
- "futures",
- "imap-proto 0.16.7",
- "log",
- "nom 7.1.3",
- "pin-project",
- "pin-utils",
- "self_cell",
- "stop-token",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
-name = "async-imap"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f97b87216c9f0ccc63c516263169085fa34bba25633f6d96c6a9b9ca1fd5f70a"
@@ -175,7 +152,7 @@ dependencies = [
  "bytes",
  "chrono",
  "futures-util",
- "imap-proto 0.17.0",
+ "imap-proto",
  "log",
  "nom 8.0.0",
  "pin-project",
@@ -213,18 +190,6 @@ dependencies = [
  "event-listener 5.4.2",
  "event-listener-strategy",
  "pin-project-lite",
-]
-
-[[package]]
-name = "async-native-tls"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9343dc5acf07e79ff82d0c37899f079db3534d99f189a1837c8e549c99405bec"
-dependencies = [
- "native-tls",
- "thiserror 1.0.69",
- "tokio",
- "url",
 ]
 
 [[package]]
@@ -2141,7 +2106,7 @@ name = "imap-probe"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "async-imap 0.12.0",
+ "async-imap",
  "base64 0.22.1",
  "futures",
  "io-imap",
@@ -2150,15 +2115,6 @@ dependencies = [
  "rustls",
  "tokio",
  "tokio-rustls",
-]
-
-[[package]]
-name = "imap-proto"
-version = "0.16.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25f6af35c6a517aea5c72314abe90134980d2ae6a763809b50c208b3e429d71f"
-dependencies = [
- "nom 7.1.3",
 ]
 
 [[package]]
@@ -4833,17 +4789,19 @@ name = "tern-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-imap 0.10.4",
- "async-native-tls",
- "futures",
+ "io-imap",
  "keyring",
  "lettre",
  "log",
  "mail-parser",
+ "nom 7.1.3",
  "rusqlite",
+ "rustls",
+ "rustls-platform-verifier",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-rustls",
 ]
 
 [[package]]

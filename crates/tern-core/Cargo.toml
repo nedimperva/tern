@@ -7,15 +7,21 @@ description = "Local-first mail engine: SQLite store, IMAP sync, SMTP send, outb
 
 [dependencies]
 anyhow = "1"
-async-imap = { version = "0.10", default-features = false, features = ["runtime-tokio"] }
-async-native-tls = { version = "0.5", default-features = false, features = ["runtime-tokio"] }
-futures = "0.3"
+# Exact pin: io-imap is young (0.7) and sits on a pre-release parser (imap-codec 2.0 alpha). See
+# docs/research/stack.md, "IMAP library probe". Only src/imap.rs uses it.
+io-imap = { version = "=0.7.1", default-features = false, features = ["client"] }
 keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service", "crypto-rust"] }
 lettre = { version = "0.11", default-features = false, features = ["builder", "hostname", "smtp-transport", "tokio1", "tokio1-native-tls"] }
 log = "0.4"
 mail-parser = "0.11"
+# io-imap 0.7.1 does not build from a fresh resolve: imap-codec turns off nom's default features and nothing turns
+# `alloc` back on. Enabling it here is the workaround; drop it once io-imap or imap-codec fixes it.
+nom = { version = "7", default-features = false, features = ["alloc"] }
 # Bundled SQLite is new enough for FTS5 contentless-delete and RETURNING, on every platform.
 rusqlite = { version = "0.32", features = ["bundled"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = "0.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "net", "rt", "sync", "time"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }

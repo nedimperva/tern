@@ -19,6 +19,7 @@ When you archive, star or send, the change shows immediately and goes to the ser
 crates/tern-core/        the engine (Rust, no UI)
   src/store.rs           SQLite schema, list/thread/search queries, the outbox with undo
   src/sync.rs            IMAP sync worker: folders, new mail, flags, sending the outbox
+  src/imap.rs            the only code that talks to the IMAP library (io-imap)
   src/mime.rs            parsing raw messages
   src/smtp.rs            sending
   src/secrets.rs         passwords in Credential Manager / Secret Service / Keychain
