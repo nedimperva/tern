@@ -1,6 +1,6 @@
 # Sprint 8 — Desktop integration
 
-**Status:** todo
+**Status:** in progress · started 2026-10-14
 
 ## Delivery scope
 
@@ -68,4 +68,6 @@ _None yet._
 
 ## Log
 
-_No sessions yet._
+- 2026-10-14 — From package 01's retry policy: work Tern gave up on shows in a strip under the list and a review
+  dialog with Retry and Discard. Toward "Outbox badge": changes still waiting (not failed) are not counted yet, and
+  the strip is not yet the full status strip with the sync-state sentence.

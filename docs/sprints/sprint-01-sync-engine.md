@@ -89,7 +89,7 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 - [ ] Validate mailbox identity/UIDVALIDITY before queued mutations; reconcile stale IDs. Preserve dependencies for actions on messages with pending moves.
 - [ ] Persist send identity/MIME and distinguish confirmed, failed and unknown outcomes; stable Message-ID alone does not make SMTP exactly-once.
 - [ ] `APPEND` sent mail to the Sent folder when the server does not copy it (detect via the preset / a one-time check).
-- [ ] Retry policy: 5 attempts with backoff, then surface in a "Sync problems" list in the UI; never drop silently.
+- [x] Retry policy: 5 attempts with backoff, then surface in a "Sync problems" list in the UI; never drop silently.
 
 ## Cut first
 Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetch (keep on-demand).
@@ -157,3 +157,7 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   pass cannot hide messages from the next. Live: all nine dev folders checked with one SELECT each when unchanged.
   Done of "Folder check": the QRESYNC path and the plain fallback (whole-folder flags, not yet 5,000-UID batches).
   Not done: the CONDSTORE-only path (`UID SEARCH MODSEQ`). UIDVALIDITY reset still drops pending rows too.
+- 2026-10-14 — Sync problems in the UI: a strip under the list ("1 change didn't go through · Review") while any work
+  is given up, and a dialog listing each with the server's reason, Retry and Discard; also in the command bar.
+  Tauri commands `problems`, `retry_problem`, `discard_problem`. Checked with headless Chromium (light and dark) on
+  the fake mailbox and in the real window, where the stuck 550 reply shows. Retry-policy task complete.
