@@ -49,6 +49,9 @@ policy review. No implementation or real-provider acceptance was completed by th
 - **Outbox with undo.** Every change is applied locally, then queued in `outbox` with `not_before = now + 5s` and
   the data needed to revert it. `Store::undo(token)` reverts and deletes the queued rows. The sync worker sends due
   rows. Don't add code paths that talk to the server directly from a UI command (except `check_login`).
+  Failed work retries with backoff and stops after 5 tries, or at once on a permanent refusal (SMTP 5xx); it then
+  waits in `outbox_problems` for retry or discard (discard reverts like undo). It is never dropped on its own, and a
+  failure never stops the rest of the pass; only a lost connection does.
 - **Moves and UIDs.** A moved message gets a new UID in the destination folder. Locally the row moves at once with
   `uid = NULL`; when the destination folder syncs, `insert_messages` claims that row by `Message-ID` instead of
   inserting a duplicate. Sync must never delete or overwrite rows with pending outbox ops (`pending_uids`).

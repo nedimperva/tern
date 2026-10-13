@@ -20,6 +20,12 @@ UPDATE accounts SET smtp_security = 'tls' WHERE smtp_port = 465;              --
 `store::migrate()` applies v1 (`SCHEMA`) and each later step in its own transaction with its version, and refuses a
 database from a newer Tern. Tests: a v1 database with accounts migrates to the same `accounts` table as a new one.
 
+## v3 — package 01, outbox give-up (implemented 2026-10-14)
+```sql
+ALTER TABLE outbox ADD COLUMN gave_up_at INTEGER;   -- when retrying stopped; NULL while it is still tried
+```
+Given-up rows stay (never dropped silently) and keep their UIDs pending for sync until retried or discarded.
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'

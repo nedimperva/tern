@@ -11,7 +11,9 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
+/// Tries before queued work stops retrying and waits for the person.
+const MAX_ATTEMPTS: i64 = 5;
 
 /// Version 1, the starting point. Later versions are steps on top of it in `migrate`, so a new database and an
 /// upgraded one go through the same SQL.
@@ -144,6 +146,8 @@ fn migrate(conn: &Connection) -> Result<()> {
                  ALTER TABLE accounts ADD COLUMN smtp_security TEXT NOT NULL DEFAULT 'starttls';
                  UPDATE accounts SET smtp_security = 'tls' WHERE smtp_port = 465;"
             }
+            // When queued work stopped retrying; NULL while it is still being tried.
+            2 => "ALTER TABLE outbox ADD COLUMN gave_up_at INTEGER;",
             _ => unreachable!("no migration from schema {from}"),
         };
         conn.execute_batch(&format!("BEGIN; {step}; PRAGMA user_version = {}; COMMIT;", from + 1))?;
@@ -592,25 +596,7 @@ impl Store {
                 )
                 .optional()?;
             let Some(payload) = payload else { continue };
-            match serde_json::from_str::<OutboxOp>(&payload)? {
-                OutboxOp::Flags { revert, .. } => {
-                    for (mid, seen, flagged) in revert {
-                        tx.execute(
-                            "UPDATE messages SET seen = ?2, flagged = ?3 WHERE id = ?1",
-                            params![mid, seen, flagged],
-                        )?;
-                    }
-                }
-                OutboxOp::Move { revert, .. } => {
-                    for (mid, folder_id, uid) in revert {
-                        tx.execute(
-                            "UPDATE messages SET folder_id = ?2, uid = ?3 WHERE id = ?1",
-                            params![mid, folder_id, uid],
-                        )?;
-                    }
-                }
-                OutboxOp::Send(_) => {}
-            }
+            revert(&tx, &serde_json::from_str(&payload)?)?;
             tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
             undone = true;
         }
@@ -623,7 +609,8 @@ impl Store {
     pub fn claim_due(&self, account_id: i64) -> Result<Vec<(i64, OutboxOp)>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
-            "UPDATE outbox SET claimed = 1 WHERE account_id = ?1 AND claimed = 0 AND not_before <= ?2
+            "UPDATE outbox SET claimed = 1
+             WHERE account_id = ?1 AND claimed = 0 AND not_before <= ?2 AND gave_up_at IS NULL
              RETURNING id, payload",
         )?;
         let mut rows = stmt
@@ -640,21 +627,78 @@ impl Store {
         Ok(())
     }
 
-    /// Puts the work back, to try again later: 20 s, 40 s, … up to an hour.
-    pub fn outbox_failed(&self, id: i64, error: &str) -> Result<()> {
+    /// Puts the work back, to try again later: 20 s, 40 s, … up to an hour. After MAX_ATTEMPTS, or at once when
+    /// the server's answer means trying again cannot help (`permanent`), it stops being tried and waits in
+    /// `outbox_problems` for the person to retry or discard it. It is never dropped on its own.
+    pub fn outbox_failed(&self, id: i64, error: &str, permanent: bool) -> Result<()> {
         self.conn().execute(
             "UPDATE outbox SET claimed = 0, attempts = attempts + 1, last_error = ?2,
-                               not_before = ?3 + MIN(3600, 10 << MIN(attempts + 1, 9))
+                               not_before = ?3 + MIN(3600, 10 << MIN(attempts + 1, 9)),
+                               gave_up_at = CASE WHEN ?4 OR attempts + 1 >= ?5 THEN ?3 END
              WHERE id = ?1",
-            params![id, error, now()],
+            params![id, error, now(), permanent, MAX_ATTEMPTS],
         )?;
+        Ok(())
+    }
+
+    /// Hands claimed but untried work back to the queue, after a pass ended early.
+    pub fn release_claims(&self, account_id: i64) -> Result<()> {
+        self.conn()
+            .execute("UPDATE outbox SET claimed = 0 WHERE account_id = ?1 AND claimed = 1", [account_id])?;
+        Ok(())
+    }
+
+    /// Work that stopped being retried, oldest first.
+    pub fn outbox_problems(&self) -> Result<Vec<OutboxProblem>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, account_id, payload, attempts, COALESCE(last_error, ''), gave_up_at
+             FROM outbox WHERE gave_up_at IS NOT NULL ORDER BY gave_up_at, id",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get(1)?, r.get::<_, String>(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+            })?
+            .collect::<rusqlite::Result<Vec<(i64, i64, String, i64, String, i64)>>>()?;
+        rows.into_iter()
+            .map(|(id, account_id, payload, attempts, last_error, gave_up_at)| {
+                let what = describe(&serde_json::from_str(&payload)?);
+                Ok(OutboxProblem { id, account_id, what, attempts, last_error, gave_up_at })
+            })
+            .collect()
+    }
+
+    /// Tries given-up work again from the start.
+    pub fn retry_outbox(&self, id: i64) -> Result<()> {
+        self.conn().execute(
+            "UPDATE outbox SET gave_up_at = NULL, attempts = 0, not_before = ?2, claimed = 0
+             WHERE id = ?1 AND gave_up_at IS NOT NULL",
+            params![id, now()],
+        )?;
+        Ok(())
+    }
+
+    /// Drops given-up work and puts the local store back as it was before, as undo would.
+    pub fn discard_outbox(&self, id: i64) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let payload: Option<String> = tx
+            .query_row("SELECT payload FROM outbox WHERE id = ?1 AND gave_up_at IS NOT NULL", [id], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        if let Some(payload) = payload {
+            revert(&tx, &serde_json::from_str(&payload)?)?;
+            tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
+        }
+        tx.commit()?;
         Ok(())
     }
 
     /// When the account's next queued work falls due.
     pub fn next_due(&self, account_id: i64) -> Result<Option<i64>> {
         Ok(self.conn().query_row(
-            "SELECT MIN(not_before) FROM outbox WHERE account_id = ?1 AND claimed = 0",
+            "SELECT MIN(not_before) FROM outbox WHERE account_id = ?1 AND claimed = 0 AND gave_up_at IS NULL",
             [account_id],
             |r| r.get(0),
         )?)
@@ -679,6 +723,49 @@ impl Store {
             }
         }
         Ok(uids)
+    }
+}
+
+/// Puts the local store back as it was before `op`.
+fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
+    match op {
+        OutboxOp::Flags { revert, .. } => {
+            for (mid, seen, flagged) in revert {
+                conn.execute(
+                    "UPDATE messages SET seen = ?2, flagged = ?3 WHERE id = ?1",
+                    params![mid, seen, flagged],
+                )?;
+            }
+        }
+        OutboxOp::Move { revert, .. } => {
+            for (mid, folder_id, uid) in revert {
+                conn.execute(
+                    "UPDATE messages SET folder_id = ?2, uid = ?3 WHERE id = ?1",
+                    params![mid, folder_id, uid],
+                )?;
+            }
+        }
+        OutboxOp::Send(_) => {}
+    }
+    Ok(())
+}
+
+/// A few words on what queued work does, for the problems list.
+fn describe(op: &OutboxOp) -> String {
+    let count = |n: usize| if n == 1 { "1 message".to_string() } else { format!("{n} messages") };
+    match op {
+        OutboxOp::Send(draft) => format!("Send “{}”", draft.subject),
+        OutboxOp::Move { dest, uids, .. } => format!("Move {} to {dest}", count(uids.len())),
+        OutboxOp::Flags { flag, add, uids, .. } => {
+            let verb = match (flag.as_str(), add) {
+                ("\\Seen", true) => "Mark read",
+                ("\\Seen", false) => "Mark unread",
+                ("\\Flagged", true) => "Star",
+                ("\\Flagged", false) => "Unstar",
+                _ => "Change flags on",
+            };
+            format!("{verb} {}", count(uids.len()))
+        }
     }
 }
 
@@ -853,8 +940,74 @@ mod tests {
         let due = store.claim_due(account).unwrap();
         assert_eq!(due.len(), 1);
         assert!(store.claim_due(account).unwrap().is_empty(), "claimed work is not handed out twice");
-        store.outbox_failed(due[0].0, "offline").unwrap();
+        store.outbox_failed(due[0].0, "offline", false).unwrap();
         assert!(store.next_due(account).unwrap().unwrap() > now());
+    }
+
+    /// Marks the inbox's one message read and returns the queued work's id.
+    fn queued_mark_read(store: &Store, account: i64, inbox: i64) -> i64 {
+        store.insert_messages(account, inbox, &[message(1, "a", 1)]).unwrap();
+        let id = store.list(&ListTarget::Folder(inbox), None, 10).unwrap()[0].id;
+        store.apply(&[id], Action::MarkRead, 0).unwrap();
+        store.claim_due(account).unwrap()[0].0
+    }
+
+    #[test]
+    fn a_permanent_refusal_stops_retrying_at_once() {
+        let (store, account, inbox, _) = setup();
+        let work = queued_mark_read(&store, account, inbox);
+        store.outbox_failed(work, "550 no such mailbox", true).unwrap();
+        assert_eq!(store.next_due(account).unwrap(), None, "given-up work is not scheduled");
+        let problems = store.outbox_problems().unwrap();
+        assert_eq!(
+            (problems[0].id, problems[0].what.as_str(), problems[0].attempts),
+            (work, "Mark read 1 message", 1)
+        );
+        assert!(problems[0].last_error.contains("550"));
+    }
+
+    #[test]
+    fn transient_failures_give_up_after_max_attempts() {
+        let (store, account, inbox, _) = setup();
+        let work = queued_mark_read(&store, account, inbox);
+        for _ in 1..MAX_ATTEMPTS {
+            store.outbox_failed(work, "timed out", false).unwrap();
+            assert!(store.outbox_problems().unwrap().is_empty());
+        }
+        store.outbox_failed(work, "timed out", false).unwrap();
+        assert_eq!(store.outbox_problems().unwrap().len(), 1);
+        // Never dropped: the row is still there, just no longer tried.
+        let rows: i64 = store.conn().query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 1);
+    }
+
+    #[test]
+    fn retry_puts_given_up_work_back_in_the_queue() {
+        let (store, account, inbox, _) = setup();
+        let work = queued_mark_read(&store, account, inbox);
+        store.outbox_failed(work, "550", true).unwrap();
+        store.retry_outbox(work).unwrap();
+        assert!(store.outbox_problems().unwrap().is_empty());
+        assert_eq!(store.claim_due(account).unwrap()[0].0, work);
+    }
+
+    #[test]
+    fn discard_drops_given_up_work_and_reverts_the_local_change() {
+        let (store, account, inbox, _) = setup();
+        let work = queued_mark_read(&store, account, inbox);
+        store.outbox_failed(work, "550", true).unwrap();
+        store.discard_outbox(work).unwrap();
+        assert!(store.outbox_problems().unwrap().is_empty());
+        assert!(!store.list(&ListTarget::Folder(inbox), None, 10).unwrap()[0].seen, "back to unread");
+        assert!(store.pending_uids(account, "INBOX").unwrap().is_empty(), "sync may update it again");
+    }
+
+    #[test]
+    fn released_claims_are_handed_out_again() {
+        let (store, account, inbox, _) = setup();
+        let work = queued_mark_read(&store, account, inbox);
+        store.release_claims(account).unwrap();
+        assert_eq!(store.claim_due(account).unwrap()[0].0, work);
     }
 
     /// A database as Tern wrote it before connection security was stored (schema 1).
@@ -868,6 +1021,19 @@ mod tests {
         )
         .unwrap();
         conn
+    }
+
+    #[test]
+    fn migration_3_leaves_existing_work_queued() {
+        let conn = schema_1_with_accounts();
+        conn.execute(
+            "INSERT INTO outbox (account_id, payload, not_before) VALUES (1, '{\"kind\":\"send\",\"to\":[],\"subject\":\"s\",\"body\":\"\"}', 0)",
+            [],
+        )
+        .unwrap();
+        let store = Store::init(conn).unwrap();
+        assert_eq!(store.claim_due(1).unwrap().len(), 1);
+        assert!(store.outbox_problems().unwrap().is_empty());
     }
 
     #[test]
