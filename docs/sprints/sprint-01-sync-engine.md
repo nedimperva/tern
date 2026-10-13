@@ -98,7 +98,9 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
 
 ## Decisions
 
-_None yet._
+- 2026-10-13 — **Carried from package 00:** the async-imap upgrade (0.10 → current; 0.12 is out) and replacing
+  the `Debug`-text folder-role parsing in `sync.rs` with a match on the library's attribute type. Owner moved both
+  here so the IMAP library gate decides the version or the replacement first.
 
 ## Log
 

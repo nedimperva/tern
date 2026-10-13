@@ -1,6 +1,6 @@
 # Sprint 0 — Compile and boot on Linux
 
-**Status:** todo
+**Status:** in progress · started 2026-10-13
 
 ## Delivery scope
 
@@ -20,29 +20,29 @@ archive / star / mark-read / send reach the server after the 5-second undo windo
 ## Tasks
 
 ### Toolchain
-- [ ] Install on the Omarchy machine: `sudo pacman -S --needed base-devel rustup nodejs npm webkit2gtk-4.1 libappindicator-gtk3 librsvg openssl gnome-keyring libsecret`, `rustup default stable`.
-- [ ] Pin the toolchain: `rust-toolchain.toml` with `channel = "stable"` and `components = ["rustfmt", "clippy"]`.
-- [ ] Add `LICENSE` (MIT, copyright Nedim Perva), fill `license = "MIT"` in all `Cargo.toml` and `package.json`.
-- [ ] `.editorconfig`, `rustfmt.toml` (max_width 110 to match existing style), `.gitattributes` already present.
+- [x] Install on the Omarchy machine: `sudo pacman -S --needed base-devel rustup nodejs npm webkit2gtk-4.1 libappindicator-gtk3 librsvg openssl gnome-keyring libsecret`, `rustup default stable`.
+- [x] Pin the toolchain: `rust-toolchain.toml` with `channel = "stable"` and `components = ["rustfmt", "clippy"]`.
+- [x] Add `LICENSE` (MIT, copyright Nedim Perva), fill `license = "MIT"` in all `Cargo.toml` and `package.json`.
+- [x] `.editorconfig`, `rustfmt.toml` (max_width 110 to match existing style), `.gitattributes` already present.
 
 ### Make `tern-core` compile
-- [ ] Bump `async-imap` to `0.11` (active again: 0.11.2, Feb 2026). Read `docs.rs/async-imap/0.11` and fix
-      `Session`, `select`, `uid_fetch`, `uid_search`, `capabilities`, `NameAttribute` usage in `sync.rs`.
-      Replace the `Debug`-text role parsing with a match on `NameAttribute` variants.
+- [-] ~~Bump `async-imap` to `0.11`~~ — moved to package 01. 0.12 is out, and package 01's library gate compares
+      `async-imap` with `imap-next`, so an upgrade here could be thrown away. Owner approved 2026-10-13.
+      Destination: package 01, decision gate "IMAP library".
 - [ ] `mail-parser` 0.9 → check current (0.11.x). Fix `MessageParser`, `body_text`/`body_html`, address accessors in `mime.rs`.
-- [ ] `keyring` 3: `Entry::new(service, user)?`, `set_password`, `get_password`, `delete_credential`.
-- [ ] `lettre` 0.11: `AsyncSmtpTransport::<Tokio1Executor>::relay(host)?` / `starttls_relay`, `.credentials(...)`, `.build()`.
-- [ ] `cargo test -p tern-core` green. Existing tests: store (insert/list/thread/search/outbox/undo), mime, sync batching and roles.
-- [ ] `cargo run --release -p tern-core --example store_bench` and record numbers in this file under "Results".
-- [ ] `cargo clippy -p tern-core -- -D warnings` clean (allow a few lints in `lib.rs` if they are noise).
+- [x] `keyring` 3: `Entry::new(service, user)?`, `set_password`, `get_password`, `delete_credential`.
+- [x] `lettre` 0.11: `AsyncSmtpTransport::<Tokio1Executor>::relay(host)?` / `starttls_relay`, `.credentials(...)`, `.build()`.
+- [x] `cargo test -p tern-core` green. Existing tests: store (insert/list/thread/search/outbox/undo), mime, sync batching and roles.
+- [x] `cargo run --release -p tern-core --example store_bench` and record numbers in this file under "Results".
+- [x] `cargo clippy -p tern-core -- -D warnings` clean (allow a few lints in `lib.rs` if they are noise).
 
 ### Make `src-tauri` compile and run
-- [ ] Fix `tauri` 2 API use: `Emitter` for `app.emit`, `Manager` for `app.path().app_data_dir()`, `State`.
-- [ ] Generate the missing icons (`icons/32x32.png`, `128x128.png`, `128x128@2x.png`) from `app-icon.png` with `npm run tauri icon app-icon.png`.
-- [ ] On Linux, set `WEBKIT_DISABLE_DMABUF_RENDERER=1` in `main.rs` before the builder **only** when
+- [x] Fix `tauri` 2 API use: `Emitter` for `app.emit`, `Manager` for `app.path().app_data_dir()`, `State`.
+- [x] Generate the missing icons (`icons/32x32.png`, `128x128.png`, `128x128@2x.png`) from `app-icon.png` with `npm run tauri icon app-icon.png`.
+- [x] On Linux, set `WEBKIT_DISABLE_DMABUF_RENDERER=1` in `main.rs` before the builder **only** when
       `WAYLAND_DISPLAY` is set and the env var is not already set. Document in README.
-- [ ] Window opens on Hyprland. Check class with `hyprctl clients`; add the float rule to README if the class differs from `tern`.
-- [ ] `npm install && npm run tauri dev` — fake mailbox must not appear (bridge detected), real `accounts` command returns `[]`.
+- [x] Window opens on Hyprland. Check class with `hyprctl clients`; add the float rule to README if the class differs from `tern`.
+- [x] `npm install && npm run tauri dev` — fake mailbox must not appear (bridge detected), real `accounts` command returns `[]`.
 
 ### First real account
 - [ ] Add Fastmail (app password). Folder list appears with correct roles (Inbox, Archive, Sent, Drafts, Trash, Junk).
@@ -55,6 +55,22 @@ archive / star / mark-read / send reach the server after the 5-second undo windo
 - [ ] Add Linux and Windows CI for engine/workspace checks, tests and frontend build; document required system dependencies.
 - [ ] On Windows, boot the existing Tauri shell and smoke-test WebView2 mail rendering, basic compose/keyboard handling, and Credential Manager.
 - [ ] Record actual results; a cross-compile alone is not a Windows runtime smoke test.
+
+#### Windows smoke test steps (owner)
+
+Needs the Fastmail test account. Clean checkout of this branch on Windows 11.
+
+1. Install Rust (MSVC toolchain), Node 22 LTS and Visual Studio Build Tools ("Desktop development with C++").
+2. `npm ci`, then `npm run tauri dev`. **Expect:** the Tern window opens with the "Add an account" form, not the
+   fake mailbox. Report the time to first window and any console errors.
+3. Add the Fastmail test account (app password). **Expect:** folders appear, Inbox fills newest first.
+4. Open Credential Manager → Windows Credentials. **Expect:** an entry for service `tern-mail` with the
+   test address. Close and reopen Tern: it signs in without asking for the password.
+5. Open an HTML newsletter. **Expect:** it renders in the reading pane, remote images blocked until
+   "Load images"; links open in the default browser.
+6. Keyboard: `j`/`k` move, `e` archives, `z` undoes within 5 s, `c` opens compose, `Ctrl Enter` sends a
+   message to the test address. **Expect:** each works with no mouse; the sent message arrives.
+7. Note Windows version, display scaling (100/125/150%), and anything that looks wrong, with a screenshot.
 
 ### Reliability gate
 - [ ] Before mutations on a real inbox, exercise safe move/expunge fallback, UIDVALIDITY validation, dependent pending operations and restart recovery.
@@ -76,12 +92,15 @@ Editor/style configuration polish. Never cut CI, offline/restart tests, early Wi
 
 ## Results (fill in)
 ```
-store_bench, 50,000 messages:
-  list page:
-  thread open:
-  search:
-  archive 50:
+store_bench, 50,000 messages (2026-10-13, release build, Omarchy laptop):
+  list page:     0.103 ms median, 0.109 ms p95   (target < 1 ms)    ok
+  page 250:      0.104 ms median, 0.220 ms p95
+  unified inbox: 0.154 ms median, 0.287 ms p95
+  thread open:   0.007 ms median                 (target < 50 ms)   ok
+  search:       72.9 ms median, 87.4 ms p95      (target < 10 ms)   MISSED
+  archive 50:    1.75 ms median, 3.80 ms p95     (with undo; target < 20 ms) ok
 ```
+Search misses by about 7x. It belongs to package 06 (search and speed); recorded here, not fixed in this package.
 
 ## Notes for the agent
 - Fix against the real crate docs; do not redesign. The design is in `CLAUDE.md`.
@@ -90,8 +109,34 @@ store_bench, 50,000 messages:
 
 ## Decisions
 
-_None yet._
+- 2026-10-13 — **Test mailbox.** The plan says Fastmail before any primary inbox. Tern was first run against the
+  owner's real work mailbox (SmarterMail) and archived one message there. Owner decided: get a
+  Fastmail test account; do not sync that mailbox again until the reliability gate passes.
+- 2026-10-13 — **Windows.** Owner runs the runtime smoke test on a Windows machine from 2026-10-14; steps above.
+  CI covers compile and tests meanwhile.
+- 2026-10-13 — **Gmail.** Owner asked to start M0 Gmail preparation now. Owner checklist:
+  `docs/research/gmail-test-setup.md`. Backend choice stays pending until the probe evidence exists.
+- 2026-10-13 — **Fixes merged outside the process.** Before the plan landed, three fixes found against
+  SmarterMail went to `main` directly as e7addb9 (no PR): read the IMAP greeting before authenticating;
+  AUTHENTICATE PLAIN with LOGIN fallback (SmarterMail rejected LOGIN's quoted password); timeouts on every
+  IMAP command, size-capped body batches and a 15 s backfill budget per pass (one 22 MB message had stalled
+  the worker, inbox and outbox forever); env_logger. Recorded here so package 01 reviews them: package 01
+  plans a different transport and may replace this code.
+- 2026-10-13 — **No Fastmail.** Fastmail refuses IMAP sign-in without an app password, and app passwords need a
+  paid plan (not available on the trial). Owner decided: **local test server only for now**. M0 runs against a
+  Stalwart IMAP/SMTP server on the dev machine (no root, high ports, a local test CA trusted only through
+  `SSL_CERT_FILE` when launching Tern). The "first real account" checks below run against it; the
+  real-provider check moves to whichever provider the owner picks later. PLAN.md's "Fastmail first" needs
+  revisiting at that point.
+- 2026-10-13 — **async-imap upgrade.** Planned here as 0.10 → 0.11; 0.12 is current and package 01 may replace the
+  library. Owner decided: skip it in package 00; package 01's library gate decides version or replacement.
 
 ## Log
 
-_No sessions yet._
+- 2026-10-13 — Workspace compiles; `cargo test --workspace` (9 tests), strict clippy and `npm run build` pass
+  (13.3 kB JS gzipped). App booted on Hyprland and synced a real SmarterMail account (see Decisions).
+  Added toolchain pin, rustfmt/editorconfig, MIT license, Wayland DMA-BUF default, Linux + Windows CI,
+  Gmail owner checklist. Open: async-imap 0.11 and mail-parser bumps, Hyprland class check, Fastmail
+  checks (waiting on the test account), Windows smoke test (owner, 2026-10-14), reliability gate.
+- 2026-10-13 — Wayland default verified: window renders with no variable set; Hyprland class is `tern`.
+  Fastmail trial has no app passwords; switched M0 testing to a local Stalwart server (see Decisions).
