@@ -11,8 +11,10 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
+/// Version 1, the starting point. Later versions are steps on top of it in `migrate`, so a new database and an
+/// upgraded one go through the same SQL.
 const SCHEMA: &str = r#"
 CREATE TABLE accounts (
     id INTEGER PRIMARY KEY,
@@ -110,8 +112,43 @@ fn row(r: &Row) -> rusqlite::Result<MessageRow> {
     })
 }
 
+fn security(r: &Row, i: usize) -> rusqlite::Result<Security> {
+    let text: String = r.get(i)?;
+    Security::parse(&text).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            i,
+            rusqlite::types::Type::Text,
+            format!("security {text:?}").into(),
+        )
+    })
+}
+
 pub fn now() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+/// Brings the database up to SCHEMA_VERSION one step at a time, each step in its own transaction together with
+/// its version number, so a crash leaves the database at a whole version. Forward only.
+fn migrate(conn: &Connection) -> Result<()> {
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    if version > SCHEMA_VERSION {
+        bail!("This mail database was written by a newer Tern (schema {version}); update Tern to open it.");
+    }
+    for from in version..SCHEMA_VERSION {
+        let step = match from {
+            0 => SCHEMA,
+            // Connection security per account. Existing accounts keep what Tern did before: IMAP always implicit
+            // TLS, SMTP implicit TLS on 465 and STARTTLS on any other port.
+            1 => {
+                "ALTER TABLE accounts ADD COLUMN imap_security TEXT NOT NULL DEFAULT 'tls';
+                 ALTER TABLE accounts ADD COLUMN smtp_security TEXT NOT NULL DEFAULT 'starttls';
+                 UPDATE accounts SET smtp_security = 'tls' WHERE smtp_port = 465;"
+            }
+            _ => unreachable!("no migration from schema {from}"),
+        };
+        conn.execute_batch(&format!("BEGIN; {step}; PRAGMA user_version = {}; COMMIT;", from + 1))?;
+    }
+    Ok(())
 }
 
 pub struct Store {
@@ -135,12 +172,7 @@ impl Store {
              PRAGMA temp_store = MEMORY;
              PRAGMA mmap_size = 268435456;",
         )?;
-        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version < 1 {
-            conn.execute_batch(SCHEMA)?;
-        }
-        // Later migrations go here, each guarded by `version < n`.
-        conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
+        migrate(&conn)?;
         // Work claimed by a run that did not finish is free to go again.
         conn.execute("UPDATE outbox SET claimed = 0 WHERE claimed = 1", [])?;
         Ok(Self { conn: Mutex::new(conn) })
@@ -155,9 +187,20 @@ impl Store {
     pub fn add_account(&self, c: &AccountConfig) -> Result<Account> {
         let conn = self.conn();
         conn.execute(
-            "INSERT INTO accounts (email, display_name, username, imap_host, imap_port, smtp_host, smtp_port)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![c.email, c.display_name, c.username, c.imap_host, c.imap_port, c.smtp_host, c.smtp_port],
+            "INSERT INTO accounts (email, display_name, username, imap_host, imap_port, imap_security,
+                                   smtp_host, smtp_port, smtp_security)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                c.email,
+                c.display_name,
+                c.username,
+                c.imap_host,
+                c.imap_port,
+                c.imap_security.as_str(),
+                c.smtp_host,
+                c.smtp_port,
+                c.smtp_security.as_str()
+            ],
         )?;
         Ok(Account { id: conn.last_insert_rowid(), config: c.clone() })
     }
@@ -170,7 +213,8 @@ impl Store {
     pub fn accounts(&self) -> Result<Vec<Account>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
-            "SELECT id, email, display_name, username, imap_host, imap_port, smtp_host, smtp_port
+            "SELECT id, email, display_name, username, imap_host, imap_port, imap_security,
+                    smtp_host, smtp_port, smtp_security
              FROM accounts ORDER BY id",
         )?;
         let accounts = stmt
@@ -183,8 +227,10 @@ impl Store {
                         username: r.get(3)?,
                         imap_host: r.get(4)?,
                         imap_port: r.get(5)?,
-                        smtp_host: r.get(6)?,
-                        smtp_port: r.get(7)?,
+                        imap_security: security(r, 6)?,
+                        smtp_host: r.get(7)?,
+                        smtp_port: r.get(8)?,
+                        smtp_security: security(r, 9)?,
                     },
                 })
             })?
@@ -684,8 +730,10 @@ mod tests {
             username: "me@example.com".into(),
             imap_host: "imap.example.com".into(),
             imap_port: 993,
+            imap_security: Security::Tls,
             smtp_host: "smtp.example.com".into(),
             smtp_port: 465,
+            smtp_security: Security::Tls,
         }
     }
 
@@ -807,5 +855,67 @@ mod tests {
         assert!(store.claim_due(account).unwrap().is_empty(), "claimed work is not handed out twice");
         store.outbox_failed(due[0].0, "offline").unwrap();
         assert!(store.next_due(account).unwrap().unwrap() > now());
+    }
+
+    /// A database as Tern wrote it before connection security was stored (schema 1).
+    fn schema_1_with_accounts() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA).unwrap();
+        conn.execute_batch(
+            "PRAGMA user_version = 1;
+             INSERT INTO accounts (email, username, imap_host, imap_port, smtp_host, smtp_port)
+             VALUES ('a@x', 'a@x', 'imap.x', 993, 'smtp.x', 465), ('b@x', 'b@x', 'imap.x', 993, 'smtp.x', 587);",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn migration_2_keeps_what_existing_accounts_did() {
+        let store = Store::init(schema_1_with_accounts()).unwrap();
+        let accounts = store.accounts().unwrap();
+        let modes: Vec<_> = accounts
+            .iter()
+            .map(|a| (a.config.smtp_port, a.config.imap_security, a.config.smtp_security))
+            .collect();
+        assert_eq!(modes, [(465, Security::Tls, Security::Tls), (587, Security::Tls, Security::Starttls)]);
+        let version: i64 = store.conn().query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn new_and_migrated_databases_have_the_same_accounts_table() {
+        let columns = |store: &Store| -> Vec<String> {
+            let conn = store.conn();
+            let mut stmt =
+                conn.prepare("SELECT name FROM pragma_table_info('accounts') ORDER BY cid").unwrap();
+            stmt.query_map([], |r| r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap()
+        };
+        let fresh = Store::open_in_memory().unwrap();
+        let migrated = Store::init(schema_1_with_accounts()).unwrap();
+        assert_eq!(columns(&fresh), columns(&migrated));
+    }
+
+    #[test]
+    fn refuses_a_database_from_a_newer_tern() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&format!("PRAGMA user_version = {}", SCHEMA_VERSION + 1)).unwrap();
+        let err = Store::init(conn).err().unwrap();
+        assert!(err.to_string().contains("newer Tern"));
+    }
+
+    #[test]
+    fn security_round_trips_through_the_store() {
+        let store = Store::open_in_memory().unwrap();
+        let mut c = config();
+        c.smtp_port = 1465;
+        c.smtp_security = Security::Tls;
+        c.imap_security = Security::Starttls;
+        store.add_account(&c).unwrap();
+        let back = &store.accounts().unwrap()[0].config;
+        assert_eq!(
+            (back.imap_security, back.smtp_port, back.smtp_security),
+            (Security::Starttls, 1465, Security::Tls)
+        );
     }
 }
