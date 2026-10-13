@@ -147,7 +147,8 @@ async fn pass(
     let deadline = Instant::now() + BACKFILL_BUDGET;
     let mut more = false;
     for (folder_id, name) in store.folders_to_sync(account.id)? {
-        let (changed, unfinished) = sync_folder(s, store, account.id, folder_id, &name, deadline, on_change).await?;
+        let (changed, unfinished) =
+            sync_folder(s, store, account.id, folder_id, &name, deadline, on_change).await?;
         if changed {
             on_change();
         }
@@ -214,11 +215,13 @@ async fn sync_folder(
         changed = true;
     }
 
-    let server: HashSet<u32> = if mailbox.exists == 0 { HashSet::new() } else { within(s.uid_search("ALL")).await? };
+    let server: HashSet<u32> =
+        if mailbox.exists == 0 { HashSet::new() } else { within(s.uid_search("ALL")).await? };
     let local = store.local_uids(folder_id)?;
     let pending = store.pending_uids(account_id, name)?;
 
-    let gone: Vec<u32> = local.iter().filter(|u| !server.contains(u) && !pending.contains(u)).copied().collect();
+    let gone: Vec<u32> =
+        local.iter().filter(|u| !server.contains(u) && !pending.contains(u)).copied().collect();
     if !gone.is_empty() {
         store.remove_uids(folder_id, &gone)?;
         changed = true;
@@ -227,9 +230,10 @@ async fn sync_folder(
     // Flags of the mail already here. TODO: CONDSTORE/QRESYNC (FETCH … CHANGEDSINCE), so an unchanged folder costs
     // one round trip instead of a line per message.
     if !local.is_empty() && mailbox.exists > 0 {
-        let fetches: Vec<Fetch> = within(async { s.uid_fetch("1:*", "(UID FLAGS)").await?.try_collect().await })
-            .await
-            .with_context(|| format!("Could not read flags in {name}"))?;
+        let fetches: Vec<Fetch> =
+            within(async { s.uid_fetch("1:*", "(UID FLAGS)").await?.try_collect().await })
+                .await
+                .with_context(|| format!("Could not read flags in {name}"))?;
         let updates: Vec<(u32, bool, bool)> = fetches
             .iter()
             .filter_map(|f| {
@@ -246,7 +250,8 @@ async fn sync_folder(
         }
     }
 
-    let mut new: Vec<u32> = server.iter().filter(|u| !local.contains(u) && !pending.contains(u)).copied().collect();
+    let mut new: Vec<u32> =
+        server.iter().filter(|u| !local.contains(u) && !pending.contains(u)).copied().collect();
     new.sort_unstable_by(|a, b| b.cmp(a));
     let mut more = new.len() > PER_PASS;
     new.truncate(PER_PASS);
@@ -272,10 +277,11 @@ async fn sync_folder(
         log::debug!("fetching {name} UIDs {set} ({} kB)", bytes / 1000);
         // Big mail takes longer to come down, so the limit grows with the batch.
         let limit = COMMAND_TIMEOUT + Duration::from_secs(bytes / MIN_BYTES_PER_SECOND);
-        let fetches: Vec<Fetch> =
-            within_for(limit, async { s.uid_fetch(&set, "(UID FLAGS BODY.PEEK[])").await?.try_collect().await })
-                .await
-                .with_context(|| format!("Could not fetch {name} UIDs {set}"))?;
+        let fetches: Vec<Fetch> = within_for(limit, async {
+            s.uid_fetch(&set, "(UID FLAGS BODY.PEEK[])").await?.try_collect().await
+        })
+        .await
+        .with_context(|| format!("Could not fetch {name} UIDs {set}"))?;
         let batch: Vec<NewMessage> = fetches
             .iter()
             .filter_map(|f| {
@@ -331,7 +337,8 @@ async fn run_op(s: &mut Session, config: &AccountConfig, password: &str, op: &Ou
                 s.uid_mv(&set, dest).await?;
             } else {
                 s.uid_copy(&set, dest).await?;
-                let _: Vec<Fetch> = s.uid_store(&set, "+FLAGS.SILENT (\\Deleted)").await?.try_collect().await?;
+                let _: Vec<Fetch> =
+                    s.uid_store(&set, "+FLAGS.SILENT (\\Deleted)").await?.try_collect().await?;
                 // TODO: UID EXPUNGE (UIDPLUS), which leaves alone other mail someone marked deleted.
                 let _: Vec<u32> = s.expunge().await?.try_collect().await?;
             }
@@ -346,7 +353,10 @@ async fn within<T>(command: impl Future<Output = async_imap::error::Result<T>>) 
     within_for(COMMAND_TIMEOUT, command).await
 }
 
-async fn within_for<T>(limit: Duration, command: impl Future<Output = async_imap::error::Result<T>>) -> Result<T> {
+async fn within_for<T>(
+    limit: Duration,
+    command: impl Future<Output = async_imap::error::Result<T>>,
+) -> Result<T> {
     Ok(tokio::time::timeout(limit, command).await.context("The server stopped answering")??)
 }
 

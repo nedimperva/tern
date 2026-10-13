@@ -45,7 +45,8 @@ rustup default stable
 ```
 
 Passwords are stored through the Secret Service, so a keyring such as gnome-keyring must be running and unlocked.
-If the window comes up blank on Wayland or NVIDIA, start it with `WEBKIT_DISABLE_DMABUF_RENDERER=1`.
+On Wayland, Tern sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` itself, because WebKitGTK's DMA-BUF renderer can leave
+the window blank or crash on some setups (NVIDIA among them). Set the variable to `0` before starting Tern to opt out.
 
 **Linux (Debian/Ubuntu)**
 
@@ -67,9 +68,13 @@ To work on the UI alone, run `npm run dev` and open http://localhost:1420. With 
 against a fake mailbox of 5,000 messages.
 
 ```sh
-cargo test -p tern-core                                      # engine tests
+cargo test --workspace                                       # all tests
 cargo run --release -p tern-core --example store_bench       # timings
 ```
+
+CI (`.github/workflows/check.yml`) runs on every pull request, on Linux and Windows: the frontend build, then
+`cargo fmt --check` (Linux), `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`.
+Run the same before pushing. The Linux job installs the Debian/Ubuntu packages listed above.
 
 ## Keys
 

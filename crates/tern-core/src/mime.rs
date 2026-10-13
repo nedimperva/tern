@@ -13,12 +13,7 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
         .unwrap_or_default();
     let to_addrs = msg
         .to()
-        .map(|list| {
-            list.iter()
-                .filter_map(|a| a.address())
-                .collect::<Vec<_>>()
-                .join(", ")
-        })
+        .map(|list| list.iter().filter_map(|a| a.address()).collect::<Vec<_>>().join(", "))
         .unwrap_or_default();
 
     let body_text = msg.body_text(0).map(|t| t.into_owned());

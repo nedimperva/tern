@@ -8,6 +8,8 @@ Fastmail alpha work while waiting for owner-provided test credentials.
 
 ## Inputs
 
+Owner preparation steps: [Gmail test setup](gmail-test-setup.md).
+
 - A Gmail test account with representative threads, multiple labels, drafts, Sent, Trash, Spam and attachments.
 - A desktop OAuth client in a Google Cloud project; record project creation date and effective quota limits.
 - Use synthetic/non-sensitive fixture mail for destructive operations and failure injection.

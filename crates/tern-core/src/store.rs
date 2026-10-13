@@ -89,7 +89,8 @@ CREATE TABLE outbox (
 );
 "#;
 
-const ROW: &str = "m.id, m.account_id, m.folder_id, m.thread_id, m.subject, m.from_name, m.from_addr, m.date, \
+const ROW: &str =
+    "m.id, m.account_id, m.folder_id, m.thread_id, m.subject, m.from_name, m.from_addr, m.date, \
                    m.snippet, m.seen, m.flagged, m.has_attachments";
 
 fn row(r: &Row) -> rusqlite::Result<MessageRow> {
@@ -110,10 +111,7 @@ fn row(r: &Row) -> rusqlite::Result<MessageRow> {
 }
 
 pub fn now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
 pub struct Store {
@@ -217,7 +215,13 @@ impl Store {
         )?;
         let folders = stmt
             .query_map([], |r| {
-                Ok(Folder { id: r.get(0)?, account_id: r.get(1)?, name: r.get(2)?, role: r.get(3)?, unread: r.get(4)? })
+                Ok(Folder {
+                    id: r.get(0)?,
+                    account_id: r.get(1)?,
+                    name: r.get(2)?,
+                    role: r.get(3)?,
+                    unread: r.get(4)?,
+                })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(folders)
@@ -245,7 +249,12 @@ impl Store {
         )?)
     }
 
-    pub fn set_folder_state(&self, folder_id: i64, uid_validity: Option<u32>, uid_next: Option<u32>) -> Result<()> {
+    pub fn set_folder_state(
+        &self,
+        folder_id: i64,
+        uid_validity: Option<u32>,
+        uid_next: Option<u32>,
+    ) -> Result<()> {
         self.conn().execute(
             "UPDATE folders SET uid_validity = ?2, uid_next = ?3 WHERE id = ?1",
             params![folder_id, uid_validity, uid_next],
@@ -268,10 +277,10 @@ impl Store {
 
     pub fn local_uids(&self, folder_id: i64) -> Result<HashSet<u32>> {
         let conn = self.conn();
-        let mut stmt = conn.prepare_cached("SELECT uid FROM messages WHERE folder_id = ?1 AND uid IS NOT NULL")?;
-        let uids = stmt
-            .query_map([folder_id], |r| r.get::<_, u32>(0))?
-            .collect::<rusqlite::Result<HashSet<_>>>()?;
+        let mut stmt =
+            conn.prepare_cached("SELECT uid FROM messages WHERE folder_id = ?1 AND uid IS NOT NULL")?;
+        let uids =
+            stmt.query_map([folder_id], |r| r.get::<_, u32>(0))?.collect::<rusqlite::Result<HashSet<_>>>()?;
         Ok(uids)
     }
 
@@ -354,10 +363,9 @@ impl Store {
     pub fn list(&self, target: &ListTarget, before: Option<Cursor>, limit: i64) -> Result<Vec<MessageRow>> {
         let (filter, key) = match target {
             ListTarget::Folder(id) => ("m.folder_id = ?1", Value::Integer(*id)),
-            ListTarget::Role(role) => (
-                "m.folder_id IN (SELECT id FROM folders WHERE role = ?1)",
-                Value::Text(role.clone()),
-            ),
+            ListTarget::Role(role) => {
+                ("m.folder_id IN (SELECT id FROM folders WHERE role = ?1)", Value::Text(role.clone()))
+            }
         };
         let before = before.unwrap_or(Cursor { date: i64::MAX, id: i64::MAX });
         let sql = format!(
@@ -408,9 +416,7 @@ impl Store {
             "SELECT {ROW} FROM messages_fts JOIN messages m ON m.id = messages_fts.rowid
              WHERE messages_fts MATCH ?1 ORDER BY m.date DESC LIMIT ?2"
         ))?;
-        let rows = stmt
-            .query_map(params![fts, limit], row)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let rows = stmt.query_map(params![fts, limit], row)?.collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
 
@@ -470,7 +476,10 @@ impl Store {
                         _ => ("flagged", "\\Flagged", false),
                     };
                     for h in &hits {
-                        tx.execute(&format!("UPDATE messages SET {column} = ?1 WHERE id = ?2"), params![add, h.id])?;
+                        tx.execute(
+                            &format!("UPDATE messages SET {column} = ?1 WHERE id = ?2"),
+                            params![add, h.id],
+                        )?;
                     }
                     OutboxOp::Flags {
                         folder,
@@ -482,7 +491,8 @@ impl Store {
                 }
                 Action::Archive | Action::Trash => {
                     // Gmail has no Archive folder: archiving there is a move to All Mail.
-                    let roles = if action == Action::Archive { ["archive", "all"] } else { ["trash", "trash"] };
+                    let roles =
+                        if action == Action::Archive { ["archive", "all"] } else { ["trash", "trash"] };
                     let dest: Option<(i64, String)> = tx
                         .query_row(
                             "SELECT id, name FROM folders WHERE account_id = ?1 AND role IN (?2, ?3)
@@ -498,7 +508,10 @@ impl Store {
                         continue;
                     }
                     for h in &hits {
-                        tx.execute("UPDATE messages SET folder_id = ?1, uid = NULL WHERE id = ?2", params![dest_id, h.id])?;
+                        tx.execute(
+                            "UPDATE messages SET folder_id = ?1, uid = NULL WHERE id = ?2",
+                            params![dest_id, h.id],
+                        )?;
                     }
                     OutboxOp::Move {
                         folder,
@@ -526,18 +539,28 @@ impl Store {
         let mut undone = false;
         for id in token {
             let payload: Option<String> = tx
-                .query_row("SELECT payload FROM outbox WHERE id = ?1 AND claimed = 0 AND attempts = 0", [id], |r| r.get(0))
+                .query_row(
+                    "SELECT payload FROM outbox WHERE id = ?1 AND claimed = 0 AND attempts = 0",
+                    [id],
+                    |r| r.get(0),
+                )
                 .optional()?;
             let Some(payload) = payload else { continue };
             match serde_json::from_str::<OutboxOp>(&payload)? {
                 OutboxOp::Flags { revert, .. } => {
                     for (mid, seen, flagged) in revert {
-                        tx.execute("UPDATE messages SET seen = ?2, flagged = ?3 WHERE id = ?1", params![mid, seen, flagged])?;
+                        tx.execute(
+                            "UPDATE messages SET seen = ?2, flagged = ?3 WHERE id = ?1",
+                            params![mid, seen, flagged],
+                        )?;
                     }
                 }
                 OutboxOp::Move { revert, .. } => {
                     for (mid, folder_id, uid) in revert {
-                        tx.execute("UPDATE messages SET folder_id = ?2, uid = ?3 WHERE id = ?1", params![mid, folder_id, uid])?;
+                        tx.execute(
+                            "UPDATE messages SET folder_id = ?2, uid = ?3 WHERE id = ?1",
+                            params![mid, folder_id, uid],
+                        )?;
                     }
                 }
                 OutboxOp::Send(_) => {}
@@ -596,13 +619,14 @@ impl Store {
     pub fn pending_uids(&self, account_id: i64, folder: &str) -> Result<HashSet<u32>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached("SELECT payload FROM outbox WHERE account_id = ?1")?;
-        let payloads = stmt
-            .query_map([account_id], |r| r.get::<_, String>(0))?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let payloads =
+            stmt.query_map([account_id], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
         let mut uids = HashSet::new();
         for payload in payloads {
             match serde_json::from_str::<OutboxOp>(&payload)? {
-                OutboxOp::Flags { folder: f, uids: u, .. } | OutboxOp::Move { folder: f, uids: u, .. } if f == folder => {
+                OutboxOp::Flags { folder: f, uids: u, .. } | OutboxOp::Move { folder: f, uids: u, .. }
+                    if f == folder =>
+                {
                     uids.extend(u)
                 }
                 _ => {}
@@ -627,7 +651,8 @@ fn thread_for(conn: &Connection, account_id: i64, folder_id: i64, m: &NewMessage
     if let Some(parent) = &m.in_reply_to {
         related.push(parent);
     }
-    let mut stmt = conn.prepare_cached("SELECT thread_id FROM messages WHERE account_id = ?1 AND message_id = ?2 LIMIT 1")?;
+    let mut stmt = conn
+        .prepare_cached("SELECT thread_id FROM messages WHERE account_id = ?1 AND message_id = ?2 LIMIT 1")?;
     for id in &related {
         if let Some(thread) = stmt.query_row(params![account_id, id], |r| r.get::<_, String>(0)).optional()? {
             return Ok(thread);
@@ -694,7 +719,8 @@ mod tests {
         let page = store.list(&ListTarget::Folder(inbox), None, 2).unwrap();
         assert_eq!(page.iter().map(|r| r.subject.as_str()).collect::<Vec<_>>(), ["m5", "m4"]);
         let last = page.last().unwrap();
-        let next = store.list(&ListTarget::Folder(inbox), Some(Cursor { date: last.date, id: last.id }), 2).unwrap();
+        let next =
+            store.list(&ListTarget::Folder(inbox), Some(Cursor { date: last.date, id: last.id }), 2).unwrap();
         assert_eq!(next.iter().map(|r| r.subject.as_str()).collect::<Vec<_>>(), ["m3", "m2"]);
         assert_eq!(store.list(&ListTarget::Role("inbox".into()), None, 10).unwrap().len(), 5);
     }
@@ -752,10 +778,16 @@ mod tests {
             store.outbox_done(op_id).unwrap();
         }
         // The archive's sync sees the message under the uid the server gave it there.
-        store.insert_messages(account, archive, &[message(40, "a", 1)].map(|mut m| {
-            m.message_id = Some("1@example.com".into());
-            m
-        })).unwrap();
+        store
+            .insert_messages(
+                account,
+                archive,
+                &[message(40, "a", 1)].map(|mut m| {
+                    m.message_id = Some("1@example.com".into());
+                    m
+                }),
+            )
+            .unwrap();
         let rows = store.list(&ListTarget::Folder(archive), None, 10).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id, id);
