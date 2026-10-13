@@ -8,10 +8,19 @@ Plan stable local identities and remote locations before provider-specific mutat
 ideas must be reconciled with the selected task slice so migrations are planned, not improvised. Migrations are forward-only, numbered, in `store::migrate()`; each one is a
 `match version { 1 => …, 2 => … }` arm with its SQL and a test that opens a v(n-1) fixture database.
 
-## v1 (today)
+## v1
 `accounts`, `folders`, `messages`, `bodies`, `messages_fts` (contentless), `outbox`.
 
-## v2 — Sprint 1 (sync v2, threads)
+## v2 — package 01, connection security (implemented 2026-10-13)
+```sql
+ALTER TABLE accounts ADD COLUMN imap_security TEXT NOT NULL DEFAULT 'tls';      -- 'tls' | 'starttls'
+ALTER TABLE accounts ADD COLUMN smtp_security TEXT NOT NULL DEFAULT 'starttls';
+UPDATE accounts SET smtp_security = 'tls' WHERE smtp_port = 465;              -- keep what Tern did before
+```
+`store::migrate()` applies v1 (`SCHEMA`) and each later step in its own transaction with its version, and refuses a
+database from a newer Tern. Tests: a v1 database with accounts migrates to the same `accounts` table as a new one.
+
+## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'
 ALTER TABLE accounts ADD COLUMN provider TEXT;                                 -- 'google' | 'microsoft' | NULL

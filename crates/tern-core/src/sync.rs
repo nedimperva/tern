@@ -36,7 +36,7 @@ const PER_PASS: usize = 500;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub async fn connect(config: &AccountConfig, password: &str) -> Result<Session> {
-    imap::connect(&config.imap_host, config.imap_port, &config.username, password).await
+    imap::connect(&config.imap_host, config.imap_port, config.imap_security, &config.username, password).await
 }
 
 /// Signs in and out, to check settings before an account is saved.

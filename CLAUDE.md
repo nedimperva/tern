@@ -14,8 +14,10 @@ decisions that aren't visible from the code.
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items, so Gmail goes through the Gmail API (also provisional), not IMAP.
 - TLS is rustls with the platform verifier for IMAP and SMTP; nothing links OpenSSL. The verifier honours
-  `SSL_CERT_FILE`, which is how the dev server's test CA is trusted. SMTP security is still inferred from the port
-  (465 means implicit TLS, anything else STARTTLS) until accounts store it explicitly; on the dev server use 1587.
+  `SSL_CERT_FILE`, which is how the dev server's test CA is trusted. Each account stores `imap_security` and
+  `smtp_security` (tls or starttls); never infer them from the port in code.
+- Schema changes go through `store::migrate()` (numbered steps on top of the v1 `SCHEMA`), each with a test that
+  starts from the previous version. See `docs/research/data-model.md`.
 - Gotchas: IMAP sockets need `TCP_NODELAY` (about 40 ms per command without it); io-imap's `starttls()` reads the
   greeting itself; its `auth_login` is SASL `AUTHENTICATE LOGIN`, the IMAP `LOGIN` command is `login`.
 - The user is moving to Linux first: **Omarchy** (Arch + Hyprland, Wayland). Linux is now the primary target;
