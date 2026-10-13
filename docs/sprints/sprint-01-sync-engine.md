@@ -43,7 +43,10 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 ## Tasks
 
 ### TLS and transport
-- [ ] Move to `rustls`: `tokio-rustls` + `rustls-platform-verifier` for IMAP (**IMAP done**, io-imap slice); `lettre` features `tokio1-rustls-tls` (drop `native-tls`). No OpenSSL anywhere; `cargo tree | grep -i openssl` must be empty.
+- [x] Move to `rustls`: `tokio-rustls` + `rustls-platform-verifier` for IMAP; `lettre` features `tokio1-rustls-tls` (drop `native-tls`). No OpenSSL anywhere; `cargo tree | grep -i openssl` must be empty.
+      Done 2026-10-13: lettre uses `tokio1-rustls` + `ring` + `rustls-platform-verifier`; nothing links OpenSSL
+      (`cargo tree -i openssl-sys` is empty). The grep still shows `openssl-probe`, a pure-Rust crate the platform
+      verifier uses to find certificate files; it is not OpenSSL.
 - [ ] STARTTLS on 143 and 587 as a preset option; prefer implicit TLS (993/465) by default.
 - [ ] Send `ID ("name" "Tern" "version" ... "contact" ...)` after login where `ID` is advertised (Gmail asks for it).
 
@@ -121,3 +124,7 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   Moves: MOVE, else COPY + \Deleted + UID EXPUNGE, and without UIDPLUS no expunge at all. Tests: 8 fake-server unit
   tests, 2 opt-in checks against the dev server (`scripts/dev-mail-server.sh test`), live sync verified (new mail
   and an outside flag change arrived within one 60 s poll). Open: lettre to rustls; then QRESYNC, IDLE, headers-first.
+- 2026-10-13 — SMTP on rustls; OpenSSL gone from the build. Found: Tern infers SMTP security from the port (465 means
+  implicit TLS, anything else STARTTLS), so the dev server's implicit-TLS port 1465 hangs (both sides wait). Dev
+  server gained STARTTLS submission on 1587, used by the new real send check. Next slice: an explicit security
+  setting per account for IMAP and SMTP (schema migration), which also brings IMAP STARTTLS.
