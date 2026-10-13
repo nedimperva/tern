@@ -68,9 +68,13 @@ To work on the UI alone, run `npm run dev` and open http://localhost:1420. With 
 against a fake mailbox of 5,000 messages.
 
 ```sh
-cargo test -p tern-core                                      # engine tests
+cargo test --workspace                                       # all tests
 cargo run --release -p tern-core --example store_bench       # timings
 ```
+
+CI (`.github/workflows/check.yml`) runs on every pull request, on Linux and Windows: the frontend build, then
+`cargo fmt --check` (Linux), `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`.
+Run the same before pushing. The Linux job installs the Debian/Ubuntu packages listed above.
 
 ## Keys
 
