@@ -35,7 +35,27 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
         has_attachments: msg.attachment_count() > 0,
         body_text,
         body_html,
+        size: None,
+        headers_only: false,
     })
+}
+
+/// Parses just the header block of a message (from a HEADER.FIELDS fetch): enough for the list, no body yet.
+pub fn parse_headers(
+    uid: u32,
+    header: &[u8],
+    seen: bool,
+    flagged: bool,
+    size: Option<u32>,
+) -> Option<NewMessage> {
+    let mut m = parse(uid, header, seen, flagged)?;
+    m.snippet.clear();
+    m.body_text = None;
+    m.body_html = None;
+    m.has_attachments = false;
+    m.size = size;
+    m.headers_only = true;
+    Some(m)
 }
 
 fn ids(value: &HeaderValue) -> Vec<String> {
@@ -100,5 +120,16 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b1--\r\n";
         // mail-parser derives a text body from HTML-only mail, so the list still gets a snippet.
         assert_eq!(m.snippet, "Only HTML here");
         assert_eq!(m.date, 1_791_792_000);
+    }
+
+    #[test]
+    fn parses_a_header_block_alone() {
+        let header = b"From: Ada <ada@example.com>\r\nSubject: Hello\r\nMessage-ID: <b@example.com>\r\n\
+Date: Mon, 12 Oct 2026 10:00:00 +0000\r\n\r\n";
+        let m = parse_headers(9, header, false, true, Some(4321)).unwrap();
+        assert_eq!((m.uid, m.subject.as_str(), m.from_addr.as_str()), (9, "Hello", "ada@example.com"));
+        assert_eq!((m.size, m.headers_only, m.flagged), (Some(4321), true, true));
+        assert!(m.body_text.is_none() && m.snippet.is_empty());
+        assert!(m.date > 0);
     }
 }

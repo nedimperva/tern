@@ -57,7 +57,15 @@ pub async fn list_messages(
 
 #[tauri::command]
 pub async fn thread(state: State<'_, AppState>, id: i64) -> Reply<Vec<ThreadMessage>> {
-    state.store.thread(id).map_err(text)
+    let thread = state.store.thread(id).map_err(text)?;
+    // Opened before its body came: ask the sync worker for it next. The view reloads on "mail-changed".
+    let missing: Vec<i64> = thread.iter().filter(|m| !m.body_loaded).map(|m| m.row.id).collect();
+    if !missing.is_empty() {
+        for account in state.store.want_bodies(&missing).map_err(text)? {
+            state.wake(account);
+        }
+    }
+    Ok(thread)
 }
 
 #[tauri::command]
