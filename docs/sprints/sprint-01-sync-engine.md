@@ -58,7 +58,7 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 - [ ] Wake on resume from sleep: on Linux listen to `org.freedesktop.login1.Manager.PrepareForSleep` over D-Bus (`zbus`), or fall back to detecting a clock jump > 60 s.
 
 ### Incremental sync
-- [ ] `ENABLE CONDSTORE QRESYNC` when advertised. Store `highest_modseq` per folder (column exists).
+- [x] `ENABLE CONDSTORE QRESYNC` when advertised. Store `highest_modseq` per folder (column exists).
 - [ ] Folder check = `SELECT (QRESYNC ...)` → apply `VANISHED` + changed flags from the response; fall back to
       `UID SEARCH MODSEQ n` on CONDSTORE-only servers; fall back to `UID FETCH 1:* (FLAGS)` in batches of 5,000 on plain servers.
 - [ ] `UIDVALIDITY` change: drop the folder's rows (respecting `pending_uids`) and resync.
@@ -151,3 +151,9 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   Phase A: everything except LIST-* headers and BODYSTRUCTURE (the attachment marker appears with the body).
   Phase B (text part only) skipped for now: the body brings the snippet. Phase C: 90 days, not yet pausable.
   Found: io-imap drops a FETCH response it cannot parse without error; sync now warns when fewer came back.
+- 2026-10-14 — QRESYNC: `ENABLE QRESYNC` per session; a folder synced before is opened with `SELECT … (QRESYNC (v m))`,
+  which reports expunged UIDs (VANISHED) and changed flags in the same round trip. New mail is still found by UID
+  SEARCH, but only when UIDNEXT moved; `folders.uid_next` is stored only once all new mail was fetched, so a capped
+  pass cannot hide messages from the next. Live: all nine dev folders checked with one SELECT each when unchanged.
+  Done of "Folder check": the QRESYNC path and the plain fallback (whole-folder flags, not yet 5,000-UID batches).
+  Not done: the CONDSTORE-only path (`UID SEARCH MODSEQ`). UIDVALIDITY reset still drops pending rows too.

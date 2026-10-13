@@ -125,7 +125,6 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 The roadmap controls delivery order; these are engine/UI work items, not a fixed weekly schedule.
 Choose the initial Gmail transport through the early [decision gate](docs/research/gmail-backend-decision.md).
 
-- CONDSTORE/QRESYNC, so checking a folder that hasn't changed costs one round trip
 - Fetch headers and a short preview first, then whole bodies, so a new account fills its inbox faster
 - OAuth for Gmail (Gmail API) and Microsoft, since Microsoft no longer accepts passwords
 - A conversation list (one row per thread) in place of the current one row per message

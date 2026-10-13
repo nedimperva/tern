@@ -176,7 +176,7 @@ tern() {
 run_tests() {
   [ -f "$DIR/tls/trust-bundle.pem" ] || die "run setup first"
   cd "$REPO"
-  SSL_CERT_FILE="$DIR/tls/trust-bundle.pem" exec cargo test -p tern-core --test dev_server -- --ignored
+  SSL_CERT_FILE="$DIR/tls/trust-bundle.pem" exec cargo test -p tern-core -- --ignored
 }
 
 reset() {

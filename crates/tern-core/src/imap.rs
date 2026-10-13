@@ -7,6 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::mem;
+use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -20,11 +21,12 @@ use io_imap::rfc3501::copy::ImapMessageCopyOptions;
 use io_imap::rfc3501::fetch::ImapMessageFetchOptions;
 use io_imap::rfc3501::login::ImapLoginOptions;
 use io_imap::rfc3501::search::ImapMessageSearchOptions;
-use io_imap::rfc3501::select::ImapMailboxSelectOptions;
+use io_imap::rfc3501::select::{ImapMailboxSelectData, ImapMailboxSelectOptions};
 use io_imap::rfc3501::store::ImapMessageStoreOptions;
 use io_imap::rfc6851::r#move::ImapMessageMoveOptions;
 use io_imap::sasl::auth_plain::ImapAuthPlainOptions;
 use io_imap::types::core::{AString, Vec1};
+use io_imap::types::extensions::enable::CapabilityEnable;
 use io_imap::types::fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Section};
 use io_imap::types::flag::{Flag, FlagFetch, StoreType};
 use io_imap::types::mailbox::{ListMailbox, Mailbox};
@@ -49,10 +51,22 @@ pub struct Folder {
     pub attributes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Selected {
     pub exists: u32,
     pub uid_validity: Option<u32>,
     pub uid_next: Option<u32>,
+    /// The folder's modification sequence (CONDSTORE), when the server keeps one.
+    pub highest_modseq: Option<u64>,
+}
+
+/// A QRESYNC select: the folder, plus what changed since the modification sequence it was given.
+pub struct Resync {
+    pub selected: Selected,
+    /// UIDs expunged since then.
+    pub vanished: Vec<u32>,
+    /// Messages whose flags changed (or that are new) since then, with UID and flags.
+    pub changed: Vec<Fetched>,
 }
 
 /// How an IDLE ended.
@@ -81,6 +95,8 @@ const LIST_HEADERS: [&str; 8] =
 pub struct Imap<S> {
     conn: Conn<S>,
     capabilities: Vec<Capability<'static>>,
+    /// QRESYNC is ENABLEd on this connection.
+    qresync: bool,
 }
 
 pub type TlsImap = Imap<TlsStream<TcpStream>>;
@@ -172,7 +188,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
             conn.login(username, password, opts).await
         }
         .context("The server refused the sign-in")?;
-        Ok(Self { conn, capabilities })
+        Ok(Self { conn, capabilities, qresync: false })
     }
 
     /// Whether the server advertised `name` (for example `MOVE` or `UIDPLUS`).
@@ -200,10 +216,37 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
 
     pub async fn select(&mut self, name: &str) -> Result<Selected> {
         let data = self.conn.select(mailbox(name)?, ImapMailboxSelectOptions::default()).await?;
-        Ok(Selected {
-            exists: data.exists.unwrap_or(0),
-            uid_validity: data.uid_validity.map(|v| v.get()),
-            uid_next: data.uid_next.map(|v| v.get()),
+        Ok(selected(&data))
+    }
+
+    /// Turns on QRESYNC (RFC 7162) for this connection when the server has it. Returns whether it is on.
+    pub async fn enable_qresync(&mut self) -> Result<bool> {
+        if !self.qresync && self.has("QRESYNC") {
+            self.conn.enable(Vec1::from(CapabilityEnable::try_from("QRESYNC")?)).await?;
+            self.qresync = true;
+        }
+        Ok(self.qresync)
+    }
+
+    pub fn qresync(&self) -> bool {
+        self.qresync
+    }
+
+    /// Selects `name` and has the server report what changed since `highest_modseq`: expunged UIDs and changed
+    /// flags, in one round trip. Needs `enable_qresync` first.
+    pub async fn select_since(
+        &mut self,
+        name: &str,
+        uid_validity: u32,
+        highest_modseq: u64,
+    ) -> Result<Resync> {
+        let validity = NonZeroU32::new(uid_validity).context("UIDVALIDITY 0")?;
+        let data =
+            self.conn.select_qresync(mailbox(name)?, validity, highest_modseq, &self.capabilities).await?;
+        Ok(Resync {
+            selected: selected(&data),
+            vanished: data.vanished_earlier.iter().map(|u| u.get()).collect(),
+            changed: data.changed.iter().filter_map(|c| fetched_from(c.items.as_ref().to_vec())).collect(),
         })
     }
 
@@ -350,6 +393,15 @@ pub fn connection_lost(e: &anyhow::Error) -> bool {
         c.is::<std::io::Error>()
             || matches!(c.downcast_ref::<ImapClientError>(), Some(ImapClientError::Io(_)))
     })
+}
+
+fn selected(data: &ImapMailboxSelectData) -> Selected {
+    Selected {
+        exists: data.exists.unwrap_or(0),
+        uid_validity: data.uid_validity.map(|v| v.get()),
+        uid_next: data.uid_next.map(|v| v.get()),
+        highest_modseq: data.highest_mod_seq,
+    }
 }
 
 fn mailbox(name: &str) -> Result<Mailbox<'static>> {
@@ -719,5 +771,39 @@ mod tests {
             sent.lock().unwrap().iter().any(|c| c.contains("BODY.PEEK[HEADER.FIELDS")),
             "must not mark read"
         );
+    }
+
+    #[tokio::test]
+    async fn qresync_select_reports_vanished_and_changed_flags() {
+        let (stream, sent) = signed_in(
+            "{tag} OK [CAPABILITY IMAP4rev1 CONDSTORE QRESYNC ENABLE] in\r\n",
+            vec![
+                ("ENABLE QRESYNC", "* ENABLED QRESYNC\r\n{tag} OK enabled\r\n"),
+                (
+                    "SELECT INBOX (QRESYNC (7 100))",
+                    "* 9 EXISTS\r\n* OK [UIDVALIDITY 7] v\r\n* OK [UIDNEXT 20] n\r\n* OK [HIGHESTMODSEQ 130] m\r\n\
+                     * VANISHED (EARLIER) 3:4,8\r\n* 2 FETCH (UID 5 FLAGS (\\Seen \\Flagged) MODSEQ (125))\r\n\
+                     {tag} OK [READ-WRITE] selected\r\n",
+                ),
+            ],
+        );
+        let mut imap = Imap::open(stream, "ada", "x").await.unwrap();
+        assert!(imap.enable_qresync().await.unwrap());
+        let r = imap.select_since("INBOX", 7, 100).await.unwrap();
+        assert_eq!((r.selected.uid_next, r.selected.highest_modseq), (Some(20), Some(130)));
+        assert_eq!(r.vanished, [3, 4, 8]);
+        assert_eq!(
+            r.changed.iter().map(|f| (f.uid, f.seen, f.flagged)).collect::<Vec<_>>(),
+            [(5, true, true)]
+        );
+        assert_eq!(sent.lock().unwrap().len(), 4, "sign-in, ENABLE, one SELECT: nothing else");
+    }
+
+    #[tokio::test]
+    async fn no_qresync_without_the_capability() {
+        let (stream, sent) = signed_in("{tag} OK [CAPABILITY IMAP4rev1 CONDSTORE] in\r\n", vec![]);
+        let mut imap = Imap::open(stream, "ada", "x").await.unwrap();
+        assert!(!imap.enable_qresync().await.unwrap());
+        assert_eq!(sent.lock().unwrap().len(), 2, "no ENABLE sent");
     }
 }
