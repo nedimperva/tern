@@ -1,6 +1,13 @@
 # Tern
 
-A fast, local-first mail app for Windows and Linux (and macOS) that works with any IMAP account.
+A fast, local-first, keyboard-first mail app: Linux first, then Windows. The initial supported-provider
+target is Fastmail, followed by Gmail through one selected backend; custom IMAP is experimental.
+
+**Development status:** the frontend builds, but engine compilation, desktop runtime and real-account
+acceptance are still pending. The behavior described below is the intended design, not a production-readiness claim.
+See [the milestone roadmap](docs/PLAN.md): safe foundation → Linux private alpha → focused Linux beta →
+Windows release → expansion. Windows compile/test checks start in the foundation phase. Optional AI
+remains planned, off by default, and does not gate the core mail releases; calendar and advanced provider/preview features follow later.
 
 Everything you see comes from a SQLite database on your device, so lists, threads and search never wait on the network.
 When you archive, star or send, the change shows immediately and goes to the server in the background after a
@@ -93,6 +100,9 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 | Archiving 50 messages | < 20 ms |
 
 ## Next
+
+The roadmap controls delivery order; these are engine/UI work items, not a fixed weekly schedule.
+Choose the initial Gmail transport through the early [decision gate](docs/research/gmail-backend-decision.md).
 
 - IMAP IDLE on the inbox, so new mail appears within a second; replaces the 60-second poll in `sync.rs`
 - CONDSTORE/QRESYNC, so checking a folder that hasn't changed costs one round trip

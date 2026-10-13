@@ -1,7 +1,11 @@
 # Data model
 
-Schema v1 is in `crates/tern-core/src/store.rs`. This file tracks the additions by sprint so migrations
-are planned, not improvised. Migrations are forward-only, numbered, in `store::migrate()`; each one is a
+Schema v1 is in `crates/tern-core/src/store.rs`. The groups below are candidate schema additions from
+the original work packages, not a mandate to implement them in numeric sprint order. Allocate sequential
+migration versions when a milestone slice is implemented; calendar/AI/contacts tables are not required
+for core mail. If Gmail API is selected early, its fields/adapters arrive in M2 rather than after Outlook.
+Plan stable local identities and remote locations before provider-specific mutations. These schema
+ideas must be reconciled with the selected task slice so migrations are planned, not improvised. Migrations are forward-only, numbered, in `store::migrate()`; each one is a
 `match version { 1 => …, 2 => … }` arm with its SQL and a test that opens a v(n-1) fixture database.
 
 ## v1 (today)

@@ -2,7 +2,15 @@
 
 **Status:** todo
 
-**Week 9.** Tern behaves like a native Linux app: notifications, tray, `mailto:`, start at login, one
+## Delivery scope
+
+**M1 error visibility; M2 Linux integration; M3 Windows parity.** Move Offline and errors, including pending/failed outbox visibility, into M1. Notifications/tray/background mode/mailto/autostart follow in M2. Do not wait for all triage features before making failures visible. Re-test plugin behavior on Windows in M3.
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+Tern behaves like a native Linux app: notifications, tray, `mailto:`, start at login, one
 instance, honest offline behaviour.
 
 ## Goal

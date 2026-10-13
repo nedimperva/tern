@@ -2,7 +2,15 @@
 
 **Status:** todo
 
-**Week 8.** The surrounding features that save seconds many times a day.
+## Delivery scope
+
+**M1 basic attachments/autocomplete; M2 snippets; M4 advanced features.** Core attachment scope is send/download/save/open with system, with clear progress/errors. Core contacts are header-derived autocomplete; basic snippets join in beta. Embedded PDF/media previews, drag-out, attachment browser, CardDAV/contact merging, Instant Intro and other advanced items below are deferred from the first release.
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+The surrounding features that save seconds many times a day.
 
 ## Goal
 
@@ -11,7 +19,7 @@ CardDAV; snippets expand with `;`; Instant Intro does the reply-all-and-bcc danc
 
 ## Tasks
 
-### Attachments
+### Attachments (basic fetch/save/open is core; embedded viewer and drag-out deferred)
 - [ ] `attachments` table: `message_id, part, filename, mime, size, cid, state (remote | cached), path`.
 - [ ] Fetch a single part with `UID FETCH (BODY.PEEK[<part>])` on open; cache to `app_data/attachments/<account>/<msgid>/`. Decode base64/QP in Rust.
 - [ ] Viewer overlay (`Cmd+O` on a message cycles attachments, `Enter` on a chip): images (zoom/pan), PDF (WebKitGTK renders PDF natively in an iframe; on Windows WebView2 does too), text/code, audio/video via `<video>`; everything else shows an "Open with system" button (`opener`).
@@ -20,7 +28,7 @@ CardDAV; snippets expand with `;`; Instant Intro does the reply-all-and-bcc danc
 - [ ] Inline images (`cid:`) resolved to cached files via a `tern-att://` custom protocol handler in the iframe; blocked remote images untouched.
 - [ ] Attachments browser: palette "Attachments in this conversation", `g` + `Shift+A` for all attachments in the account (list view with filters).
 
-### Contacts
+### Contacts (header autocomplete is core; import/merging deferred)
 - [ ] Contact ranking from Sprint 3 gets names merged across sources (`contacts` + `contact_emails` for people with several addresses).
 - [ ] CardDAV import via `libdav` (`CardDavClient`, service discovery, vCard parse with `vcard` or `ical`-style minimal parser); read-only; Fastmail first, Google Contacts via CardDAV with the OAuth token (`https://www.googleapis.com/.well-known/carddav`) and the `https://www.googleapis.com/auth/carddav` scope added in Settings → "Sync contacts".
 - [ ] Contact card on hover/`Shift+I` in the pane: name, addresses, last 5 conversations, "Add to VIP" (a rule into Important).

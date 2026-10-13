@@ -2,7 +2,15 @@
 
 **Status:** todo
 
-**Week 3.** The app starts to look and feel like the product. One row per conversation, the full
+## Delivery scope
+
+**M1 — Linux private alpha.** Deliver conversations, predictable focus/selection, core keyboard actions, command palette, safe HTML and readable themes. Future-feature commands need not appear as nonfunctional placeholders. Advanced layout polish is not an alpha blocker.
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+The app starts to look and feel like the product. One row per conversation, the full
 keyboard model, a real command palette, light and dark, and a perf overlay that keeps us honest.
 
 See `docs/research/superhuman-reference.md` for the patterns we are matching.
@@ -76,7 +84,7 @@ Label chips on rows, then the empty-state artwork (use a solid colour), then `Cm
 
 ## Acceptance
 - Triage 50 real conversations with keys only; nothing requires the mouse.
-- `j`/`k` keypress-to-paint under 5 ms in the overlay on a 10,000-thread list.
+- Record `j`/`k` input-to-visible-response p50/p95 on a 10,000-thread list, including during sync; verify no visible lag/focus jumps. Do not equate handler duration with paint.
 - Light and dark both pass a contrast check (WCAG AA on text).
 - Bundle under 120 kB gzipped (editor not yet included).
 
