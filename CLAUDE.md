@@ -4,21 +4,19 @@ Tern is a local-first desktop mail client for any IMAP account. It has a Rust en
 shell (`src-tauri`) and a SolidJS UI (`src`). The README covers layout, setup and keys; this file covers state and
 decisions that aren't visible from the code.
 
-## Where things stand (2026-10-13)
+## Where things stand (2026-10-13, evening)
 
-- The project was scaffolded on Windows, on a machine with **no Rust toolchain**. **No Rust code has ever been
-  compiled.** Expect compile errors on the first `cargo build`, mostly where the code was written from memory of
-  library APIs:
-  - `async-imap` 0.10 (`sync.rs`): `Session` type, `select`/`uid_fetch`/`uid_search` return types, how capabilities
-    and folder attributes (`NameAttribute`) are read. Roles are currently parsed from the attribute's `Debug` text,
-    which is a stopgap: match on the enum variants once it compiles.
-  - `mail-parser` 0.9 (`mime.rs`): `MessageParser`, `body_text`/`body_html`, address accessors.
-  - `keyring` 3 (`secrets.rs`): `Entry::new`, `delete_credential`.
-  - `lettre` 0.11 (`smtp.rs`): `AsyncSmtpTransport::<Tokio1Executor>::relay` / `starttls_relay`.
-  - `tauri` 2 (`src-tauri/src/main.rs`, `commands.rs`): `Emitter`, `Manager`, `path().app_data_dir()`.
-  Fix these against the real crate docs (docs.rs) rather than rewriting the design.
-- The frontend builds (`npm run build`) and was tested in a browser against the fake mailbox in `src/api.ts`, which
-  is used whenever `window.__TAURI_INTERNALS__` is missing. The real Tauri bridge has never run.
+- The workspace compiles and runs on Linux (Omarchy/Hyprland); CI checks Linux and Windows on every PR. The app
+  syncs real mail: the owner's SmarterMail account worked before it was paused, and the local dev server
+  (`scripts/dev-mail-server.sh`, Stalwart) is what development uses now. No real-provider account is in use
+  until the reliability gate passes (package 00).
+- IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
+  touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
+  responses that carry Gmail X-GM-* items, so Gmail goes through the Gmail API (also provisional), not IMAP.
+- TLS for IMAP is rustls with the platform verifier, which honours `SSL_CERT_FILE`; the dev server's test CA is
+  trusted that way. SMTP still uses lettre with native-tls (OpenSSL) until its rustls move.
+- Gotchas: IMAP sockets need `TCP_NODELAY` (about 40 ms per command without it); io-imap's `starttls()` reads the
+  greeting itself; its `auth_login` is SASL `AUTHENTICATE LOGIN`, the IMAP `LOGIN` command is `login`.
 - The user is moving to Linux first: **Omarchy** (Arch + Hyprland, Wayland). Linux is now the primary target;
   Windows comes later.
 
