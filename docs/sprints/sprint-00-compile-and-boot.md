@@ -26,9 +26,9 @@ archive / star / mark-read / send reach the server after the 5-second undo windo
 - [x] `.editorconfig`, `rustfmt.toml` (max_width 110 to match existing style), `.gitattributes` already present.
 
 ### Make `tern-core` compile
-- [ ] Bump `async-imap` to `0.11` (active again: 0.11.2, Feb 2026). Read `docs.rs/async-imap/0.11` and fix
-      `Session`, `select`, `uid_fetch`, `uid_search`, `capabilities`, `NameAttribute` usage in `sync.rs`.
-      Replace the `Debug`-text role parsing with a match on `NameAttribute` variants.
+- [-] ~~Bump `async-imap` to `0.11`~~ — moved to package 01. 0.12 is out, and package 01's library gate compares
+      `async-imap` with `imap-next`, so an upgrade here could be thrown away. Owner approved 2026-10-13.
+      Destination: package 01, decision gate "IMAP library".
 - [ ] `mail-parser` 0.9 → check current (0.11.x). Fix `MessageParser`, `body_text`/`body_html`, address accessors in `mime.rs`.
 - [x] `keyring` 3: `Entry::new(service, user)?`, `set_password`, `get_password`, `delete_credential`.
 - [x] `lettre` 0.11: `AsyncSmtpTransport::<Tokio1Executor>::relay(host)?` / `starttls_relay`, `.credentials(...)`, `.build()`.
@@ -128,6 +128,8 @@ Search misses by about 7x. It belongs to package 06 (search and speed); recorded
   `SSL_CERT_FILE` when launching Tern). The "first real account" checks below run against it; the
   real-provider check moves to whichever provider the owner picks later. PLAN.md's "Fastmail first" needs
   revisiting at that point.
+- 2026-10-13 — **async-imap upgrade.** Planned here as 0.10 → 0.11; 0.12 is current and package 01 may replace the
+  library. Owner decided: skip it in package 00; package 01's library gate decides version or replacement.
 
 ## Log
 
