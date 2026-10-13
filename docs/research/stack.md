@@ -1,6 +1,8 @@
 # Stack decisions
 
-What we use, what we considered, and why. Update when a decision changes; note the sprint.
+What we use, what we considered, and why. Update when a decision changes; note the milestone/package.
+Package numbers are stable IDs, not delivery weeks. PLAN.md and package Delivery scope sections control
+release scope; calendar, advanced contacts and optional AI are expansion, not core-release dependencies.
 
 ## Rust engine
 
@@ -54,7 +56,7 @@ Result (fill in): async-imap: … / imap-next: … / Decision: …
 
 Bundle budget: 150 kB gzipped total. Measure every sprint (`vite build` prints it; the perf overlay shows it).
 
-## Tauri 2 plugins
+## Tauri 2 plugins (package IDs, not delivery order)
 
 | Plugin | Sprint | Notes |
 |---|---|---|
@@ -77,7 +79,7 @@ Not used: `tauri-plugin-sql` (we own the SQLite layer), `tauri-plugin-store` (se
 - StatusNotifier tray works in Waybar via `libappindicator-gtk3`.
 - PDF in iframes works in WebKitGTK ≥ 2.40 (built-in PDF.js-based viewer).
 
-## Gmail API vs IMAP+X-GM (for the Sprint 11 gate)
+## Gmail API vs IMAP+X-GM (M0 decision, one initial Gmail path)
 
 | | IMAP + X-GM-EXT-1 | Gmail API |
 |---|---|---|
@@ -89,7 +91,10 @@ Not used: `tauri-plugin-sql` (we own the SQLite layer), `tauri-plugin-store` (se
 | Drafts | APPEND to `[Gmail]/Drafts`, dedupe is fiddly | `drafts.*` native |
 | Send | SMTP XOAUTH2 | `messages.send` |
 | Scope | `https://mail.google.com/` (restricted) | `gmail.modify` (restricted, narrower) |
-| Rate limits | connection limits (15 simultaneous), bandwidth caps (2,500 MB/day download) | 250 quota units/s/user, 1 billion/day |
-| Code | one backend for all providers | second backend behind `MailBackend` |
+| Rate limits | Verify current account connection/bandwidth limits | Published 2026 new-project baseline: 6,000 units/user/project/minute; messages.get costs 20. Confirm actual project limits/legacy status; see decision research. |
+| Code | shared IMAP transport with Gmail-specific semantics | Gmail adapter alongside Fastmail IMAP; not a required second Gmail implementation |
 
-The missing QRESYNC on Gmail IMAP is the strongest argument for the API: detecting deletions in a 100k-message All Mail folder needs a periodic UID re-scan over IMAP (ESEARCH helps, but it is still a scan), while `history.list` is one call that includes `messagesDeleted`.
+The deletion/history model is one argument for the API, not a decision by itself. Compare parser complexity,
+quotas/backfill, draft correctness, freshness/polling and recovery using [the early gate](gmail-backend-decision.md).
+History responses can require pagination and expired cursors require recovery; do not assume every delta
+is one call. No Gmail transport is selected yet. A second Gmail backend and switching remain deferred.

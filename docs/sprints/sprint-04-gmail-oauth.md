@@ -1,8 +1,16 @@
-# Sprint 4 — Gmail via IMAP + OAuth
+# Sprint 4 — Gmail OAuth and selected transport
 
 **Status:** todo
 
-**Week 5.** "Sign in with Google" instead of app passwords, and a Gmail account that behaves like Gmail:
+## Delivery scope
+
+**M0 comparison/preparation; M2 one selected Gmail backend.** The common OAuth/UI/label-model tasks apply to either transport. XOAUTH2, X-GM operations and X-GM-RAW search apply only if the owner selects IMAP in the early Gmail gate. If API is selected, use the API slice of package 12 instead; do not implement both Gmail paths. See [the decision checklist](../research/gmail-backend-decision.md).
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+"Sign in with Google" instead of app passwords, and a Gmail account that behaves like Gmail:
 labels, Gmail's own threads, Gmail search syntax, archive that means "remove from Inbox".
 
 Prerequisite from the owner: a Gmail test account and a Google Cloud project with an OAuth **Desktop app**
@@ -26,19 +34,19 @@ in Gmail, labelling in Gmail shows in Tern, a search like `from:alice has:attach
 - [ ] `invalid_grant` (user revoked) → account state `auth-failed`, UI banner with "Sign in again".
 - [ ] Provider table: `google` now; `microsoft` in Sprint 11. Each has `auth_url`, `token_url`, `scopes`, `client_id`, `client_secret?`.
 
-### XOAUTH2
+### XOAUTH2 (IMAP choice only)
 - [ ] SASL initial response `base64("user=" email "\x01auth=Bearer " token "\x01\x01")` for IMAP `AUTHENTICATE XOAUTH2` and SMTP `AUTH XOAUTH2`.
 - [ ] Parse the base64 JSON error challenge on failure (`status 400/401`) and map to refresh-and-retry once, then `auth-failed`.
 - [ ] Account `auth_kind` column: `password | oauth`. `secrets.rs` gets `get_credential(account) -> Password | AccessToken`.
 
 ### Account setup UI
 - [ ] Email entry → preset lookup → for Gmail/Google Workspace show "Continue with Google"; for others the password form as today.
-- [ ] Progress states: waiting for browser → exchanging → checking IMAP → syncing. Cancel at every step.
+- [ ] Progress states: waiting for browser → exchanging → checking selected backend → syncing first page → background backfill. Cancel at every step.
 - [ ] Error copy for the usual cases: unverified app warning (link to "Advanced → Go to Tern"), test-user missing, IMAP disabled in Gmail settings.
 
-### Labels model
+### Labels model (shared identity/membership; transport-specific operations below)
 - [ ] Tables `labels (id, account_id, name, role, color, sort)` and `message_labels (message_id, label_id)`.
-      Migration v3. For plain IMAP, every folder is a label and a message has exactly one; nothing else changes.
+      Use the next available migration version. Preserve stable local message identity and per-folder remote locations; Gmail membership is many-to-many. Do not assume RFC Message-ID is a universal remote key.
 - [ ] Gmail: `[Gmail]/All Mail` is the source of truth. Sync **All Mail** for messages and `X-GM-LABELS` for membership;
       do not sync the other `[Gmail]/*` folders as folders. `\Inbox`, `\Starred`, `\Important`, `\Sent`, `\Draft`, `\Trash`, `\Spam` map to roles.
 - [ ] `X-GM-THRID` as the thread key; `X-GM-MSGID` stored for deep links (`https://mail.google.com/mail/u/0/#all/<hex>`).
@@ -46,7 +54,7 @@ in Gmail, labelling in Gmail shows in Tern, a search like `from:alice has:attach
 - [ ] Trash and Spam are real folders in Gmail; sync them separately for `g #` / `g !`.
 - [ ] Label chips on rows and in the pane; `l` opens the label picker (palette in argument mode); `Cmd+Shift+L`... see key table.
 
-### Gmail search
+### Gmail search (X-GM-RAW for IMAP; API q= when API selected)
 - [ ] Local FTS first (instant). When the query uses Gmail operators the FTS cannot answer (`older_than:`, `label:`, `is:important`, `category:`) or the user presses `Enter` on "Search Gmail", send `UID SEARCH X-GM-RAW "<query>"` on All Mail, fetch headers for unknown UIDs, show results.
 - [ ] Results view shows which were local and which came from the server.
 
@@ -60,11 +68,11 @@ in Gmail, labelling in Gmail shows in Tern, a search like `from:alice has:attach
 - [ ] `Cmd+1..9` switch account scope; palette "Switch account".
 
 ## Cut first
-Workspace MX detection, Gmail deep links, the "which results came from the server" marker.
+Workspace MX detection and Gmail deep links. Preserve partial-result/sync-coverage indicators.
 
 ## Acceptance
 - Add a Gmail account via the browser; no password typed into Tern.
-- Archive in Tern → gone from Gmail's Inbox, still in All Mail. Label in Gmail web → chip appears in Tern within the IDLE window.
+- Archive in Tern → gone from Gmail's Inbox, still in All Mail. Label changes converge within the selected backend's documented reconciliation interval; do not assume every label change triggers inbox IDLE.
 - Threads in Tern match Gmail's grouping for 20 random conversations.
 - Revoke access at myaccount.google.com → Tern shows "Sign in again" within one sync cycle, no crash, no data loss.
 - Token refresh observed in the log after an hour of running.

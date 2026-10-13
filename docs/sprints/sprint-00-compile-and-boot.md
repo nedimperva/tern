@@ -2,7 +2,15 @@
 
 **Status:** todo
 
-**Week 1.** Nothing new. Make what exists real: compile the Rust, run the Tauri bridge, sync a Fastmail account.
+## Delivery scope
+
+**M0 — safe foundation.** Required: Linux and Windows compile/test CI, first Linux boot, early Windows boot/render/keyring smoke test, and safe Fastmail round-trips. This is not a one-week timebox. CI and offline/restart tests are not optional.
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+Nothing new. Make what exists real: compile the Rust, run the Tauri bridge, sync a Fastmail account.
 
 ## Goal
 
@@ -43,16 +51,26 @@ archive / star / mark-read / send reach the server after the 5-second undo windo
 - [ ] Send a message to yourself; it arrives; a copy is in Sent (Fastmail does this server-side).
 - [ ] Kill the network mid-sync; app stays responsive; reconnects when back.
 
+### Early Windows validation (before feature expansion)
+- [ ] Add Linux and Windows CI for engine/workspace checks, tests and frontend build; document required system dependencies.
+- [ ] On Windows, boot the existing Tauri shell and smoke-test WebView2 mail rendering, basic compose/keyboard handling, and Credential Manager.
+- [ ] Record actual results; a cross-compile alone is not a Windows runtime smoke test.
+
+### Reliability gate
+- [ ] Before mutations on a real inbox, exercise safe move/expunge fallback, UIDVALIDITY validation, dependent pending operations and restart recovery.
+- [ ] Test ambiguous SMTP acceptance separately from safe-to-retry failure; surface unknown outcomes rather than blindly resending.
+- [ ] Add a minimal scripted transport seam and offline/crash/migration tests; do not wait for the Outlook abstraction package.
+- [ ] Obtain the Gmail test account/Cloud project; run the early comparison and begin domain/privacy/scope preparation.
+
 ### Hygiene
 - [ ] Update `CLAUDE.md` "Where things stand" to reflect a compiled, running app, and list any API gotchas found.
-- [ ] Optional, 30 minutes: `.github/workflows/check.yml` running `cargo check --workspace` and `npm run build` on
-      `ubuntu-latest` with the webkit deps. Cheap insurance; the full matrix waits for Sprint 14.
+- [ ] Require `.github/workflows/check.yml` on PRs with Linux and Windows checks/tests and frontend builds. Package 14 extends it for release artifacts later.
 
 ## Cut first
-The optional CI workflow, then the offline test. Do not cut the undo round-trip test; it exercises the outbox.
+Editor/style configuration polish. Never cut CI, offline/restart tests, early Windows validation or the undo round-trip test to meet a calendar date.
 
 ## Acceptance
-- `cargo test --workspace` and `npm run build` pass on the Omarchy machine.
+- `cargo test --workspace` and `npm run build` pass on Linux and Windows; the early Windows smoke-test result is recorded.
 - The five "first real account" checks pass against Fastmail.
 - `store_bench` numbers recorded below and within the README targets, or a note on what missed and why.
 

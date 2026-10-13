@@ -4,6 +4,9 @@ The single source of truth for how Tern looks and behaves on screen. Sprint file
 built; this file says *what it must look like*. If a sprint needs something not covered here, add it here
 first, then build it.
 
+Delivery scope comes from `docs/PLAN.md`: future screens in this spec are not first-release requirements.
+Use the roadmap's end-to-end performance evidence; a signal-update timing is not input-to-paint latency.
+
 Direction (owner's decision): **match Superhuman's look and feel as closely as reasonable.** Dense,
 calm, keyboard-first, one accent colour, no chrome.
 
@@ -192,7 +195,7 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 [ ] Light and dark screenshots attached to the PR, dense density
 [ ] Focus visible at all times; Esc behaves per §5
 [ ] Keys shown on hover / in the palette for every new action
-[ ] j/k keypress → paint < 5 ms with the perf overlay on a 10k list (attach the overlay screenshot)
+[ ] j/k input-to-visible-response p50/p95 measured on a 10k list during sync; no visible lag/focus jumps (attach evidence; do not substitute signal-update timing)
 [ ] Resize to 720 × 480 and to 1920 wide: nothing overlaps or clips
 [ ] prefers-reduced-motion respected
 [ ] Empty, loading (> 300 ms), error and offline states exist for the new screen

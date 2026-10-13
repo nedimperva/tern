@@ -2,7 +2,15 @@
 
 **Status:** todo
 
-**Week 12.** Microsoft accounts through IMAP + OAuth, and the `MailBackend` trait so the Gmail API (and
+## Delivery scope
+
+**M4 — expansion, deferred from first release.** Outlook support is not a prerequisite for the initial Gmail decision or Windows. The backend boundary and scripted transport tests move earlier when needed by M0/M2. The trait sketch below is a candidate, not a requirement to wait for Outlook.
+
+Package number is a stable ID, not a delivery week. [PLAN.md](../PLAN.md) defines order and release gates.
+
+## Overview
+
+Microsoft accounts through IMAP + OAuth, and the `MailBackend` trait so the Gmail API (and
 later Graph) can sit next to IMAP.
 
 Prerequisites: an Outlook.com or Microsoft 365 test account, and a Microsoft Entra app registration (steps in
@@ -11,7 +19,7 @@ Prerequisites: an Outlook.com or Microsoft 365 test account, and a Microsoft Ent
 ## Goal
 
 "Continue with Microsoft" adds an Outlook.com or M365 account, syncs via `outlook.office365.com`, sends via
-`smtp.office365.com`. The sync worker talks to a `MailBackend` trait; IMAP is one implementation.
+`smtp.office365.com`. Use the existing tested transport boundary; extract or extend a production `MailBackend` only when needed.
 
 ## Tasks
 
@@ -49,9 +57,10 @@ Prerequisites: an Outlook.com or Microsoft 365 test account, and a Microsoft Ent
 - [ ] `Sink` receives parsed headers/bodies and writes to the store; both IMAP and API backends produce the same `NewMessage`.
 - [ ] Tests: a `FakeBackend` that replays a scripted mailbox; the worker's tests move onto it.
 
-### Gmail API go/no-go (decision gate, end of week)
-- [ ] Spend half a day measuring what IMAP+X-GM misses: label colours, category tabs without IMAP exposure, `history.list` cheapness vs QRESYNC on All Mail, drafts fidelity, send-as aliases, vacation settings.
-- [ ] Write the recommendation into `docs/research/stack.md`. If "go", Sprint 12 is the Gmail API; if "no-go", Sprint 12 becomes Windows and the rest shifts up.
+### Gmail decision is no longer gated on Outlook
+The initial transport decision happens during M0 using
+[the Gmail decision checklist](../research/gmail-backend-decision.md). Do not schedule an automatic
+Gmail rewrite here. Revisit a second Gmail transport only as separately approved expansion work.
 
 ## Cut first
 Throttling hints, M365 MX detection.
@@ -59,7 +68,7 @@ Throttling hints, M365 MX detection.
 ## Acceptance
 - Add an Outlook.com account via the browser; inbox syncs; send and receive work; archive lands in `Archive`.
 - Revoke the app at `account.live.com/consent/Manage` → "Sign in again" banner, no crash.
-- All engine tests pass against `FakeBackend`; the IMAP integration path is unchanged (Fastmail and Gmail re-tested).
+- Scripted transport tests established in M0 remain green; the IMAP integration path is unchanged (Fastmail and Gmail re-tested).
 
 ## Decisions
 
