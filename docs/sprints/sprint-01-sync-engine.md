@@ -1,6 +1,6 @@
 # Sprint 1 — Sync engine v2
 
-**Status:** todo
+**Status:** in progress · started 2026-10-13
 
 ## Delivery scope
 
