@@ -26,6 +26,15 @@ ALTER TABLE outbox ADD COLUMN gave_up_at INTEGER;   -- when retrying stopped; NU
 ```
 Given-up rows stay (never dropped silently) and keep their UIDs pending for sync until retried or discarded.
 
+## v4 — package 01, headers first (implemented 2026-10-14)
+```sql
+ALTER TABLE messages ADD COLUMN size INTEGER;                                  -- RFC822.SIZE
+ALTER TABLE messages ADD COLUMN body_state TEXT NOT NULL DEFAULT 'full';       -- 'none' | 'wanted' | 'full'
+CREATE INDEX messages_bodyless ON messages (folder_id, date DESC) WHERE body_state != 'full';
+```
+Rows from before v4 have their bodies, hence the default. A headers-only row has no `bodies` row and is in the
+search index by subject and sender only, until `fill_bodies` replaces its index entry.
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'
@@ -33,9 +42,7 @@ ALTER TABLE accounts ADD COLUMN provider TEXT;                                 -
 ALTER TABLE accounts ADD COLUMN caps TEXT NOT NULL DEFAULT '{}';               -- JSON: condstore, qresync, move, idle, gmail_ext
 ALTER TABLE accounts ADD COLUMN state TEXT NOT NULL DEFAULT 'ok';              -- 'ok' | 'auth-failed' | 'disabled'
 
-ALTER TABLE messages ADD COLUMN size INTEGER;
 ALTER TABLE messages ADD COLUMN bodystructure TEXT;                            -- JSON
-ALTER TABLE messages ADD COLUMN body_state TEXT NOT NULL DEFAULT 'none';       -- 'none' | 'snippet' | 'full'
 ALTER TABLE messages ADD COLUMN cc_addrs TEXT NOT NULL DEFAULT '';
 ALTER TABLE messages ADD COLUMN in_reply_to TEXT;
 ALTER TABLE messages ADD COLUMN refs TEXT;                                     -- References header, space-separated

@@ -33,8 +33,14 @@ const FETCH_CHUNK: usize = 50;
 const FETCH_BYTES: u64 = 4_000_000;
 /// The slowest download we still wait for when fetching mail bodies.
 const MIN_BYTES_PER_SECOND: u64 = 100_000;
-/// New messages per folder per pass; the rest come on later passes, newest first.
-const PER_PASS: usize = 500;
+/// New messages per folder per pass; the rest come on later passes, newest first. Headers only, so this is cheap.
+const PER_PASS: usize = 2_000;
+/// Messages per header FETCH.
+const HEADER_CHUNK: usize = 500;
+/// Bodies are fetched ahead of time for mail this recent; older mail gets its body when it is opened.
+const BODY_DAYS: i64 = 90;
+/// Rows looked at per round of body fetching.
+const BODY_ROUND: i64 = 200;
 /// Longest one IMAP command may take. Without a limit, a reply the parser never finishes leaves the worker waiting
 /// forever, and with it new mail and the outbox.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
@@ -153,6 +159,13 @@ async fn pass(
     if drain_outbox(s, store, account, password).await? {
         on_change();
     }
+    // Messages someone opened before their body came: those first, whatever folder they are in.
+    for (folder_id, name) in store.folders_with_wanted_bodies(account.id)? {
+        within(s.select(&name)).await.with_context(|| format!("Could not open {name}"))?;
+        let opened_only = i64::MAX;
+        fetch_bodies(s, store, folder_id, &name, opened_only, Instant::now() + BACKFILL_BUDGET, on_change)
+            .await?;
+    }
     // Every folder gets its new mail looked for, but old mail only comes down until the deadline; the next pass
     // starts at once and carries on, after the outbox and inbox have had their turn.
     let deadline = Instant::now() + BACKFILL_BUDGET;
@@ -253,39 +266,85 @@ async fn sync_folder(
     new.sort_unstable_by(|a, b| b.cmp(a));
     let mut more = new.len() > PER_PASS;
     new.truncate(PER_PASS);
-    let sizes: HashMap<u32, u32> = if new.is_empty() {
-        HashMap::new()
-    } else {
-        within(s.sizes(&uid_set(&new)))
-            .await
-            .with_context(|| format!("Could not read message sizes in {name}"))?
-    };
-    let batches = by_size(&new, &sizes);
-    for (i, chunk) in batches.iter().enumerate() {
-        if Instant::now() >= deadline {
-            more = true;
-            log::debug!("{name}: {} batches left for the next pass", batches.len() - i);
-            break;
-        }
-        // TODO: fetch headers and a short text part first, and whole bodies (BODY.PEEK[]) behind them.
+    // Headers first: a few hundred bytes a message, so the list fills in a round trip or two. Bodies follow.
+    for chunk in new.chunks(HEADER_CHUNK) {
         let set = uid_set(chunk);
-        let bytes: u64 = chunk.iter().map(|u| sizes.get(u).copied().unwrap_or(0) as u64).sum();
-        log::debug!("fetching {name} UIDs {set} ({} kB)", bytes / 1000);
-        // Big mail takes longer to come down, so the limit grows with the batch.
-        let limit = COMMAND_TIMEOUT + Duration::from_secs(bytes / MIN_BYTES_PER_SECOND);
-        let fetches = within_for(limit, s.bodies(&set))
-            .await
-            .with_context(|| format!("Could not fetch {name} UIDs {set}"))?;
-        let batch: Vec<NewMessage> = fetches
+        let fetched =
+            within(s.headers(&set)).await.with_context(|| format!("Could not fetch headers in {name}"))?;
+        // io-imap drops a response it cannot parse without an error; say so, or the message silently never shows.
+        if fetched.len() < chunk.len() {
+            log::warn!(
+                "{name}: the server's answer for {} of {} messages could not be read",
+                chunk.len() - fetched.len(),
+                chunk.len()
+            );
+        }
+        let batch: Vec<NewMessage> = fetched
             .iter()
-            .filter_map(|f| mime::parse(f.uid, f.body.as_deref()?, f.seen, f.flagged))
+            .filter_map(|f| mime::parse_headers(f.uid, f.header.as_deref()?, f.seen, f.flagged, f.size))
             .collect();
         store.insert_messages(account_id, folder_id, &batch)?;
         on_change();
     }
+    if fetch_bodies(s, store, folder_id, name, now() - BODY_DAYS * 86_400, deadline, on_change).await? {
+        more = true;
+    }
 
     store.set_folder_state(folder_id, mailbox.uid_validity, mailbox.uid_next)?;
     Ok((changed, more))
+}
+
+/// Fills in bodies for rows that have only headers: opened ones first, then the newest received since `since`,
+/// until `deadline`. Returns true when some are left for a later pass.
+async fn fetch_bodies(
+    s: &mut Session,
+    store: &Store,
+    folder_id: i64,
+    name: &str,
+    since: i64,
+    deadline: Instant,
+    on_change: &(dyn Fn() + Send + Sync),
+) -> Result<bool> {
+    loop {
+        let needed = store.bodies_needed(folder_id, since, BODY_ROUND)?;
+        if needed.is_empty() {
+            return Ok(false);
+        }
+        let uids: Vec<u32> = needed.iter().map(|(uid, _)| *uid).collect();
+        let sizes: HashMap<u32, u32> =
+            needed.iter().filter_map(|(uid, size)| Some((*uid, (*size)?))).collect();
+        let mut filled = 0;
+        for chunk in by_size(&uids, &sizes) {
+            if Instant::now() >= deadline {
+                return Ok(true);
+            }
+            let set = uid_set(chunk);
+            let bytes: u64 = chunk.iter().map(|u| sizes.get(u).copied().unwrap_or(0) as u64).sum();
+            log::debug!("fetching {name} bodies {set} ({} kB)", bytes / 1000);
+            // Big mail takes longer to come down, so the limit grows with the batch.
+            let limit = COMMAND_TIMEOUT + Duration::from_secs(bytes / MIN_BYTES_PER_SECOND);
+            let fetched = within_for(limit, s.bodies(&set))
+                .await
+                .with_context(|| format!("Could not fetch {name} bodies {set}"))?;
+            // A body that does not parse is stored empty rather than fetched again and again.
+            let batch: Vec<NewMessage> = fetched
+                .iter()
+                .map(|f| {
+                    f.body
+                        .as_deref()
+                        .and_then(|raw| mime::parse(f.uid, raw, f.seen, f.flagged))
+                        .unwrap_or_else(|| NewMessage { uid: f.uid, ..Default::default() })
+                })
+                .collect();
+            filled += store.fill_bodies(folder_id, &batch)?;
+            on_change();
+        }
+        // Nothing came back for any of them (gone from the server): leave them to the next pass's cleanup
+        // instead of asking again now.
+        if filled == 0 {
+            return Ok(false);
+        }
+    }
 }
 
 /// Sends everything due. Returns true when there was anything.

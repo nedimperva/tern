@@ -19,7 +19,9 @@ decisions that aren't visible from the code.
 - Schema changes go through `store::migrate()` (numbered steps on top of the v1 `SCHEMA`), each with a test that
   starts from the previous version. See `docs/research/data-model.md`.
 - Gotchas: IMAP sockets need `TCP_NODELAY` (about 40 ms per command without it); io-imap's `starttls()` reads the
-  greeting itself; its `auth_login` is SASL `AUTHENTICATE LOGIN`, the IMAP `LOGIN` command is `login`.
+  greeting itself; its `auth_login` is SASL `AUTHENTICATE LOGIN`, the IMAP `LOGIN` command is `login`. It drops a
+  response it cannot parse without an error (an X-GM-* item, a malformed literal): compare what came back with what
+  was asked for.
 - The user is moving to Linux first: **Omarchy** (Arch + Hyprland, Wayland). Linux is now the primary target;
   Windows comes later.
 

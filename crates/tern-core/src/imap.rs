@@ -24,8 +24,8 @@ use io_imap::rfc3501::select::ImapMailboxSelectOptions;
 use io_imap::rfc3501::store::ImapMessageStoreOptions;
 use io_imap::rfc6851::r#move::ImapMessageMoveOptions;
 use io_imap::sasl::auth_plain::ImapAuthPlainOptions;
-use io_imap::types::core::Vec1;
-use io_imap::types::fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName};
+use io_imap::types::core::{AString, Vec1};
+use io_imap::types::fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Section};
 use io_imap::types::flag::{Flag, FlagFetch, StoreType};
 use io_imap::types::mailbox::{ListMailbox, Mailbox};
 use io_imap::types::response::Capability;
@@ -64,14 +64,19 @@ pub enum Idled {
     Quiet,
 }
 
-/// What a FETCH returned for one message. `size` and `body` are there only when asked for.
+/// What a FETCH returned for one message. `size`, `header` and `body` are there only when asked for.
 pub struct Fetched {
     pub uid: u32,
     pub seen: bool,
     pub flagged: bool,
     pub size: Option<u32>,
+    pub header: Option<Vec<u8>>,
     pub body: Option<Vec<u8>>,
 }
+
+/// The header fields the list and threading need; the rest of the header comes with the body.
+const LIST_HEADERS: [&str; 8] =
+    ["FROM", "TO", "CC", "DATE", "SUBJECT", "MESSAGE-ID", "IN-REPLY-TO", "REFERENCES"];
 
 pub struct Imap<S> {
     conn: Conn<S>,
@@ -220,6 +225,23 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
         Ok(fetched.into_iter().filter_map(|f| Some((f.uid, f.size?))).collect())
     }
 
+    /// Header fields, size and flags: what the list needs, a few hundred bytes a message.
+    pub async fn headers(&mut self, uids: &str) -> Result<Vec<Fetched>> {
+        let fields = LIST_HEADERS.map(|f| AString::try_from(f).expect("valid atom")).to_vec();
+        let header = MessageDataItemName::BodyExt {
+            section: Some(Section::HeaderFields(None, Vec1::try_from(fields)?)),
+            partial: None,
+            peek: true,
+        };
+        let items = vec![
+            MessageDataItemName::Uid,
+            MessageDataItemName::Flags,
+            MessageDataItemName::Rfc822Size,
+            header,
+        ];
+        self.fetch(uids, items).await
+    }
+
     /// Whole messages, without marking them read.
     pub async fn bodies(&mut self, uids: &str) -> Result<Vec<Fetched>> {
         let body = MessageDataItemName::BodyExt { section: None, partial: None, peek: true };
@@ -342,7 +364,7 @@ fn mailbox_name(mailbox: &Mailbox) -> String {
 }
 
 fn fetched_from(items: Vec<MessageDataItem<'static>>) -> Option<Fetched> {
-    let mut f = Fetched { uid: 0, seen: false, flagged: false, size: None, body: None };
+    let mut f = Fetched { uid: 0, seen: false, flagged: false, size: None, header: None, body: None };
     for item in items {
         match item {
             MessageDataItem::Uid(uid) => f.uid = uid.get(),
@@ -356,7 +378,13 @@ fn fetched_from(items: Vec<MessageDataItem<'static>>) -> Option<Fetched> {
                 }
             }
             MessageDataItem::Rfc822Size(size) => f.size = Some(size),
-            MessageDataItem::BodyExt { data, .. } => f.body = data.0.map(|d| d.as_ref().to_vec()),
+            MessageDataItem::BodyExt { section, data, .. } => {
+                let bytes = data.0.map(|d| d.as_ref().to_vec());
+                match section {
+                    Some(Section::HeaderFields(..)) => f.header = bytes,
+                    _ => f.body = bytes,
+                }
+            }
             _ => {}
         }
     }
@@ -669,5 +697,27 @@ mod tests {
         imap.select("INBOX").await.unwrap();
         assert_eq!(imap.idle(Duration::from_millis(200)).await.unwrap(), Idled::Quiet);
         assert_eq!(sent.lock().unwrap().last().unwrap(), "DONE");
+    }
+
+    #[tokio::test]
+    async fn fetches_header_fields_without_the_body() {
+        let (stream, sent) = signed_in(
+            "{tag} OK [CAPABILITY IMAP4rev1] in\r\n",
+            vec![(
+                "UID FETCH 4 (UID FLAGS RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES)])",
+                "* 1 FETCH (UID 4 FLAGS (\\Seen) RFC822.SIZE 52000 BODY[HEADER.FIELDS (FROM SUBJECT)] {28}\r\n\
+                 From: a@b.c\r\nSubject: Hi\r\n\r\n)\r\n{tag} OK done\r\n",
+            )],
+        );
+        let mut imap = Imap::open(stream, "ada", "x").await.unwrap();
+        let fetched = imap.headers("4").await.unwrap();
+        let f = &fetched[0];
+        assert_eq!((f.uid, f.seen, f.size), (4, true, Some(52000)));
+        assert_eq!(f.header.as_deref(), Some(&b"From: a@b.c\r\nSubject: Hi\r\n\r\n"[..]));
+        assert!(f.body.is_none());
+        assert!(
+            sent.lock().unwrap().iter().any(|c| c.contains("BODY.PEEK[HEADER.FIELDS")),
+            "must not mark read"
+        );
     }
 }
