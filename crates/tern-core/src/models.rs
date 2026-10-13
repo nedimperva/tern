@@ -177,6 +177,16 @@ pub enum OutboxOp {
     Send(Draft),
 }
 
+/// Where a folder's sync stands, kept between passes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FolderState {
+    pub uid_validity: Option<u32>,
+    /// UIDNEXT once every message below it is here. None while new mail is still to fetch, so the next pass looks.
+    pub uid_next: Option<u32>,
+    /// The modification sequence every flag change and expunge up to has been applied from (CONDSTORE/QRESYNC).
+    pub highest_modseq: Option<i64>,
+}
+
 /// Queued work Tern stopped retrying, waiting for the person to retry or discard it.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

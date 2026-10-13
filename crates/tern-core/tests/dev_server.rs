@@ -104,16 +104,20 @@ async fn send_and_find(config: &AccountConfig) {
         body: "Sent by the dev-server checks.".into(),
         in_reply_to: None,
     };
+    let mut s = sign_in().await;
+    s.select("INBOX").await.unwrap();
+    let before = s.uids().await.unwrap();
     tern_core::smtp::send(config, &password(), &draft).await.unwrap();
 
-    let mut s = sign_in().await;
+    // Other checks deliver mail at the same time: look at everything that arrived since, not just the newest.
     for _ in 0..20 {
         s.select("INBOX").await.unwrap();
-        let newest = *s.uids().await.unwrap().iter().max().unwrap();
-        let body = s.bodies(&newest.to_string()).await.unwrap().remove(0).body.unwrap();
-        if String::from_utf8_lossy(&body).contains(&subject) {
-            s.logout().await.unwrap();
-            return;
+        for uid in s.uids().await.unwrap().difference(&before) {
+            let body = s.bodies(&uid.to_string()).await.unwrap().remove(0).body.unwrap();
+            if String::from_utf8_lossy(&body).contains(&subject) {
+                s.logout().await.unwrap();
+                return;
+            }
         }
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }

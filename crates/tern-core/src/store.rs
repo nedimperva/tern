@@ -297,26 +297,33 @@ impl Store {
         Ok(folders)
     }
 
-    /// (UIDVALIDITY, UIDNEXT) as of the last sync.
-    pub fn folder_state(&self, folder_id: i64) -> Result<(Option<u32>, Option<u32>)> {
+    /// What the last sync left behind for a folder.
+    pub fn folder_state(&self, folder_id: i64) -> Result<FolderState> {
         Ok(self.conn().query_row(
-            "SELECT uid_validity, uid_next FROM folders WHERE id = ?1",
+            "SELECT uid_validity, uid_next, highest_modseq FROM folders WHERE id = ?1",
             [folder_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok(FolderState { uid_validity: r.get(0)?, uid_next: r.get(1)?, highest_modseq: r.get(2)? }),
         )?)
     }
 
-    pub fn set_folder_state(
-        &self,
-        folder_id: i64,
-        uid_validity: Option<u32>,
-        uid_next: Option<u32>,
-    ) -> Result<()> {
+    pub fn set_folder_state(&self, folder_id: i64, state: &FolderState) -> Result<()> {
         self.conn().execute(
-            "UPDATE folders SET uid_validity = ?2, uid_next = ?3 WHERE id = ?1",
-            params![folder_id, uid_validity, uid_next],
+            "UPDATE folders SET uid_validity = ?2, uid_next = ?3, highest_modseq = ?4 WHERE id = ?1",
+            params![folder_id, state.uid_validity, state.uid_next, state.highest_modseq],
         )?;
         Ok(())
+    }
+
+    /// (seen, flagged) of one message, for tests.
+    #[cfg(test)]
+    pub(crate) fn flags_of(&self, folder_id: i64, uid: u32) -> Option<(bool, bool)> {
+        self.conn()
+            .query_row(
+                "SELECT seen, flagged FROM messages WHERE folder_id = ?1 AND uid = ?2",
+                params![folder_id, uid],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok()
     }
 
     /// The server renumbered the folder (UIDVALIDITY changed): forget what we know of it.
