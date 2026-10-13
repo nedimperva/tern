@@ -149,6 +149,11 @@ See [the work-package process](sprints/README.md) and [UI spec](design/ui.md).
 the milestone delivery order. Owner reaffirmed that AI is wanted but optional. This revision records those
 product decisions; it does not claim an implemented feature, selected Gmail transport, or passed release gate.
 
+2026-10-13 — Owner chose, **provisionally**, the Gmail API as the Gmail backend and `io-imap` as the IMAP library
+(package 01 gate; evidence in `docs/research/stack.md`). The Gmail comparison still runs in M0 and can reopen
+both before Gmail-specific code is written. M0 testing uses a local Stalwart server instead of Fastmail
+(Fastmail app passwords need a paid plan); real-provider acceptance waits for the owner's provider choice.
+
 Research: [stack](research/stack.md), [Gmail OAuth](research/gmail-oauth.md),
 [Gmail decision](research/gmail-backend-decision.md), [Microsoft OAuth](research/microsoft-oauth.md),
 [data model](research/data-model.md), [Superhuman reference](research/superhuman-reference.md).

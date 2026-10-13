@@ -8,7 +8,7 @@ release scope; calendar, advanced contacts and optional AI are expansion, not co
 
 | Need | Choice | Alternatives considered | Why |
 |---|---|---|---|
-| IMAP | **pending owner decision** (package 01 gate, probed 2026-10-13): `async-imap` 0.12 or `io-imap` 0.7 | `imap-next` 0.3 alone (sans-I/O, no command layer); `imap-client` (archived May 2026, moved to `io-imap`); `imap` (sync) | Both pass the probe at equal speed. `io-imap` has first-class QRESYNC and COPYUID but drops Gmail X-GM-* FETCHes; `async-imap` parses X-GM-* but loses QRESYNC changes past 100 unless drained. See the probe results below. |
+| IMAP | **`io-imap` 0.7, provisional** (owner, 2026-10-13; package 01 gate) | `async-imap` 0.12 (probed); `imap-next` 0.3 alone (no command layer); `imap-client` (archived May 2026, moved to `io-imap`); `imap` (sync) | Equal speed in the probe. First-class QRESYNC and COPYUID, which package 01's sync needs. Its Gmail X-GM-* gap does not matter with Gmail on the API (also provisional). Risks: young, alpha parser, build workaround; contained by pinning and one engine module. See the probe results below. |
 | TLS | `rustls` (`tokio-rustls`, `rustls-platform-verifier`) | `native-tls` (current) | No OpenSSL on Windows/CI, OS trust store via the platform verifier, one code path. `lettre` has `tokio1-rustls-tls`. |
 | SMTP | `lettre` 0.11 | own minimal client | Mature, async, MIME builder, XOAUTH2 via `Mechanism::Xoauth2`. |
 | MIME parse | `mail-parser` (bump to latest 0.11.x) | `mailparse` | Fast, zero-copy, handles broken mail; used by Stalwart. |
@@ -51,7 +51,7 @@ Not checked here: Gmail and Fastmail behaviour against real accounts, and IDLE a
 **Speed:** equal once `TCP_NODELAY` is set. Without it, async-imap's split writes cost ~40 ms per command on
 loopback (Nagle + delayed ACK). Tern's current `sync.rs` does not set it: fix regardless of the library.
 
-**Recommendation:** tied to the Gmail backend decision.
+**Decision (owner, 2026-10-13, provisional):** io-imap, with Gmail on the API. Recommendation as given:
 - Gmail via **API** (Fastmail and others on IMAP): **io-imap**. QRESYNC and COPYUID are what package 01's sync
   design needs, built in and typed; X-GM-* does not matter. Pin versions and keep the `nom/alloc` workaround.
 - Gmail via **IMAP**: **async-imap**, unless io-imap gains X-GM-* support first (upstream change in imap-codec).
