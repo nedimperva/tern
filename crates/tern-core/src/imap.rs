@@ -34,6 +34,8 @@ use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 
+use crate::models::Security;
+
 /// Largest single server response accepted; a message body arrives as one response.
 const MAX_RESPONSE: u32 = 100 * 1024 * 1024;
 
@@ -65,13 +67,43 @@ pub struct Imap<S> {
 
 pub type TlsImap = Imap<TlsStream<TcpStream>>;
 
-/// Connects with implicit TLS (port 993 style) and signs in.
-pub async fn connect(host: &str, port: u16, username: &str, password: &str) -> Result<TlsImap> {
+/// Connects, encrypts the connection as `security` says, and signs in.
+pub async fn connect(
+    host: &str,
+    port: u16,
+    security: Security,
+    username: &str,
+    password: &str,
+) -> Result<TlsImap> {
     let tcp = open_tcp(host, port).await?;
     let name =
         ServerName::try_from(host.to_string()).with_context(|| format!("{host} is not a valid host name"))?;
-    let tls = tls_connector()?.connect(name, tcp).await.context("Could not make a secure connection")?;
-    Imap::open(tls, username, password).await
+    match security {
+        Security::Tls => {
+            let tls =
+                tls_connector()?.connect(name, tcp).await.context("Could not make a secure connection")?;
+            Imap::open(tls, username, password).await
+        }
+        Security::Starttls => {
+            let mut plain = Conn::new(tcp);
+            // starttls() reads the greeting itself, then sends STARTTLS.
+            let after_ok = plain.starttls().await.context("The server did not start TLS")?;
+            // RFC 3501 forbids anything after the OK; bytes there could only be an attacker's commands waiting
+            // to be read as if they came over TLS.
+            if !after_ok.is_empty() {
+                bail!("The server sent data before TLS started; refusing the connection");
+            }
+            // A server that answered NO fails here at the handshake: there is no fall back to plain text.
+            let tls = tls_connector()?
+                .connect(name, plain.stream)
+                .await
+                .context("Could not make a secure connection")?;
+            let mut conn = Conn { stream: tls, fragmentizer: plain.fragmentizer };
+            // Capabilities from before TLS cannot be trusted; ask again.
+            let capabilities = conn.capability().await?;
+            Imap::sign_in(conn, &capabilities, username, password).await
+        }
+    }
 }
 
 /// A TCP connection with Nagle's algorithm off. IMAP is many small commands that each wait for a reply; with
@@ -101,10 +133,19 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
     pub async fn open(stream: S, username: &str, password: &str) -> Result<Self> {
         let mut conn = Conn::new(stream);
         let greeting = conn.greeting().await.context("Could not read the server's greeting")?;
+        Self::sign_in(conn, &greeting.capability, username, password).await
+    }
+
+    async fn sign_in(
+        mut conn: Conn<S>,
+        offered: &[Capability<'static>],
+        username: &str,
+        password: &str,
+    ) -> Result<Self> {
         // AUTHENTICATE PLAIN sends the password base64-encoded, so no server has to unquote it; some
         // (SmarterMail) reject LOGIN's quoted string when the password holds quotes, backslashes or non-ASCII
         // letters. LOGIN is only for servers that do not offer PLAIN.
-        let plain = greeting.capability.iter().any(|c| c.to_string().eq_ignore_ascii_case("AUTH=PLAIN"));
+        let plain = offered.iter().any(|c| c.to_string().eq_ignore_ascii_case("AUTH=PLAIN"));
         let capabilities = if plain {
             let opts = ImapAuthPlainOptions { ensure_capabilities: true, ..Default::default() };
             conn.auth_plain(None, username, password, opts).await
@@ -480,5 +521,29 @@ mod tests {
         imap.logout().await.unwrap();
         // A plain EXPUNGE would also delete other mail someone marked deleted.
         assert!(!sent.lock().unwrap().iter().any(|c| c.contains("EXPUNGE")));
+    }
+
+    /// A server that slips a response in right after its STARTTLS OK, while the line is still plain text.
+    #[tokio::test]
+    async fn refuses_data_injected_before_starttls() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (sock, _) = listener.accept().await.unwrap();
+            let (r, mut w) = tokio::io::split(sock);
+            w.write_all(b"* OK [CAPABILITY IMAP4rev1 STARTTLS] ready\r\n").await.unwrap();
+            let mut line = String::new();
+            BufReader::new(r).read_line(&mut line).await.unwrap();
+            let tag = line.split_whitespace().next().unwrap().to_string();
+            w.write_all(
+                format!("{tag} OK Begin TLS\r\n* OK [CAPABILITY IMAP4rev1 AUTH=PLAIN] injected\r\n")
+                    .as_bytes(),
+            )
+            .await
+            .unwrap();
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        });
+        let err = connect("localhost", port, Security::Starttls, "ada", "x").await.err().unwrap();
+        assert!(format!("{err:#}").contains("before TLS started"), "{err:#}");
     }
 }

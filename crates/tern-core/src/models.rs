@@ -8,11 +8,38 @@ pub struct AccountConfig {
     pub display_name: String,
     pub username: String,
     pub imap_host: String,
-    /// Implicit TLS only for now (993). STARTTLS on 143 is a TODO.
     pub imap_port: u16,
+    pub imap_security: Security,
     pub smtp_host: String,
-    /// 465 is implicit TLS, anything else is STARTTLS.
     pub smtp_port: u16,
+    pub smtp_security: Security,
+}
+
+/// How a connection is encrypted. There is no unencrypted option: passwords never cross the network in clear.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Security {
+    /// TLS from the first byte (IMAP 993, SMTP 465).
+    Tls,
+    /// Plain connection upgraded with STARTTLS before signing in (IMAP 143, SMTP 587).
+    Starttls,
+}
+
+impl Security {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Tls => "tls",
+            Self::Starttls => "starttls",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "tls" => Some(Self::Tls),
+            "starttls" => Some(Self::Starttls),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

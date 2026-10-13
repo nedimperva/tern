@@ -27,8 +27,10 @@ fn main() -> anyhow::Result<()> {
         username: "bench@example.com".into(),
         imap_host: "imap.example.com".into(),
         imap_port: 993,
+        imap_security: tern_core::Security::Tls,
         smtp_host: "smtp.example.com".into(),
         smtp_port: 465,
+        smtp_security: tern_core::Security::Tls,
     })?;
     let inbox = store.upsert_folder(account.id, "INBOX", "inbox")?;
     store.upsert_folder(account.id, "Archive", "archive")?;

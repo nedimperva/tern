@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 
 use tern_core::imap::{self, TlsImap};
+use tern_core::models::{AccountConfig, Draft, Security};
 
 fn password() -> String {
     let dir = std::env::var_os("TERN_DEVMAIL").map(PathBuf::from).unwrap_or_else(|| {
@@ -16,7 +17,9 @@ fn password() -> String {
 }
 
 async fn sign_in() -> TlsImap {
-    imap::connect("localhost", 1993, "test@localhost", &password()).await.expect("is the dev server running?")
+    imap::connect("localhost", 1993, Security::Tls, "test@localhost", &password())
+        .await
+        .expect("is the dev server running?")
 }
 
 #[tokio::test]
@@ -65,27 +68,38 @@ async fn move_to_archive_and_back() {
 
 #[tokio::test]
 #[ignore = "needs scripts/dev-mail-server.sh start"]
-async fn sends_over_smtp_and_arrives() {
-    let config = tern_core::models::AccountConfig {
+async fn imap_starttls() {
+    let s =
+        imap::connect("localhost", 1143, Security::Starttls, "test@localhost", &password()).await.unwrap();
+    assert!(s.has("IMAP4REV1") || s.has("IMAP4REV2"));
+    s.logout().await.unwrap();
+}
+
+fn account(smtp_port: u16, smtp_security: Security) -> AccountConfig {
+    AccountConfig {
         email: "test@localhost".into(),
         display_name: "Tern test".into(),
         username: "test@localhost".into(),
         imap_host: "localhost".into(),
         imap_port: 1993,
+        imap_security: Security::Tls,
         smtp_host: "localhost".into(),
-        // Tern picks implicit TLS only for port 465, so the dev server's 1465 would be spoken to with STARTTLS
-        // and hang. 1587 is the dev server's STARTTLS submission port.
-        smtp_port: 1587,
-    };
-    let subject = format!("smtp check {}", std::process::id());
-    let draft = tern_core::models::Draft {
+        smtp_port,
+        smtp_security,
+    }
+}
+
+/// Sends through tern_core::smtp and waits for the message to show up in the inbox.
+async fn send_and_find(config: &AccountConfig) {
+    let subject = format!("smtp check {} {:?}", std::process::id(), config.smtp_security);
+    let draft = Draft {
         to: vec!["test@localhost".into()],
         cc: vec![],
         subject: subject.clone(),
-        body: "Sent by sends_over_smtp_and_arrives.".into(),
+        body: "Sent by the dev-server checks.".into(),
         in_reply_to: None,
     };
-    tern_core::smtp::send(&config, &password(), &draft).await.unwrap();
+    tern_core::smtp::send(config, &password(), &draft).await.unwrap();
 
     let mut s = sign_in().await;
     for _ in 0..20 {
@@ -99,4 +113,17 @@ async fn sends_over_smtp_and_arrives() {
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
     panic!("the message did not arrive in 5 s");
+}
+
+#[tokio::test]
+#[ignore = "needs scripts/dev-mail-server.sh start"]
+async fn sends_over_smtp_tls() {
+    // 1465 is implicit TLS on a non-standard port: the case port-guessing got wrong.
+    send_and_find(&account(1465, Security::Tls)).await;
+}
+
+#[tokio::test]
+#[ignore = "needs scripts/dev-mail-server.sh start"]
+async fn sends_over_smtp_starttls() {
+    send_and_find(&account(1587, Security::Starttls)).await;
 }

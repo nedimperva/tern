@@ -47,7 +47,7 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
       Done 2026-10-13: lettre uses `tokio1-rustls` + `ring` + `rustls-platform-verifier`; nothing links OpenSSL
       (`cargo tree -i openssl-sys` is empty). The grep still shows `openssl-probe`, a pure-Rust crate the platform
       verifier uses to find certificate files; it is not OpenSSL.
-- [ ] STARTTLS on 143 and 587 as a preset option; prefer implicit TLS (993/465) by default.
+- [x] STARTTLS on 143 and 587 as a preset option; prefer implicit TLS (993/465) by default.
 - [ ] Send `ID ("name" "Tern" "version" ... "contact" ...)` after login where `ID` is advertised (Gmail asks for it).
 
 ### Connections
@@ -128,3 +128,8 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   implicit TLS, anything else STARTTLS), so the dev server's implicit-TLS port 1465 hangs (both sides wait). Dev
   server gained STARTTLS submission on 1587, used by the new real send check. Next slice: an explicit security
   setting per account for IMAP and SMTP (schema migration), which also brings IMAP STARTTLS.
+- 2026-10-14 — Connection security stored per account (`imap_security`, `smtp_security`: tls or starttls), schema v2
+  with the first real migration framework (`store::migrate`). Presets set it; the account form has two selects that
+  follow the port (993/465 TLS, 143/587 STARTTLS). IMAP STARTTLS implemented, refusing bytes injected before TLS.
+  Real-server checks: IMAP STARTTLS on 1143, SMTP over TLS on 1465 (the port-guessing case) and STARTTLS on 1587.
+  UI checked by `npm run build` only; owner to look at the form in `tauri dev`.
