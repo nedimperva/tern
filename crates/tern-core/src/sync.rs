@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use tokio::sync::Notify;
 
 use crate::imap::{self, Idled, TlsImap};
-use crate::models::{Account, AccountConfig, NewMessage, OutboxOp};
+use crate::models::{Account, AccountConfig, FolderState, NewMessage, OutboxOp};
 use crate::store::{now, Store};
 use crate::{mime, smtp};
 
@@ -150,6 +150,8 @@ async fn pass(
         let mut fresh = tokio::time::timeout(COMMAND_TIMEOUT, connect(&account.config, password))
             .await
             .with_context(|| format!("No answer from {}", account.config.imap_host))??;
+        // Folders then report their changes as part of SELECT (sync_folder).
+        within(fresh.enable_qresync()).await?;
         discover_folders(&mut fresh, store, account.id).await?;
         on_change();
         *session = Some(fresh);
@@ -216,6 +218,9 @@ fn role(name: &str, attrs: &[String]) -> &'static str {
     }
 }
 
+/// (uid, seen, flagged) as the server has it.
+type FlagUpdate = (u32, bool, bool);
+
 /// Returns (the store changed, mail is left to fetch on a later pass).
 async fn sync_folder(
     s: &mut Session,
@@ -226,45 +231,79 @@ async fn sync_folder(
     deadline: Instant,
     on_change: &(dyn Fn() + Send + Sync),
 ) -> Result<(bool, bool)> {
-    let mailbox = within(s.select(name)).await.with_context(|| format!("Could not open {name}"))?;
+    let known = store.folder_state(folder_id)?;
+    // With QRESYNC and a folder synced before, the server says what changed since then as part of the SELECT.
+    let since = match (s.qresync(), known.uid_validity, known.highest_modseq) {
+        (true, Some(validity), Some(modseq)) if modseq > 0 => Some((validity, modseq as u64)),
+        _ => None,
+    };
+    let (mailbox, delta) = match since {
+        Some((validity, modseq)) => {
+            let r = within(s.select_since(name, validity, modseq))
+                .await
+                .with_context(|| format!("Could not open {name}"))?;
+            (r.selected, Some((r.vanished, r.changed)))
+        }
+        None => (within(s.select(name)).await.with_context(|| format!("Could not open {name}"))?, None),
+    };
     let mut changed = false;
 
-    let (known_validity, _) = store.folder_state(folder_id)?;
-    if known_validity.is_some() && known_validity != mailbox.uid_validity {
+    let renumbered = known.uid_validity.is_some() && known.uid_validity != mailbox.uid_validity;
+    if renumbered {
         store.reset_folder(folder_id)?;
         changed = true;
     }
-
-    let server: HashSet<u32> = if mailbox.exists == 0 { HashSet::new() } else { within(s.uids()).await? };
     let local = store.local_uids(folder_id)?;
     let pending = store.pending_uids(account_id, name)?;
+    let keep = |uid: &u32| local.contains(uid) && !pending.contains(uid);
 
-    let gone: Vec<u32> =
-        local.iter().filter(|u| !server.contains(u) && !pending.contains(u)).copied().collect();
+    let (gone, flag_updates, server): (Vec<u32>, Vec<FlagUpdate>, HashSet<u32>) = match delta {
+        // A change report is only good for the numbering it was made against.
+        Some((vanished, changes)) if !renumbered => {
+            let gone: Vec<u32> = vanished.into_iter().filter(|u| keep(u)).collect();
+            let updates: Vec<_> =
+                changes.iter().filter(|f| keep(&f.uid)).map(|f| (f.uid, f.seen, f.flagged)).collect();
+            // New mail moves UIDNEXT. Only then is a UID SEARCH worth its round trip; known.uid_next is None
+            // while an earlier pass left new mail unfetched.
+            let look_for_new = known.uid_next.is_none() || known.uid_next != mailbox.uid_next;
+            let server =
+                if look_for_new && mailbox.exists > 0 { within(s.uids()).await? } else { HashSet::new() };
+            log::debug!(
+                "{name}: QRESYNC, {} gone, {} flag changes, new mail check: {look_for_new}",
+                gone.len(),
+                updates.len()
+            );
+            (gone, updates, server)
+        }
+        // Without QRESYNC (or the first time): every UID and every flag.
+        _ => {
+            let server: HashSet<u32> =
+                if mailbox.exists == 0 { HashSet::new() } else { within(s.uids()).await? };
+            let gone: Vec<u32> = local.iter().filter(|u| !server.contains(u) && keep(u)).copied().collect();
+            let updates = if !local.is_empty() && mailbox.exists > 0 {
+                let fetches = within(s.flags("1:*"))
+                    .await
+                    .with_context(|| format!("Could not read flags in {name}"))?;
+                fetches.iter().filter(|f| keep(&f.uid)).map(|f| (f.uid, f.seen, f.flagged)).collect()
+            } else {
+                Vec::new()
+            };
+            (gone, updates, server)
+        }
+    };
     if !gone.is_empty() {
         store.remove_uids(folder_id, &gone)?;
         changed = true;
     }
-
-    // Flags of the mail already here. TODO: CONDSTORE/QRESYNC (FETCH … CHANGEDSINCE), so an unchanged folder costs
-    // one round trip instead of a line per message.
-    if !local.is_empty() && mailbox.exists > 0 {
-        let fetches =
-            within(s.flags("1:*")).await.with_context(|| format!("Could not read flags in {name}"))?;
-        let updates: Vec<(u32, bool, bool)> = fetches
-            .iter()
-            .filter(|f| !pending.contains(&f.uid) && local.contains(&f.uid))
-            .map(|f| (f.uid, f.seen, f.flagged))
-            .collect();
-        if store.update_flags(folder_id, &updates)? > 0 {
-            changed = true;
-        }
+    if store.update_flags(folder_id, &flag_updates)? > 0 {
+        changed = true;
     }
 
     let mut new: Vec<u32> =
         server.iter().filter(|u| !local.contains(u) && !pending.contains(u)).copied().collect();
     new.sort_unstable_by(|a, b| b.cmp(a));
     let mut more = new.len() > PER_PASS;
+    let mut all_new_fetched = !more;
     new.truncate(PER_PASS);
     // Headers first: a few hundred bytes a message, so the list fills in a round trip or two. Bodies follow.
     for chunk in new.chunks(HEADER_CHUNK) {
@@ -273,6 +312,7 @@ async fn sync_folder(
             within(s.headers(&set)).await.with_context(|| format!("Could not fetch headers in {name}"))?;
         // io-imap drops a response it cannot parse without an error; say so, or the message silently never shows.
         if fetched.len() < chunk.len() {
+            all_new_fetched = false;
             log::warn!(
                 "{name}: the server's answer for {} of {} messages could not be read",
                 chunk.len() - fetched.len(),
@@ -290,7 +330,13 @@ async fn sync_folder(
         more = true;
     }
 
-    store.set_folder_state(folder_id, mailbox.uid_validity, mailbox.uid_next)?;
+    let state = FolderState {
+        uid_validity: mailbox.uid_validity,
+        // Kept back while new mail is still to fetch, so the next pass searches for it again.
+        uid_next: if all_new_fetched { mailbox.uid_next } else { None },
+        highest_modseq: mailbox.highest_modseq.map(|m| m as i64),
+    };
+    store.set_folder_state(folder_id, &state)?;
     Ok((changed, more))
 }
 
@@ -462,5 +508,57 @@ mod tests {
         assert_eq!(role("[Gmail]/Spam", &[]), "junk");
         assert_eq!(role("Deleted Items", &[]), "trash");
         assert_eq!(role("Receipts", &[]), "other");
+    }
+
+    /// Two real sync passes against the dev mail server, with an outside flag change and move in between.
+    #[tokio::test]
+    #[ignore = "needs scripts/dev-mail-server.sh start; run with scripts/dev-mail-server.sh test"]
+    async fn second_pass_applies_outside_changes_through_qresync() {
+        use crate::models::{AccountConfig, Security};
+        use crate::store::Store;
+
+        let dir =
+            std::path::PathBuf::from(std::env::var_os("HOME").unwrap()).join(".local/share/tern-devmail");
+        let password = std::fs::read_to_string(dir.join("test-password")).unwrap().trim().to_string();
+        let config = AccountConfig {
+            email: "test@localhost".into(),
+            display_name: String::new(),
+            username: "test@localhost".into(),
+            imap_host: "localhost".into(),
+            imap_port: 1993,
+            imap_security: Security::Tls,
+            smtp_host: "localhost".into(),
+            smtp_port: 1465,
+            smtp_security: Security::Tls,
+        };
+        let store = Store::open_in_memory().unwrap();
+        let account = store.add_account(&config).unwrap();
+        let mut session = None;
+        let nothing = || {};
+        while super::pass(&store, &account, &password, &mut session, &nothing).await.unwrap() {}
+
+        let inbox =
+            store.folders_to_sync(account.id).unwrap().into_iter().find(|(_, n)| n == "INBOX").unwrap().0;
+        assert!(store.folder_state(inbox).unwrap().highest_modseq.is_some(), "the server keeps modseqs");
+        let local = store.local_uids(inbox).unwrap();
+        let (flag_me, move_me) = (*local.iter().min().unwrap(), *local.iter().max().unwrap());
+
+        // Outside Tern: star one message, move another away.
+        let mut other = super::connect(&config, &password).await.unwrap();
+        other.select("INBOX").await.unwrap();
+        let was_flagged = other.flags(&flag_me.to_string()).await.unwrap()[0].flagged;
+        other.store_flag(&flag_me.to_string(), "\\Flagged", !was_flagged).await.unwrap();
+        other.move_to(&move_me.to_string(), "Archive").await.unwrap();
+
+        while super::pass(&store, &account, &password, &mut session, &nothing).await.unwrap() {}
+        let local = store.local_uids(inbox).unwrap();
+        assert!(!local.contains(&move_me), "the moved message left the inbox");
+        let (_, flagged) = store.flags_of(inbox, flag_me).unwrap();
+        assert_eq!(flagged, !was_flagged, "the outside flag change arrived");
+
+        // Put the flag back so the test leaves the mailbox as it found it.
+        other.select("INBOX").await.unwrap();
+        other.store_flag(&flag_me.to_string(), "\\Flagged", was_flagged).await.unwrap();
+        other.logout().await.unwrap();
     }
 }
