@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
     secrets, sync, Account, AccountConfig, Action, Applied, Cursor, Draft, Folder, ListTarget, MessageRow,
-    ThreadMessage,
+    OutboxProblem, ThreadMessage,
 };
 
 use crate::{start_account, AppState, UNDO_SECONDS};
@@ -94,6 +94,32 @@ pub async fn undo(app: AppHandle, state: State<'_, AppState>, token: Vec<i64>) -
     let undone = state.store.undo(&token).map_err(text)?;
     let _ = app.emit("mail-changed", ());
     Ok(undone)
+}
+
+/// Work Tern stopped retrying, for the person to retry or discard.
+#[tauri::command]
+pub async fn problems(state: State<'_, AppState>) -> Reply<Vec<OutboxProblem>> {
+    state.store.outbox_problems().map_err(text)
+}
+
+#[tauri::command]
+pub async fn retry_problem(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<()> {
+    let account =
+        state.store.outbox_problems().map_err(text)?.into_iter().find(|p| p.id == id).map(|p| p.account_id);
+    state.store.retry_outbox(id).map_err(text)?;
+    if let Some(account) = account {
+        state.wake(account);
+    }
+    let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
+/// Drops the work and puts the mailbox back as it was before it, as undo would.
+#[tauri::command]
+pub async fn discard_problem(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<()> {
+    state.store.discard_outbox(id).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(())
 }
 
 /// Queues the message; it leaves after the undo window. Returns the undo token.
