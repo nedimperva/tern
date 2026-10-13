@@ -75,7 +75,7 @@ cargo run --release -p tern-core --example store_bench       # timings
 ### A local mail server for testing
 
 Development uses a local IMAP/SMTP server, never a real mailbox. `scripts/dev-mail-server.sh` sets up
-[Stalwart](https://stalw.art) 0.15 on 127.0.0.1 (IMAPS 1993, SMTPS 1465) with one test account and a local
+[Stalwart](https://stalw.art) 0.15 on 127.0.0.1 (IMAPS 1993, IMAP + STARTTLS 1143, SMTPS 1465) with one test account and a local
 test CA. Nothing needs root, and the system trust store is left alone: Tern trusts the test CA only when
 started through the script.
 

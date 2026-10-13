@@ -1,6 +1,6 @@
 # Sprint 1 — Sync engine v2
 
-**Status:** todo
+**Status:** in progress · started 2026-10-13
 
 ## Delivery scope
 
@@ -101,7 +101,17 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
 - 2026-10-13 — **Carried from package 00:** the async-imap upgrade (0.10 → current; 0.12 is out) and replacing
   the `Debug`-text folder-role parsing in `sync.rs` with a match on the library's attribute type. Owner moved both
   here so the IMAP library gate decides the version or the replacement first.
+- 2026-10-13 — **Decision gate: IMAP library.** Candidates changed since the plan: `imap-client` is archived
+  (moved to `io-imap`); owner chose to probe `async-imap` 0.12 against `io-imap` 0.7. Evidence and table:
+  `docs/research/stack.md` → "IMAP library probe". Both pass at equal speed with `TCP_NODELAY`. Deciding
+  differences: io-imap drops Gmail X-GM-* FETCHes silently; async-imap loses QRESYNC changes past 100 unless
+  drained, and does not return COPYUID. Recommendation depends on the Gmail backend: API → io-imap, IMAP →
+  async-imap. Owner decided (2026-10-13), **provisionally: io-imap**, together with the Gmail API for Gmail.
+  Confirm when the Gmail comparison runs. Conditions: pin exact versions, keep the `nom/alloc` workaround, keep
+  every io-imap call inside one engine module so a later swap touches one file, send fixes upstream.
 
 ## Log
 
-_No sessions yet._
+- 2026-10-13 — IMAP library probe (`crates/imap-probe`) against the local Stalwart server and a scripted Gmail fake.
+  Results in `docs/research/stack.md`. Found: Tern's sync sockets lack `TCP_NODELAY` (≈40 ms per command).
+  Gate waiting on owner, together with the Gmail backend decision.

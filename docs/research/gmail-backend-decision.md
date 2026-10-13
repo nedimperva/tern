@@ -1,6 +1,6 @@
 # Initial Gmail backend decision
 
-**Status:** pending owner decision. Run during M0, before Gmail-specific implementation.
+**Status:** provisional owner decision: **Gmail API** (2026-10-13). Confirm with the comparison below before Gmail-specific implementation.
 
 The initial release gets one Gmail backend, not an IMAP implementation followed automatically by an API
 rewrite. Fastmail remains the first supported IMAP provider. This comparison does not block unrelated
@@ -55,7 +55,11 @@ about exact burst behavior. Fetch the newest useful page first and backfill visi
 - [ ] Specify supported scopes, message identity/location mapping and required production adapter boundary.
 - [ ] Keep a second Gmail backend and user-facing switching out of initial-release scope.
 
-Decision: **pending**. Evidence: **not yet collected**. Nothing in the plan revision selects a winner.
+Decision: **API, provisional** (owner, 2026-10-13). Reasons given: the API is Google's long-term interface for
+Gmail (labels, threads and history natively), it allows a narrower scope than IMAP's full-mail scope, verification
+cost is the same on both paths, and it lets the IMAP library (io-imap) ignore Gmail's X-GM-* extensions it cannot
+parse. Evidence: **not yet collected**. The comparison still runs once the test account and Cloud project exist;
+a surprise there (for example quotas far worse than estimated) reopens the decision before any Gmail code exists.
 
 ## Verification and optional AI
 
