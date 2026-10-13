@@ -3,9 +3,10 @@
 //! Each pass: send what the person did (outbox), then per folder drop what the server no longer has, take its flags,
 //! and fetch what is new, newest first, a few hundred at a time so the inbox fills before the backlog.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use async_imap::types::{Fetch, Flag, Name};
@@ -21,10 +22,20 @@ pub type Session = async_imap::Session<async_native_tls::TlsStream<TcpStream>>;
 
 /// How often to look for new mail. TODO: IMAP IDLE on the inbox, so new mail shows the moment it lands.
 const POLL: Duration = Duration::from_secs(60);
-/// Messages per FETCH.
+/// How long one pass spends fetching mail that is already on the server before new mail and the outbox get
+/// another look.
+const BACKFILL_BUDGET: Duration = Duration::from_secs(15);
+/// Most messages per FETCH.
 const FETCH_CHUNK: usize = 50;
+/// Most bytes per FETCH, so one batch of big attachments doesn't become a single long wait.
+const FETCH_BYTES: u64 = 4_000_000;
+/// The slowest download we still wait for when fetching mail bodies.
+const MIN_BYTES_PER_SECOND: u64 = 100_000;
 /// New messages per folder per pass; the rest come on later passes, newest first.
 const PER_PASS: usize = 500;
+/// Longest one IMAP command may take. Without a limit, a reply the parser never finishes leaves the worker waiting
+/// forever, and with it new mail and the outbox.
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub async fn connect(config: &AccountConfig, password: &str) -> Result<Session> {
     let tcp = TcpStream::connect((config.imap_host.as_str(), config.imap_port))
@@ -34,10 +45,39 @@ pub async fn connect(config: &AccountConfig, password: &str) -> Result<Session> 
         .connect(config.imap_host.as_str(), tcp)
         .await
         .context("Could not make a secure connection")?;
-    async_imap::Client::new(tls)
-        .login(&config.username, password)
+    let mut client = async_imap::Client::new(tls);
+    // The greeting has to be read first: AUTHENTICATE would take it for its own reply and then wait forever.
+    client
+        .read_response()
         .await
-        .map_err(|(e, _)| anyhow::Error::from(e).context("The server refused the sign-in"))
+        .context("The server closed the connection")?
+        .context("Could not read the server's greeting")?;
+    // AUTHENTICATE PLAIN sends the password base64-encoded, so no server has to unquote it; some (SmarterMail)
+    // reject LOGIN's quoted string when the password holds quotes, backslashes or non-ASCII letters.
+    // A server without PLAIN answers BAD, and then we fall back to LOGIN. SmarterMail also answers BAD to a
+    // wrong password, so there a wrong password costs two attempts.
+    let plain = Plain { username: &config.username, password };
+    match client.authenticate("PLAIN", plain).await {
+        Ok(session) => Ok(session),
+        Err((async_imap::error::Error::Bad(_), client)) => client
+            .login(&config.username, password)
+            .await
+            .map_err(|(e, _)| anyhow::Error::from(e).context("The server refused the sign-in")),
+        Err((e, _)) => Err(anyhow::Error::from(e).context("The server refused the sign-in")),
+    }
+}
+
+struct Plain<'a> {
+    username: &'a str,
+    password: &'a str,
+}
+
+impl async_imap::Authenticator for Plain<'_> {
+    type Response = String;
+
+    fn process(&mut self, _challenge: &[u8]) -> String {
+        format!("\0{}\0{}", self.username, self.password)
+    }
 }
 
 /// Signs in and out, to check settings before an account is saved.
@@ -60,9 +100,10 @@ pub async fn run_account(
     let mut failures: u32 = 0;
     loop {
         let wait = match pass(&store, &account, &password, &mut session, &*on_change).await {
-            Ok(()) => {
+            Ok(more) => {
                 failures = 0;
                 match store.next_due(account.id) {
+                    _ if more => Duration::ZERO,
                     Ok(Some(due)) => Duration::from_secs((due - now()).max(0) as u64).min(POLL),
                     _ => POLL,
                 }
@@ -87,9 +128,11 @@ async fn pass(
     password: &str,
     session: &mut Option<Session>,
     on_change: &(dyn Fn() + Send + Sync),
-) -> Result<()> {
+) -> Result<bool> {
     if session.is_none() {
-        let mut fresh = connect(&account.config, password).await?;
+        let mut fresh = tokio::time::timeout(COMMAND_TIMEOUT, connect(&account.config, password))
+            .await
+            .with_context(|| format!("No answer from {}", account.config.imap_host))??;
         discover_folders(&mut fresh, store, account.id).await?;
         on_change();
         *session = Some(fresh);
@@ -99,16 +142,24 @@ async fn pass(
     if drain_outbox(s, store, account, password).await? {
         on_change();
     }
+    // Every folder gets its new mail looked for, but old mail only comes down until the deadline; the next pass
+    // starts at once and carries on, after the outbox and inbox have had their turn.
+    let deadline = Instant::now() + BACKFILL_BUDGET;
+    let mut more = false;
     for (folder_id, name) in store.folders_to_sync(account.id)? {
-        if sync_folder(s, store, account.id, folder_id, &name, on_change).await? {
+        let (changed, unfinished) = sync_folder(s, store, account.id, folder_id, &name, deadline, on_change).await?;
+        if changed {
             on_change();
         }
+        more |= unfinished;
     }
-    Ok(())
+    Ok(more)
 }
 
 async fn discover_folders(s: &mut Session, store: &Store, account_id: i64) -> Result<()> {
-    let names: Vec<Name> = s.list(Some(""), Some("*")).await?.try_collect().await?;
+    let names: Vec<Name> = within(async { s.list(Some(""), Some("*")).await?.try_collect().await })
+        .await
+        .context("Could not list folders")?;
     for name in &names {
         // async-imap's attribute type differs between versions; its debug text is stable enough to read roles from.
         let attrs: Vec<String> = name.attributes().iter().map(|a| format!("{a:?}").to_lowercase()).collect();
@@ -144,16 +195,17 @@ fn role(name: &str, attrs: &[String]) -> &'static str {
     }
 }
 
-/// Returns true when the store changed.
+/// Returns (the store changed, mail is left to fetch on a later pass).
 async fn sync_folder(
     s: &mut Session,
     store: &Store,
     account_id: i64,
     folder_id: i64,
     name: &str,
+    deadline: Instant,
     on_change: &(dyn Fn() + Send + Sync),
-) -> Result<bool> {
-    let mailbox = s.select(name).await.with_context(|| format!("Could not open {name}"))?;
+) -> Result<(bool, bool)> {
+    let mailbox = within(s.select(name)).await.with_context(|| format!("Could not open {name}"))?;
     let mut changed = false;
 
     let (known_validity, _) = store.folder_state(folder_id)?;
@@ -162,7 +214,7 @@ async fn sync_folder(
         changed = true;
     }
 
-    let server: HashSet<u32> = if mailbox.exists == 0 { HashSet::new() } else { s.uid_search("ALL").await? };
+    let server: HashSet<u32> = if mailbox.exists == 0 { HashSet::new() } else { within(s.uid_search("ALL")).await? };
     let local = store.local_uids(folder_id)?;
     let pending = store.pending_uids(account_id, name)?;
 
@@ -175,7 +227,9 @@ async fn sync_folder(
     // Flags of the mail already here. TODO: CONDSTORE/QRESYNC (FETCH … CHANGEDSINCE), so an unchanged folder costs
     // one round trip instead of a line per message.
     if !local.is_empty() && mailbox.exists > 0 {
-        let fetches: Vec<Fetch> = s.uid_fetch("1:*", "(UID FLAGS)").await?.try_collect().await?;
+        let fetches: Vec<Fetch> = within(async { s.uid_fetch("1:*", "(UID FLAGS)").await?.try_collect().await })
+            .await
+            .with_context(|| format!("Could not read flags in {name}"))?;
         let updates: Vec<(u32, bool, bool)> = fetches
             .iter()
             .filter_map(|f| {
@@ -194,10 +248,34 @@ async fn sync_folder(
 
     let mut new: Vec<u32> = server.iter().filter(|u| !local.contains(u) && !pending.contains(u)).copied().collect();
     new.sort_unstable_by(|a, b| b.cmp(a));
+    let mut more = new.len() > PER_PASS;
     new.truncate(PER_PASS);
-    for chunk in new.chunks(FETCH_CHUNK) {
+    let sizes: HashMap<u32, u32> = if new.is_empty() {
+        HashMap::new()
+    } else {
+        let fetches: Vec<Fetch> =
+            within(async { s.uid_fetch(uid_set(&new), "(UID RFC822.SIZE)").await?.try_collect().await })
+                .await
+                .with_context(|| format!("Could not read message sizes in {name}"))?;
+        fetches.iter().filter_map(|f| Some((f.uid?, f.size?))).collect()
+    };
+    let batches = by_size(&new, &sizes);
+    for (i, chunk) in batches.iter().enumerate() {
+        if Instant::now() >= deadline {
+            more = true;
+            log::debug!("{name}: {} batches left for the next pass", batches.len() - i);
+            break;
+        }
         // TODO: fetch headers and a short text part first, and whole bodies (BODY.PEEK[]) behind them.
-        let fetches: Vec<Fetch> = s.uid_fetch(uid_set(chunk), "(UID FLAGS BODY.PEEK[])").await?.try_collect().await?;
+        let set = uid_set(chunk);
+        let bytes: u64 = chunk.iter().map(|u| sizes.get(u).copied().unwrap_or(0) as u64).sum();
+        log::debug!("fetching {name} UIDs {set} ({} kB)", bytes / 1000);
+        // Big mail takes longer to come down, so the limit grows with the batch.
+        let limit = COMMAND_TIMEOUT + Duration::from_secs(bytes / MIN_BYTES_PER_SECOND);
+        let fetches: Vec<Fetch> =
+            within_for(limit, async { s.uid_fetch(&set, "(UID FLAGS BODY.PEEK[])").await?.try_collect().await })
+                .await
+                .with_context(|| format!("Could not fetch {name} UIDs {set}"))?;
         let batch: Vec<NewMessage> = fetches
             .iter()
             .filter_map(|f| {
@@ -210,7 +288,7 @@ async fn sync_folder(
     }
 
     store.set_folder_state(folder_id, mailbox.uid_validity, mailbox.uid_next)?;
-    Ok(changed)
+    Ok((changed, more))
 }
 
 /// Sends everything due. Returns true when there was anything.
@@ -239,7 +317,7 @@ async fn run_op(s: &mut Session, config: &AccountConfig, password: &str, op: &Ou
             if uids.is_empty() {
                 return Ok(());
             }
-            s.select(folder).await?;
+            within(s.select(folder)).await?;
             let query = format!("{}FLAGS.SILENT ({flag})", if *add { "+" } else { "-" });
             let _: Vec<Fetch> = s.uid_store(uid_set(uids), query).await?.try_collect().await?;
         }
@@ -247,7 +325,7 @@ async fn run_op(s: &mut Session, config: &AccountConfig, password: &str, op: &Ou
             if uids.is_empty() {
                 return Ok(());
             }
-            s.select(folder).await?;
+            within(s.select(folder)).await?;
             let set = uid_set(uids);
             if s.capabilities().await?.has_str("MOVE") {
                 s.uid_mv(&set, dest).await?;
@@ -261,6 +339,34 @@ async fn run_op(s: &mut Session, config: &AccountConfig, password: &str, op: &Ou
         OutboxOp::Send(draft) => smtp::send(config, password, draft).await?,
     }
     Ok(())
+}
+
+/// Runs one IMAP command, giving up after COMMAND_TIMEOUT.
+async fn within<T>(command: impl Future<Output = async_imap::error::Result<T>>) -> Result<T> {
+    within_for(COMMAND_TIMEOUT, command).await
+}
+
+async fn within_for<T>(limit: Duration, command: impl Future<Output = async_imap::error::Result<T>>) -> Result<T> {
+    Ok(tokio::time::timeout(limit, command).await.context("The server stopped answering")??)
+}
+
+/// Splits UIDs into batches of at most FETCH_CHUNK messages and FETCH_BYTES bytes; a message bigger than that
+/// goes alone.
+fn by_size<'a>(uids: &'a [u32], sizes: &HashMap<u32, u32>) -> Vec<&'a [u32]> {
+    let mut batches = Vec::new();
+    let (mut start, mut bytes) = (0, 0u64);
+    for (i, uid) in uids.iter().enumerate() {
+        let size = sizes.get(uid).copied().unwrap_or(0) as u64;
+        if i > start && (i - start == FETCH_CHUNK || bytes + size > FETCH_BYTES) {
+            batches.push(&uids[start..i]);
+            (start, bytes) = (i, 0);
+        }
+        bytes += size;
+    }
+    if start < uids.len() {
+        batches.push(&uids[start..]);
+    }
+    batches
 }
 
 fn flags(f: &Fetch) -> (bool, bool) {
@@ -281,7 +387,22 @@ fn uid_set(uids: &[u32]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::role;
+    use std::collections::HashMap;
+
+    use super::{by_size, role, FETCH_BYTES, FETCH_CHUNK};
+
+    #[test]
+    fn batches_by_count_and_size() {
+        let uids: Vec<u32> = (1..=120).collect();
+        let small: HashMap<u32, u32> = uids.iter().map(|&u| (u, 1_000)).collect();
+        let lens: Vec<usize> = by_size(&uids, &small).iter().map(|b| b.len()).collect();
+        assert_eq!(lens, [FETCH_CHUNK, FETCH_CHUNK, 20]);
+
+        let big = FETCH_BYTES as u32;
+        let sizes: HashMap<u32, u32> = [(1, 1_000), (2, big), (3, 1_000), (4, 1_000)].into();
+        let batches = by_size(&[1, 2, 3, 4], &sizes);
+        assert_eq!(batches, [&[1][..], &[2][..], &[3, 4][..]]);
+    }
 
     #[test]
     fn roles_from_attributes_and_names() {

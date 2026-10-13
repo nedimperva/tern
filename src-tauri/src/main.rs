@@ -45,6 +45,8 @@ pub fn start_account(app: &AppHandle, state: &AppState, account: Account) {
 }
 
 fn main() {
+    // Errors from the sync workers go to stderr; RUST_LOG=tern_core=debug shows each fetch as well.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
