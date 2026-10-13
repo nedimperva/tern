@@ -51,10 +51,10 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 - [ ] Send `ID ("name" "Tern" "version" ... "contact" ...)` after login where `ID` is advertised (Gmail asks for it).
 
 ### Connections
-- [ ] Two connections per account: one **idle** connection parked on the Inbox, one **worker** for everything else.
+- [x] Two connections per account: one **idle** connection parked on the Inbox, one **worker** for everything else.
       The idle connection only ever does `SELECT INBOX`, `IDLE`, `DONE`, `NOOP`.
 - [ ] Reconnect with exponential backoff (1 s → 60 s cap, jitter). Surface state to the UI via a `sync-state` event: `connecting | idle | syncing | offline | auth-failed`.
-- [ ] Re-issue `IDLE` every 25 minutes; servers drop at 30.
+- [x] Re-issue `IDLE` every 25 minutes; servers drop at 30.
 - [ ] Wake on resume from sleep: on Linux listen to `org.freedesktop.login1.Manager.PrepareForSleep` over D-Bus (`zbus`), or fall back to detecting a clock jump > 60 s.
 
 ### Incremental sync
@@ -138,3 +138,8 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   lost connection ends it (claimed work is released). Permanent refusals stop at once, others after 5 tries; given-up
   work waits in `Store::outbox_problems` (retry or discard, discard reverts like undo). Schema v3 (`gave_up_at`).
   Still open for the Retry-policy task: the "Sync problems" list in the UI (package 08, M1).
+- 2026-10-14 — IDLE: a second connection per account (`watch_inbox`) idles on the inbox and wakes the worker on any
+  change; re-issued every 25 min, reconnects with backoff, stops (polling stays) if the server has no IDLE. Measured
+  on the dev server: new mail in Tern's database 16, 64 and 72 ms after SMTP accepted it (was up to 60 s). Tests:
+  two fake-server IDLE cases, one real-server IDLE check. Open in "Connections": jittered 1 s → 60 s reconnect and
+  the `sync-state` event; sleep/resume.

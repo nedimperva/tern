@@ -125,10 +125,9 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 The roadmap controls delivery order; these are engine/UI work items, not a fixed weekly schedule.
 Choose the initial Gmail transport through the early [decision gate](docs/research/gmail-backend-decision.md).
 
-- IMAP IDLE on the inbox, so new mail appears within a second; replaces the 60-second poll in `sync.rs`
 - CONDSTORE/QRESYNC, so checking a folder that hasn't changed costs one round trip
 - Fetch headers and a short preview first, then whole bodies, so a new account fills its inbox faster
-- STARTTLS on port 143, plus OAuth (XOAUTH2) for Gmail and Microsoft, since Microsoft no longer accepts passwords
+- OAuth for Gmail (Gmail API) and Microsoft, since Microsoft no longer accepts passwords
 - A conversation list (one row per thread) in place of the current one row per message
 - Saving drafts to the server, attachments in compose, and copying sent mail to Sent where the server doesn't
 - Notifications, a tray icon, starting at login, and auto-update on Windows
