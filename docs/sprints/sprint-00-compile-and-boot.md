@@ -20,10 +20,10 @@ archive / star / mark-read / send reach the server after the 5-second undo windo
 ## Tasks
 
 ### Toolchain
-- [ ] Install on the Omarchy machine: `sudo pacman -S --needed base-devel rustup nodejs npm webkit2gtk-4.1 libappindicator-gtk3 librsvg openssl gnome-keyring libsecret`, `rustup default stable`.
-- [ ] Pin the toolchain: `rust-toolchain.toml` with `channel = "stable"` and `components = ["rustfmt", "clippy"]`.
-- [ ] Add `LICENSE` (MIT, copyright Nedim Perva), fill `license = "MIT"` in all `Cargo.toml` and `package.json`.
-- [ ] `.editorconfig`, `rustfmt.toml` (max_width 110 to match existing style), `.gitattributes` already present.
+- [x] Install on the Omarchy machine: `sudo pacman -S --needed base-devel rustup nodejs npm webkit2gtk-4.1 libappindicator-gtk3 librsvg openssl gnome-keyring libsecret`, `rustup default stable`.
+- [x] Pin the toolchain: `rust-toolchain.toml` with `channel = "stable"` and `components = ["rustfmt", "clippy"]`.
+- [x] Add `LICENSE` (MIT, copyright Nedim Perva), fill `license = "MIT"` in all `Cargo.toml` and `package.json`.
+- [x] `.editorconfig`, `rustfmt.toml` (max_width 110 to match existing style), `.gitattributes` already present.
 
 ### Make `tern-core` compile
 - [ ] Bump `async-imap` to `0.11` (active again: 0.11.2, Feb 2026). Read `docs.rs/async-imap/0.11` and fix
