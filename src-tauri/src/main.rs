@@ -79,6 +79,9 @@ fn main() {
             commands::apply,
             commands::undo,
             commands::send,
+            commands::problems,
+            commands::retry_problem,
+            commands::discard_problem,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tern");

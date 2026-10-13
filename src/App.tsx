@@ -1,6 +1,7 @@
 import { batch, createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
-import { api, type Account, type Action, type Folder, type MessageRow as Row, type Target, type ThreadMessage } from "./api";
+import { api, type Account, type Action, type Folder, type MessageRow as Row, type OutboxProblem, type Target, type ThreadMessage } from "./api";
 import { AccountSetup } from "./components/AccountSetup";
+import { ProblemsDialog, ProblemsStrip } from "./components/Problems";
 import { CommandBar, type Command } from "./components/CommandBar";
 import { Compose, type ComposeInit } from "./components/Compose";
 import { MessageRow } from "./components/MessageRow";
@@ -36,12 +37,14 @@ export default function App() {
   const [palette, setPalette] = createSignal(false);
   const [setup, setSetup] = createSignal(false);
   const [ready, setReady] = createSignal(false);
+  const [problems, setProblems] = createSignal<OutboxProblem[]>([]);
+  const [reviewing, setReviewing] = createSignal(false);
   let searchInput!: HTMLInputElement;
   let exhausted = false;
   let generation = 0;
 
   const current = () => rows()[selected()];
-  const overlay = () => palette() || compose() !== null || setup();
+  const overlay = () => reviewing() || palette() || compose() !== null || setup();
 
   // MARK: Loading
 
@@ -70,10 +73,11 @@ export default function App() {
   }
 
   async function refresh() {
-    const [a, f] = await Promise.all([api.accounts(), api.folders()]);
+    const [a, f, p] = await Promise.all([api.accounts(), api.folders(), api.problems()]);
     batch(() => {
       setAccounts(a);
       setFolders(f);
+      setProblems(p);
       setReady(true);
     });
     await load();
@@ -196,6 +200,7 @@ export default function App() {
     { name: "Undo", keys: "z", run: undo },
     { name: "Go to All Inboxes", keys: "g i", run: () => go({ role: "inbox" }) },
     { name: "Add account", run: () => setSetup(true) },
+    ...(problems().length ? [{ name: "Review changes that didn't go through", run: () => setReviewing(true) }] : []),
     ...folders().map((f) => ({
       name: `Go to ${ROLE_NAMES[f.role] ?? f.name} — ${accounts().find((a) => a.id === f.accountId)?.email ?? ""}`,
       run: () => go({ folder: f.id }),
@@ -322,6 +327,9 @@ export default function App() {
             {(row, index) => <MessageRow row={row} selected={index() === selected()} onClick={() => setSelected(index())} />}
           </VirtualList>
         </Show>
+        <Show when={problems().length}>
+          <ProblemsStrip count={problems().length} onOpen={() => setReviewing(true)} />
+        </Show>
       </main>
 
       <section class="reading-pane">
@@ -341,6 +349,14 @@ export default function App() {
             </Show>
           </div>
         )}
+      </Show>
+      <Show when={reviewing()}>
+        <ProblemsDialog
+          problems={problems()}
+          onRetry={(id) => void api.retryProblem(id).then(refresh)}
+          onDiscard={(id) => void api.discardProblem(id).then(refresh)}
+          onClose={() => setReviewing(false)}
+        />
       </Show>
       <Show when={palette()}>
         <CommandBar commands={commands()} onClose={() => setPalette(false)} />
