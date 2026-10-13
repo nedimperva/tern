@@ -4,14 +4,18 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+/** "tls": encrypted from the first byte (IMAP 993, SMTP 465). "starttls": upgraded before sign-in (IMAP 143, SMTP 587). */
+export type Security = "tls" | "starttls";
 export type AccountConfig = {
   email: string;
   displayName: string;
   username: string;
   imapHost: string;
   imapPort: number;
+  imapSecurity: Security;
   smtpHost: string;
   smtpPort: number;
+  smtpSecurity: Security;
 };
 export type Account = AccountConfig & { id: number };
 export type Folder = { id: number; accountId: number; name: string; role: string; unread: number };
@@ -39,7 +43,15 @@ export type Action = "archive" | "trash" | "markRead" | "markUnread" | "star" | 
 export type Target = { folder: number } | { role: string };
 export type Cursor = { date: number; id: number };
 export type Draft = { to: string[]; cc?: string[]; subject: string; body: string; inReplyTo?: string | null };
-export type Preset = { imapHost: string; imapPort: number; smtpHost: string; smtpPort: number; note: string | null };
+export type Preset = {
+  imapHost: string;
+  imapPort: number;
+  imapSecurity: Security;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecurity: Security;
+  note: string | null;
+};
 export type Applied = { token: number[]; accounts: number[] };
 
 export interface Api {
@@ -85,8 +97,10 @@ function fake(): Api {
     username: "you@example.com",
     imapHost: "imap.example.com",
     imapPort: 993,
+    imapSecurity: "tls",
     smtpHost: "smtp.example.com",
     smtpPort: 465,
+    smtpSecurity: "tls",
   };
   const folders: Folder[] = [
     { id: 1, accountId: 1, name: "INBOX", role: "inbox", unread: 0 },
@@ -129,7 +143,15 @@ function fake(): Api {
     accounts: async () => [account],
     folders: async () =>
       folders.map((f) => ({ ...f, unread: messages.filter((m) => m.folderId === f.id && !m.seen).length })),
-    preset: async () => ({ imapHost: "imap.example.com", imapPort: 993, smtpHost: "smtp.example.com", smtpPort: 465, note: null }),
+    preset: async () => ({
+      imapHost: "imap.example.com",
+      imapPort: 993,
+      imapSecurity: "tls",
+      smtpHost: "smtp.example.com",
+      smtpPort: 465,
+      smtpSecurity: "tls",
+      note: null,
+    }),
     addAccount: async (config) => ({ ...config, id: 1 }),
     list: async (target, before, limit) =>
       messages

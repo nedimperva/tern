@@ -1,5 +1,8 @@
 import { createSignal, Show } from "solid-js";
-import { api, type Account, type AccountConfig } from "../api";
+import { api, type Account, type AccountConfig, type Security } from "../api";
+
+/** The security each standard port implies, so typing a port also picks the right setting. */
+const PORT_SECURITY: Record<number, Security> = { 993: "tls", 143: "starttls", 465: "tls", 587: "starttls" };
 
 export function AccountSetup(props: { onAdded: (a: Account) => void; onClose?: () => void }) {
   const [config, setConfig] = createSignal<AccountConfig>({
@@ -8,8 +11,10 @@ export function AccountSetup(props: { onAdded: (a: Account) => void; onClose?: (
     username: "",
     imapHost: "",
     imapPort: 993,
+    imapSecurity: "tls",
     smtpHost: "",
     smtpPort: 465,
+    smtpSecurity: "tls",
   });
   const [password, setPassword] = createSignal("");
   const [note, setNote] = createSignal<string | null>(null);
@@ -17,7 +22,12 @@ export function AccountSetup(props: { onAdded: (a: Account) => void; onClose?: (
   const [busy, setBusy] = createSignal(false);
   const [advanced, setAdvanced] = createSignal(false);
 
-  const set = <K extends keyof AccountConfig>(key: K, value: AccountConfig[K]) => setConfig({ ...config(), [key]: value });
+  const set = <K extends keyof AccountConfig>(key: K, value: AccountConfig[K]) => {
+    const next = { ...config(), [key]: value };
+    if (key === "imapPort" && PORT_SECURITY[value as number]) next.imapSecurity = PORT_SECURITY[value as number];
+    if (key === "smtpPort" && PORT_SECURITY[value as number]) next.smtpSecurity = PORT_SECURITY[value as number];
+    setConfig(next);
+  };
 
   // Fill the servers in from the address, the moment it is typed.
   const onEmail = async (email: string) => {
@@ -56,6 +66,16 @@ export function AccountSetup(props: { onAdded: (a: Account) => void; onClose?: (
     </label>
   );
 
+  const security = (label: string, key: "imapSecurity" | "smtpSecurity") => (
+    <label>
+      {label}
+      <select value={config()[key]} onChange={(e) => set(key, e.currentTarget.value as Security)}>
+        <option value="tls">TLS</option>
+        <option value="starttls">STARTTLS</option>
+      </select>
+    </label>
+  );
+
   return (
     <div class="overlay">
       <form class="setup" onSubmit={submit}>
@@ -80,9 +100,12 @@ export function AccountSetup(props: { onAdded: (a: Account) => void; onClose?: (
             {field("Username", "username")}
             {field("IMAP server", "imapHost")}
             {field("IMAP port", "imapPort", "number")}
+            {security("IMAP security", "imapSecurity")}
             {field("SMTP server", "smtpHost")}
             {field("SMTP port", "smtpPort", "number")}
+            {security("SMTP security", "smtpSecurity")}
           </div>
+          <p class="note">TLS is usually port 993 for IMAP and 465 for SMTP; STARTTLS is 143 and 587.</p>
         </Show>
         <Show when={error()}>
           <p class="error">{error()}</p>
