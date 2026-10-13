@@ -61,8 +61,13 @@ async fn move_to_archive_and_back() {
     }
     let back = back.expect("the moved message is in Archive");
     s.move_to(&back.to_string(), "INBOX").await.unwrap();
+    // Other checks deliver mail to the inbox at the same time, so look for this message rather than count.
     s.select("INBOX").await.unwrap();
-    assert_eq!(s.uids().await.unwrap().len(), before.len());
+    let mut found = false;
+    for u in s.uids().await.unwrap().difference(&before) {
+        found |= s.bodies(&u.to_string()).await.unwrap()[0].body.as_deref() == Some(&body[..]);
+    }
+    assert!(found, "the message is back in the inbox");
     s.logout().await.unwrap();
 }
 
@@ -140,4 +145,27 @@ async fn unknown_recipient_is_a_permanent_failure() {
     };
     let err = tern_core::smtp::send(&account(1465, Security::Tls), &password(), &draft).await.err().unwrap();
     assert!(tern_core::smtp::is_permanent(&err), "{err:#}");
+}
+
+#[tokio::test]
+#[ignore = "needs scripts/dev-mail-server.sh start"]
+async fn idle_wakes_on_new_mail() {
+    let mut s = sign_in().await;
+    assert!(s.has("IDLE"));
+    s.select("INBOX").await.unwrap();
+    let deliver = tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let draft = Draft {
+            to: vec!["test@localhost".into()],
+            cc: vec![],
+            subject: "idle check".into(),
+            body: "Wakes IDLE.".into(),
+            in_reply_to: None,
+        };
+        tern_core::smtp::send(&account(1465, Security::Tls), &password(), &draft).await.unwrap();
+    });
+    let outcome = s.idle(std::time::Duration::from_secs(10)).await.unwrap();
+    deliver.await.unwrap();
+    assert_eq!(outcome, imap::Idled::Changed);
+    s.logout().await.unwrap();
 }

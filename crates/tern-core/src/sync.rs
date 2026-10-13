@@ -11,15 +11,19 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tokio::sync::Notify;
 
-use crate::imap::{self, TlsImap};
+use crate::imap::{self, Idled, TlsImap};
 use crate::models::{Account, AccountConfig, NewMessage, OutboxOp};
 use crate::store::{now, Store};
 use crate::{mime, smtp};
 
 pub type Session = TlsImap;
 
-/// How often to look for new mail. TODO: IMAP IDLE on the inbox, so new mail shows the moment it lands.
+/// How often every folder is checked. The inbox does not wait for this when the server has IDLE: `watch_inbox`
+/// wakes the worker the moment something changes there.
 const POLL: Duration = Duration::from_secs(60);
+/// How long one IDLE lasts before it is ended and started again. Servers may drop a connection that has been idle
+/// for 30 minutes (RFC 2177), and middleboxes sooner.
+const IDLE_REFRESH: Duration = Duration::from_secs(25 * 60);
 /// How long one pass spends fetching mail that is already on the server before new mail and the outbox get
 /// another look.
 const BACKFILL_BUDGET: Duration = Duration::from_secs(15);
@@ -55,6 +59,7 @@ pub async fn run_account(
     wake: Arc<Notify>,
     on_change: Arc<dyn Fn() + Send + Sync>,
 ) {
+    tokio::spawn(watch_inbox(account.clone(), password.clone(), wake.clone()));
     let mut session: Option<Session> = None;
     let mut failures: u32 = 0;
     loop {
@@ -71,7 +76,7 @@ pub async fn run_account(
                 log::warn!("{}: {e:#}", account.config.email);
                 session = None;
                 failures += 1;
-                Duration::from_secs((5u64 << failures.min(6)).min(300))
+                backoff(failures)
             }
         };
         tokio::select! {
@@ -79,6 +84,53 @@ pub async fn run_account(
             _ = tokio::time::sleep(wait) => {}
         }
     }
+}
+
+/// Keeps a second connection in IDLE on the inbox and wakes the sync worker as soon as the server reports a change
+/// there. It only ever selects the inbox and idles, so it never competes with the worker's commands. Without IDLE
+/// on the server it stops, and the worker's poll is what finds new mail.
+async fn watch_inbox(account: Account, password: String, wake: Arc<Notify>) {
+    let email = &account.config.email;
+    let mut failures: u32 = 0;
+    loop {
+        let mut s = match within(connect(&account.config, &password)).await {
+            Ok(s) => s,
+            Err(e) => {
+                failures += 1;
+                log::warn!("{email}: inbox watch could not connect: {e:#}");
+                tokio::time::sleep(backoff(failures)).await;
+                continue;
+            }
+        };
+        failures = 0;
+        if !s.has("IDLE") {
+            log::info!(
+                "{email}: the server has no IDLE; new mail is found by polling every {}s",
+                POLL.as_secs()
+            );
+            let _ = s.logout().await;
+            return;
+        }
+        if let Err(e) = keep_idling(&mut s, &wake).await {
+            log::warn!("{email}: inbox watch stopped: {e:#}");
+            tokio::time::sleep(backoff(1)).await;
+        }
+    }
+}
+
+async fn keep_idling(s: &mut Session, wake: &Notify) -> Result<()> {
+    within(s.select("INBOX")).await?;
+    loop {
+        // idle() keeps its own deadline; the outer limit only catches a server that never answers DONE.
+        if within_for(IDLE_REFRESH + COMMAND_TIMEOUT, s.idle(IDLE_REFRESH)).await? == Idled::Changed {
+            wake.notify_one();
+        }
+    }
+}
+
+/// Wait before trying again after `failures` failures in a row: 10 s, 20 s, … up to 5 minutes.
+fn backoff(failures: u32) -> Duration {
+    Duration::from_secs((5u64 << failures.min(6)).min(300))
 }
 
 async fn pass(

@@ -6,12 +6,16 @@
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
+use std::mem;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use io_imap::client::{ImapClientAsync, ImapClientError};
 use io_imap::codec::fragmentizer::Fragmentizer;
 use io_imap::coroutine::{ImapCoroutine, ImapCoroutineState, ImapYield};
+use io_imap::rfc2177::idle::{ImapIdle, ImapIdleOptions, ImapIdleYield};
 use io_imap::rfc3501::copy::ImapMessageCopyOptions;
 use io_imap::rfc3501::fetch::ImapMessageFetchOptions;
 use io_imap::rfc3501::login::ImapLoginOptions;
@@ -49,6 +53,15 @@ pub struct Selected {
     pub exists: u32,
     pub uid_validity: Option<u32>,
     pub uid_next: Option<u32>,
+}
+
+/// How an IDLE ended.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Idled {
+    /// The server reported a change in the selected folder: new mail, a deletion, or changed flags.
+    Changed,
+    /// Nothing happened within the time limit.
+    Quiet,
 }
 
 /// What a FETCH returned for one message. `size` and `body` are there only when asked for.
@@ -234,6 +247,57 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
         let opts = ImapMessageStoreOptions { uid: true };
         self.conn.store(SequenceSet::try_from(uids)?, kind, vec![flag], opts).await?;
         Ok(())
+    }
+
+    /// Waits in IDLE on the selected folder until the server reports a change or `limit` passes, then ends the
+    /// IDLE with DONE so the connection can be used again.
+    pub async fn idle(&mut self, limit: Duration) -> Result<Idled> {
+        let done = Arc::new(AtomicBool::new(false));
+        // The coroutine's own refresh timer is pushed past `limit`; the deadline below decides when to stop.
+        let opts = ImapIdleOptions { timeout: Some(limit + Duration::from_secs(60)) };
+        let mut idle = ImapIdle::new(done.clone(), opts);
+        let deadline = tokio::time::Instant::now() + limit;
+        let mut outcome = Idled::Quiet;
+        let mut buf = vec![0u8; 16 * 1024];
+        let mut read: Option<usize> = None;
+        let mut sent_done = false;
+        loop {
+            match idle.resume(&mut self.conn.fragmentizer, read.take().map(|n| &buf[..n])) {
+                ImapCoroutineState::Complete(result) => {
+                    result.context("IDLE failed")?;
+                    return Ok(outcome);
+                }
+                ImapCoroutineState::Yielded(ImapIdleYield::WantsWrite(bytes)) => {
+                    self.conn.stream.write_all(&bytes).await?;
+                }
+                ImapCoroutineState::Yielded(ImapIdleYield::Event(_)) => {
+                    outcome = Idled::Changed;
+                    done.store(true, Ordering::SeqCst);
+                }
+                ImapCoroutineState::Yielded(ImapIdleYield::WantsRead) => {
+                    // Once `done` is set, resuming without bytes makes the coroutine send DONE; after that it
+                    // waits for the server's OK like any command.
+                    if done.load(Ordering::SeqCst) && !mem::replace(&mut sent_done, true) {
+                        continue;
+                    }
+                    let n = if sent_done {
+                        self.conn.stream.read(&mut buf).await?
+                    } else {
+                        tokio::select! {
+                            n = self.conn.stream.read(&mut buf) => n?,
+                            _ = tokio::time::sleep_until(deadline) => {
+                                done.store(true, Ordering::SeqCst);
+                                continue;
+                            }
+                        }
+                    };
+                    if n == 0 {
+                        bail!("the server hung up during IDLE");
+                    }
+                    read = Some(n);
+                }
+            }
+        }
     }
 
     /// Moves `uids` from the selected folder to `dest`. MOVE where the server has it; otherwise COPY, mark
@@ -569,5 +633,41 @@ mod tests {
         // The script is used up, so the fake server goes away: the next command hits a closed socket.
         let dropped = imap.select("INBOX").await.err().unwrap();
         assert!(connection_lost(&dropped), "{dropped:#}");
+    }
+
+    #[tokio::test]
+    async fn idle_ends_on_new_mail_and_the_connection_still_works() {
+        let (stream, sent) = signed_in(
+            "{tag} OK [CAPABILITY IMAP4rev1 IDLE] in\r\n",
+            vec![
+                ("SELECT INBOX", "* 2 EXISTS\r\n{tag} OK [READ-WRITE] s\r\n"),
+                ("IDLE", "+ idling\r\n* 3 EXISTS\r\n"),
+                ("DONE", "{tag} OK IDLE terminated\r\n"),
+                ("NOOP", "{tag} OK done\r\n"),
+            ],
+        );
+        let mut imap = Imap::open(stream, "ada", "x").await.unwrap();
+        imap.select("INBOX").await.unwrap();
+        let started = std::time::Instant::now();
+        assert_eq!(imap.idle(Duration::from_secs(30)).await.unwrap(), Idled::Changed);
+        assert!(started.elapsed() < Duration::from_secs(5), "woke on the event, not the time limit");
+        imap.conn.noop().await.unwrap();
+        assert_eq!(sent.lock().unwrap().last().unwrap(), "NOOP");
+    }
+
+    #[tokio::test]
+    async fn idle_returns_quiet_after_the_time_limit() {
+        let (stream, sent) = signed_in(
+            "{tag} OK [CAPABILITY IMAP4rev1 IDLE] in\r\n",
+            vec![
+                ("SELECT INBOX", "* 2 EXISTS\r\n{tag} OK [READ-WRITE] s\r\n"),
+                ("IDLE", "+ idling\r\n"),
+                ("DONE", "{tag} OK IDLE terminated\r\n"),
+            ],
+        );
+        let mut imap = Imap::open(stream, "ada", "x").await.unwrap();
+        imap.select("INBOX").await.unwrap();
+        assert_eq!(imap.idle(Duration::from_millis(200)).await.unwrap(), Idled::Quiet);
+        assert_eq!(sent.lock().unwrap().last().unwrap(), "DONE");
     }
 }
