@@ -72,6 +72,21 @@ cargo test --workspace                                       # all tests
 cargo run --release -p tern-core --example store_bench       # timings
 ```
 
+### A local mail server for testing
+
+Development uses a local IMAP/SMTP server, never a real mailbox. `scripts/dev-mail-server.sh` sets up
+[Stalwart](https://stalw.art) 0.15 on 127.0.0.1 (IMAPS 1993, SMTPS 1465) with one test account and a local
+test CA. Nothing needs root, and the system trust store is left alone: Tern trusts the test CA only when
+started through the script.
+
+```sh
+scripts/dev-mail-server.sh setup      # once: download (checksum-verified), CA, config, test account
+scripts/dev-mail-server.sh start      # in its own terminal
+scripts/dev-mail-server.sh seed 20    # an Archive folder and 20 test messages
+scripts/dev-mail-server.sh account    # what to type into "Add an account"
+scripts/dev-mail-server.sh tern       # npm run tauri dev, trusting the test CA
+```
+
 CI (`.github/workflows/check.yml`) runs on every pull request, on Linux and Windows: the frontend build, then
 `cargo fmt --check` (Linux), `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`.
 Run the same before pushing. The Linux job installs the Debian/Ubuntu packages listed above.
