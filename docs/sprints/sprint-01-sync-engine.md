@@ -43,7 +43,7 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 ## Tasks
 
 ### TLS and transport
-- [ ] Move to `rustls`: `tokio-rustls` + `rustls-platform-verifier` for IMAP; `lettre` features `tokio1-rustls-tls` (drop `native-tls`). No OpenSSL anywhere; `cargo tree | grep -i openssl` must be empty.
+- [ ] Move to `rustls`: `tokio-rustls` + `rustls-platform-verifier` for IMAP (**IMAP done**, io-imap slice); `lettre` features `tokio1-rustls-tls` (drop `native-tls`). No OpenSSL anywhere; `cargo tree | grep -i openssl` must be empty.
 - [ ] STARTTLS on 143 and 587 as a preset option; prefer implicit TLS (993/465) by default.
 - [ ] Send `ID ("name" "Tern" "version" ... "contact" ...)` after login where `ID` is advertised (Gmail asks for it).
 
@@ -80,7 +80,7 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 - [ ] `store_bench`: add "thread list page" and "thread open" timings.
 
 ### Outbox
-- [ ] `MOVE` (RFC 6851) when advertised, else `COPY` + `STORE \Deleted` + targeted `UID EXPUNGE` when supported. Without UIDPLUS, choose a conservative fallback; never globally EXPUNGE unrelated deleted mail.
+- [x] `MOVE` (RFC 6851) when advertised, else `COPY` + `STORE \Deleted` + targeted `UID EXPUNGE` when supported. Without UIDPLUS, choose a conservative fallback; never globally EXPUNGE unrelated deleted mail.
 - [ ] Validate mailbox identity/UIDVALIDITY before queued mutations; reconcile stale IDs. Preserve dependencies for actions on messages with pending moves.
 - [ ] Persist send identity/MIME and distinguish confirmed, failed and unknown outcomes; stable Message-ID alone does not make SMTP exactly-once.
 - [ ] `APPEND` sent mail to the Sent folder when the server does not copy it (detect via the preset / a one-time check).
@@ -115,3 +115,9 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
 - 2026-10-13 — IMAP library probe (`crates/imap-probe`) against the local Stalwart server and a scripted Gmail fake.
   Results in `docs/research/stack.md`. Found: Tern's sync sockets lack `TCP_NODELAY` (≈40 ms per command).
   Gate waiting on owner, together with the Gmail backend decision.
+- 2026-10-13 — Engine moved to io-imap (`src/imap.rs`, the only file using it) over rustls; async-imap, async-native-tls
+  and futures removed from tern-core. Sign-in picks PLAIN from advertised capabilities, else IMAP LOGIN (no more
+  double attempts on a wrong password). Folder roles come from real special-use attributes (carried task done).
+  Moves: MOVE, else COPY + \Deleted + UID EXPUNGE, and without UIDPLUS no expunge at all. Tests: 8 fake-server unit
+  tests, 2 opt-in checks against the dev server (`scripts/dev-mail-server.sh test`), live sync verified (new mail
+  and an outside flag change arrived within one 60 s poll). Open: lettre to rustls; then QRESYNC, IDLE, headers-first.

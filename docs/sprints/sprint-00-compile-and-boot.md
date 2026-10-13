@@ -79,7 +79,7 @@ Needs the Fastmail test account. Clean checkout of this branch on Windows 11.
 - [ ] Obtain the Gmail test account/Cloud project; run the early comparison and begin domain/privacy/scope preparation.
 
 ### Hygiene
-- [ ] Update `CLAUDE.md` "Where things stand" to reflect a compiled, running app, and list any API gotchas found.
+- [x] Update `CLAUDE.md` "Where things stand" to reflect a compiled, running app, and list any API gotchas found.
 - [ ] Require `.github/workflows/check.yml` on PRs with Linux and Windows checks/tests and frontend builds. Package 14 extends it for release artifacts later.
 
 ## Cut first
