@@ -4,7 +4,7 @@ use lettre::message::Mailbox;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
-use crate::models::{AccountConfig, Draft};
+use crate::models::{AccountConfig, Draft, Security};
 
 /// Sends a plain-text message.
 /// TODO: HTML and attachments; APPEND a copy to Sent on servers that do not keep one themselves.
@@ -24,10 +24,9 @@ pub async fn send(config: &AccountConfig, password: &str, draft: &Draft) -> Resu
     }
     let message = builder.header(ContentType::TEXT_PLAIN).body(draft.body.clone())?;
 
-    let transport = if config.smtp_port == 465 {
-        AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_host)?
-    } else {
-        AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host)?
+    let transport = match config.smtp_security {
+        Security::Tls => AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_host)?,
+        Security::Starttls => AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host)?,
     };
     transport
         .port(config.smtp_port)

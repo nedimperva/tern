@@ -411,14 +411,19 @@ button.primary kbd {
   font-size: 12px;
   color: var(--text-dim);
 }
-.setup label input {
+.setup label input,
+.setup label select {
   color: var(--text);
   font-size: 14px;
 }
+/* Username on its own row, then one row each for IMAP and SMTP: server, port, security. */
 .setup .grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 2fr 1fr 1fr;
   gap: 8px;
+}
+.setup .grid > label:first-child {
+  grid-column: 1 / -1;
 }
 .setup .link {
   align-self: flex-start;
