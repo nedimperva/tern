@@ -1,6 +1,6 @@
 # Sprint 0 — Compile and boot on Linux
 
-**Status:** todo
+**Status:** in progress · started 2026-10-13
 
 ## Delivery scope
 
