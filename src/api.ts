@@ -55,6 +55,15 @@ export type Preset = {
   note: string | null;
 };
 export type Applied = { token: number[]; accounts: number[] };
+/** Queued work Tern stopped retrying: it waits for the person to retry or discard it. */
+export type OutboxProblem = {
+  id: number;
+  accountId: number;
+  what: string;
+  attempts: number;
+  lastError: string;
+  gaveUpAt: number;
+};
 
 export interface Api {
   accounts(): Promise<Account[]>;
@@ -67,6 +76,10 @@ export interface Api {
   apply(ids: number[], action: Action): Promise<Applied>;
   undo(token: number[]): Promise<boolean>;
   send(accountId: number, draft: Draft): Promise<number[]>;
+  problems(): Promise<OutboxProblem[]>;
+  retryProblem(id: number): Promise<void>;
+  /** Drops the work and puts the mailbox back as it was before it, as undo would. */
+  discardProblem(id: number): Promise<void>;
   onChange(f: () => void): void;
   openUrl(url: string): void;
 }
@@ -80,6 +93,9 @@ const tauri: Api = {
   thread: (id) => invoke("thread", { id }),
   search: (query, limit) => invoke("search", { query, limit }),
   apply: (ids, action) => invoke("apply", { ids, action }),
+  problems: () => invoke("problems"),
+  retryProblem: (id) => invoke("retry_problem", { id }),
+  discardProblem: (id) => invoke("discard_problem", { id }),
   undo: (token) => invoke("undo", { token }),
   send: (accountId, draft) => invoke("send", { accountId, draft }),
   onChange: (f) => void listen("mail-changed", f),
@@ -135,6 +151,16 @@ function fake(): Api {
     };
   });
   const listeners: (() => void)[] = [];
+  let problems: OutboxProblem[] = [
+    {
+      id: 1,
+      accountId: 1,
+      what: "Send “Re: Quarterly numbers”",
+      attempts: 1,
+      lastError: "permanent error (550): 5.1.1 Recipient address rejected: no such user",
+      gaveUpAt: now,
+    },
+  ];
   const changed = () => listeners.forEach((f) => f());
   const pending = new Map<number, () => void>();
   let nextToken = 1;
@@ -194,6 +220,16 @@ function fake(): Api {
       return true;
     },
     send: async () => [nextToken++],
+    // One sample, so the problems strip can be worked on in a plain browser.
+    problems: async () => problems,
+    retryProblem: async (id) => {
+      problems = problems.filter((p) => p.id !== id);
+      changed();
+    },
+    discardProblem: async (id) => {
+      problems = problems.filter((p) => p.id !== id);
+      changed();
+    },
     onChange: (f) => void listeners.push(f),
     openUrl: (url) => void window.open(url, "_blank", "noopener"),
   };
