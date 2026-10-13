@@ -106,7 +106,9 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   `docs/research/stack.md` → "IMAP library probe". Both pass at equal speed with `TCP_NODELAY`. Deciding
   differences: io-imap drops Gmail X-GM-* FETCHes silently; async-imap loses QRESYNC changes past 100 unless
   drained, and does not return COPYUID. Recommendation depends on the Gmail backend: API → io-imap, IMAP →
-  async-imap. **Waiting on owner.**
+  async-imap. Owner decided (2026-10-13), **provisionally: io-imap**, together with the Gmail API for Gmail.
+  Confirm when the Gmail comparison runs. Conditions: pin exact versions, keep the `nom/alloc` workaround, keep
+  every io-imap call inside one engine module so a later swap touches one file, send fixes upstream.
 
 ## Log
 
