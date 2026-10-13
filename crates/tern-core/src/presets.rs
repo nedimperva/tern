@@ -41,18 +41,12 @@ pub fn for_email(email: &str) -> Option<Preset> {
             587,
             Some("iCloud needs an app-specific password (appleid.apple.com)."),
         ),
-        "yahoo.com" | "ymail.com" => known(
-            "imap.mail.yahoo.com",
-            "smtp.mail.yahoo.com",
-            465,
-            Some("Yahoo needs an app password."),
-        ),
-        "fastmail.com" | "fastmail.fm" => known(
-            "imap.fastmail.com",
-            "smtp.fastmail.com",
-            465,
-            Some("Fastmail needs an app password."),
-        ),
+        "yahoo.com" | "ymail.com" => {
+            known("imap.mail.yahoo.com", "smtp.mail.yahoo.com", 465, Some("Yahoo needs an app password."))
+        }
+        "fastmail.com" | "fastmail.fm" => {
+            known("imap.fastmail.com", "smtp.fastmail.com", 465, Some("Fastmail needs an app password."))
+        }
         "gmx.com" | "gmx.net" | "gmx.de" => known("imap.gmx.com", "mail.gmx.com", 587, None),
         _ => Preset {
             imap_host: format!("imap.{domain}"),

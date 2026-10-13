@@ -10,9 +10,8 @@ use crate::models::{AccountConfig, Draft};
 /// TODO: HTML and attachments; APPEND a copy to Sent on servers that do not keep one themselves.
 pub async fn send(config: &AccountConfig, password: &str, draft: &Draft) -> Result<()> {
     let name = Some(config.display_name.clone()).filter(|n| !n.is_empty());
-    let mut builder = Message::builder()
-        .from(Mailbox::new(name, config.email.parse()?))
-        .subject(draft.subject.clone());
+    let mut builder =
+        Message::builder().from(Mailbox::new(name, config.email.parse()?)).subject(draft.subject.clone());
     for to in &draft.to {
         builder = builder.to(to.parse()?);
     }
