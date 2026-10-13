@@ -13,8 +13,9 @@ decisions that aren't visible from the code.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items, so Gmail goes through the Gmail API (also provisional), not IMAP.
-- TLS for IMAP is rustls with the platform verifier, which honours `SSL_CERT_FILE`; the dev server's test CA is
-  trusted that way. SMTP still uses lettre with native-tls (OpenSSL) until its rustls move.
+- TLS is rustls with the platform verifier for IMAP and SMTP; nothing links OpenSSL. The verifier honours
+  `SSL_CERT_FILE`, which is how the dev server's test CA is trusted. SMTP security is still inferred from the port
+  (465 means implicit TLS, anything else STARTTLS) until accounts store it explicitly; on the dev server use 1587.
 - Gotchas: IMAP sockets need `TCP_NODELAY` (about 40 ms per command without it); io-imap's `starttls()` reads the
   greeting itself; its `auth_login` is SASL `AUTHENTICATE LOGIN`, the IMAP `LOGIN` command is `login`.
 - The user is moving to Linux first: **Omarchy** (Arch + Hyprland, Wayland). Linux is now the primary target;
