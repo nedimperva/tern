@@ -38,6 +38,8 @@ export type ThreadMessage = MessageRow & {
   toAddrs: string;
   bodyText: string | null;
   bodyHtml: string | null;
+  /** False while only the headers are here; opening the message asks for the body, and "mail-changed" follows. */
+  bodyLoaded: boolean;
 };
 export type Action = "archive" | "trash" | "markRead" | "markUnread" | "star" | "unstar";
 export type Target = { folder: number } | { role: string };
@@ -129,13 +131,14 @@ function fake(): Api {
       toAddrs: account.email,
       bodyText: body,
       bodyHtml: i % 3 === 0 ? `<div style="font-family:sans-serif"><h2>${subject}</h2><p>${body.replace(/\n/g, "<br>")}</p></div>` : null,
+      bodyLoaded: true,
     };
   });
   const listeners: (() => void)[] = [];
   const changed = () => listeners.forEach((f) => f());
   const pending = new Map<number, () => void>();
   let nextToken = 1;
-  const row = ({ messageId, toAddrs, bodyText, bodyHtml, ...r }: ThreadMessage): MessageRow => r;
+  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, ...r }: ThreadMessage): MessageRow => r;
   const inTarget = (m: ThreadMessage, t: Target) =>
     "folder" in t ? m.folderId === t.folder : folders.find((f) => f.id === m.folderId)?.role === t.role;
 

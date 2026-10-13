@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 /// Tries before queued work stops retrying and waits for the person.
 const MAX_ATTEMPTS: i64 = 5;
 
@@ -148,6 +148,13 @@ fn migrate(conn: &Connection) -> Result<()> {
             }
             // When queued work stopped retrying; NULL while it is still being tried.
             2 => "ALTER TABLE outbox ADD COLUMN gave_up_at INTEGER;",
+            // Headers first: a row can exist before its body. 'none' = headers only, 'wanted' = someone opened it,
+            // fetch it next, 'full' = body here. Rows from before this all have their bodies.
+            3 => {
+                "ALTER TABLE messages ADD COLUMN size INTEGER;
+                 ALTER TABLE messages ADD COLUMN body_state TEXT NOT NULL DEFAULT 'full';
+                 CREATE INDEX messages_bodyless ON messages (folder_id, date DESC) WHERE body_state != 'full';"
+            }
             _ => unreachable!("no migration from schema {from}"),
         };
         conn.execute_batch(&format!("BEGIN; {step}; PRAGMA user_version = {}; COMMIT;", from + 1))?;
@@ -350,23 +357,27 @@ impl Store {
                 }
             }
             let thread_id = thread_for(&tx, account_id, folder_id, m)?;
+            let body_state = if m.headers_only { "none" } else { "full" };
             let inserted = tx.execute(
                 "INSERT OR IGNORE INTO messages (account_id, folder_id, uid, message_id, thread_id, subject, from_name,
-                                                 from_addr, to_addrs, date, snippet, seen, flagged, has_attachments)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                                                 from_addr, to_addrs, date, snippet, seen, flagged, has_attachments,
+                                                 size, body_state)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
                 params![
                     account_id, folder_id, m.uid, m.message_id, thread_id, m.subject, m.from_name, m.from_addr,
-                    m.to_addrs, m.date, m.snippet, m.seen, m.flagged, m.has_attachments
+                    m.to_addrs, m.date, m.snippet, m.seen, m.flagged, m.has_attachments, m.size, body_state
                 ],
             )?;
             if inserted == 0 {
                 continue;
             }
             let id = tx.last_insert_rowid();
-            tx.execute(
-                "INSERT INTO bodies (message_id, text, html) VALUES (?1, ?2, ?3)",
-                params![id, m.body_text, m.body_html],
-            )?;
+            if !m.headers_only {
+                tx.execute(
+                    "INSERT INTO bodies (message_id, text, html) VALUES (?1, ?2, ?3)",
+                    params![id, m.body_text, m.body_html],
+                )?;
+            }
             tx.execute(
                 "INSERT INTO messages_fts (rowid, subject, from_name, from_addr, body) VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![id, m.subject, m.from_name, m.from_addr, m.body_text.as_deref().unwrap_or("")],
@@ -374,6 +385,86 @@ impl Store {
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Adds bodies to rows that arrived as headers only: snippet, attachment marker, the body itself, and the body
+    /// in the search index. Rows that already have a body are left alone. Returns how many were filled.
+    pub fn fill_bodies(&self, folder_id: i64, messages: &[NewMessage]) -> Result<usize> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let mut filled = 0;
+        for m in messages {
+            let row: Option<(i64, String, String, String)> = tx
+                .query_row(
+                    "SELECT id, subject, from_name, from_addr FROM messages
+                     WHERE folder_id = ?1 AND uid = ?2 AND body_state != 'full'",
+                    params![folder_id, m.uid],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                )
+                .optional()?;
+            let Some((id, subject, from_name, from_addr)) = row else { continue };
+            tx.execute(
+                "UPDATE messages SET snippet = ?2, has_attachments = ?3, body_state = 'full' WHERE id = ?1",
+                params![id, m.snippet, m.has_attachments],
+            )?;
+            tx.execute(
+                "INSERT OR REPLACE INTO bodies (message_id, text, html) VALUES (?1, ?2, ?3)",
+                params![id, m.body_text, m.body_html],
+            )?;
+            // The index is contentless: replace the headers-only entry with one that has the body.
+            tx.execute("DELETE FROM messages_fts WHERE rowid = ?1", [id])?;
+            tx.execute(
+                "INSERT INTO messages_fts (rowid, subject, from_name, from_addr, body) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![id, subject, from_name, from_addr, m.body_text.as_deref().unwrap_or("")],
+            )?;
+            filled += 1;
+        }
+        tx.commit()?;
+        Ok(filled)
+    }
+
+    /// Rows in a folder still without a body, as (uid, size): opened ones first, then the newest. Mail older than
+    /// `since` is left for when it is opened.
+    pub fn bodies_needed(&self, folder_id: i64, since: i64, limit: i64) -> Result<Vec<(u32, Option<u32>)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT uid, size FROM messages
+             WHERE folder_id = ?1 AND body_state != 'full' AND uid IS NOT NULL
+               AND (body_state = 'wanted' OR date >= ?2)
+             ORDER BY body_state = 'wanted' DESC, date DESC LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(params![folder_id, since, limit], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Folders of `account` holding messages someone opened before their body arrived.
+    pub fn folders_with_wanted_bodies(&self, account_id: i64) -> Result<Vec<(i64, String)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT DISTINCT f.id, f.name FROM messages m JOIN folders f ON f.id = m.folder_id
+             WHERE m.account_id = ?1 AND m.body_state = 'wanted'",
+        )?;
+        let rows = stmt.query_map([account_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Marks bodyless messages as wanted, so the sync worker fetches them before anything else. Returns the
+    /// accounts to wake.
+    pub fn want_bodies(&self, ids: &[i64]) -> Result<Vec<i64>> {
+        let conn = self.conn();
+        let mut accounts = BTreeSet::new();
+        for id in ids {
+            let account: Option<i64> = conn
+                .query_row(
+                    "UPDATE messages SET body_state = 'wanted' WHERE id = ?1 AND body_state = 'none'
+                     RETURNING account_id",
+                    [id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            accounts.extend(account);
+        }
+        Ok(accounts.into_iter().collect())
     }
 
     /// Applies (uid, seen, flagged) from the server. Returns how many rows changed.
@@ -434,7 +525,7 @@ impl Store {
     pub fn thread(&self, id: i64) -> Result<Vec<ThreadMessage>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(&format!(
-            "SELECT {ROW}, m.message_id, m.to_addrs, b.text, b.html
+            "SELECT {ROW}, m.message_id, m.to_addrs, b.text, b.html, m.body_state = 'full'
              FROM messages m LEFT JOIN bodies b ON b.message_id = m.id
              WHERE m.account_id = (SELECT account_id FROM messages WHERE id = ?1)
                AND m.thread_id = (SELECT thread_id FROM messages WHERE id = ?1)
@@ -449,6 +540,7 @@ impl Store {
                     to_addrs: r.get(13)?,
                     body_text: r.get(14)?,
                     body_html: r.get(15)?,
+                    body_loaded: r.get(16)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1083,5 +1175,105 @@ mod tests {
             (back.imap_security, back.smtp_port, back.smtp_security),
             (Security::Starttls, 1465, Security::Tls)
         );
+    }
+
+    fn headers_only(uid: u32, subject: &str, date: i64) -> NewMessage {
+        NewMessage {
+            body_text: None,
+            size: Some(1000 * uid),
+            headers_only: true,
+            ..message(uid, subject, date)
+        }
+    }
+
+    #[test]
+    fn headers_show_in_the_list_before_the_body() {
+        let (store, account, inbox, _) = setup();
+        store.insert_messages(account, inbox, &[headers_only(1, "Lunch?", now())]).unwrap();
+        let rows = store.list(&ListTarget::Folder(inbox), None, 10).unwrap();
+        assert_eq!((rows[0].subject.as_str(), rows[0].snippet.as_str()), ("Lunch?", ""));
+        assert!(!store.thread(rows[0].id).unwrap()[0].body_loaded);
+        assert_eq!(store.search("lunch", 10).unwrap().len(), 1, "headers are searchable at once");
+    }
+
+    #[test]
+    fn filling_a_body_adds_snippet_and_search_text() {
+        let (store, account, inbox, _) = setup();
+        store.insert_messages(account, inbox, &[headers_only(1, "Lunch?", now())]).unwrap();
+        let full = NewMessage {
+            snippet: "Shall we try the new place".into(),
+            body_text: Some("Shall we try the new place on Friday".into()),
+            has_attachments: true,
+            ..message(1, "ignored: the row keeps its header subject", now())
+        };
+        assert_eq!(store.fill_bodies(inbox, std::slice::from_ref(&full)).unwrap(), 1);
+        assert_eq!(store.fill_bodies(inbox, &[full]).unwrap(), 0, "a full row is not filled twice");
+
+        let row = &store.list(&ListTarget::Folder(inbox), None, 10).unwrap()[0];
+        assert_eq!(
+            (row.subject.as_str(), row.snippet.as_str(), row.has_attachments),
+            ("Lunch?", "Shall we try the new place", true)
+        );
+        let thread = store.thread(row.id).unwrap();
+        assert!(thread[0].body_loaded);
+        assert_eq!(thread[0].body_text.as_deref(), Some("Shall we try the new place on Friday"));
+        assert_eq!(store.search("friday", 10).unwrap().len(), 1, "the body is in the index now");
+        assert_eq!(store.search("lunch", 10).unwrap().len(), 1, "and the headers still are");
+    }
+
+    #[test]
+    fn bodies_needed_puts_opened_mail_first_then_the_newest() {
+        let (store, account, inbox, _) = setup();
+        let day = 86_400;
+        store
+            .insert_messages(
+                account,
+                inbox,
+                &[
+                    headers_only(1, "old", now() - 400 * day),
+                    headers_only(2, "recent", now() - day),
+                    headers_only(3, "newest", now()),
+                ],
+            )
+            .unwrap();
+        let since = now() - 90 * day;
+        assert_eq!(
+            store.bodies_needed(inbox, since, 10).unwrap(),
+            [(3, Some(3000)), (2, Some(2000))],
+            "old mail waits"
+        );
+
+        let old = store
+            .list(&ListTarget::Folder(inbox), None, 10)
+            .unwrap()
+            .into_iter()
+            .find(|r| r.subject == "old")
+            .unwrap();
+        assert_eq!(store.want_bodies(&[old.id]).unwrap(), [account]);
+        assert_eq!(store.bodies_needed(inbox, since, 10).unwrap()[0].0, 1, "opened mail jumps the queue");
+        assert_eq!(store.folders_with_wanted_bodies(account).unwrap(), [(inbox, "INBOX".to_string())]);
+        assert_eq!(store.bodies_needed(inbox, i64::MAX, 10).unwrap(), [(1, Some(1000))], "only opened mail");
+    }
+
+    #[test]
+    fn want_bodies_ignores_messages_that_have_theirs() {
+        let (store, account, inbox, _) = setup();
+        store.insert_messages(account, inbox, &[message(1, "full", now())]).unwrap();
+        let id = store.list(&ListTarget::Folder(inbox), None, 10).unwrap()[0].id;
+        assert!(store.want_bodies(&[id]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn migration_4_counts_existing_messages_as_complete() {
+        let conn = schema_1_with_accounts();
+        conn.execute_batch(
+            "INSERT INTO folders (account_id, name, role) VALUES (1, 'INBOX', 'inbox');
+             INSERT INTO messages (account_id, folder_id, uid, thread_id, date) VALUES (1, 1, 7, 't', 1);
+             INSERT INTO bodies (message_id, text) VALUES (1, 'hello');",
+        )
+        .unwrap();
+        let store = Store::init(conn).unwrap();
+        assert!(store.thread(1).unwrap()[0].body_loaded);
+        assert!(store.bodies_needed(1, 0, 10).unwrap().is_empty());
     }
 }
