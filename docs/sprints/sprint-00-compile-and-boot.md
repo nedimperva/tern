@@ -39,9 +39,9 @@ archive / star / mark-read / send reach the server after the 5-second undo windo
 ### Make `src-tauri` compile and run
 - [x] Fix `tauri` 2 API use: `Emitter` for `app.emit`, `Manager` for `app.path().app_data_dir()`, `State`.
 - [x] Generate the missing icons (`icons/32x32.png`, `128x128.png`, `128x128@2x.png`) from `app-icon.png` with `npm run tauri icon app-icon.png`.
-- [ ] On Linux, set `WEBKIT_DISABLE_DMABUF_RENDERER=1` in `main.rs` before the builder **only** when
+- [x] On Linux, set `WEBKIT_DISABLE_DMABUF_RENDERER=1` in `main.rs` before the builder **only** when
       `WAYLAND_DISPLAY` is set and the env var is not already set. Document in README.
-- [ ] Window opens on Hyprland. Check class with `hyprctl clients`; add the float rule to README if the class differs from `tern`.
+- [x] Window opens on Hyprland. Check class with `hyprctl clients`; add the float rule to README if the class differs from `tern`.
 - [x] `npm install && npm run tauri dev` — fake mailbox must not appear (bridge detected), real `accounts` command returns `[]`.
 
 ### First real account
@@ -122,6 +122,12 @@ Search misses by about 7x. It belongs to package 06 (search and speed); recorded
   IMAP command, size-capped body batches and a 15 s backfill budget per pass (one 22 MB message had stalled
   the worker, inbox and outbox forever); env_logger. Recorded here so package 01 reviews them: package 01
   plans a different transport and may replace this code.
+- 2026-10-13 — **No Fastmail.** Fastmail refuses IMAP sign-in without an app password, and app passwords need a
+  paid plan (not available on the trial). Owner decided: **local test server only for now**. M0 runs against a
+  Stalwart IMAP/SMTP server on the dev machine (no root, high ports, a local test CA trusted only through
+  `SSL_CERT_FILE` when launching Tern). The "first real account" checks below run against it; the
+  real-provider check moves to whichever provider the owner picks later. PLAN.md's "Fastmail first" needs
+  revisiting at that point.
 
 ## Log
 
@@ -130,3 +136,5 @@ Search misses by about 7x. It belongs to package 06 (search and speed); recorded
   Added toolchain pin, rustfmt/editorconfig, MIT license, Wayland DMA-BUF default, Linux + Windows CI,
   Gmail owner checklist. Open: async-imap 0.11 and mail-parser bumps, Hyprland class check, Fastmail
   checks (waiting on the test account), Windows smoke test (owner, 2026-10-14), reliability gate.
+- 2026-10-13 — Wayland default verified: window renders with no variable set; Hyprland class is `tern`.
+  Fastmail trial has no app passwords; switched M0 testing to a local Stalwart server (see Decisions).
