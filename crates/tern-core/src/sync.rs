@@ -37,10 +37,17 @@ const PER_PASS: usize = 500;
 /// forever, and with it new mail and the outbox.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// A TCP connection with Nagle's algorithm off. IMAP is many small commands that each wait for a reply; with
+/// Nagle on, a command split across writes waits for the server's delayed ACK, about 40 ms every time.
+async fn open_tcp(host: &str, port: u16) -> Result<TcpStream> {
+    let tcp =
+        TcpStream::connect((host, port)).await.with_context(|| format!("Could not reach {host}:{port}"))?;
+    tcp.set_nodelay(true)?;
+    Ok(tcp)
+}
+
 pub async fn connect(config: &AccountConfig, password: &str) -> Result<Session> {
-    let tcp = TcpStream::connect((config.imap_host.as_str(), config.imap_port))
-        .await
-        .with_context(|| format!("Could not reach {}:{}", config.imap_host, config.imap_port))?;
+    let tcp = open_tcp(&config.imap_host, config.imap_port).await?;
     let tls = async_native_tls::TlsConnector::new()
         .connect(config.imap_host.as_str(), tcp)
         .await
@@ -423,5 +430,13 @@ mod tests {
         assert_eq!(role("[Gmail]/Spam", &[]), "junk");
         assert_eq!(role("Deleted Items", &[]), "trash");
         assert_eq!(role("Receipts", &[]), "other");
+    }
+
+    #[tokio::test]
+    async fn imap_sockets_have_nagle_off() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let tcp = super::open_tcp("127.0.0.1", port).await.unwrap();
+        assert!(tcp.nodelay().unwrap());
     }
 }
