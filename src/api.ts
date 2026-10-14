@@ -97,6 +97,9 @@ export interface Api {
   /** Drops the work and puts the mailbox back as it was before it, as undo would. */
   discardProblem(id: number): Promise<void>;
   onChange(f: () => void): void;
+  /** Settings the person changed, by name; the UI holds the defaults. */
+  settings(): Promise<Record<string, unknown>>;
+  setSetting(key: string, value: unknown): Promise<void>;
   /** Each account's sync state as last reported; `onSyncState` has the changes after that. */
   syncStates(): Promise<Record<number, SyncState>>;
   /** The person opened this folder: check it on the server now. */
@@ -123,6 +126,8 @@ const tauri: Api = {
   send: (accountId, draft) => invoke("send", { accountId, draft }),
   onChange: (f) => void listen("mail-changed", f),
   syncStates: () => invoke("sync_states"),
+  settings: () => invoke("settings"),
+  setSetting: (key, value) => invoke("set_setting", { key, value }),
   checkFolder: (id) => invoke("check_folder", { id }),
   onSyncState: (f) =>
     void listen<{ accountId: number; state: SyncState }>("sync-state", (e) => f(e.payload.accountId, e.payload.state)),
@@ -153,9 +158,11 @@ function fake(): Api {
     { id: 3, accountId: 1, name: "Sent", role: "sent", unread: 0 },
     { id: 4, accountId: 1, name: "Trash", role: "trash", unread: 0 },
   ];
-  let messages: ThreadMessage[] = Array.from({ length: 5000 }, (_, i) => {
+  // Open the page with #big for a mailbox the size the performance targets are set for (about 10,000 conversations).
+  const size = location.hash === "#big" ? 25_000 : 5000;
+  let messages: ThreadMessage[] = Array.from({ length: size }, (_, i) => {
     const name = names[i % names.length];
-    const subject = `${words[i % words.length]} ${words[(i * 7) % words.length]} #${5000 - i}`;
+    const subject = `${words[i % words.length]} ${words[(i * 7) % words.length]} #${size - i}`;
     const body = `Hi,\n\nThis is about the ${subject}. ${words.join(" ")}.\n\nThanks,\n${name.split(" ")[0]}`;
     return {
       id: i + 1,
@@ -308,6 +315,22 @@ function fake(): Api {
     syncStates: async () => ({ 1: location.hash === "#offline" ? "offline" : "idle" }),
     onSyncState: () => {},
     checkFolder: async () => {},
+    // The browser fake keeps settings in this window's storage.
+    settings: async () => {
+      try {
+        return JSON.parse(localStorage.getItem("tern.fake.settings") ?? "{}");
+      } catch {
+        return {};
+      }
+    },
+    setSetting: async (key, value) => {
+      try {
+        const all = JSON.parse(localStorage.getItem("tern.fake.settings") ?? "{}");
+        localStorage.setItem("tern.fake.settings", JSON.stringify({ ...all, [key]: value }));
+      } catch {
+        // No storage: the change lasts until the page reloads.
+      }
+    },
     openUrl: (url) => void window.open(url, "_blank", "noopener"),
   };
 }

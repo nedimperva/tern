@@ -1,5 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import { api, type ThreadMessage } from "../api";
+import { settings } from "../settings";
 import { when } from "./ConversationRow";
 
 // Mail is untrusted: no scripts, and no remote content (tracking pixels) until asked for.
@@ -16,7 +17,7 @@ function frameHtml(html: string, remote: boolean): string {
 }
 
 function HtmlBody(props: { html: string }) {
-  const [remote, setRemote] = createSignal(false);
+  const [remote, setRemote] = createSignal(settings.loadImages === "always");
   const hasRemote = /<img[^>]+src=["']?https?:/i.test(props.html) || /url\(["']?https?:/i.test(props.html);
 
   // Same-origin without scripts: the frame cannot run anything, but we can measure it and catch link clicks.

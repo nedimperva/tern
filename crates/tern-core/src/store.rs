@@ -1,6 +1,6 @@
 //! The database on the device. Every list, thread and search the UI shows is answered from here.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 8;
+const SCHEMA_VERSION: i64 = 9;
 /// Messages with the same normalised subject and a participant in common within this many seconds of each other
 /// join one conversation when nothing in their headers links them.
 const SUBJECT_WINDOW: i64 = 7 * 86_400;
@@ -179,6 +179,8 @@ fn migrate(conn: &Connection) -> Result<()> {
                  CREATE INDEX messages_subject ON messages (account_id, subject_norm, date)
                      WHERE subject_norm IS NOT NULL;"
             }
+            // The person's settings: one row per key, the value as JSON.
+            8 => "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
             _ => unreachable!("no migration from schema {from}"),
         };
         conn.execute_batch(&format!("BEGIN; {step};"))?;
@@ -282,6 +284,30 @@ impl Store {
 
     fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    // MARK: Settings
+
+    /// Every setting the person changed; the UI knows the defaults for the rest.
+    pub fn settings(&self) -> Result<HashMap<String, serde_json::Value>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached("SELECT key, value FROM settings")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        let mut out = HashMap::new();
+        for row in rows {
+            let (key, value) = row?;
+            out.insert(key, serde_json::from_str(&value)?);
+        }
+        Ok(out)
+    }
+
+    pub fn set_setting(&self, key: &str, value: &serde_json::Value) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            params![key, value.to_string()],
+        )?;
+        Ok(())
     }
 
     // MARK: Accounts and folders
@@ -1708,6 +1734,17 @@ mod tests {
     }
 
     #[test]
+    fn settings_keep_their_json() {
+        let store = Store::open_in_memory().unwrap();
+        store.set_setting("theme", &serde_json::json!("dark")).unwrap();
+        store.set_setting("theme", &serde_json::json!("light")).unwrap();
+        store.set_setting("readAfterMs", &serde_json::json!(1000)).unwrap();
+        let all = store.settings().unwrap();
+        assert_eq!(all["theme"], "light");
+        assert_eq!(all["readAfterMs"], 1000);
+    }
+
+    #[test]
     fn the_starred_split_is_starred_inbox_mail() {
         let (store, account, inbox, archive) = setup();
         let starred = |uid, date| NewMessage { flagged: true, ..message(uid, "s", date) };
@@ -1726,10 +1763,7 @@ mod tests {
         let inbox = store.upsert_folder(account, "INBOX", "inbox").unwrap();
         store.insert_messages(account, inbox, &[message(1, "Re: Budget", 1)]).unwrap();
         let conn = store.conn.into_inner().unwrap();
-        conn.execute_batch(
-            "DROP INDEX messages_subject; ALTER TABLE messages DROP COLUMN subject_norm; PRAGMA user_version = 7;",
-        )
-        .unwrap();
+        wind_back(&conn, 7);
         let store = Store::init(conn).unwrap();
         let norm: String =
             store.conn().query_row("SELECT subject_norm FROM messages", [], |r| r.get(0)).unwrap();
@@ -1851,6 +1885,27 @@ mod tests {
         assert_eq!(store.local_uids(inbox).unwrap(), [41].into());
     }
 
+    /// Undoes the schema steps after `version` on a current database, so a migration test can start from a real
+    /// database at that version. Each new migration adds its undo here.
+    fn wind_back(conn: &Connection, version: i64) {
+        for from in (version..SCHEMA_VERSION).rev() {
+            let undo = match from {
+                8 => "DROP TABLE settings;",
+                7 => "DROP INDEX messages_subject; ALTER TABLE messages DROP COLUMN subject_norm;",
+                6 => {
+                    "ALTER TABLE messages DROP COLUMN list_id; ALTER TABLE messages DROP COLUMN list_unsubscribe;
+                     ALTER TABLE messages DROP COLUMN parts;"
+                }
+                5 => "ALTER TABLE outbox DROP COLUMN maybe_sent;",
+                // Step 4 only changed data.
+                4 => "",
+                _ => panic!("no undo for schema step {from}"),
+            };
+            conn.execute_batch(undo).unwrap();
+        }
+        conn.execute_batch(&format!("PRAGMA user_version = {version};")).unwrap();
+    }
+
     /// A database as Tern wrote it before connection security was stored (schema 1).
     fn schema_1_with_accounts() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -1911,10 +1966,8 @@ mod tests {
         let folder = store.upsert_folder(account, "INBOX", "inbox").unwrap();
         store.insert_messages(account, folder, &[message(1, "a", 1), message(2, "b", 2)]).unwrap();
         let conn = store.conn.into_inner().unwrap();
-        conn.execute_batch(
-            "DELETE FROM bodies; ALTER TABLE outbox DROP COLUMN maybe_sent; ALTER TABLE messages DROP COLUMN list_id; ALTER TABLE messages DROP COLUMN list_unsubscribe; ALTER TABLE messages DROP COLUMN parts; DROP INDEX messages_subject; ALTER TABLE messages DROP COLUMN subject_norm; PRAGMA user_version = 4;",
-        )
-        .unwrap();
+        conn.execute_batch("DELETE FROM bodies;").unwrap();
+        wind_back(&conn, 4);
         let generated = mail_parser::MessageParser::default()
             .parse(b"Subject: x\r\n\r\na < b\r\nline two\r\n".as_slice())
             .unwrap()

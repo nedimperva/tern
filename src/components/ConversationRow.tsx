@@ -1,4 +1,5 @@
 import { Show } from "solid-js";
+import { Icon } from "./Icon";
 import type { ThreadRow } from "../api";
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
@@ -58,12 +59,12 @@ export function ConversationRow(props: {
       <span class="glyphs">
         <Show when={props.row.hasAttachments}>
           <span class="clip" title="Has attachments" aria-label="Has attachments">
-            ⌁
+            <Icon name="paperclip" size={13} />
           </span>
         </Show>
         <Show when={props.row.flagged}>
           <span class="star" title="Starred" aria-label="Starred">
-            ★
+            <Icon name="star" size={13} filled />
           </span>
         </Show>
       </span>
