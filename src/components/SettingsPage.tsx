@@ -74,6 +74,17 @@ const SECTIONS: { name: string; body: () => JSX.Element }[] = [
           ]}
         />
         <Select
+          name="sendDelay"
+          title="Undo send"
+          help="How long a sent message waits before it leaves, so Z can take it back."
+          choices={[
+            { label: "Off", value: 0 },
+            { label: "5 seconds", value: 5 },
+            { label: "10 seconds", value: 10 },
+            { label: "20 seconds", value: 20 },
+          ]}
+        />
+        <Select
           name="loadImages"
           title="Remote images"
           help="Images from the web can tell the sender when you read their mail."

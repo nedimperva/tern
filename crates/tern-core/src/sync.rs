@@ -993,7 +993,9 @@ mod tests {
                 cc: vec![],
                 subject: "hi".into(),
                 body: "hello".into(),
+                bcc: vec![],
                 in_reply_to: None,
+                references: vec![],
                 message_id: None,
             }
         }
@@ -1267,7 +1269,9 @@ mod tests {
             cc: vec![],
             subject: format!("sent copy check {}", std::process::id()),
             body: "Should be in Sent Items.".into(),
+            bcc: vec![],
             in_reply_to: None,
+            references: vec![],
             message_id: None,
         };
         let work = store.queue_send(account.id, draft, 0).unwrap();
@@ -1388,7 +1392,9 @@ mod tests {
             cc: vec![],
             subject: subject.clone(),
             body: "Archived and starred by a dev-server check.".into(),
+            bcc: vec![],
             in_reply_to: None,
+            references: vec![],
             message_id: None,
         };
         crate::smtp::send(&config, &password, &draft).await.unwrap();

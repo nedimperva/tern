@@ -12,6 +12,8 @@ import {
   type Target,
   type ThreadMessage,
   type ThreadRow,
+  type Draft,
+  type ReplyKind,
 } from "./api";
 import { AccountSetup } from "./components/AccountSetup";
 import { CommandBar, type Command } from "./components/CommandBar";
@@ -308,41 +310,40 @@ export default function App() {
     void load();
   }
 
-  /** Replies to the sender, or with `all` to everyone on the message but this account. */
-  function reply(m: ThreadMessage | undefined, all = false) {
+  /** Opens a reply, reply-all or forward to `m`, set up by the engine from the message's headers. Replies sit
+   * under the open conversation; a forward is a new message in its own dialog. */
+  async function respond(m: ThreadMessage | undefined, kind: ReplyKind) {
     if (!m) return;
-    const quoted = (m.bodyText ?? "").split("\n").map((l) => `> ${l}`).join("\n");
-    const mine = new Set(accounts().map((a) => a.email.toLowerCase()));
-    const others = m.toAddrs
-      .split(",")
-      .map((a) => a.trim())
-      .filter((a) => a && !mine.has(a.toLowerCase()) && a.toLowerCase() !== m.fromAddr.toLowerCase());
+    const init = await api.replyInit(m.id, kind);
+    const date = new Date(init.quoteDate * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    const body =
+      kind === "forward"
+        ? [
+            "",
+            "",
+            "---------- Forwarded message ----------",
+            `From: ${init.quoteFrom}`,
+            `Date: ${date}`,
+            `Subject: ${m.subject}`,
+            `To: ${init.quoteTo}`,
+            ...(init.quoteCc ? [`Cc: ${init.quoteCc}`] : []),
+            "",
+            init.quoteText,
+          ].join("\n")
+        : `\n\nOn ${date}, ${init.quoteFrom} wrote:\n${init.quoteText
+            .split("\n")
+            .map((l) => (l.startsWith(">") ? `>${l}` : `> ${l}`))
+            .join("\n")}`;
     setCompose({
-      accountId: m.accountId,
-      to: m.fromAddr,
-      cc: all && others.length ? others.join(", ") : undefined,
-      subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`,
-      body: `\n\nOn ${new Date(m.date * 1000).toLocaleString()}, ${m.fromName || m.fromAddr} wrote:\n${quoted}`,
-      inReplyTo: m.messageId,
-      focus: "body",
-    });
-  }
-
-  /** Forwards a message's text. Attachments do not go along yet (package 03 brings them to compose). */
-  function forward(m: ThreadMessage | undefined) {
-    if (!m) return;
-    const header = [
-      "---------- Forwarded message ----------",
-      `From: ${m.fromName ? `${m.fromName} <${m.fromAddr}>` : m.fromAddr}`,
-      `Date: ${new Date(m.date * 1000).toLocaleString()}`,
-      `Subject: ${m.subject}`,
-      `To: ${m.toAddrs}`,
-    ].join("\n");
-    setCompose({
-      accountId: m.accountId,
-      subject: /^fwd?:/i.test(m.subject) ? m.subject : `Fwd: ${m.subject}`,
-      body: `\n\n${header}\n\n${m.bodyText ?? ""}`,
-      focus: "to",
+      accountId: init.accountId,
+      to: init.to,
+      cc: init.cc,
+      subject: init.subject,
+      body,
+      inReplyTo: init.inReplyTo,
+      references: init.references,
+      focus: kind === "forward" ? "to" : "body",
+      inline: kind !== "forward" && openRow() !== null,
     });
   }
 
@@ -377,10 +378,15 @@ export default function App() {
     if (inbox) go({ folder: inbox.id });
   }
 
-  async function send(accountId: number, draft: Parameters<typeof api.send>[1]) {
+  /** Queues the message (it leaves after the undo window); with `done`, the conversation it answers is marked done. */
+  async function send(accountId: number, draft: Draft, done: boolean) {
+    const answering = compose()?.inline ? openRow() : null;
     setCompose(null);
     try {
-      showToast("Sending…", await api.send(accountId, draft));
+      const token = await api.send(accountId, draft, settings.sendDelay);
+      const doneToken = done && answering ? await act("archive", [answering], false) : [];
+      const text = settings.sendDelay > 0 ? "Sending…" : "Sent";
+      showToast(done && answering ? `${text} and marked done` : text, [...token, ...doneToken]);
     } catch (e) {
       showToast(String(e), []);
     }
@@ -470,10 +476,10 @@ export default function App() {
     { keys: "n", name: "Next message", context: "conversation", run: () => moveMessage(1) },
     { keys: "p", name: "Previous message", context: "conversation", run: () => moveMessage(-1) },
     { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
-    { keys: "Enter", name: "Reply all", context: "conversation", run: () => reply(messages[messageFocus()], true) },
-    { keys: "f", name: "Forward", context: "conversation", run: () => forward(messages[messageFocus()]) },
+    { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },
+    { keys: "f", name: "Forward", context: "conversation", run: () => respond(messages[messageFocus()], "forward") },
     { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
-    { keys: "r", name: "Reply", context: "conversation", run: () => reply(messages[messageFocus()]) },
+    { keys: "r", name: "Reply", context: "conversation", run: () => respond(messages[messageFocus()], "reply") },
     { keys: "z", name: "Undo", run: undo },
     { keys: "c", name: "Compose", run: () => setCompose({}) },
     { keys: "/", name: "Search", run: () => searchInput.focus() },
@@ -740,10 +746,17 @@ export default function App() {
             focused={messageFocus()}
             expanded={(id) => expanded().has(id)}
             onToggle={toggleMessage}
-            onReply={reply}
+            onReply={(m) => respond(m, "reply")}
             onDone={() => act("archive")}
             onClose={close}
           />
+          <Show when={compose()?.inline ? compose() : null}>
+            {(init) => (
+              <div class="inline-reply">
+                <Compose accounts={accounts()} init={init()} onSend={send} onClose={() => setCompose(null)} />
+              </div>
+            )}
+          </Show>
         </section>
       </Show>
 
@@ -782,7 +795,7 @@ export default function App() {
           onClose={() => batch(() => (setPalette(false), setPaletteStart(undefined)))}
         />
       </Show>
-      <Show when={compose()}>
+      <Show when={compose() && !compose()!.inline ? compose() : null}>
         {(init) => <Compose accounts={accounts()} init={init()} onSend={send} onClose={() => setCompose(null)} />}
       </Show>
       <Show when={setup() || (ready() && accounts().length === 0)}>

@@ -67,7 +67,30 @@ export type Action =
 export const moves = (a: Action) => typeof a === "object" || a === "archive" || a === "trash" || a === "junk" || a === "inbox";
 export type Target = { folder: number } | { role: string };
 export type Cursor = { date: number; id: number };
-export type Draft = { to: string[]; cc?: string[]; subject: string; body: string; inReplyTo?: string | null };
+export type Draft = {
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  body: string;
+  inReplyTo?: string | null;
+  references?: string[];
+};
+export type ReplyKind = "reply" | "replyAll" | "forward";
+/** How a reply or forward starts; the UI writes the quote header in the person's language. */
+export type ReplyInit = {
+  accountId: number;
+  to: string[];
+  cc: string[];
+  subject: string;
+  inReplyTo: string | null;
+  references: string[];
+  quoteFrom: string;
+  quoteDate: number;
+  quoteText: string;
+  quoteTo: string;
+  quoteCc: string;
+};
 export type Preset = {
   imapHost: string;
   imapPort: number;
@@ -104,7 +127,9 @@ export interface Api {
   search(query: string, limit: number): Promise<MessageRow[]>;
   apply(ids: number[], action: Action): Promise<Applied>;
   undo(token: number[]): Promise<boolean>;
-  send(accountId: number, draft: Draft): Promise<number[]>;
+  /** Queues a send; `delay` is the undo window in seconds. */
+  send(accountId: number, draft: Draft, delay?: number): Promise<number[]>;
+  replyInit(id: number, kind: ReplyKind): Promise<ReplyInit>;
   problems(): Promise<OutboxProblem[]>;
   retryProblem(id: number): Promise<void>;
   /** Drops the work and puts the mailbox back as it was before it, as undo would. */
@@ -139,7 +164,8 @@ const tauri: Api = {
   retryProblem: (id) => invoke("retry_problem", { id }),
   discardProblem: (id) => invoke("discard_problem", { id }),
   undo: (token) => invoke("undo", { token }),
-  send: (accountId, draft) => invoke("send", { accountId, draft }),
+  send: (accountId, draft, delay) => invoke("send", { accountId, draft, delay }),
+  replyInit: (id, kind) => invoke("reply_init", { id, kind }),
   onChange: (f) => void listen("mail-changed", f),
   syncStates: () => invoke("sync_states"),
   mute: (ids, mute) => invoke("mute", { ids, mute }),
@@ -333,6 +359,23 @@ function fake(): Api {
       return true;
     },
     send: async () => [nextToken++],
+    replyInit: async (id, kind) => {
+      const m = messages.find((m) => m.id === id)!;
+      const forward = kind === "forward";
+      return {
+        accountId: m.accountId,
+        to: forward ? [] : [m.fromAddr],
+        cc: kind === "replyAll" ? ["bob@example.com"] : [],
+        subject: `${forward ? "Fwd" : "Re"}: ${m.subject}`,
+        inReplyTo: forward ? null : m.messageId,
+        references: forward || !m.messageId ? [] : [m.messageId],
+        quoteFrom: `${m.fromName} <${m.fromAddr}>`,
+        quoteDate: m.date,
+        quoteText: m.bodyText ?? "",
+        quoteTo: m.toAddrs,
+        quoteCc: "",
+      };
+    },
     // One sample, so the problems strip can be worked on in a plain browser.
     problems: async () => problems,
     retryProblem: async (id) => {

@@ -1,6 +1,6 @@
 # Sprint 3 — Compose
 
-**Status:** todo
+**Status:** in progress · started 2026-10-14
 
 ## Delivery scope
 
@@ -32,16 +32,16 @@ marks done. Drafts land in the server's Drafts folder.
 - [ ] Bundle budget for the editor: 60 kB gzipped. Measure.
 
 ### Compose surface
-- [ ] Inline at the bottom of the conversation for replies, a centred modal for new mail; `Cmd+Shift+O` pops out to its own window later (backlog).
+- [x] Inline at the bottom of the conversation for replies, a centred modal for new mail; `Cmd+Shift+O` pops out to its own window later (backlog).
 - [ ] Fields: From (account picker if > 1), To, Cc, Bcc (hidden until `Cmd+Shift+C/B`), Subject. `Tab` between fields; `Esc` closes (keeps the draft).
-- [ ] Recipient chips; `Backspace` on an empty field edits the last chip; invalid addresses highlighted; paste a list of addresses splits them.
+- [x] Recipient chips; `Backspace` on an empty field edits the last chip; invalid addresses highlighted; paste a list of addresses splits them.
 - [ ] "Send & Mark Done", "Send Later" (stub until Sprint 5), "Remind me" (stub until Sprint 5) in a footer with their keys.
 
 ### Reply, reply-all, forward (core; rich quoting follows editor slice)
-- [ ] Reply-all excludes our own addresses (all aliases from the account), honours `Reply-To`, `Mail-Followup-To`.
+- [x] Reply-all excludes our own addresses (all aliases from the account), honours `Reply-To`, `Mail-Followup-To`.
 - [ ] Quote header `On <date>, <name> <<addr>> wrote:` then `<blockquote>` of the original HTML (sanitised) or text; collapsed in the editor behind "···", editable on click.
 - [ ] Forward includes original attachments; subject `Fwd:`; original headers block.
-- [ ] Threading headers: `In-Reply-To`, `References` appended; `Message-ID` generated as `<uuid@tern>` (host part from the account domain).
+- [x] Threading headers: `In-Reply-To`, `References` appended; `Message-ID` generated as `<uuid@tern>` (host part from the account domain).
 
 ### Drafts
 - [ ] Autosave to SQLite every 2 s of idle typing (`drafts` table: account, thread_id, fields JSON, doc JSON, attachments, updated).
@@ -80,8 +80,21 @@ Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
 
 ## Decisions
 
-_None yet._
+- 2026-10-14 — **Reply rules live in the engine** (`Store::reply_init`), tested there: Reply → Reply-To, else
+  the sender, and a reply to one's own message goes back to its recipients; Reply-all → Mail-Followup-To when
+  present, else sender + To + Cc; the account's address never a recipient (aliases join when `identities`
+  exist); References = the original's References + its Message-ID. The UI only writes the quote header, in the
+  person's locale. Schema v12 keeps Cc, Reply-To, Mail-Followup-To and References per message (rows from before
+  have them empty, so reply-all there falls back to To).
+- 2026-10-14 — **No "Send Later" / "Remind me" stubs.** Package 02's scope says future features need not appear as
+  placeholders; they arrive with package 05.
 
 ## Log
 
-_No sessions yet._
+- 2026-10-14 — Slice 1: replies and sending. Reply (`r`), reply-all (`Enter` in a conversation) and forward (`f`)
+  are set up by `reply_init`; replies open under the conversation, new mail and forwards in a dialog. Recipient
+  chips (Enter, Tab, comma; Backspace takes the last back; pasted lists split; bad addresses marked and stopped
+  at send). Cc/Bcc on demand (`Ctrl+Shift+C/B`), Bcc in the envelope only (test). Send `Ctrl+Enter`, Send & Done
+  `Ctrl+Shift+Enter` (archives the conversation, one undo for both). "Undo send" setting: off, 5, 10, 20 s. The
+  body grows with its text. Not yet: drafts (Esc still drops what was typed), attachments, signatures,
+  autocomplete, the rich editor.
