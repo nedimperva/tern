@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
     secrets, sync, Account, AccountConfig, Action, Applied, Cursor, Draft, Folder, ListTarget, MessageRow,
-    OutboxProblem, ThreadMessage,
+    OutboxProblem, ThreadMessage, ThreadRow,
 };
 
 use std::collections::HashMap;
@@ -78,6 +78,29 @@ pub async fn search(state: State<'_, AppState>, query: String, limit: i64) -> Re
 }
 
 /// Applies at once; the server hears about it after the undo window.
+#[tauri::command]
+pub async fn list_threads(
+    state: State<'_, AppState>,
+    target: ListTarget,
+    before: Option<Cursor>,
+    limit: usize,
+) -> Reply<Vec<ThreadRow>> {
+    state.store.list_threads(&target, before, limit).map_err(text)
+}
+
+/// An action on whole conversations (each id stands for its conversation); see `Store::conversation_ids`.
+#[tauri::command]
+pub async fn apply_conversations(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    action: Action,
+    target: ListTarget,
+) -> Reply<Applied> {
+    let ids = state.store.conversation_ids(&ids, action, &target).map_err(text)?;
+    apply(app, state, ids, action).await
+}
+
 #[tauri::command]
 pub async fn apply(
     app: AppHandle,
