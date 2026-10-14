@@ -361,7 +361,7 @@ impl Store {
             match op {
                 OutboxOp::Flags { revert, .. } => keep.extend(revert.iter().map(|r| r.0)),
                 OutboxOp::Move { revert, .. } => keep.extend(revert.iter().map(|r| r.0)),
-                OutboxOp::Send(_) => {}
+                OutboxOp::Send(_) | OutboxOp::Append { .. } => {}
             }
         }
         for id in &keep {
@@ -832,6 +832,21 @@ impl Store {
             .collect()
     }
 
+    /// A send went out: it leaves the queue and, in the same step, the copy for Sent (if any) joins it, so a crash
+    /// between the two can neither lose the copy nor send twice.
+    pub fn outbox_sent(&self, id: i64, copy: Option<OutboxOp>) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let account_id: i64 =
+            tx.query_row("SELECT account_id FROM outbox WHERE id = ?1", [id], |r| r.get(0))?;
+        tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
+        if let Some(copy) = copy {
+            enqueue(&tx, account_id, &copy, 0)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn outbox_done(&self, id: i64) -> Result<()> {
         self.conn().execute("DELETE FROM outbox WHERE id = ?1", [id])?;
         Ok(())
@@ -1094,7 +1109,7 @@ fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
                 )?;
             }
         }
-        OutboxOp::Send(_) => {}
+        OutboxOp::Send(_) | OutboxOp::Append { .. } => {}
     }
     Ok(())
 }
@@ -1104,6 +1119,7 @@ fn describe(op: &OutboxOp) -> String {
     let count = |n: usize| if n == 1 { "1 message".to_string() } else { format!("{n} messages") };
     match op {
         OutboxOp::Send(draft) => format!("Send “{}”", draft.subject),
+        OutboxOp::Append { subject, folder, .. } => format!("Save “{subject}” to {folder}"),
         OutboxOp::Move { dest, uids, .. } => format!("Move {} to {dest}", count(uids.len())),
         OutboxOp::Flags { flag, add, uids, .. } => {
             let verb = match (flag.as_str(), add) {

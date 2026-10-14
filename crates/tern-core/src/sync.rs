@@ -14,7 +14,7 @@ use tokio::sync::Notify;
 use crate::imap::{self, Idled, Imap, TlsImap};
 use crate::models::{Account, AccountConfig, Failure, FolderState, NewMessage, OutboxOp};
 use crate::store::{now, Store};
-use crate::{mime, smtp};
+use crate::{mime, presets, smtp};
 
 pub type Session = TlsImap;
 
@@ -690,25 +690,38 @@ async fn drain_outbox<S: Stream>(
         if matches!(op, OutboxOp::Send(_)) {
             store.outbox_sending(id)?;
         }
-        let Err(e) = run_op(s, store, account, password, &op).await else {
-            store.outbox_done(id)?;
-            // The server files a copy in Sent: look there next instead of in up to five minutes.
-            if matches!(op, OutboxOp::Send(_)) {
-                for f in store.folders()? {
-                    if f.account_id == account.id && f.role == "sent" {
-                        want_folder(f.id);
-                    }
+        let sent = match run_op(s, store, account, password, &op).await {
+            Ok(sent) => sent,
+            Err(e) => {
+                let failure = failure(&e);
+                store.outbox_failed(id, &format!("{e:#}"), failure)?;
+                log::warn!("{}: queued work {id} failed ({failure:?}): {e:#}", account.config.email);
+                // A Send uses its own SMTP connection, so only IMAP work can leave this session broken.
+                if !matches!(op, OutboxOp::Send(_)) && connection_broke(&e) {
+                    store.release_claims(account.id)?;
+                    return Err(e);
                 }
+                continue;
             }
+        };
+        let OutboxOp::Send(draft) = &op else {
+            store.outbox_done(id)?;
             continue;
         };
-        let failure = failure(&e);
-        store.outbox_failed(id, &format!("{e:#}"), failure)?;
-        log::warn!("{}: queued work {id} failed ({failure:?}): {e:#}", account.config.email);
-        // A Send uses its own SMTP connection, so only IMAP work can leave this session broken.
-        if !matches!(op, OutboxOp::Send(_)) && connection_broke(&e) {
-            store.release_claims(account.id)?;
-            return Err(e);
+        let sent_folders: Vec<_> =
+            store.folders()?.into_iter().filter(|f| f.account_id == account.id && f.role == "sent").collect();
+        let copy = match (sent_folders.first(), presets::server_files_sent(&account.config.imap_host)) {
+            (Some(folder), false) => Some(OutboxOp::Append {
+                folder: folder.name.clone(),
+                subject: draft.subject.clone(),
+                message: String::from_utf8_lossy(&sent).into_owned(),
+            }),
+            _ => None,
+        };
+        store.outbox_sent(id, copy)?;
+        // The copy shows in Sent on the next check of it: make that the next pass, not five minutes away.
+        for f in &sent_folders {
+            want_folder(f.id);
         }
     }
     Ok(any)
@@ -747,13 +760,13 @@ async fn run_op<S: Stream>(
     account: &Account,
     password: &str,
     op: &OutboxOp,
-) -> Result<()> {
+) -> Result<Vec<u8>> {
     match op {
         OutboxOp::Flags { folder, uids, flag, add, revert, validity, waiting } => {
             let ids: Vec<i64> = revert.iter().map(|r| r.0).collect();
             let found = locate(s, store, folder, uids, *validity, waiting, &ids).await?;
             if found.is_empty() {
-                return Ok(());
+                return Ok(Vec::new());
             }
             let set = uid_set(&found.keys().copied().collect::<Vec<_>>());
             within(s.store_flag(&set, flag, *add)).await?;
@@ -769,7 +782,7 @@ async fn run_op<S: Stream>(
                 }
             }
             if found.is_empty() {
-                return Ok(());
+                return Ok(Vec::new());
             }
             let set = uid_set(&found.keys().copied().collect::<Vec<_>>());
             let placed: Vec<(i64, u32)> = within(s.move_to(&set, dest))
@@ -780,9 +793,10 @@ async fn run_op<S: Stream>(
             // Later work on these messages may be waiting to learn where they went.
             store.moved(account.id, dest, &placed)?;
         }
-        OutboxOp::Send(draft) => smtp::send(&account.config, password, draft).await?,
+        OutboxOp::Send(draft) => return smtp::send(&account.config, password, draft).await,
+        OutboxOp::Append { folder, message, .. } => within(s.append(folder, message.as_bytes())).await?,
     }
-    Ok(())
+    Ok(Vec::new())
 }
 
 /// Opens `folder` and works out which uids queued work should act on, as uid → message id (when known).
@@ -971,6 +985,17 @@ mod tests {
             (result, sent)
         }
 
+        fn draft() -> crate::models::Draft {
+            crate::models::Draft {
+                to: vec!["b@example.com".into()],
+                cc: vec![],
+                subject: "hi".into(),
+                body: "hello".into(),
+                in_reply_to: None,
+                message_id: None,
+            }
+        }
+
         fn queue_empty(m: &Mailbox) -> bool {
             m.store.next_due(m.account.id).unwrap().is_none() && m.store.outbox_problems().unwrap().is_empty()
         }
@@ -1099,6 +1124,28 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn a_sent_copy_is_appended_read() {
+            let m = mailbox();
+            let copy = crate::models::OutboxOp::Append {
+                folder: "Sent".into(),
+                subject: "hi".into(),
+                message: "hello".into(),
+            };
+            m.store.outbox_sent(m.store.queue_send(m.account.id, draft(), 0).unwrap(), Some(copy)).unwrap();
+            let (result, sent) = drain(
+                &m,
+                vec![
+                    ("APPEND Sent (\\Seen) {5}", "+ go\r\n"),
+                    ("hello", "{tag} OK [APPENDUID 3 7] done\r\n"),
+                ],
+            )
+            .await;
+            result.unwrap();
+            assert_eq!(sent.len(), 2, "{sent:?}");
+            assert!(queue_empty(&m));
+        }
+
+        #[tokio::test]
         async fn a_dropped_connection_puts_the_work_back() {
             let m = mailbox();
             m.store.apply(&[m.message], Action::Archive, 0).unwrap();
@@ -1197,6 +1244,46 @@ mod tests {
             smtp_security: Security::Tls,
         };
         (config, password)
+    }
+
+    /// A send through the outbox against the dev mail server ends with a copy in Sent Items (Stalwart does not file
+    /// one itself).
+    #[tokio::test]
+    #[ignore = "needs scripts/dev-mail-server.sh start; run with scripts/dev-mail-server.sh test"]
+    async fn a_send_lands_in_sent() {
+        use crate::models::Draft;
+        use crate::store::Store;
+
+        let (config, password) = dev_account();
+        let store = Store::open_in_memory().unwrap();
+        let account = store.add_account(&config).unwrap();
+        let (mut session, mut schedule, nothing) = (None, super::Schedule::default(), || {});
+        while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap() {
+        }
+        let draft = Draft {
+            to: vec!["test@localhost".into()],
+            cc: vec![],
+            subject: format!("sent copy check {}", std::process::id()),
+            body: "Should be in Sent Items.".into(),
+            in_reply_to: None,
+            message_id: None,
+        };
+        let work = store.queue_send(account.id, draft, 0).unwrap();
+        let message_id = match store.outbox_op(work).unwrap() {
+            Some(crate::models::OutboxOp::Send(d)) => d.message_id.unwrap(),
+            other => panic!("{other:?}"),
+        };
+        while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap() {
+        }
+        assert!(store.outbox_problems().unwrap().is_empty());
+        assert_eq!(store.next_due(account.id).unwrap(), None, "the send and its copy both went");
+
+        let mut other = super::connect(&config, &password).await.unwrap();
+        other.select("Sent Items").await.unwrap();
+        let bare = message_id.trim_matches(|c| c == '<' || c == '>');
+        let copies = other.message_ids("1:*").await.unwrap().into_iter().filter(|(_, m)| m == bare).count();
+        assert_eq!(copies, 1);
+        other.logout().await.unwrap();
     }
 
     /// A fresh sync against the dev mail server: mail older than BODY_DAYS gets no body, but a snippet from its

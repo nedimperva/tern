@@ -15,6 +15,13 @@ pub struct Preset {
     pub note: Option<&'static str>,
 }
 
+/// Whether the provider files mail sent through its SMTP server in Sent by itself (Gmail, Outlook). Elsewhere Tern
+/// puts a copy there (IMAP APPEND), or it would be missing from Sent.
+pub fn server_files_sent(imap_host: &str) -> bool {
+    let host = imap_host.to_ascii_lowercase();
+    ["imap.gmail.com", "outlook.office365.com", "imap-mail.outlook.com"].contains(&host.as_str())
+}
+
 /// Server settings for well-known providers, and a guess for everything else.
 /// TODO: Mozilla ISPDB / autoconfig lookups, and SRV records (RFC 6186).
 pub fn for_email(email: &str) -> Option<Preset> {
