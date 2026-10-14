@@ -31,6 +31,11 @@ const IDLE_REFRESH: Duration = Duration::from_secs(25 * 60);
 /// How long one pass spends fetching mail that is already on the server before new mail and the outbox get
 /// another look.
 const BACKFILL_BUDGET: Duration = Duration::from_secs(15);
+/// How often folders other than the inbox are checked. The inbox is checked every pass (and IDLE wakes it); a
+/// folder someone opens is checked at once (`want_folder`).
+const FOLDER_INTERVAL: Duration = Duration::from_secs(5 * 60);
+/// Flags read per FETCH on a server that cannot say which changed.
+const FLAG_BATCH: usize = 5_000;
 /// Most messages per FETCH.
 const FETCH_CHUNK: usize = 50;
 /// Most bytes per FETCH, so one batch of big attachments doesn't become a single long wait.
@@ -58,6 +63,45 @@ pub async fn check_login(config: &AccountConfig, password: &str) -> Result<()> {
     let session = connect(config, password).await?;
     session.logout().await?;
     Ok(())
+}
+
+/// Folders someone opened since they were last checked; the next pass checks them whatever their schedule.
+static WANTED: std::sync::Mutex<Vec<i64>> = std::sync::Mutex::new(Vec::new());
+
+/// Asks for `folder_id` to be checked on the next pass (the person opened it). Wake the account's worker after.
+pub fn want_folder(folder_id: i64) {
+    let mut wanted = WANTED.lock().unwrap_or_else(|e| e.into_inner());
+    if !wanted.contains(&folder_id) {
+        wanted.push(folder_id);
+    }
+}
+
+/// Which folders a pass checks: the inbox always; others every FOLDER_INTERVAL, when someone opened them, or while
+/// their backfill is unfinished.
+#[derive(Default)]
+pub struct Schedule {
+    checked: HashMap<i64, Instant>,
+    unfinished: HashSet<i64>,
+}
+
+impl Schedule {
+    fn due(&self, folder_id: i64, name: &str) -> bool {
+        let wanted = WANTED.lock().unwrap_or_else(|e| e.into_inner()).contains(&folder_id);
+        name.eq_ignore_ascii_case("INBOX")
+            || wanted
+            || self.unfinished.contains(&folder_id)
+            || self.checked.get(&folder_id).is_none_or(|t| t.elapsed() >= FOLDER_INTERVAL)
+    }
+
+    fn done(&mut self, folder_id: i64, unfinished: bool) {
+        WANTED.lock().unwrap_or_else(|e| e.into_inner()).retain(|f| *f != folder_id);
+        self.checked.insert(folder_id, Instant::now());
+        if unfinished {
+            self.unfinished.insert(folder_id);
+        } else {
+            self.unfinished.remove(&folder_id);
+        }
+    }
 }
 
 /// Where an account's sync stands, for the UI.
@@ -98,6 +142,7 @@ pub async fn run_account(
     let mut resumed = watch_clock();
     tokio::spawn(watch_inbox(account.clone(), password.clone(), wake.clone(), resumed.clone()));
     let mut session: Option<Session> = None;
+    let mut schedule = Schedule::default();
     let mut failures: u32 = 0;
     let mut last: Option<SyncState> = None;
     let mut report = |state: SyncState| {
@@ -126,7 +171,7 @@ pub async fn run_account(
                 connected = true;
             }
             report(SyncState::Syncing);
-            pass(&store, &account, &password, &mut session, &*on_change).await
+            pass(&store, &account, &password, &mut session, &mut schedule, &*on_change).await
         }
         .await;
         let wait = match result {
@@ -255,6 +300,7 @@ async fn pass(
     account: &Account,
     password: &str,
     session: &mut Option<Session>,
+    schedule: &mut Schedule,
     on_change: &(dyn Fn() + Send + Sync),
 ) -> Result<bool> {
     if session.is_none() {
@@ -285,11 +331,15 @@ async fn pass(
     let deadline = Instant::now() + BACKFILL_BUDGET;
     let mut more = false;
     for (folder_id, name) in store.folders_to_sync(account.id)? {
+        if !schedule.due(folder_id, &name) {
+            continue;
+        }
         if outbox_due(store, account.id)? && drain_outbox(s, store, account, password).await? {
             on_change();
         }
         let (changed, unfinished) =
             sync_folder(s, store, account.id, folder_id, &name, deadline, on_change).await?;
+        schedule.done(folder_id, unfinished);
         if changed {
             on_change();
         }
@@ -310,6 +360,8 @@ async fn open(
         .with_context(|| format!("No answer from {}", account.config.imap_host))??;
     // Folders then report their changes as part of SELECT (sync_folder).
     within(fresh.enable_qresync()).await?;
+    // Without QRESYNC, CONDSTORE still lets a check read only the flags that changed.
+    within(fresh.enable_condstore()).await?;
     discover_folders(&mut fresh, store, account.id).await?;
     on_change();
     Ok(fresh)
@@ -354,8 +406,8 @@ fn role(name: &str, attrs: &[String]) -> &'static str {
 type FlagUpdate = (u32, bool, bool);
 
 /// Returns (the store changed, mail is left to fetch on a later pass).
-async fn sync_folder(
-    s: &mut Session,
+async fn sync_folder<S: Stream>(
+    s: &mut Imap<S>,
     store: &Store,
     account_id: i64,
     folder_id: i64,
@@ -407,19 +459,42 @@ async fn sync_folder(
             );
             (gone, updates, server)
         }
-        // Without QRESYNC (or the first time): every UID and every flag.
+        // Without QRESYNC (or the first time): every UID, to find new and deleted mail, and the flags: only those
+        // that changed where CONDSTORE can say so, otherwise all of them, a batch at a time.
         _ => {
             let server: HashSet<u32> =
                 if mailbox.exists == 0 { HashSet::new() } else { within(s.uids()).await? };
             let gone: Vec<u32> = local.iter().filter(|u| !server.contains(u) && keep(u)).copied().collect();
-            let updates = if !local.is_empty() && mailbox.exists > 0 {
-                let fetches = within(s.flags("1:*"))
-                    .await
-                    .with_context(|| format!("Could not read flags in {name}"))?;
-                fetches.iter().filter(|f| keep(&f.uid)).map(|f| (f.uid, f.seen, f.flagged)).collect()
-            } else {
-                Vec::new()
+            let changed_since = match (known.highest_modseq, s.enable_condstore().await?) {
+                (Some(modseq), true) if modseq > 0 && !renumbered && known.uid_validity.is_some() => {
+                    Some(modseq as u64)
+                }
+                _ => None,
             };
+            let mut fetches = Vec::new();
+            if !local.is_empty() && mailbox.exists > 0 {
+                let context = || format!("Could not read flags in {name}");
+                match changed_since {
+                    Some(modseq) => {
+                        fetches = within(s.flags_changed_since("1:*", modseq)).await.with_context(context)?;
+                    }
+                    None => {
+                        let mut all: Vec<u32> = server.iter().copied().collect();
+                        all.sort_unstable();
+                        for batch in all.chunks(FLAG_BATCH) {
+                            let range = format!("{}:{}", batch[0], batch[batch.len() - 1]);
+                            fetches.extend(within(s.flags(&range)).await.with_context(context)?);
+                        }
+                    }
+                }
+            }
+            log::debug!(
+                "{name}: {} flags read{}",
+                fetches.len(),
+                if changed_since.is_some() { " (CONDSTORE, changed only)" } else { "" }
+            );
+            let updates =
+                fetches.iter().filter(|f| keep(&f.uid)).map(|f| (f.uid, f.seen, f.flagged)).collect();
             (gone, updates, server)
         }
     };
@@ -478,8 +553,8 @@ async fn sync_folder(
 
 /// Fills in bodies for rows that have only headers: opened ones first, then the newest received since `since`,
 /// until `deadline` or until queued work is due. Returns true when some are left for a later pass.
-async fn fetch_bodies(
-    s: &mut Session,
+async fn fetch_bodies<S: Stream>(
+    s: &mut Imap<S>,
     store: &Store,
     account_id: i64,
     (folder_id, name): (i64, &str),
@@ -550,6 +625,14 @@ async fn drain_outbox<S: Stream>(
         }
         let Err(e) = run_op(s, store, account, password, &op).await else {
             store.outbox_done(id)?;
+            // The server files a copy in Sent: look there next instead of in up to five minutes.
+            if matches!(op, OutboxOp::Send(_)) {
+                for f in store.folders()? {
+                    if f.account_id == account.id && f.role == "sent" {
+                        want_folder(f.id);
+                    }
+                }
+            }
             continue;
         };
         let failure = failure(&e);
@@ -961,6 +1044,62 @@ mod tests {
             assert!(m.store.local_uids(m.inbox).unwrap().is_empty(), "and still archived here");
         }
 
+        /// Runs one folder check against `script` on a server with `capabilities`; returns the commands sent.
+        async fn check(m: &Mailbox, capabilities: &'static str, script: Script) -> Vec<String> {
+            let (stream, sent) = signed_in(capabilities, script);
+            let mut s = Imap::open(stream, "ada", "x").await.unwrap();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            super::super::sync_folder(&mut s, &m.store, m.account.id, m.inbox, "INBOX", deadline, &|| {})
+                .await
+                .unwrap();
+            let sent = sent.lock().unwrap()[2..].to_vec();
+            sent
+        }
+
+        #[tokio::test]
+        async fn condstore_alone_reads_only_changed_flags() {
+            let m = mailbox();
+            let state = FolderState { uid_validity: Some(7), uid_next: Some(5), highest_modseq: Some(100) };
+            m.store.set_folder_state(m.inbox, &state).unwrap();
+            let sent = check(
+                &m,
+                "{tag} OK [CAPABILITY IMAP4rev1 CONDSTORE] in\r\n",
+                vec![
+                    (
+                        "SELECT INBOX",
+                        "* 1 EXISTS\r\n* OK [UIDVALIDITY 7] v\r\n* OK [UIDNEXT 5] n\r\n\
+                         * OK [HIGHESTMODSEQ 130] m\r\n{tag} OK [READ-WRITE] s\r\n",
+                    ),
+                    ("UID SEARCH ALL", "* SEARCH 4\r\n{tag} OK done\r\n"),
+                    (
+                        "UID FETCH 1:* (UID FLAGS) (CHANGEDSINCE 100)",
+                        "* 1 FETCH (UID 4 FLAGS (\\Seen) MODSEQ (120))\r\n{tag} OK done\r\n",
+                    ),
+                ],
+            )
+            .await;
+            assert_eq!(sent.len(), 3, "{sent:?}");
+            assert_eq!(m.store.flags_of(m.inbox, 4), Some((true, false)));
+            assert_eq!(m.store.folder_state(m.inbox).unwrap().highest_modseq, Some(130));
+        }
+
+        #[tokio::test]
+        async fn without_condstore_flags_are_read_in_uid_ranges() {
+            let m = mailbox();
+            let sent = check(
+                &m,
+                "{tag} OK [CAPABILITY IMAP4rev1] in\r\n",
+                vec![
+                    ("SELECT INBOX", "* 1 EXISTS\r\n* OK [UIDVALIDITY 7] v\r\n{tag} OK [READ-WRITE] s\r\n"),
+                    ("UID SEARCH ALL", "* SEARCH 4\r\n{tag} OK done\r\n"),
+                    ("UID FETCH 4 (UID FLAGS)", "* 1 FETCH (UID 4 FLAGS (\\Flagged))\r\n{tag} OK done\r\n"),
+                ],
+            )
+            .await;
+            assert!(!sent.iter().any(|c| c.contains("1:*")), "{sent:?}");
+            assert_eq!(m.store.flags_of(m.inbox, 4), Some((false, true)));
+        }
+
         #[test]
         fn undo_is_refused_while_later_work_counts_on_the_move() {
             let m = mailbox();
@@ -1003,8 +1142,10 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         let account = store.add_account(&config).unwrap();
         let mut session = None;
+        let mut schedule = super::Schedule::default();
         let nothing = || {};
-        while super::pass(&store, &account, &password, &mut session, &nothing).await.unwrap() {}
+        while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap() {
+        }
 
         let inbox =
             store.folders_to_sync(account.id).unwrap().into_iter().find(|(_, n)| n == "INBOX").unwrap().0;
@@ -1019,7 +1160,8 @@ mod tests {
         other.store_flag(&flag_me.to_string(), "\\Flagged", !was_flagged).await.unwrap();
         other.move_to(&move_me.to_string(), "Archive").await.unwrap();
 
-        while super::pass(&store, &account, &password, &mut session, &nothing).await.unwrap() {}
+        while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap() {
+        }
         let local = store.local_uids(inbox).unwrap();
         assert!(!local.contains(&move_me), "the moved message left the inbox");
         let (_, flagged) = store.flags_of(inbox, flag_me).unwrap();
@@ -1043,8 +1185,10 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         let account = store.add_account(&config).unwrap();
         let mut session = None;
+        let mut schedule = super::Schedule::default();
         let nothing = || {};
-        while super::pass(&store, &account, &password, &mut session, &nothing).await.unwrap() {}
+        while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap() {
+        }
         let folder = |name: &str| {
             store.folders_to_sync(account.id).unwrap().into_iter().find(|(_, n)| n == name).unwrap().0
         };
@@ -1059,7 +1203,8 @@ mod tests {
 
         store.apply(&[row.id], Action::Archive, 0).unwrap();
         store.apply(&[row.id], Action::Star, 0).unwrap();
-        while super::pass(&store, &account, &password, &mut session, &nothing).await.unwrap() {}
+        while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap() {
+        }
         let problems = store.outbox_problems().unwrap();
         assert!(problems.is_empty(), "{problems:?}");
         assert_eq!(store.next_due(account.id).unwrap(), None);

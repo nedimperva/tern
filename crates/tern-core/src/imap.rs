@@ -26,6 +26,7 @@ use io_imap::rfc3501::select::{ImapMailboxSelectData, ImapMailboxSelectOptions};
 use io_imap::rfc3501::store::ImapMessageStoreOptions;
 use io_imap::rfc6851::r#move::ImapMessageMoveOptions;
 use io_imap::sasl::auth_plain::ImapAuthPlainOptions;
+use io_imap::types::command::FetchModifier;
 use io_imap::types::core::{AString, IString, NString, Vec1};
 use io_imap::types::extensions::enable::CapabilityEnable;
 use io_imap::types::fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Section};
@@ -98,6 +99,8 @@ pub struct Imap<S> {
     capabilities: Vec<Capability<'static>>,
     /// QRESYNC is ENABLEd on this connection.
     qresync: bool,
+    /// CONDSTORE without QRESYNC: flag changes can be asked for since a modification sequence.
+    condstore: bool,
 }
 
 pub type TlsImap = Imap<TlsStream<TcpStream>>;
@@ -195,7 +198,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
             }
             refused => anyhow::Error::new(refused).context(SignInRefused),
         })?;
-        let mut imap = Self { conn, capabilities, qresync: false };
+        let mut imap = Self { conn, capabilities, qresync: false, condstore: false };
         // Some servers (Gmail) ask clients to say who they are. Nothing depends on the answer.
         if imap.has("ID") {
             imap.identify().await?;
@@ -261,6 +264,28 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
 
     pub fn qresync(&self) -> bool {
         self.qresync
+    }
+
+    /// On a server with CONDSTORE but not QRESYNC, turns on modification sequences (ENABLE where offered;
+    /// otherwise the first CHANGEDSINCE does it). Returns whether `flags_changed_since` can be used.
+    pub async fn enable_condstore(&mut self) -> Result<bool> {
+        if !self.qresync && !self.condstore && self.has("CONDSTORE") {
+            if self.has("ENABLE") {
+                self.conn.enable(Vec1::from(CapabilityEnable::try_from("CONDSTORE")?)).await?;
+            }
+            self.condstore = true;
+        }
+        Ok(self.condstore)
+    }
+
+    /// Flags of the messages in `uids` whose flags changed after `modseq` (CONDSTORE `CHANGEDSINCE`).
+    pub async fn flags_changed_since(&mut self, uids: &str, modseq: u64) -> Result<Vec<Fetched>> {
+        let since = std::num::NonZeroU64::new(modseq).context("modification sequence 0")?;
+        let opts = ImapMessageFetchOptions { uid: true, modifiers: vec![FetchModifier::ChangedSince(since)] };
+        let items = vec![MessageDataItemName::Uid, MessageDataItemName::Flags];
+        let names = MacroOrMessageDataItemNames::MessageDataItemNames(items);
+        let fetched = self.conn.fetch(SequenceSet::try_from(uids)?, names, opts).await?;
+        Ok(fetched.into_values().filter_map(|items| fetched_from(items.into_iter().collect())).collect())
     }
 
     /// Selects `name` and has the server report what changed since `highest_modseq`: expunged UIDs and changed
@@ -876,6 +901,26 @@ mod tests {
             [(5, true, true)]
         );
         assert_eq!(sent.lock().unwrap().len(), 4, "sign-in, ENABLE, one SELECT: nothing else");
+    }
+
+    #[tokio::test]
+    async fn condstore_alone_asks_for_changed_flags_only() {
+        let (stream, sent) = signed_in(
+            "{tag} OK [CAPABILITY IMAP4rev1 CONDSTORE ENABLE] in\r\n",
+            vec![
+                ("ENABLE CONDSTORE", "* ENABLED CONDSTORE\r\n{tag} OK enabled\r\n"),
+                (
+                    "UID FETCH 1:* (UID FLAGS) (CHANGEDSINCE 100)",
+                    "* 2 FETCH (UID 5 FLAGS (\\Seen) MODSEQ (120))\r\n{tag} OK done\r\n",
+                ),
+            ],
+        );
+        let mut imap = Imap::open(stream, "ada", "x").await.unwrap();
+        assert!(!imap.enable_qresync().await.unwrap());
+        assert!(imap.enable_condstore().await.unwrap());
+        let changed = imap.flags_changed_since("1:*", 100).await.unwrap();
+        assert_eq!(changed.iter().map(|f| (f.uid, f.seen)).collect::<Vec<_>>(), [(5, true)]);
+        assert_eq!(sent.lock().unwrap().len(), 4);
     }
 
     #[tokio::test]

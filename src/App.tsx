@@ -197,7 +197,10 @@ export default function App() {
     }
   }
 
-  const go = (t: Target) => batch(() => (setQuery(""), setTarget(t)));
+  const go = (t: Target) => {
+    batch(() => (setQuery(""), setTarget(t)));
+    if ("folder" in t) void api.checkFolder(t.folder);
+  };
   const move = (by: number) => setSelected(Math.max(0, Math.min(rows().length - 1, selected() + by)));
 
   // MARK: Keyboard (Gmail's keys)
