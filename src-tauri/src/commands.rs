@@ -134,6 +134,14 @@ pub async fn send(state: State<'_, AppState>, account_id: i64, draft: Draft) -> 
     Ok(vec![id])
 }
 
+/// The person opened a folder: check it now rather than on its five-minute round.
+#[tauri::command]
+pub async fn check_folder(state: State<'_, AppState>, id: i64) -> Reply<()> {
+    sync::want_folder(id);
+    state.wake_all();
+    Ok(())
+}
+
 /// Each account's sync state as last reported; "sync-state" events follow.
 #[tauri::command]
 pub async fn sync_states(state: State<'_, AppState>) -> Reply<HashMap<i64, SyncState>> {
