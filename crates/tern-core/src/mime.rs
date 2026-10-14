@@ -1,4 +1,4 @@
-use mail_parser::{HeaderValue, MessageParser};
+use mail_parser::{HeaderValue, MessageParser, PartType};
 
 use crate::models::NewMessage;
 
@@ -17,7 +17,11 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
         .unwrap_or_default();
 
     let body_text = msg.body_text(0).map(|t| t.into_owned());
-    let body_html = msg.body_html(0).map(|t| t.into_owned());
+    // mail-parser turns a text-only message into HTML; keep that as plain text so the reader can theme it.
+    let body_html = match msg.html_part(0).map(|p| &p.body) {
+        Some(PartType::Html(html)) => Some(html.clone().into_owned()),
+        _ => None,
+    };
 
     Some(NewMessage {
         uid,
@@ -101,6 +105,7 @@ Date: Mon, 12 Oct 2026 10:00:00 +0000\r\n\r\nHi Bob,\r\n> quoted\r\nsee you.\r\n
         assert_eq!(m.references, vec!["a@example.com".to_string()]);
         assert_eq!(m.snippet, "Hi Bob, see you.");
         assert!(m.date > 0);
+        assert!(m.body_html.is_none(), "plain text stays plain");
     }
 
     #[test]

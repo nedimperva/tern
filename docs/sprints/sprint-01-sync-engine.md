@@ -161,3 +161,11 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   is given up, and a dialog listing each with the server's reason, Retry and Discard; also in the command bar.
   Tauri commands `problems`, `retry_problem`, `discard_problem`. Checked with headless Chromium (light and dark) on
   the fake mailbox and in the real window, where the stuck 550 reply shows. Retry-policy task complete.
+- 2026-10-14 — Reader fixes from the owner's Windows test. (1) The HTML frame flickered: every sync change reloaded
+  the open thread as new objects, so each message's frame was rebuilt. The thread is now a store reconciled by id;
+  checked in headless Chromium (starring the open message rebuilt the frame before, keeps it now). The reading pane
+  also reserves its scrollbar gutter, so classic scrollbars cannot start a resize loop. (2) Plain-text mail showed in
+  a white box in dark mode: mail-parser's `body_html` converts text to HTML. Only a real `text/html` part is stored
+  as HTML now; schema v5 clears the generated HTML already stored (exact match only). Dev DB: 657 of 657 cleared.
+  Noted from the same test: sending felt slow right after adding the account — not reproduced; to look at with the
+  reliability work.
