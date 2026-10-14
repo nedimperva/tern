@@ -73,9 +73,9 @@ Needs the Fastmail test account. Clean checkout of this branch on Windows 11.
 7. Note Windows version, display scaling (100/125/150%), and anything that looks wrong, with a screenshot.
 
 ### Reliability gate
-- [ ] Before mutations on a real inbox, exercise safe move/expunge fallback, UIDVALIDITY validation, dependent pending operations and restart recovery.
-- [ ] Test ambiguous SMTP acceptance separately from safe-to-retry failure; surface unknown outcomes rather than blindly resending.
-- [ ] Add a minimal scripted transport seam and offline/crash/migration tests; do not wait for the Outlook abstraction package.
+- [x] Before mutations on a real inbox, exercise safe move/expunge fallback, UIDVALIDITY validation, dependent pending operations and restart recovery.
+- [x] Test ambiguous SMTP acceptance separately from safe-to-retry failure; surface unknown outcomes rather than blindly resending.
+- [x] Add a minimal scripted transport seam and offline/crash/migration tests; do not wait for the Outlook abstraction package.
 - [ ] Obtain the Gmail test account/Cloud project; run the early comparison and begin domain/privacy/scope preparation.
 
 ### Hygiene
@@ -143,3 +143,21 @@ Search misses by about 7x. It belongs to package 06 (search and speed); recorded
 - 2026-10-13 — `scripts/dev-mail-server.sh`: Stalwart 0.15.5 (0.16 moved settings into its database behind a
   separate CLI), checksum-pinned, loopback only, local test CA via `SSL_CERT_FILE`. Advertises MOVE, UIDPLUS,
   CONDSTORE, QRESYNC and IDLE. Default limit of 5 SMTP connections a second per IP; seeding is paced.
+- 2026-10-14 — **Owner's Windows smoke test**: the app ran; sending was slow right after adding the account (not
+  reproduced here); the HTML reader flickered (fixed in #16: frames were rebuilt on every sync change).
+- 2026-10-14 — **Reliability gate** (all but the Gmail item). Each case has a test against a scripted IMAP server
+  (`src/scripted.rs`, the transport seam) or the store, and the dependent-move case also against the dev server:
+  - Move/expunge fallback: MOVE, else COPY + `\Deleted` + UID EXPUNGE, else no expunge (existing tests), and moves
+    now return COPYUID.
+  - UIDVALIDITY: queued work records the folder's UIDVALIDITY and finds its messages by Message-ID after a
+    renumbering, never acting on old uids; a message no longer there makes a problem at once. A renumbered folder
+    keeps the rows queued work points at (uid cleared) instead of dropping them; sync claims them back.
+  - Dependent work: a star or second move made before an earlier move went out waits for it; COPYUID fills in the
+    new uid (or Message-ID lookup without UIDPLUS). Undo refuses a move later work depends on. Sync also looks for
+    new mail again while queued work holds back uids, so none is skipped for good.
+  - Restart: claimed work goes back to the queue; a send that had started becomes a "may have been sent" problem.
+  - SMTP outcomes: run step by step; refusals and breaks up to DATA are definite (retry or give up), a break after
+    the message is "may have been sent" and is never resent on its own. Scripted SMTP tests cover each case.
+  - Found on the way: sent mail had no Message-ID (lettre adds none); now `<random@sender-domain>`. Stalwart
+    cannot SEARCH HEADER Message-ID (or reliably TEXT), so the lookup falls back to one FETCH of the folder's ids.
+  Schema v6 (`outbox.maybe_sent`). 61 unit tests, 9 dev-server checks pass.

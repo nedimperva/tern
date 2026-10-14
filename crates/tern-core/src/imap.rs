@@ -368,20 +368,65 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
     /// Moves `uids` from the selected folder to `dest`. MOVE where the server has it; otherwise COPY, mark
     /// deleted, and UID EXPUNGE, which removes only these messages. Without UIDPLUS there is no expunge that
     /// spares other deleted mail, so the originals stay marked deleted and the server or user expunges later.
-    pub async fn move_to(&mut self, uids: &str, dest: &str) -> Result<()> {
+    ///
+    /// Returns (uid here, uid in `dest`) for each message the server reported (COPYUID, RFC 4315); empty when it
+    /// reported nothing.
+    pub async fn move_to(&mut self, uids: &str, dest: &str) -> Result<Vec<(u32, u32)>> {
         let set = SequenceSet::try_from(uids)?;
-        if self.has("MOVE") {
-            self.conn.r#move(set, mailbox(dest)?, ImapMessageMoveOptions { uid: true }).await?;
-            return Ok(());
-        }
-        self.conn.copy(set.clone(), mailbox(dest)?, ImapMessageCopyOptions { uid: true }).await?;
-        self.store_flag(uids, "\\Deleted", true).await?;
-        if self.has("UIDPLUS") {
-            self.conn.uid_expunge(set).await?;
+        let copyuid = if self.has("MOVE") {
+            self.conn.r#move(set, mailbox(dest)?, ImapMessageMoveOptions { uid: true }).await?
         } else {
-            log::warn!("no MOVE or UIDPLUS: messages {uids} left marked deleted rather than expunging all");
-        }
-        Ok(())
+            let copyuid =
+                self.conn.copy(set.clone(), mailbox(dest)?, ImapMessageCopyOptions { uid: true }).await?;
+            self.store_flag(uids, "\\Deleted", true).await?;
+            if self.has("UIDPLUS") {
+                self.conn.uid_expunge(set).await?;
+            } else {
+                log::warn!(
+                    "no MOVE or UIDPLUS: messages {uids} left marked deleted rather than expunging all"
+                );
+            }
+            copyuid
+        };
+        Ok(copyuid.map(|(_, from, to)| from.into_iter().zip(to).collect()).unwrap_or_default())
+    }
+
+    /// UIDs in the selected folder of messages with this Message-ID (given without angle brackets), by SEARCH
+    /// HEADER. Some servers do not index Message-ID for that and find nothing (Stalwart); `message_ids` is the
+    /// fallback that works everywhere.
+    pub async fn find_message_id(&mut self, message_id: &str) -> Result<Vec<u32>> {
+        let header = SearchKey::Header(
+            AString::try_from("Message-ID")?,
+            AString::try_from(format!("<{message_id}>"))?,
+        );
+        let found = self.conn.search(Vec1::from(header), ImapMessageSearchOptions { uid: true }).await?;
+        Ok(found.into_iter().map(|u| u.get()).collect())
+    }
+
+    /// (uid, Message-ID without angle brackets) of the messages in `uids` that have one.
+    pub async fn message_ids(&mut self, uids: &str) -> Result<Vec<(u32, String)>> {
+        let field = MessageDataItemName::BodyExt {
+            section: Some(Section::HeaderFields(None, Vec1::from(AString::try_from("MESSAGE-ID")?))),
+            partial: None,
+            peek: true,
+        };
+        let fetched = self.fetch(uids, vec![MessageDataItemName::Uid, field]).await?;
+        Ok(fetched
+            .into_iter()
+            .filter_map(|f| {
+                let header = String::from_utf8_lossy(f.header.as_deref()?).into_owned();
+                let id = header
+                    .split_once(':')?
+                    .1
+                    .trim()
+                    .trim_start_matches('<')
+                    .split('>')
+                    .next()?
+                    .trim()
+                    .to_string();
+                (!id.is_empty()).then_some((f.uid, id))
+            })
+            .collect())
     }
 }
 
@@ -491,56 +536,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> ImapClientAsync for Conn<S> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-
-    use tokio::io::{AsyncBufReadExt, BufReader, DuplexStream};
-
     use super::*;
+    use tokio::io::{AsyncBufReadExt, BufReader};
 
-    /// One expected client command (matched by prefix, tag stripped) and the server's reply. `{tag}` in the reply
-    /// becomes the tag of the most recent tagged command; an empty `expect` matches any line.
-    type Script = Vec<(&'static str, &'static str)>;
-
-    /// A scripted IMAP server. Returns the client end and every line the client sent, tags stripped.
-    fn server(greeting: &'static str, script: Script) -> (DuplexStream, Arc<Mutex<Vec<String>>>) {
-        let (client, server) = tokio::io::duplex(1 << 16);
-        let sent = Arc::new(Mutex::new(Vec::new()));
-        let log = sent.clone();
-        tokio::spawn(async move {
-            let (r, mut w) = tokio::io::split(server);
-            let mut r = BufReader::new(r);
-            w.write_all(greeting.as_bytes()).await.unwrap();
-            let mut tag = String::new();
-            for (expect, reply) in script {
-                let mut line = String::new();
-                if r.read_line(&mut line).await.unwrap() == 0 {
-                    return;
-                }
-                let line = line.trim_end().to_string();
-                let mut words = line.splitn(2, ' ');
-                let (first, rest) = (words.next().unwrap_or(""), words.next());
-                let command = match rest {
-                    Some(rest) if rest.starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                        tag = first.to_string();
-                        rest.to_string()
-                    }
-                    _ => line.clone(),
-                };
-                assert!(command.starts_with(expect), "expected {expect:?}, client sent {command:?}");
-                log.lock().unwrap().push(command);
-                w.write_all(reply.replace("{tag}", &tag).as_bytes()).await.unwrap();
-            }
-        });
-        (client, sent)
-    }
-
-    const GREETING: &str = "* OK [CAPABILITY IMAP4rev1 AUTH=PLAIN] ready\r\n";
-
-    fn signed_in(capabilities: &'static str, script: Script) -> (DuplexStream, Arc<Mutex<Vec<String>>>) {
-        let mut all: Script = vec![("AUTHENTICATE PLAIN", "+ \r\n"), ("", capabilities)];
-        all.extend(script);
-        server(GREETING, all)
-    }
+    use crate::scripted::{server, signed_in, GREETING};
 
     #[tokio::test]
     async fn imap_sockets_have_nagle_off() {
@@ -638,7 +637,7 @@ mod tests {
             vec![("UID MOVE 4 Archive", "* OK [COPYUID 7 4 9] moved\r\n* 1 EXPUNGE\r\n{tag} OK done\r\n")],
         );
         let mut imap = Imap::open(stream, "ada", "x").await.unwrap();
-        imap.move_to("4", "Archive").await.unwrap();
+        assert_eq!(imap.move_to("4", "Archive").await.unwrap(), [(4, 9)]);
         assert_eq!(sent.lock().unwrap().len(), 3);
     }
 
@@ -656,7 +655,7 @@ mod tests {
             ],
         );
         let mut imap = Imap::open(stream, "ada", "x").await.unwrap();
-        imap.move_to("4", "Archive").await.unwrap();
+        assert_eq!(imap.move_to("4", "Archive").await.unwrap(), [(4, 9)]);
         assert!(!sent.lock().unwrap().iter().any(|c| c == "EXPUNGE"));
     }
 
@@ -671,10 +670,30 @@ mod tests {
             ],
         );
         let mut imap = Imap::open(stream, "ada", "x").await.unwrap();
-        imap.move_to("4", "Archive").await.unwrap();
+        assert!(imap.move_to("4", "Archive").await.unwrap().is_empty(), "no COPYUID without UIDPLUS");
         imap.logout().await.unwrap();
         // A plain EXPUNGE would also delete other mail someone marked deleted.
         assert!(!sent.lock().unwrap().iter().any(|c| c.contains("EXPUNGE")));
+    }
+
+    #[tokio::test]
+    async fn finds_a_message_by_message_id() {
+        let (stream, sent) = signed_in(
+            "{tag} OK [CAPABILITY IMAP4rev1] in\r\n",
+            vec![
+                ("UID SEARCH HEADER Message-ID", "* SEARCH 12\r\n{tag} OK done\r\n"),
+                (
+                    "UID FETCH 1:* (UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])",
+                    "* 1 FETCH (UID 12 BODY[HEADER.FIELDS (MESSAGE-ID)] {32}\r\nMessage-ID: <a1@example.com>\r\n\r\n)\r\n\
+                     * 2 FETCH (UID 13 BODY[HEADER.FIELDS (MESSAGE-ID)] {2}\r\n\r\n)\r\n\
+                     {tag} OK done\r\n",
+                ),
+            ],
+        );
+        let mut imap = Imap::open(stream, "ada", "x").await.unwrap();
+        assert_eq!(imap.find_message_id("a1@example.com").await.unwrap(), [12]);
+        assert!(sent.lock().unwrap()[2].contains("<a1@example.com>"));
+        assert_eq!(imap.message_ids("1:*").await.unwrap(), [(12, "a1@example.com".to_string())]);
     }
 
     /// A server that slips a response in right after its STARTTLS OK, while the line is still plain text.

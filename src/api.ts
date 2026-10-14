@@ -63,6 +63,8 @@ export type OutboxProblem = {
   attempts: number;
   lastError: string;
   gaveUpAt: number;
+  /** A send that broke off after the server got the message: it may have gone out already. */
+  maybeSent: boolean;
 };
 
 export interface Api {
@@ -159,6 +161,16 @@ function fake(): Api {
       attempts: 1,
       lastError: "permanent error (550): 5.1.1 Recipient address rejected: no such user",
       gaveUpAt: now,
+      maybeSent: false,
+    },
+    {
+      id: 2,
+      accountId: 1,
+      what: "Send “Lunch on Friday?”",
+      attempts: 1,
+      lastError: "The connection broke after the message was handed over, so it may have been sent",
+      gaveUpAt: now,
+      maybeSent: true,
     },
   ];
   const changed = () => listeners.forEach((f) => f());

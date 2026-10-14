@@ -35,6 +35,23 @@ CREATE INDEX messages_bodyless ON messages (folder_id, date DESC) WHERE body_sta
 Rows from before v4 have their bodies, hence the default. A headers-only row has no `bodies` row and is in the
 search index by subject and sender only, until `fill_bodies` replaces its index entry.
 
+## v5 — package 01, plain text stays plain (implemented 2026-10-14)
+```sql
+UPDATE bodies SET html = NULL WHERE text IS NOT NULL AND html = '<html><body>' ||
+  replace(replace(replace(text, char(13), ''), '<', '&lt;'), char(10), '<br/>') || '</body></html>';
+```
+mail-parser's `body_html` turns a text-only message into HTML, which the reader showed on white in dark mode. Only
+a real `text/html` part is stored as HTML now; this clears exactly the generated HTML already stored.
+
+## v6 — package 00, reliability gate (implemented 2026-10-14)
+```sql
+ALTER TABLE outbox ADD COLUMN maybe_sent INTEGER NOT NULL DEFAULT 0;   -- a send that may have gone out
+```
+`outbox.claimed` now has three values: 0 queued, 1 claimed by a pass, 2 handed to the server (`outbox_sending`).
+On start, 1 goes back to 0; a send left at 2 becomes a problem with `maybe_sent = 1` rather than being sent again.
+Payloads (JSON, no migration needed) gained `validity` (the folder's UIDVALIDITY when queued) and `waiting` (row
+ids whose uid in the folder is not known yet), both defaulting for rows queued by older versions.
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'
