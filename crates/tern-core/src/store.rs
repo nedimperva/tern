@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 11;
+const SCHEMA_VERSION: i64 = 12;
 /// Messages with the same normalised subject and a participant in common within this many seconds of each other
 /// join one conversation when nothing in their headers links them.
 const SUBJECT_WINDOW: i64 = 7 * 86_400;
@@ -184,6 +184,13 @@ fn migrate(conn: &Connection) -> Result<()> {
             // Mail HTML is sanitised when stored from now on; the step cleans what is already there (below).
             9 => "",
             // Muted conversations: new mail in them skips the inbox.
+            // What replies need from the original: its Cc, Reply-To, Mail-Followup-To and References.
+            11 => {
+                "ALTER TABLE messages ADD COLUMN cc_addrs TEXT NOT NULL DEFAULT '';
+                 ALTER TABLE messages ADD COLUMN reply_to TEXT NOT NULL DEFAULT '';
+                 ALTER TABLE messages ADD COLUMN followup_to TEXT NOT NULL DEFAULT '';
+                 ALTER TABLE messages ADD COLUMN refs TEXT NOT NULL DEFAULT '';"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -526,12 +533,15 @@ impl Store {
             let inserted = tx.execute(
                 "INSERT OR IGNORE INTO messages (account_id, folder_id, uid, message_id, thread_id, subject, from_name,
                                                  from_addr, to_addrs, date, snippet, seen, flagged, has_attachments,
-                                                 size, body_state, list_id, list_unsubscribe, parts, subject_norm)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+                                                 size, body_state, list_id, list_unsubscribe, parts, subject_norm,
+                                                 cc_addrs, reply_to, followup_to, refs)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
+                         ?21, ?22, ?23, ?24)",
                 params![
                     account_id, folder_id, m.uid, m.message_id, thread_id, m.subject, m.from_name, m.from_addr,
                     m.to_addrs, m.date, m.snippet, m.seen, m.flagged, m.has_attachments, m.size, body_state,
-                    m.list_id, m.list_unsubscribe, parts, subject_norm(&m.subject)
+                    m.list_id, m.list_unsubscribe, parts, subject_norm(&m.subject), m.cc_addrs, m.reply_to,
+                    m.followup_to, m.references.join(" ")
                 ],
             )?;
             if inserted == 0 {
@@ -887,6 +897,113 @@ impl Store {
             }
         }
         Ok(out)
+    }
+
+    /// How a reply, reply-all or forward to this message starts (recipients, subject, threading, quote).
+    ///
+    /// Reply goes to Reply-To, else the sender; to a message this account sent, it goes back to its recipients.
+    /// Reply-all honours Mail-Followup-To when the message has one, else adds everyone in To and Cc. The
+    /// account's own address is never a recipient. References carry the chain on, ending with this message.
+    pub fn reply_init(&self, id: i64, kind: ReplyKind) -> Result<ReplyInit> {
+        let conn = self.conn();
+        type Row = (
+            i64,
+            String,
+            Option<String>,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            i64,
+            String,
+        );
+        let (account_id, me, message_id, from_name, from_addr, to, cc, reply_to, followup, refs, date, subject): Row =
+            conn.query_row(
+                "SELECT m.account_id, lower(a.email), m.message_id, m.from_name, m.from_addr, m.to_addrs, m.cc_addrs,
+                        m.reply_to, m.followup_to, m.refs, m.date, m.subject
+                 FROM messages m JOIN accounts a ON a.id = m.account_id WHERE m.id = ?1",
+                [id],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                        r.get(8)?,
+                        r.get(9)?,
+                        r.get(10)?,
+                        r.get(11)?,
+                    ))
+                },
+            )?;
+        let text: Option<String> = conn
+            .query_row("SELECT text FROM bodies WHERE message_id = ?1", [id], |r| r.get(0))
+            .optional()?
+            .flatten();
+        let list = |s: &str| -> Vec<String> {
+            s.split(',').map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect()
+        };
+        let mine = |a: &String| a.to_lowercase() == me;
+        let mut seen = HashSet::new();
+        // Each address once, never this account's.
+        let mut keep = |list: Vec<String>| -> Vec<String> {
+            list.into_iter().filter(|a| !mine(a) && seen.insert(a.to_lowercase())).collect()
+        };
+        let from_me = from_addr.to_lowercase() == me;
+        let sender = if !reply_to.is_empty() { list(&reply_to) } else { vec![from_addr.clone()] };
+        let (to_list, cc_list) = match kind {
+            ReplyKind::Forward => (Vec::new(), Vec::new()),
+            ReplyKind::Reply if from_me => (keep(list(&to)), Vec::new()),
+            ReplyKind::Reply => (keep(sender), Vec::new()),
+            ReplyKind::ReplyAll if !followup.is_empty() => (keep(list(&followup)), Vec::new()),
+            ReplyKind::ReplyAll if from_me => {
+                let first = keep(list(&to));
+                (first, keep(list(&cc)))
+            }
+            ReplyKind::ReplyAll => {
+                let first = keep(sender);
+                let mut others = list(&to);
+                others.extend(list(&cc));
+                (first, keep(others))
+            }
+        };
+        let (prefix, already) = match kind {
+            ReplyKind::Forward => {
+                ("Fwd: ", ["fwd:", "fw:"].iter().any(|p| subject.to_lowercase().starts_with(p)))
+            }
+            _ => ("Re: ", subject.to_lowercase().starts_with("re:")),
+        };
+        let threading = kind != ReplyKind::Forward;
+        let mut references: Vec<String> = refs.split_whitespace().map(str::to_string).collect();
+        if let Some(id) = &message_id {
+            if !references.contains(id) {
+                references.push(id.clone());
+            }
+        }
+        Ok(ReplyInit {
+            account_id,
+            to: to_list,
+            cc: cc_list,
+            subject: if already { subject } else { format!("{prefix}{subject}") },
+            in_reply_to: if threading { message_id } else { None },
+            references: if threading { references } else { Vec::new() },
+            quote_from: if from_name.is_empty() {
+                from_addr.clone()
+            } else {
+                format!("{from_name} <{from_addr}>")
+            },
+            quote_date: date,
+            quote_text: text.unwrap_or_default(),
+            quote_to: to,
+            quote_cc: cc,
+        })
     }
 
     pub fn thread(&self, id: i64) -> Result<Vec<ThreadMessage>> {
@@ -1893,6 +2010,88 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         assert!(!store.muted(id).unwrap());
     }
 
+    fn mail_to_me(uid: u32, from: &str, to: &str, cc: &str) -> NewMessage {
+        NewMessage {
+            uid,
+            message_id: Some(format!("{uid}@example.com")),
+            references: vec!["0@example.com".into()],
+            subject: "Plan".into(),
+            from_name: "Ada".into(),
+            from_addr: from.into(),
+            to_addrs: to.into(),
+            cc_addrs: cc.into(),
+            date: 100,
+            body_text: Some("See you.".into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn replies_go_to_the_right_people() {
+        let (store, account, inbox, _) = setup();
+        let me = "me@example.com";
+        let mut with_reply_to = mail_to_me(2, "ada@x.com", me, "");
+        with_reply_to.reply_to = "list@x.com".into();
+        let mut followup = mail_to_me(3, "ada@x.com", &format!("{me}, bob@x.com"), "");
+        followup.followup_to = "team@x.com".into();
+        store
+            .insert_messages(
+                account,
+                inbox,
+                &[
+                    mail_to_me(1, "ada@x.com", &format!("{me}, bob@x.com"), "carl@x.com, ME@example.com"),
+                    with_reply_to,
+                    followup,
+                    mail_to_me(4, me, "ada@x.com, bob@x.com", "carl@x.com"),
+                ],
+            )
+            .unwrap();
+        let id = |uid: u32| {
+            store
+                .list(&ListTarget::Folder(inbox), None, 9)
+                .unwrap()
+                .into_iter()
+                .find(|r| r.id == uid as i64)
+                .unwrap()
+                .id
+        };
+        let r = |uid, kind| store.reply_init(id(uid), kind).unwrap();
+
+        let reply = r(1, ReplyKind::Reply);
+        assert_eq!((reply.to.clone(), reply.cc.clone()), (vec!["ada@x.com".to_string()], vec![]));
+        assert_eq!(reply.subject, "Re: Plan");
+        assert_eq!(reply.in_reply_to.as_deref(), Some("1@example.com"));
+        assert_eq!(reply.references, ["0@example.com", "1@example.com"]);
+        assert_eq!(reply.quote_text, "See you.");
+
+        let all = r(1, ReplyKind::ReplyAll);
+        assert_eq!(all.to, ["ada@x.com"]);
+        assert_eq!(all.cc, ["bob@x.com", "carl@x.com"], "everyone else, never me (any case)");
+
+        assert_eq!(r(2, ReplyKind::Reply).to, ["list@x.com"], "Reply-To wins");
+        let f = r(3, ReplyKind::ReplyAll);
+        assert_eq!(
+            (f.to, f.cc),
+            (vec!["team@x.com".to_string()], vec![]),
+            "Mail-Followup-To wins for reply-all"
+        );
+
+        let mine = r(4, ReplyKind::ReplyAll);
+        assert_eq!(
+            (mine.to, mine.cc),
+            (vec!["ada@x.com".into(), "bob@x.com".into()], vec!["carl@x.com".to_string()])
+        );
+        assert_eq!(
+            r(4, ReplyKind::Reply).to,
+            ["ada@x.com", "bob@x.com"],
+            "replying to my own mail goes on to them"
+        );
+
+        let fwd = r(1, ReplyKind::Forward);
+        assert!(fwd.to.is_empty() && fwd.in_reply_to.is_none() && fwd.references.is_empty());
+        assert_eq!(fwd.subject, "Fwd: Plan");
+    }
+
     #[test]
     fn settings_keep_their_json() {
         let store = Store::open_in_memory().unwrap();
@@ -1968,7 +2167,9 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
             cc: vec![],
             subject: "Lunch?".into(),
             body: "".into(),
+            bcc: vec![],
             in_reply_to: None,
+            references: vec![],
             message_id: None,
         }
     }
@@ -2050,6 +2251,10 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                11 => {
+                    "ALTER TABLE messages DROP COLUMN cc_addrs; ALTER TABLE messages DROP COLUMN reply_to;
+                     ALTER TABLE messages DROP COLUMN followup_to; ALTER TABLE messages DROP COLUMN refs;"
+                }
                 10 => "DROP TABLE muted;",
                 // Step 9 only changed data.
                 9 => "",

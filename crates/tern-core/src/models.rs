@@ -144,6 +144,10 @@ pub struct NewMessage {
     /// List-Id and List-Unsubscribe, raw, for mailing-list handling later.
     pub list_id: Option<String>,
     pub list_unsubscribe: Option<String>,
+    /// Addresses only, comma-separated, as `to_addrs`. Kept for reply-all.
+    pub cc_addrs: String,
+    pub reply_to: String,
+    pub followup_to: String,
     /// The message's parts from BODYSTRUCTURE, when the server sent it with the headers.
     pub parts: Option<Vec<Part>>,
 }
@@ -221,11 +225,43 @@ pub struct Draft {
     pub subject: String,
     pub body: String,
     #[serde(default)]
+    pub bcc: Vec<String>,
+    #[serde(default)]
     pub in_reply_to: Option<String>,
+    /// The conversation's Message-IDs, oldest first, ending with the one answered (References).
+    #[serde(default)]
+    pub references: Vec<String>,
     /// Set when the send is queued and kept, so a second try after an uncertain one is the same message to the
     /// recipient (and to Tern, matching the copy in Sent).
     #[serde(default)]
     pub message_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReplyKind {
+    Reply,
+    ReplyAll,
+    Forward,
+}
+
+/// What a reply, reply-all or forward starts with, worked out from the message's headers. The UI writes the quote
+/// header in the person's locale from `quote_*`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplyInit {
+    pub account_id: i64,
+    pub to: Vec<String>,
+    pub cc: Vec<String>,
+    pub subject: String,
+    pub in_reply_to: Option<String>,
+    pub references: Vec<String>,
+    pub quote_from: String,
+    pub quote_date: i64,
+    pub quote_text: String,
+    /// For a forward, the other headers of the original (To, Cc), for the forwarded-message block.
+    pub quote_to: String,
+    pub quote_cc: String,
 }
 
 /// Work waiting to go to the server. Each carries what it takes to put the local store back if it is undone.

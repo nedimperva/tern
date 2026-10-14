@@ -758,7 +758,99 @@ button.fold {
   margin-left: 6px;
 }
 
-.compose,
+.compose {
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  background: var(--bg-1);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  padding: var(--s-2) var(--s-4) var(--s-4);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+/* A reply at the bottom of the conversation, in the page rather than over it. */
+.inline-reply {
+  max-width: 860px;
+  margin: 0 auto var(--s-6);
+  padding: 0 var(--s-6);
+}
+.compose.inline {
+  width: 100%;
+  max-height: none;
+  box-shadow: none;
+  border: 1px solid var(--line);
+}
+.compose .field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 36px;
+  border-bottom: 1px solid var(--line);
+  padding: var(--s-1) 0;
+}
+.compose .field .label {
+  width: 64px;
+  flex: none;
+  color: var(--fg-2);
+  font-size: var(--t-md);
+}
+.compose .field input,
+.compose .field select {
+  flex: 1;
+  min-width: 120px;
+  border: 0;
+  background: transparent;
+  padding: var(--s-1) 0;
+}
+.compose .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  padding: 0 2px 0 var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  font-size: var(--t-md);
+}
+.compose .chip.invalid {
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--danger);
+}
+.compose .chip button {
+  background: none;
+  border: 0;
+  padding: 0 var(--s-1);
+  color: var(--fg-2);
+  line-height: 1;
+}
+.compose textarea {
+  min-height: 160px;
+  margin-top: var(--s-2);
+  border: 0;
+  background: transparent;
+  padding: var(--s-2) 0;
+  resize: none;
+  overflow: hidden;
+  font: var(--t-rd) / 1.5 var(--font);
+}
+.compose footer {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+.compose footer .extras {
+  display: flex;
+  gap: var(--s-3);
+  margin-left: var(--s-2);
+}
+.compose footer .discard {
+  margin-left: auto;
+}
+
 .setup {
   width: min(640px, 92vw);
   background: var(--bg-1);
@@ -769,11 +861,6 @@ button.fold {
   flex-direction: column;
   gap: var(--s-2);
 }
-.compose textarea {
-  min-height: 280px;
-  resize: vertical;
-}
-.compose footer,
 .setup footer {
   display: flex;
   gap: var(--s-2);

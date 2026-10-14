@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
     secrets, sync, Account, AccountConfig, Action, Applied, Cursor, Draft, Folder, ListTarget, MessageRow,
-    OutboxProblem, ThreadMessage, ThreadRow,
+    OutboxProblem, ReplyInit, ReplyKind, ThreadMessage, ThreadRow,
 };
 
 use std::collections::HashMap;
@@ -151,10 +151,23 @@ pub async fn discard_problem(app: AppHandle, state: State<'_, AppState>, id: i64
 
 /// Queues the message; it leaves after the undo window. Returns the undo token.
 #[tauri::command]
-pub async fn send(state: State<'_, AppState>, account_id: i64, draft: Draft) -> Reply<Vec<i64>> {
-    let id = state.store.queue_send(account_id, draft, UNDO_SECONDS).map_err(text)?;
+pub async fn send(
+    state: State<'_, AppState>,
+    account_id: i64,
+    draft: Draft,
+    delay: Option<i64>,
+) -> Reply<Vec<i64>> {
+    // The undo window for sending is a setting (0 to 20 s); other actions keep UNDO_SECONDS.
+    let delay = delay.unwrap_or(UNDO_SECONDS).clamp(0, 60);
+    let id = state.store.queue_send(account_id, draft, delay).map_err(text)?;
     state.wake(account_id);
     Ok(vec![id])
+}
+
+/// How a reply, reply-all or forward to this message starts.
+#[tauri::command]
+pub async fn reply_init(state: State<'_, AppState>, id: i64, kind: ReplyKind) -> Reply<ReplyInit> {
+    state.store.reply_init(id, kind).map_err(text)
 }
 
 /// The person opened a folder: check it now rather than on its five-minute round.
