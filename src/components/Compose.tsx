@@ -1,6 +1,8 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
 import { api, type Account, type Draft, type ForwardOf, type OutgoingAttachment } from "../api";
 import { Icon } from "./Icon";
+// The editor is a chunk of its own (ProseMirror is most of its weight); App loads it once the list is up.
+const Editor = lazy(() => import("./Editor").then((m) => ({ default: m.Editor })));
 import { RecipientField, splitAddresses, validAddress } from "./RecipientField";
 
 export type ComposeInit = {
@@ -10,6 +12,8 @@ export type ComposeInit = {
   bcc?: string[];
   subject?: string;
   body?: string;
+  /** A saved draft's rich text; `body` is its plain text. */
+  html?: string | null;
   inReplyTo?: string | null;
   references?: string[];
   /** Where the cursor starts: To for new mail and forwards, the body for replies. */
@@ -56,6 +60,7 @@ export function Compose(props: {
   const [showBcc, setShowBcc] = createSignal((props.init.bcc ?? []).length > 0);
   const [subject, setSubject] = createSignal(props.init.subject ?? "");
   const [body, setBody] = createSignal(props.init.body ?? "");
+  const [html, setHtml] = createSignal<string | null>(props.init.html ?? null);
   const [problem, setProblem] = createSignal("");
   const [files, setFiles] = createSignal<OutgoingAttachment[]>(props.init.attachments ?? []);
   const [forwardOf, setForwardOf] = createSignal(props.init.forwardOf ?? null);
@@ -84,6 +89,7 @@ export function Compose(props: {
     bcc: bcc(),
     subject: subject(),
     body: body(),
+    html: html(),
     inReplyTo: props.init.inReplyTo ?? null,
     references: props.init.references ?? [],
     attachments: files(),
@@ -119,21 +125,10 @@ export function Compose(props: {
   let toInput!: HTMLInputElement;
   let ccInput: HTMLInputElement | undefined;
   let bccInput: HTMLInputElement | undefined;
-  let text!: HTMLTextAreaElement;
 
-  /** The body grows with what is in it (§4.4); the dialog or the conversation scrolls, not the field. */
-  const grow = () => {
-    text.style.height = "auto";
-    text.style.height = `${text.scrollHeight}px`;
-  };
-
+  const bodyFirst = (props.init.focus ?? (props.init.to?.length ? "body" : "to")) === "body";
   onMount(() => {
-    grow();
-    if ((props.init.focus ?? (props.init.to?.length ? "body" : "to")) === "body") {
-      text.setSelectionRange(0, 0);
-      text.focus({ preventScroll: true });
-      text.scrollIntoView({ block: "nearest" });
-    } else toInput.focus();
+    if (!bodyFirst) toInput.focus();
   });
 
   const send = (done: boolean) => {
@@ -192,7 +187,14 @@ export function Compose(props: {
           <input value={subject()} onInput={(e) => (setSubject(e.currentTarget.value), changed())} />
         </label>
       </Show>
-      <textarea ref={text} value={body()} onInput={(e) => (setBody(e.currentTarget.value), grow(), changed())} aria-label="Message" />
+      <Suspense fallback={<div class="editor-body" />}>
+      <Editor
+        text={body()}
+        html={props.init.html}
+        autofocus={bodyFirst ? "start" : false}
+        onChange={(text, rich) => (setBody(text), setHtml(rich), changed())}
+      />
+      </Suspense>
       <Show when={files().length || forwardOf()}>
         <div class="attachments outgoing" aria-label="Attachments">
           <Show when={forwardOf()}>
