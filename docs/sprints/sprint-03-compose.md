@@ -44,10 +44,10 @@ marks done. Drafts land in the server's Drafts folder.
 - [x] Threading headers: `In-Reply-To`, `References` appended; `Message-ID` generated as `<uuid@tern>` (host part from the account domain).
 
 ### Drafts
-- [ ] Autosave to SQLite every 2 s of idle typing (`drafts` table: account, thread_id, fields JSON, doc JSON, attachments, updated).
-- [ ] Sync to the server's Drafts folder as RFC 5322 via `APPEND` with `\Draft`, replacing the previous UID (delete old after the new one lands). Debounced to 30 s and on close.
-- [ ] Drafts appear in the list (`g d`) and inline in the conversation they belong to; `Enter` reopens.
-- [ ] Discard: `Cmd+Shift+,` with undo.
+- [x] Autosave to SQLite every 2 s of idle typing (`drafts` table: account, thread_id, fields JSON, doc JSON, attachments, updated).
+- [x] Sync to the server's Drafts folder as RFC 5322 via `APPEND` with `\Draft`, replacing the previous UID (delete old after the new one lands). Debounced to 30 s and on close.
+- [x] Drafts appear in the list (`g d`) and inline in the conversation they belong to; `Enter` reopens.
+- [x] Discard: `Cmd+Shift+,` with undo.
 
 ### Attachments
 - [ ] File picker (`Cmd+Shift+A`) via `tauri-plugin-dialog`; drag and drop onto compose from the file manager (`tauri://drag-drop` event).
@@ -55,10 +55,10 @@ marks done. Drafts land in the server's Drafts folder.
 - [ ] Build MIME with `lettre`'s `MessageBuilder` and `MultiPart::mixed/alternative`; stream large files, don't read into memory twice.
 
 ### Sending
-- [ ] Send puts an `Outbox::Send` op with `not_before = now + undo window` (setting: 0/5/10/20 s). Toast with "Undo".
-- [ ] SMTP via `lettre` (rustls). On permanent failure (5xx) the message returns to Drafts with the error shown; on 4xx retry with backoff.
-- [ ] Copy to Sent via `APPEND` when the preset says the server does not (Fastmail does; Gmail does; most others don't).
-- [ ] Sent conversation is marked done (archived) when "Send & Mark Done" was used.
+- [x] Send puts an `Outbox::Send` op with `not_before = now + undo window` (setting: 0/5/10/20 s). Toast with "Undo".
+- [x] SMTP via `lettre` (rustls). On permanent failure (5xx) the message returns to Drafts with the error shown; on 4xx retry with backoff.
+- [x] Copy to Sent via `APPEND` when the preset says the server does not (Fastmail does; Gmail does; most others don't).
+- [x] Sent conversation is marked done (archived) when "Send & Mark Done" was used.
 
 ### Signatures and identity
 - [ ] Per-account signature (ProseMirror doc), inserted above the quote; setting to place below.
@@ -86,6 +86,14 @@ Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
   exist); References = the original's References + its Message-ID. The UI only writes the quote header, in the
   person's locale. Schema v12 keeps Cc, Reply-To, Mail-Followup-To and References per message (rows from before
   have them empty, so reply-all there falls back to To).
+- 2026-10-14 — **Drafts: local first, one server copy.** A `drafts` table (schema v13) holds what compose
+  saved; a row for it in the account's Drafts folder (uid NULL until uploaded) makes it show in `g d` and in its
+  conversation at once, offline too. The server copy is replaced after 30 s without changes or when compose
+  closes (APPEND `\Draft`, then the old copy is deleted by uid; without APPENDUID it is found by Message-ID).
+  Versions are counted, not timed. A draft keeps one Message-ID for every copy and the message finally sent;
+  discarding keeps the server copy for 30 s (Undo); sending removes it once the send has gone. Undoing a send
+  makes it a draft again. A refused send ("550 no such user") opens as a draft from the problems list ("Edit"),
+  rather than going back to Drafts on its own.
 - 2026-10-14 — **No "Send Later" / "Remind me" stubs.** Package 02's scope says future features need not appear as
   placeholders; they arrive with package 05.
 
@@ -98,3 +106,9 @@ Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
   `Ctrl+Shift+Enter` (archives the conversation, one undo for both). "Undo send" setting: off, 5, 10, 20 s. The
   body grows with its text. Not yet: drafts (Esc still drops what was typed), attachments, signatures,
   autocomplete, the rich editor.
+- 2026-10-14 — Slice 2: drafts. Compose saves 2 s after typing pauses (only once something changed: a reply's
+  prefilled quote alone is not a draft); Esc / Close keeps it ("Draft saved") and uploads it; Discard
+  (`Ctrl+Shift+,`) has Undo. Drafts open from `g d` into compose; in a conversation a draft card says "Draft · R
+  to continue" and `r` continues it. Tests: store (mirror, versions, removal, undo send, refused send), a scripted
+  replace-the-copy check (the scripted server now takes IMAP literals), and the whole life on the dev server:
+  one copy in Drafts across saves, none after sending, one in Sent. 89 unit tests, 12 dev-server checks.

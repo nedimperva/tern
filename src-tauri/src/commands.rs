@@ -3,8 +3,8 @@
 use tauri::{AppHandle, Emitter, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
-    secrets, sync, Account, AccountConfig, Action, Applied, Cursor, Draft, Folder, ListTarget, MessageRow,
-    OutboxProblem, ReplyInit, ReplyKind, ThreadMessage, ThreadRow,
+    secrets, sync, Account, AccountConfig, Action, Applied, Cursor, Draft, DraftRecord, Folder, ListTarget,
+    MessageRow, OutboxProblem, ReplyInit, ReplyKind, ThreadMessage, ThreadRow,
 };
 
 use std::collections::HashMap;
@@ -154,14 +154,64 @@ pub async fn discard_problem(app: AppHandle, state: State<'_, AppState>, id: i64
 pub async fn send(
     state: State<'_, AppState>,
     account_id: i64,
-    draft: Draft,
+    mut draft: Draft,
     delay: Option<i64>,
+    draft_id: Option<i64>,
 ) -> Reply<Vec<i64>> {
     // The undo window for sending is a setting (0 to 20 s); other actions keep UNDO_SECONDS.
     let delay = delay.unwrap_or(UNDO_SECONDS).clamp(0, 60);
+    // Sent from a saved draft: the message keeps the draft's Message-ID, and the draft leaves Drafts.
+    if let Some(saved) = draft_id.map(|id| state.store.draft(id)).transpose().map_err(text)?.flatten() {
+        draft.message_id = saved.draft.message_id;
+    }
     let id = state.store.queue_send(account_id, draft, delay).map_err(text)?;
+    if let Some(draft_id) = draft_id {
+        state.store.draft_sent(draft_id).map_err(text)?;
+    }
     state.wake(account_id);
     Ok(vec![id])
+}
+
+/// Saves what compose holds; returns the draft's id (new on the first save). `upload_now` when compose closes.
+#[tauri::command]
+pub async fn save_draft(
+    state: State<'_, AppState>,
+    id: Option<i64>,
+    account_id: i64,
+    draft: Draft,
+    upload_now: bool,
+) -> Reply<i64> {
+    let id = state.store.save_draft(id, account_id, draft, upload_now).map_err(text)?;
+    if upload_now {
+        state.wake(account_id);
+    }
+    Ok(id)
+}
+
+#[tauri::command]
+pub async fn draft_for_message(state: State<'_, AppState>, id: i64) -> Reply<Option<DraftRecord>> {
+    state.store.draft_for_message(id).map_err(text)
+}
+
+#[tauri::command]
+pub async fn draft(state: State<'_, AppState>, id: i64) -> Reply<Option<DraftRecord>> {
+    state.store.draft(id).map_err(text)
+}
+
+#[tauri::command]
+pub async fn discard_draft(state: State<'_, AppState>, id: i64) -> Reply<()> {
+    state.store.discard_draft(id).map_err(text)
+}
+
+#[tauri::command]
+pub async fn undo_discard(state: State<'_, AppState>, id: i64) -> Reply<bool> {
+    state.store.undo_discard(id).map_err(text)
+}
+
+/// A refused send back as a draft, to fix and send again.
+#[tauri::command]
+pub async fn problem_to_draft(state: State<'_, AppState>, id: i64) -> Reply<DraftRecord> {
+    state.store.problem_to_draft(id).map_err(text)
 }
 
 /// How a reply, reply-all or forward to this message starts.

@@ -3,7 +3,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, DuplexStream};
 
 /// One expected client command (matched by prefix, tag stripped) and the server's reply. `{tag}` in the reply
 /// becomes the tag of the most recent tagged command; an empty `expect` matches any line.
@@ -35,8 +35,16 @@ pub fn server(greeting: &'static str, script: Script) -> (DuplexStream, Arc<Mute
                 _ => line.clone(),
             };
             assert!(command.starts_with(expect), "expected {expect:?}, client sent {command:?}");
-            log.lock().unwrap().push(command);
             w.write_all(reply.replace("{tag}", &tag).as_bytes()).await.unwrap();
+            // A literal ({N} at the end, answered with "+"): its N bytes follow raw, then the rest of the command's
+            // line, which the next script entry answers (usually with an empty `expect`).
+            let literal =
+                command.strip_suffix('}').and_then(|c| c.rsplit_once('{')).and_then(|(_, n)| n.parse().ok());
+            log.lock().unwrap().push(command);
+            if let (Some(n), true) = (literal, reply.starts_with('+')) {
+                let mut bytes = vec![0u8; n];
+                r.read_exact(&mut bytes).await.unwrap();
+            }
         }
     });
     (client, sent)

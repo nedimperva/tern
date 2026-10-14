@@ -483,10 +483,25 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
         Ok(copyuid.map(|(_, from, to)| from.into_iter().zip(to).collect()).unwrap_or_default())
     }
 
-    /// Adds `message` to `folder`, marked read (a copy of sent mail for Sent).
-    pub async fn append(&mut self, folder: &str, message: &[u8]) -> Result<()> {
-        let opts = ImapMessageAppendOptions { flags: vec![Flag::Seen], ..Default::default() };
-        self.conn.append(mailbox(folder)?, message, opts).await?;
+    /// Adds `message` to `folder`, marked read (a copy of sent mail for Sent), and also `\Draft` with `draft`.
+    /// Returns (UIDVALIDITY, uid) of the new copy when the server says (APPENDUID, RFC 4315).
+    pub async fn append(&mut self, folder: &str, message: &[u8], draft: bool) -> Result<Option<(u32, u32)>> {
+        let mut flags = vec![Flag::Seen];
+        if draft {
+            flags.push(Flag::Draft);
+        }
+        let opts = ImapMessageAppendOptions { flags, ..Default::default() };
+        let (_, appended) = self.conn.append(mailbox(folder)?, message, opts).await?;
+        Ok(appended)
+    }
+
+    /// Deletes these messages from the selected folder for good: `\Deleted`, then UID EXPUNGE of just them. Without
+    /// UIDPLUS they stay marked deleted (a plain EXPUNGE would take other deleted mail with them).
+    pub async fn delete(&mut self, uids: &str) -> Result<()> {
+        self.store_flag(uids, "\\Deleted", true).await?;
+        if self.has("UIDPLUS") {
+            self.conn.uid_expunge(SequenceSet::try_from(uids)?).await?;
+        }
         Ok(())
     }
 

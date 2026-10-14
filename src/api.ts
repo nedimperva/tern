@@ -41,6 +41,8 @@ export type ThreadMessage = MessageRow & {
   /** False while only the headers are here; opening the message asks for the body, and "mail-changed" follows. */
   bodyLoaded: boolean;
   attachments: { name: string; mime: string; size: number }[];
+  /** Set when this is a draft being written in Tern. */
+  draftId: number | null;
 };
 /** One conversation in a list: its newest message in the listed folder(s), and the whole conversation's totals. */
 export type ThreadRow = MessageRow & {
@@ -77,6 +79,8 @@ export type Draft = {
   references?: string[];
 };
 export type ReplyKind = "reply" | "replyAll" | "forward";
+/** A draft as compose last saved it. */
+export type DraftRecord = { id: number; accountId: number; draft: Draft & { messageId?: string | null }; updatedAt: number };
 /** How a reply or forward starts; the UI writes the quote header in the person's language. */
 export type ReplyInit = {
   accountId: number;
@@ -127,8 +131,17 @@ export interface Api {
   search(query: string, limit: number): Promise<MessageRow[]>;
   apply(ids: number[], action: Action): Promise<Applied>;
   undo(token: number[]): Promise<boolean>;
-  /** Queues a send; `delay` is the undo window in seconds. */
-  send(accountId: number, draft: Draft, delay?: number): Promise<number[]>;
+  /** Queues a send; `delay` is the undo window in seconds; `draftId` when it was a saved draft. */
+  send(accountId: number, draft: Draft, delay?: number, draftId?: number | null): Promise<number[]>;
+  /** Saves compose's contents; returns the draft id. `uploadNow` when compose closes. */
+  saveDraft(id: number | null, accountId: number, draft: Draft, uploadNow: boolean): Promise<number>;
+  draft(id: number): Promise<DraftRecord | null>;
+  /** The draft a message row stands for, if it is one being written in Tern. */
+  draftForMessage(id: number): Promise<DraftRecord | null>;
+  discardDraft(id: number): Promise<void>;
+  undoDiscard(id: number): Promise<boolean>;
+  /** A refused send, back as a draft to fix. */
+  problemToDraft(id: number): Promise<DraftRecord>;
   replyInit(id: number, kind: ReplyKind): Promise<ReplyInit>;
   problems(): Promise<OutboxProblem[]>;
   retryProblem(id: number): Promise<void>;
@@ -164,7 +177,13 @@ const tauri: Api = {
   retryProblem: (id) => invoke("retry_problem", { id }),
   discardProblem: (id) => invoke("discard_problem", { id }),
   undo: (token) => invoke("undo", { token }),
-  send: (accountId, draft, delay) => invoke("send", { accountId, draft, delay }),
+  send: (accountId, draft, delay, draftId) => invoke("send", { accountId, draft, delay, draftId }),
+  saveDraft: (id, accountId, draft, uploadNow) => invoke("save_draft", { id, accountId, draft, uploadNow }),
+  draft: (id) => invoke("draft", { id }),
+  draftForMessage: (id) => invoke("draft_for_message", { id }),
+  discardDraft: (id) => invoke("discard_draft", { id }),
+  undoDiscard: (id) => invoke("undo_discard", { id }),
+  problemToDraft: (id) => invoke("problem_to_draft", { id }),
   replyInit: (id, kind) => invoke("reply_init", { id, kind }),
   onChange: (f) => void listen("mail-changed", f),
   syncStates: () => invoke("sync_states"),
@@ -205,6 +224,8 @@ function fake(): Api {
     { id: 6, accountId: 1, name: "Receipts", role: "other", unread: 0 },
   ];
   const mutedThreads = new Set<string>();
+  const drafts = new Map<number, DraftRecord>();
+  let nextDraft = 1;
   // Open the page with #big for a mailbox the size the performance targets are set for (about 10,000 conversations).
   const size = location.hash === "#big" ? 25_000 : 5000;
   let messages: ThreadMessage[] = Array.from({ length: size }, (_, i) => {
@@ -238,6 +259,7 @@ function fake(): Api {
             `</div>`
           : null,
       bodyLoaded: true,
+      draftId: null,
       attachments: i % 11 === 0 ? [{ name: `${words[i % words.length]}-notes.pdf`, mime: "application/pdf", size: 48_213 + i }] : [],
     };
   });
@@ -265,7 +287,7 @@ function fake(): Api {
   const changed = () => listeners.forEach((f) => f());
   const pending = new Map<number, () => void>();
   let nextToken = 1;
-  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, ...r }: ThreadMessage): MessageRow => r;
+  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, draftId, ...r }: ThreadMessage): MessageRow => r;
   const inTarget = (m: ThreadMessage, t: Target): boolean =>
     "folder" in t
       ? m.folderId === t.folder
@@ -358,7 +380,25 @@ function fake(): Api {
       changed();
       return true;
     },
-    send: async () => [nextToken++],
+    send: async (_a, _d, _delay, draftId) => {
+      if (draftId != null) drafts.delete(draftId);
+      return [nextToken++];
+    },
+    saveDraft: async (id, accountId, draft) => {
+      const key = id ?? nextDraft++;
+      drafts.set(key, { id: key, accountId, draft, updatedAt: Math.floor(Date.now() / 1000) });
+      return key;
+    },
+    draft: async (id) => drafts.get(id) ?? null,
+    draftForMessage: async () => null,
+    discardDraft: async (id) => void drafts.delete(id),
+    undoDiscard: async () => false,
+    problemToDraft: async (id) => {
+      problems = problems.filter((p) => p.id !== id);
+      const record = { id: nextDraft++, accountId: 1, draft: { to: ["typo@exmaple.com"], subject: "Re: Quarterly numbers", body: "Numbers attached." }, updatedAt: now };
+      drafts.set(record.id, record);
+      return record;
+    },
     replyInit: async (id, kind) => {
       const m = messages.find((m) => m.id === id)!;
       const forward = kind === "forward";

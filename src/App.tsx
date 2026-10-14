@@ -14,6 +14,7 @@ import {
   type ThreadRow,
   type Draft,
   type ReplyKind,
+  type DraftRecord,
 } from "./api";
 import { AccountSetup } from "./components/AccountSetup";
 import { CommandBar, type Command } from "./components/CommandBar";
@@ -80,7 +81,13 @@ export default function App() {
   const [width, setWidth] = createSignal(window.innerWidth);
   const [rail, setRail] = createSignal(false);
   // `after` runs when the toast's change is undone (unmute after undoing a mute).
-  const [toast, setToast] = createSignal<{ text: string; token: number[]; after?: () => unknown } | null>(null);
+  // `undo` takes back something that is not queued work (a discarded draft).
+  const [toast, setToast] = createSignal<{
+    text: string;
+    token: number[];
+    after?: () => unknown;
+    undo?: () => unknown;
+  } | null>(null);
   const [compose, setCompose] = createSignal<ComposeInit | null>(null);
   const [palette, setPalette] = createSignal(false);
   // Opens the palette straight in one command's choices (g l → "Go to folder …").
@@ -200,6 +207,11 @@ export default function App() {
   async function open(row: ThreadRow | undefined) {
     clearTimeout(readTimer);
     if (!row) return close();
+    // A draft being written in Tern opens in compose, not as a conversation.
+    if (folders().find((f) => f.id === row.folderId)?.role === "drafts") {
+      const record = await api.draftForMessage(row.id);
+      if (record) return resume(record);
+    }
     setOpenRow(row);
     const found = await api.thread(row.id);
     if (openRow() !== row) return;
@@ -294,14 +306,19 @@ export default function App() {
   const toggleRead = () => act(targets().some((r) => r.unread > 0) ? "markRead" : "markUnread");
 
   let toastTimer: number | undefined;
-  function showToast(text: string, token: number[], after?: () => unknown) {
+  function showToast(text: string, token: number[], after?: () => unknown, undoAction?: () => unknown) {
     clearTimeout(toastTimer);
-    setToast({ text, token, after });
+    setToast({ text, token, after, undo: undoAction });
     toastTimer = window.setTimeout(() => setToast(null), UNDO_MS);
   }
 
   async function undo() {
     const t = toast();
+    if (t?.undo) {
+      setToast(null);
+      await t.undo();
+      return;
+    }
     if (!t?.token.length) return;
     setToast(null);
     const undone = await api.undo(t.token);
@@ -379,18 +396,64 @@ export default function App() {
   }
 
   /** Queues the message (it leaves after the undo window); with `done`, the conversation it answers is marked done. */
-  async function send(accountId: number, draft: Draft, done: boolean) {
-    const answering = compose()?.inline ? openRow() : null;
+  async function send(accountId: number, draft: Draft, done: boolean, draftId: number | null) {
+    const sending = compose();
+    const answering = sending?.inline ? openRow() : null;
     setCompose(null);
     try {
-      const token = await api.send(accountId, draft, settings.sendDelay);
+      const token = await api.send(accountId, draft, settings.sendDelay, draftId);
       const doneToken = done && answering ? await act("archive", [answering], false) : [];
       const text = settings.sendDelay > 0 ? "Sending…" : "Sent";
-      showToast(done && answering ? `${text} and marked done` : text, [...token, ...doneToken]);
+      // Undo brings the message back into compose, as it was.
+      const reopen = () => setCompose({ ...sending, accountId, ...draft, draftId, focus: "body" });
+      showToast(done && answering ? `${text} and marked done` : text, [...token, ...doneToken], reopen);
     } catch (e) {
       showToast(String(e), []);
     }
   }
+
+  /** r: continues this conversation's draft if it has one, else replies to the focused message. */
+  async function reply() {
+    const pending = messages.find((m) => m.draftId != null);
+    const record = pending && (await api.draft(pending.draftId!));
+    if (record) resume(record, true);
+    else void respond(messages[messageFocus()], "reply");
+  }
+
+  /** Opens a saved draft in compose, under its conversation when one is open. */
+  function resume(record: DraftRecord, inline = false) {
+    const d = record.draft;
+    setCompose({
+      accountId: record.accountId,
+      to: d.to,
+      cc: d.cc ?? [],
+      bcc: d.bcc ?? [],
+      subject: d.subject,
+      body: d.body,
+      inReplyTo: d.inReplyTo ?? null,
+      references: d.references ?? [],
+      draftId: record.id,
+      focus: d.to.length ? "body" : "to",
+      inline,
+    });
+  }
+
+  const composeClosed = (saved: number | null) => {
+    setCompose(null);
+    if (saved != null) showToast("Draft saved", []);
+  };
+
+  const composeDiscarded = (draftId: number | null) => {
+    const was = compose();
+    setCompose(null);
+    if (draftId == null) return;
+    showToast("Draft discarded", [], undefined, async () => {
+      if (await api.undoDiscard(draftId)) {
+        const record = await api.draft(draftId);
+        if (record) resume(record, was?.inline ?? false);
+      }
+    });
+  };
 
   /** The inbox splits, shown as tabs over the unified inbox. */
   const SPLITS: { name: string; target: Target }[] = [
@@ -479,7 +542,7 @@ export default function App() {
     { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },
     { keys: "f", name: "Forward", context: "conversation", run: () => respond(messages[messageFocus()], "forward") },
     { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
-    { keys: "r", name: "Reply", context: "conversation", run: () => respond(messages[messageFocus()], "reply") },
+    { keys: "r", name: "Reply (or continue the draft)", context: "conversation", run: reply },
     { keys: "z", name: "Undo", run: undo },
     { keys: "c", name: "Compose", run: () => setCompose({}) },
     { keys: "/", name: "Search", run: () => searchInput.focus() },
@@ -728,7 +791,7 @@ export default function App() {
             {(t) => (
               <span class="toast" role="status">
                 <span>{t().text}</span>
-                <Show when={t().token.length}>
+                <Show when={t().token.length || t().undo}>
                   <button class="link" onClick={undo}>
                     Undo <kbd>Z</kbd>
                   </button>
@@ -753,7 +816,7 @@ export default function App() {
           <Show when={compose()?.inline ? compose() : null}>
             {(init) => (
               <div class="inline-reply">
-                <Compose accounts={accounts()} init={init()} onSend={send} onClose={() => setCompose(null)} />
+                <Compose accounts={accounts()} init={init()} onSend={send} onClose={composeClosed} onDiscard={composeDiscarded} />
               </div>
             )}
           </Show>
@@ -776,6 +839,7 @@ export default function App() {
           problems={problems()}
           onRetry={(id) => void api.retryProblem(id).then(refresh)}
           onDiscard={(id) => void api.discardProblem(id).then(refresh)}
+          onEdit={(id) => void api.problemToDraft(id).then((record) => (setReviewing(false), resume(record), refresh()))}
           onClose={() => setReviewing(false)}
         />
       </Show>
@@ -796,7 +860,7 @@ export default function App() {
         />
       </Show>
       <Show when={compose() && !compose()!.inline ? compose() : null}>
-        {(init) => <Compose accounts={accounts()} init={init()} onSend={send} onClose={() => setCompose(null)} />}
+        {(init) => <Compose accounts={accounts()} init={init()} onSend={send} onClose={composeClosed} onDiscard={composeDiscarded} />}
       </Show>
       <Show when={setup() || (ready() && accounts().length === 0)}>
         <AccountSetup

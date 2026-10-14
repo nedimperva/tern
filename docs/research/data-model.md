@@ -81,6 +81,16 @@ CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELET
                     thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));
 ```
 
+## v12, v13 — package 03 (implemented 2026-10-14)
+```sql
+ALTER TABLE messages ADD COLUMN cc_addrs TEXT NOT NULL DEFAULT '';      -- v12: what replies need
+ALTER TABLE messages ADD COLUMN reply_to TEXT NOT NULL DEFAULT '';
+ALTER TABLE messages ADD COLUMN followup_to TEXT NOT NULL DEFAULT '';
+ALTER TABLE messages ADD COLUMN refs TEXT NOT NULL DEFAULT '';          -- References, space-separated
+CREATE TABLE drafts (id, account_id, message_id, payload, updated_at, version, upload_now, synced_version,
+                     server_folder, server_validity, server_uid, discarded_at, sent_at);   -- v13
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'
