@@ -151,6 +151,9 @@ export function ConversationView(props: {
               </span>
               <span class="who">
                 <strong>{m.fromName || m.fromAddr}</strong>
+                <Show when={m.draftId != null}>
+                  <span class="draft-label">Draft · R to continue</span>
+                </Show>
                 <Show when={props.expanded(m.id)} fallback={<span class="snippet">{m.snippet}</span>}>
                   <span class="addr">{m.fromAddr}</span>
                   <span class="to">to {m.toAddrs}</span>

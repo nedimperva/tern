@@ -1,10 +1,12 @@
-import { For, onCleanup, onMount } from "solid-js";
+import { For, onCleanup, onMount, Show } from "solid-js";
 import type { OutboxProblem } from "../api";
 
 export function ProblemsDialog(props: {
   problems: OutboxProblem[];
   onRetry: (id: number) => void;
   onDiscard: (id: number) => void;
+  /** Opens a refused send in compose as a draft, to fix and send again. */
+  onEdit: (id: number) => void;
   onClose: () => void;
 }) {
   const onKey = (e: KeyboardEvent) => {
@@ -39,6 +41,9 @@ export function ProblemsDialog(props: {
                       : `Tried ${p.attempts} times`}
                 </span>
               </div>
+              <Show when={p.what.startsWith("Send") && !p.maybeSent}>
+                <button onClick={() => props.onEdit(p.id)}>Edit</button>
+              </Show>
               <button onClick={() => props.onRetry(p.id)}>{p.maybeSent ? "Send again" : "Retry"}</button>
               <button class="danger" onClick={() => props.onDiscard(p.id)}>
                 {p.maybeSent ? "Don't send" : "Discard"}
