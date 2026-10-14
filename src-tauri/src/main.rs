@@ -137,6 +137,7 @@ fn main() {
             commands::undo_discard,
             commands::problem_to_draft,
             commands::add_attachments,
+            commands::contacts,
             commands::muted,
         ])
         .run(tauri::generate_context!())

@@ -91,6 +91,14 @@ CREATE TABLE drafts (id, account_id, message_id, payload, updated_at, version, u
                      server_folder, server_validity, server_uid, discarded_at, sent_at);   -- v13
 ```
 
+## v14 — package 03, contacts (implemented 2026-10-15)
+```sql
+CREATE TABLE contacts (email TEXT PRIMARY KEY COLLATE NOCASE, name TEXT NOT NULL DEFAULT '',
+                       sent_count INTEGER NOT NULL DEFAULT 0, received_count INTEGER NOT NULL DEFAULT 0,
+                       last_seen INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX contacts_name ON contacts (name COLLATE NOCASE);
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'

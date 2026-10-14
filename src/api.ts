@@ -149,6 +149,8 @@ export interface Api {
   undoDiscard(id: number): Promise<boolean>;
   /** A refused send, back as a draft to fix. */
   problemToDraft(id: number): Promise<DraftRecord>;
+  /** People to suggest for what is typed in a recipient field, best first. */
+  contacts(query: string): Promise<{ email: string; name: string }[]>;
   /** The system file picker; paths chosen (none if cancelled). */
   pickFiles(): Promise<string[]>;
   /** Copies files into Tern's attachment folder, for a draft. */
@@ -203,6 +205,7 @@ const tauri: Api = {
     return chosen == null ? [] : Array.isArray(chosen) ? chosen : [chosen];
   },
   addAttachments: (paths) => invoke("add_attachments", { paths }),
+  contacts: (query) => invoke("contacts", { query }),
   onFilesDropped: (f) => {
     let stop: (() => void) | undefined;
     let stopped = false;
@@ -429,6 +432,11 @@ function fake(): Api {
     addAttachments: async (paths) =>
       paths.map((p) => ({ path: p, name: p.split("/").pop()!, mime: "application/pdf", size: 1_234_567 })),
     onFilesDropped: () => () => {},
+    contacts: async (query) => {
+      const q = query.toLowerCase();
+      const people = names.map((n) => ({ name: n, email: n.toLowerCase().replace(/\s/g, ".") + "@example.com" }));
+      return q ? people.filter((p) => p.email.startsWith(q) || p.name.toLowerCase().split(" ").some((w) => w.startsWith(q))).slice(0, 5) : [];
+    },
     problemToDraft: async (id) => {
       problems = problems.filter((p) => p.id !== id);
       const record = { id: nextDraft++, accountId: 1, draft: { to: ["typo@exmaple.com"], subject: "Re: Quarterly numbers", body: "Numbers attached." }, updatedAt: now };

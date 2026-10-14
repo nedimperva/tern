@@ -1,4 +1,5 @@
-import { createSignal, For } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
+import { api } from "../api";
 
 /** A plausible address: something@something.tld. The server has the last word; this only flags typos. */
 export const validAddress = (a: string) => /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(a);
@@ -22,7 +23,23 @@ export function RecipientField(props: {
   ref?: (el: HTMLInputElement) => void;
 }) {
   const [text, setText] = createSignal("");
+  // Suggestions for what is being typed, and which one ↑/↓ points at.
+  const [people, setPeople] = createSignal<{ email: string; name: string }[]>([]);
+  const [pointed, setPointed] = createSignal(0);
+  let asked = 0;
   let input!: HTMLInputElement;
+  const suggest = async (q: string) => {
+    const ticket = ++asked;
+    const found = q.trim().length ? await api.contacts(q.trim()) : [];
+    if (ticket !== asked) return;
+    setPeople(found.filter((p) => !props.value.includes(p.email)));
+    setPointed(0);
+  };
+  const pick = (email: string) => {
+    if (!props.value.includes(email)) props.onChange([...props.value, email]);
+    setText("");
+    setPeople([]);
+  };
 
   const commit = () => {
     const found = splitAddresses(text());
@@ -31,6 +48,24 @@ export function RecipientField(props: {
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
+    const open = people().length > 0;
+    if (open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      setPointed((pointed() + (e.key === "ArrowDown" ? 1 : people().length - 1)) % people().length);
+      return;
+    }
+    if (open && ((e.key === "Enter" && !e.ctrlKey && !e.metaKey) || e.key === "Tab")) {
+      e.preventDefault();
+      pick(people()[pointed()].email);
+      return;
+    }
+    if (open && e.key === "Escape") {
+      // Closes the suggestions, not compose.
+      e.preventDefault();
+      e.stopPropagation();
+      setPeople([]);
+      return;
+    }
     if ((e.key === "Enter" && !e.ctrlKey && !e.metaKey) || e.key === "," || e.key === ";" || (e.key === "Tab" && text().trim())) {
       if (!text().trim()) return;
       e.preventDefault();
@@ -73,12 +108,32 @@ export function RecipientField(props: {
       <input
         ref={(el) => ((input = el), props.ref?.(el))}
         value={text()}
-        onInput={(e) => setText(e.currentTarget.value)}
+        onInput={(e) => (setText(e.currentTarget.value), void suggest(e.currentTarget.value))}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        onBlur={commit}
+        onBlur={() => (setPeople([]), commit())}
         aria-label={props.label}
+        aria-autocomplete="list"
       />
+      <Show when={people().length}>
+        <ul class="suggestions" role="listbox">
+          <For each={people()}>
+            {(p, i) => (
+              <li
+                role="option"
+                aria-selected={i() === pointed()}
+                classList={{ pointed: i() === pointed() }}
+                onMouseDown={(e) => (e.preventDefault(), pick(p.email))}
+              >
+                <span class="name">{p.name || p.email}</span>
+                <Show when={p.name}>
+                  <span class="addr">{p.email}</span>
+                </Show>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
     </div>
   );
 }
