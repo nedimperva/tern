@@ -40,6 +40,7 @@ export type ThreadMessage = MessageRow & {
   bodyHtml: string | null;
   /** False while only the headers are here; opening the message asks for the body, and "mail-changed" follows. */
   bodyLoaded: boolean;
+  attachments: { name: string; mime: string; size: number }[];
 };
 /** One conversation in a list: its newest message in the listed folder(s), and the whole conversation's totals. */
 export type ThreadRow = MessageRow & {
@@ -163,7 +164,9 @@ function fake(): Api {
   let messages: ThreadMessage[] = Array.from({ length: size }, (_, i) => {
     const name = names[i % names.length];
     const subject = `${words[i % words.length]} ${words[(i * 7) % words.length]} #${size - i}`;
-    const body = `Hi,\n\nThis is about the ${subject}. ${words.join(" ")}.\n\nThanks,\n${name.split(" ")[0]}`;
+    // Replies quote what they answer, as mail does, so folding can be worked on.
+    const quote = i % 5 > 0 && i % 5 < 3 ? `\n\nOn Mon, ${names[(i + 1) % names.length]} wrote:\n> Earlier message about ${subject}.\n> ${words.join(" ")}.` : "";
+    const body = `Hi,\n\nThis is about the ${subject}. ${words.join(" ")}.\n\nThanks,\n${name.split(" ")[0]}\n-- \n${name}, Example Corp${quote}`;
     return {
       id: i + 1,
       accountId: 1,
@@ -181,8 +184,14 @@ function fake(): Api {
       messageId: `${i}@example.com`,
       toAddrs: account.email,
       bodyText: body,
-      bodyHtml: i % 3 === 0 ? `<div style="font-family:sans-serif"><h2>${subject}</h2><p>${body.replace(/\n/g, "<br>")}</p></div>` : null,
+      bodyHtml:
+        i % 3 === 0
+          ? `<div style="font-family:sans-serif"><h2>${subject}</h2><p>${body.split("\n-- ")[0].replace(/\n/g, "<br>")}</p>` +
+            (quote ? `<div class="gmail_quote">On Mon, someone wrote:<blockquote>Earlier message about ${subject}.</blockquote></div>` : "") +
+            `</div>`
+          : null,
       bodyLoaded: true,
+      attachments: i % 11 === 0 ? [{ name: `${words[i % words.length]}-notes.pdf`, mime: "application/pdf", size: 48_213 + i }] : [],
     };
   });
   const listeners: (() => void)[] = [];
@@ -209,7 +218,7 @@ function fake(): Api {
   const changed = () => listeners.forEach((f) => f());
   const pending = new Map<number, () => void>();
   let nextToken = 1;
-  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, ...r }: ThreadMessage): MessageRow => r;
+  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, ...r }: ThreadMessage): MessageRow => r;
   const inTarget = (m: ThreadMessage, t: Target): boolean =>
     "folder" in t
       ? m.folderId === t.folder

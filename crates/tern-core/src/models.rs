@@ -106,6 +106,17 @@ pub struct ThreadMessage {
     pub body_html: Option<String>,
     /// False while only the headers are here; the body is on its way (or fetched when the message is opened).
     pub body_loaded: bool,
+    /// Files attached, as far as known (from BODYSTRUCTURE or the parsed body).
+    pub attachments: Vec<Attachment>,
+}
+
+/// An attached file, for the strip under a message.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Attachment {
+    pub name: String,
+    pub mime: String,
+    pub size: u32,
 }
 
 /// A message as it came off the server, parsed.

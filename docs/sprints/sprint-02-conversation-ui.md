@@ -53,10 +53,10 @@ the help: `j`/`k`, `e`, `h` (placeholder until Sprint 5), `s`, `u`, `#`, `Enter`
 
 ### Conversation pane
 - [x] Messages as cards, oldest first, all but the last collapsed to one line (sender, snippet, date). `o` or `Enter` expands; `Shift+O` expands all; `n`/`p` move between messages.
-- [ ] Sanitised HTML (Rust `ammonia` at insert time, allowlist with inline styles kept, scripts/forms/iframes dropped)
+- [x] Sanitised HTML (Rust `ammonia` at insert time, allowlist with inline styles kept, scripts/forms/iframes dropped)
       rendered in `<iframe sandbox>` with a CSP that blocks remote loads until "Load images" (per sender remember).
-- [ ] Quoted text collapsed behind "···"; signature heuristics (`-- `, "Sent from") collapsed too.
-- [ ] Attachments strip at the bottom of each message (viewer in Sprint 7).
+- [x] Quoted text collapsed behind "···"; signature heuristics (`-- `, "Sent from") collapsed too.
+- [x] Attachments strip at the bottom of each message (viewer in Sprint 7).
 - [x] Reading marks the thread read after 1 s in view (setting: immediately / after 1 s / manually).
 
 ### Keyboard model
@@ -131,3 +131,11 @@ Label chips on rows, then the empty-state artwork (use a solid colour), then `Cm
   browser fake with about 10,000 conversations, 201 real key events (j, then k): key → paint p50 23.2 ms, p95
   33.0 ms. Still to do for the acceptance check: the same in the Tauri window during a sync. Migration tests now
   wind a current database back with one helper (`wind_back`). Bundle 23.5 kB gzipped JS.
+- 2026-10-14 — Slice 4: safe HTML, folding, attachments. Mail HTML goes through `ammonia` when stored
+  (`mime::sanitize_html`: scripts, handlers, forms, frames, objects and `javascript:` out; inline styles,
+  `<style>` blocks, table attributes, `class`, `cid:`/`data:` images kept); schema v10 cleans what was stored
+  before (dev DB: no `<script>` left). Still rendered in the sandboxed, script-free frame with its CSP. Quoted
+  replies (Gmail, Apple, Outlook, Yahoo, Proton containers; "On … wrote:", "Original Message", `>` blocks) and
+  signatures (`-- `, "Sent from my …") fold behind a `···` pill. Attachment chips (name, size) under each
+  message, from BODYSTRUCTURE or the parsed body (`messages.parts`). "Always for this sender" remembers senders
+  whose images load (`imagesFrom` setting). 79 unit tests, 11 dev-server checks pass. Bundle 24.8 kB gzipped.
