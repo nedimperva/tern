@@ -1,6 +1,6 @@
 # Sprint 2 — Conversation list and the Superhuman shell
 
-**Status:** in progress · started 2026-10-14
+**Status:** tasks done · acceptance checks with the owner · started 2026-10-14
 
 ## Delivery scope
 
@@ -37,8 +37,8 @@ the help: `j`/`k`, `e`, `h` (placeholder until Sprint 5), `s`, `u`, `#`, `Enter`
       the conversation pane. List is full-width when nothing is open; `Enter` opens the conversation to the
       right (split) or full (setting); `Esc` returns to the list.
 - [x] Split tabs across the top of the list (`Tab` / `Shift+Tab`). Sprint 2 ships "Inbox" and "Starred"; Sprint 5 adds Important/Other/custom.
-- [ ] Empty state: a full-bleed background image with the time and "You're done" — Inbox Zero is a feature.
-- [ ] Status strip, bottom right: sync state from Sprint 1, undo toast, keyboard hints after 2 s of inactivity.
+- [x] Empty state: a full-bleed background image with the time and "You're done" — Inbox Zero is a feature.
+- [x] Status strip, bottom right: sync state from Sprint 1, undo toast, keyboard hints after 2 s of inactivity.
 
 ### Conversation list
 - [x] One row per thread from the `threads` table: participants (bold if unread, "me" for the account), count badge,
@@ -61,15 +61,15 @@ the help: `j`/`k`, `e`, `h` (placeholder until Sprint 5), `s`, `u`, `#`, `Enter`
 
 ### Keyboard model
 - [x] Central key map (`src/keys.ts`): context (`list | thread | compose | palette | search`), chord support (`g i`), platform modifier (`Ctrl` on Linux/Windows shown as `Ctrl`, map `Cmd` in docs).
-- [ ] Implement the Superhuman set for list and thread (full table in `superhuman-reference.md`):
+- [x] Implement the Superhuman set for list and thread (full table in `superhuman-reference.md`):
       `j k Enter Esc e Shift+E s u # ! m x Shift+J Shift+K Cmd+A Cmd+K / z r Enter(reply-all) f c n p o Shift+O Tab Shift+Tab g+i g+s g+d g+t g+e g+a g+l Cmd+\ ? Cmd+, Cmd+1..9`.
 - [x] `?` opens a searchable shortcut sheet.
 - [x] Every action in the palette shows its key; every key is discoverable through the palette.
 
 ### Command palette (`Cmd+K`)
 - [x] Fuzzy matcher (own, ~60 lines; no dependency) ranking by prefix, word-start, then subsequence.
-- [ ] Commands: all actions, "Go to label …", "Move to …", "Label …", "Switch account …", "Theme …", "Settings".
-- [ ] Recent commands first; arrow keys and `Enter`; argument mode for move/label with the same list.
+- [x] Commands: all actions, "Go to label …", "Move to …", "Label …", "Switch account …", "Theme …", "Settings".
+- [x] Recent commands first; arrow keys and `Enter`; argument mode for move/label with the same list.
 
 ### Settings
 - [x] `settings` table (key/value JSON) in SQLite, `settings.ts` signal store, settings pane reachable with `Cmd+,`.
@@ -102,6 +102,15 @@ Label chips on rows, then the empty-state artwork (use a solid colour), then `Cm
 - 2026-10-14 — **Icons inlined, not imported.** `lucide-solid` tree-shook to the three icons used but still added
   4.7 kB gzipped (its icon component and helpers). The path data is copied from Lucide (ISC, credited in
   `src/components/Icon.tsx`); a new icon is a new entry there.
+- 2026-10-14 — **Labels are Gmail's.** On IMAP accounts a folder is the only label, so the palette's "Label …"
+  is "Move to …" there, and "Go to label …" is "Go to folder …" (`g l`). Real labels (add, remove, `L`, `Y`,
+  `]`, `[`) arrive with Gmail (packages 04/12).
+- 2026-10-14 — **Inbox Zero is a generated wash, not photos** (ui.md §9 asked). A soft three-colour gradient
+  whose hue changes daily, light and dark variants; no images to licence or ship. Easy to swap for curated
+  photos later if the owner prefers.
+- 2026-10-14 — **Mute** is Superhuman's: the conversation leaves the inbox, and replies that arrive later are
+  archived as they land (`muted` table, schema v11, checked after each header fetch). Undo unmutes too.
+  Unmute from the palette while the conversation is open. No Muted view (`g m`) yet.
 
 ## Log
 
@@ -139,3 +148,9 @@ Label chips on rows, then the empty-state artwork (use a solid colour), then `Cm
   signatures (`-- `, "Sent from my …") fold behind a `···` pill. Attachment chips (name, size) under each
   message, from BODYSTRUCTURE or the parsed body (`messages.parts`). "Always for this sender" remembers senders
   whose images load (`imagesFrom` setting). 79 unit tests, 11 dev-server checks pass. Bundle 24.8 kB gzipped.
+- 2026-10-14 — Slice 5: the rest. Engine moves to any folder (`Action::MoveTo`), to Junk (`!`) and back to the
+  inbox (`Shift+E`, Not Done); mute (`m`). Conversation keys: `Enter` replies to all (Cc everyone on it but
+  this account), `f` forwards the text (attachments come with compose, package 03); `o` expands. Palette
+  argument mode: "Move to …", "Go to folder …" (`g l` opens straight into it), "Switch account …"
+  (`Ctrl+1…9`), "Theme …"; `Esc` steps back out of a choice first. `g !` goes to Spam. Inbox Zero background.
+  Checked in headless Chromium; 81 unit tests, 11 dev-server checks. Bundle 26.3 kB gzipped (budget 120).

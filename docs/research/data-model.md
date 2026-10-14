@@ -75,6 +75,12 @@ CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- v9: valu
 `messages.parts` now also holds attachments found in a parsed body (no section number) when BODYSTRUCTURE gave
 none.
 
+## v11 — package 02, mute (implemented 2026-10-14)
+```sql
+CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                    thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'
