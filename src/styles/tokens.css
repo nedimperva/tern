@@ -47,8 +47,8 @@
 
   --row-h: 36px;
   --participants-w: 180px;
-  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Cantarell", sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", monospace;
+  --font: "Inter Variable", "Inter", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* Older names, kept until every rule uses the tokens above. */
   --bg: var(--bg-0);
