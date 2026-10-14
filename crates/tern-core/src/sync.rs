@@ -701,8 +701,9 @@ async fn drain_outbox<S: Stream>(
                 let failure = failure(&e);
                 store.outbox_failed(id, &format!("{e:#}"), failure)?;
                 log::warn!("{}: queued work {id} failed ({failure:?}): {e:#}", account.config.email);
-                // A Send uses its own SMTP connection, so only IMAP work can leave this session broken.
-                if !matches!(op, OutboxOp::Send(_)) && connection_broke(&e) {
+                // A Send uses its own SMTP connection; only an IMAP failure (a forward fetching its original) can leave
+                // this session broken.
+                if connection_broke(&e) && (!matches!(op, OutboxOp::Send(_)) || imap::connection_lost(&e)) {
                     store.release_claims(account.id)?;
                     return Err(e);
                 }
@@ -884,12 +885,44 @@ async fn run_op<S: Stream>(
             // Later work on these messages may be waiting to learn where they went.
             store.moved(account.id, dest, &placed)?;
         }
-        OutboxOp::Send(draft) => return smtp::send(&account.config, password, draft).await,
+        OutboxOp::Send(draft) => {
+            let extra = match &draft.forward_of {
+                Some(original) => forwarded_files(s, original).await?,
+                None => Vec::new(),
+            };
+            return smtp::send(&account.config, password, draft, &extra).await;
+        }
         OutboxOp::Append { folder, message, .. } => {
             within(s.append(folder, message.as_bytes(), false)).await?;
         }
     }
     Ok(Vec::new())
+}
+
+/// The attachments of a forwarded message, fetched from the server: by its uid while the folder keeps its
+/// numbering, else by Message-ID. Gone from the server: the forward waits for the person rather than going out
+/// without them.
+async fn forwarded_files<S: Stream>(
+    s: &mut Imap<S>,
+    original: &crate::models::ForwardOf,
+) -> Result<Vec<smtp::FileBytes>> {
+    let gone = || {
+        Unworkable(
+            "The forwarded message is no longer on the server, so its attachments cannot go along".into(),
+        )
+    };
+    let selected = within(s.select(&original.folder)).await?;
+    let uid = if original.validity.is_none() || selected.uid_validity == original.validity {
+        Some(original.uid)
+    } else if let Some(id) = &original.message_id {
+        within(s.find_message_id(id)).await?.into_iter().max()
+    } else {
+        None
+    };
+    let uid = uid.ok_or_else(gone)?;
+    let raw =
+        within(s.bodies(&uid.to_string())).await?.into_iter().next().and_then(|f| f.body).ok_or_else(gone)?;
+    Ok(mime::attachment_files(&raw))
 }
 
 /// Opens `folder` and works out which uids queued work should act on, as uid → message id (when known).
@@ -1089,6 +1122,8 @@ mod tests {
                 bcc: vec![],
                 in_reply_to: None,
                 references: vec![],
+                attachments: vec![],
+                forward_of: None,
                 message_id: None,
             }
         }
@@ -1390,6 +1425,8 @@ mod tests {
             bcc: vec![],
             in_reply_to: None,
             references: vec![],
+            attachments: vec![],
+            forward_of: None,
             message_id: None,
         };
         let work = store.queue_send(account.id, draft, 0).unwrap();
@@ -1433,6 +1470,8 @@ mod tests {
             body: body.into(),
             in_reply_to: None,
             references: vec![],
+            attachments: vec![],
+            forward_of: None,
             message_id: None,
         };
         let copies = |message_id: String| {
@@ -1475,6 +1514,123 @@ mod tests {
         let after = copies(bare).await;
         assert_eq!((after["Drafts"], after["Sent Items"]), (0, 1), "sent: gone from Drafts, kept in Sent");
         assert!(store.draft(id).unwrap().is_none(), "and forgotten here");
+    }
+
+    /// Two attachments sent through the outbox arrive intact, and a forward of that message carries them on.
+    #[tokio::test]
+    #[ignore = "needs scripts/dev-mail-server.sh start; run with scripts/dev-mail-server.sh test"]
+    async fn attachments_arrive_intact_and_forwards_carry_them() {
+        use crate::models::{Draft, ListTarget, OutgoingAttachment, ReplyKind};
+        use crate::store::Store;
+
+        let (config, password) = dev_account();
+        let store = Store::open_in_memory().unwrap();
+        let account = store.add_account(&config).unwrap();
+        let (mut session, mut schedule, nothing) = (None, super::Schedule::default(), || {});
+        while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap() {
+        }
+        let inbox =
+            store.folders_to_sync(account.id).unwrap().into_iter().find(|(_, n)| n == "INBOX").unwrap().0;
+
+        let dir = std::env::temp_dir().join(format!("tern-dev-attach-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let binary: Vec<u8> = (0..200_000u32).map(|i| (i * 7 % 256) as u8).collect();
+        std::fs::write(dir.join("data.bin"), &binary).unwrap();
+        std::fs::write(dir.join("notes.txt"), "Plain notes, ünïcode.").unwrap();
+        let file = |name: &str, mime: &str| OutgoingAttachment {
+            path: dir.join(name).display().to_string(),
+            name: name.into(),
+            mime: mime.into(),
+            size: std::fs::metadata(dir.join(name)).unwrap().len(),
+        };
+        let subject = format!("attachments check {}", std::process::id());
+        let draft = |subject: String, attachments, forward_of| Draft {
+            to: vec!["test@localhost".into()],
+            cc: vec![],
+            bcc: vec![],
+            subject,
+            body: "Files attached.".into(),
+            in_reply_to: None,
+            references: vec![],
+            attachments,
+            forward_of,
+            message_id: None,
+        };
+        store
+            .queue_send(
+                account.id,
+                draft(
+                    subject.clone(),
+                    vec![file("data.bin", "application/octet-stream"), file("notes.txt", "text/plain")],
+                    None,
+                ),
+                0,
+            )
+            .unwrap();
+
+        // Wait for it in the inbox, then read its attachments back from the server.
+        let mut other = super::connect(&config, &password).await.unwrap();
+        let received = |subject: String| {
+            let store = &store;
+            async move {
+                store
+                    .list(&ListTarget::Folder(inbox), None, 50)
+                    .unwrap()
+                    .into_iter()
+                    .find(|r| r.subject == subject)
+            }
+        };
+        let mut row = None;
+        for _ in 0..20 {
+            while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing)
+                .await
+                .unwrap()
+            {}
+            row = received(subject.clone()).await;
+            if row.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        }
+        let row = row.expect("the message arrived");
+        async fn files_of(other: &mut super::Session, message_id: &str) -> Vec<crate::smtp::FileBytes> {
+            other.select("INBOX").await.unwrap();
+            let uid =
+                other.message_ids("1:*").await.unwrap().into_iter().find(|(_, m)| m == message_id).unwrap().0;
+            let raw = other.bodies(&uid.to_string()).await.unwrap().remove(0).body.unwrap();
+            crate::mime::attachment_files(&raw)
+        }
+        let message_id = store.message_ids(&[row.id]).unwrap().remove(0).1;
+        let files = files_of(&mut other, &message_id).await;
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].2, binary, "binary intact");
+        assert_eq!(files[1].2, "Plain notes, ünïcode.".as_bytes(), "text intact");
+
+        // Forward it: the attachments come from the server copy of the original.
+        let init = store.reply_init(row.id, ReplyKind::Forward).unwrap();
+        assert!(init.forward_of.is_some());
+        let forward_subject = format!("fwd {subject}");
+        store.queue_send(account.id, draft(forward_subject.clone(), vec![], init.forward_of), 0).unwrap();
+        let mut forwarded = None;
+        for _ in 0..20 {
+            while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing)
+                .await
+                .unwrap()
+            {}
+            forwarded = received(forward_subject.clone()).await;
+            if forwarded.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        }
+        let forwarded = forwarded.expect("the forward arrived");
+        assert!(store.outbox_problems().unwrap().is_empty());
+        let message_id = store.message_ids(&[forwarded.id]).unwrap().remove(0).1;
+        let files = files_of(&mut other, &message_id).await;
+        assert_eq!(files.iter().map(|f| f.0.as_str()).collect::<Vec<_>>(), ["data.bin", "notes.txt"]);
+        assert_eq!(files[0].2, binary);
+        other.logout().await.unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// A fresh sync against the dev mail server: mail older than BODY_DAYS gets no body, but a snippet from its
@@ -1580,9 +1736,11 @@ mod tests {
             bcc: vec![],
             in_reply_to: None,
             references: vec![],
+            attachments: vec![],
+            forward_of: None,
             message_id: None,
         };
-        crate::smtp::send(&config, &password, &draft).await.unwrap();
+        crate::smtp::send(&config, &password, &draft, &[]).await.unwrap();
         let mut row = None;
         for _ in 0..20 {
             while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing)

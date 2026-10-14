@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "What the main window may do.",
   "windows": ["main"],
-  "permissions": ["core:default", "opener:default"]
+  "permissions": ["core:default", "opener:default", "dialog:allow-open"]
 }

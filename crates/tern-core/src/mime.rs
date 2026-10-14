@@ -51,6 +51,20 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
     })
 }
 
+/// The attached files of a raw message: (name, type, contents). For forwarding them.
+pub fn attachment_files(raw: &[u8]) -> Vec<(String, String, Vec<u8>)> {
+    let Some(msg) = MessageParser::default().parse(raw) else { return Vec::new() };
+    msg.attachments()
+        .map(|a| {
+            let mime = a
+                .content_type()
+                .map(|t| format!("{}/{}", t.ctype(), t.subtype().unwrap_or("octet-stream")).to_lowercase())
+                .unwrap_or_else(|| "application/octet-stream".into());
+            (a.attachment_name().unwrap_or("Untitled").to_string(), mime, a.contents().to_vec())
+        })
+        .collect()
+}
+
 /// The attachments of a parsed message, as parts. They have no IMAP section number (the body is already here).
 fn attachments(msg: &mail_parser::Message) -> Vec<Part> {
     msg.attachments()

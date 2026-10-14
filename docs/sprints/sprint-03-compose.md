@@ -40,7 +40,7 @@ marks done. Drafts land in the server's Drafts folder.
 ### Reply, reply-all, forward (core; rich quoting follows editor slice)
 - [x] Reply-all excludes our own addresses (all aliases from the account), honours `Reply-To`, `Mail-Followup-To`.
 - [ ] Quote header `On <date>, <name> <<addr>> wrote:` then `<blockquote>` of the original HTML (sanitised) or text; collapsed in the editor behind "···", editable on click.
-- [ ] Forward includes original attachments; subject `Fwd:`; original headers block.
+- [x] Forward includes original attachments; subject `Fwd:`; original headers block.
 - [x] Threading headers: `In-Reply-To`, `References` appended; `Message-ID` generated as `<uuid@tern>` (host part from the account domain).
 
 ### Drafts
@@ -50,9 +50,9 @@ marks done. Drafts land in the server's Drafts folder.
 - [x] Discard: `Cmd+Shift+,` with undo.
 
 ### Attachments
-- [ ] File picker (`Cmd+Shift+A`) via `tauri-plugin-dialog`; drag and drop onto compose from the file manager (`tauri://drag-drop` event).
-- [ ] Attachments stored in `app_data/attachments/<draft-id>/`; size total shown; warn over 25 MB.
-- [ ] Build MIME with `lettre`'s `MessageBuilder` and `MultiPart::mixed/alternative`; stream large files, don't read into memory twice.
+- [x] File picker (`Cmd+Shift+A`) via `tauri-plugin-dialog`; drag and drop onto compose from the file manager (`tauri://drag-drop` event).
+- [x] Attachments stored in `app_data/attachments/<draft-id>/`; size total shown; warn over 25 MB.
+- [x] Build MIME with `lettre`'s `MessageBuilder` and `MultiPart::mixed/alternative`; stream large files, don't read into memory twice.
 
 ### Sending
 - [x] Send puts an `Outbox::Send` op with `not_before = now + undo window` (setting: 0/5/10/20 s). Toast with "Undo".
@@ -94,6 +94,13 @@ Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
   discarding keeps the server copy for 30 s (Undo); sending removes it once the send has gone. Undoing a send
   makes it a draft again. A refused send ("550 no such user") opens as a draft from the problems list ("Edit"),
   rather than going back to Drafts on its own.
+- 2026-10-14 — **Forwarded attachments come from the server at send time.** The UI never talks to the server,
+  and Tern does not keep attachment bytes, so a forward records where the original is (folder, uid,
+  UIDVALIDITY, Message-ID) and the sync worker fetches it just before sending; renumbered folders are searched by
+  Message-ID; an original that is gone stops the send for the person rather than sending it without them. They
+  are all-or-nothing in compose (one chip). Picked and dropped files are copied into
+  `app_data/attachments/<stamp>/` (one folder per file, not per draft: a file is added before the draft has an
+  id); copies are not cleaned up yet. Attachments are read into memory once at send; no streaming yet.
 - 2026-10-14 — **No "Send Later" / "Remind me" stubs.** Package 02's scope says future features need not appear as
   placeholders; they arrive with package 05.
 
@@ -112,3 +119,8 @@ Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
   to continue" and `r` continues it. Tests: store (mirror, versions, removal, undo send, refused send), a scripted
   replace-the-copy check (the scripted server now takes IMAP literals), and the whole life on the dev server:
   one copy in Drafts across saves, none after sending, one in Sent. 89 unit tests, 12 dev-server checks.
+- 2026-10-14 — Slice 3: attachments. Attach (`Ctrl+Shift+A`, dialog plugin) or drop files on compose (Tauri's
+  drag-drop event); chips with sizes and a total, a warning above 25 MB. MIME multipart/mixed with the text and
+  each file; drafts carry their attachments to the server copy too. Forwards carry the original's attachments.
+  Checked on the dev server: a 200 kB binary and a UTF-8 text file arrive byte for byte, and a forward of that
+  message carries both. 90 unit tests, 13 dev-server checks. Bundle 30.0 kB gzipped.
