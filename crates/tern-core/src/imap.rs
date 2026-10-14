@@ -26,10 +26,13 @@ use io_imap::rfc3501::select::{ImapMailboxSelectData, ImapMailboxSelectOptions};
 use io_imap::rfc3501::store::ImapMessageStoreOptions;
 use io_imap::rfc6851::r#move::ImapMessageMoveOptions;
 use io_imap::sasl::auth_plain::ImapAuthPlainOptions;
+use io_imap::types::body::{BodyStructure, SpecificFields};
 use io_imap::types::command::FetchModifier;
 use io_imap::types::core::{AString, IString, NString, Vec1};
 use io_imap::types::extensions::enable::CapabilityEnable;
-use io_imap::types::fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Section};
+use io_imap::types::fetch::{
+    MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Part as FetchPart, Section,
+};
 use io_imap::types::flag::{Flag, FlagFetch, StoreType};
 use io_imap::types::mailbox::{ListMailbox, Mailbox};
 use io_imap::types::response::Capability;
@@ -42,7 +45,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 
-use crate::models::Security;
+use crate::models::{Part, Security};
 
 /// Largest single server response accepted; a message body arrives as one response.
 const MAX_RESPONSE: u32 = 100 * 1024 * 1024;
@@ -88,11 +91,25 @@ pub struct Fetched {
     pub size: Option<u32>,
     pub header: Option<Vec<u8>>,
     pub body: Option<Vec<u8>>,
+    /// One part's content (BODY[section]), when a single part was asked for.
+    pub part: Option<Vec<u8>>,
+    /// The leaf parts from BODYSTRUCTURE.
+    pub structure: Option<Vec<Part>>,
 }
 
-/// The header fields the list and threading need; the rest of the header comes with the body.
-const LIST_HEADERS: [&str; 8] =
-    ["FROM", "TO", "CC", "DATE", "SUBJECT", "MESSAGE-ID", "IN-REPLY-TO", "REFERENCES"];
+/// The header fields the list, threading and list handling need; the rest of the header comes with the body.
+const LIST_HEADERS: [&str; 10] = [
+    "FROM",
+    "TO",
+    "CC",
+    "DATE",
+    "SUBJECT",
+    "MESSAGE-ID",
+    "IN-REPLY-TO",
+    "REFERENCES",
+    "LIST-ID",
+    "LIST-UNSUBSCRIBE",
+];
 
 pub struct Imap<S> {
     conn: Conn<S>,
@@ -336,9 +353,25 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
             MessageDataItemName::Uid,
             MessageDataItemName::Flags,
             MessageDataItemName::Rfc822Size,
+            MessageDataItemName::BodyStructure,
             header,
         ];
         self.fetch(uids, items).await
+    }
+
+    /// The first `bytes` of one part (`section`, such as "1.1") of each message in `uids`, without marking them
+    /// read. Comes back in `Fetched::part`.
+    pub async fn part_start(&mut self, uids: &str, section: &str, bytes: u32) -> Result<Vec<Fetched>> {
+        let numbers: Vec<NonZeroU32> = section
+            .split('.')
+            .map(|n| n.parse::<u32>().ok().and_then(NonZeroU32::new).context("bad section"))
+            .collect::<Result<_>>()?;
+        let part = MessageDataItemName::BodyExt {
+            section: Some(Section::Part(FetchPart(Vec1::try_from(numbers)?))),
+            partial: Some((0, NonZeroU32::new(bytes).context("zero bytes")?)),
+            peek: true,
+        };
+        self.fetch(uids, vec![MessageDataItemName::Uid, part]).await
     }
 
     /// Whole messages, without marking them read.
@@ -535,7 +568,16 @@ fn mailbox_name(mailbox: &Mailbox) -> String {
 }
 
 fn fetched_from(items: Vec<MessageDataItem<'static>>) -> Option<Fetched> {
-    let mut f = Fetched { uid: 0, seen: false, flagged: false, size: None, header: None, body: None };
+    let mut f = Fetched {
+        uid: 0,
+        seen: false,
+        flagged: false,
+        size: None,
+        header: None,
+        body: None,
+        part: None,
+        structure: None,
+    };
     for item in items {
         match item {
             MessageDataItem::Uid(uid) => f.uid = uid.get(),
@@ -553,13 +595,64 @@ fn fetched_from(items: Vec<MessageDataItem<'static>>) -> Option<Fetched> {
                 let bytes = data.0.map(|d| d.as_ref().to_vec());
                 match section {
                     Some(Section::HeaderFields(..)) => f.header = bytes,
+                    Some(Section::Part(_)) => f.part = bytes,
                     _ => f.body = bytes,
                 }
+            }
+            MessageDataItem::BodyStructure(structure) => {
+                let mut parts = Vec::new();
+                leaf_parts(&structure, "", &mut parts);
+                f.structure = Some(parts);
             }
             _ => {}
         }
     }
     (f.uid != 0).then_some(f)
+}
+
+/// Flattens a BODYSTRUCTURE into its leaf parts with their section numbers. A message/rfc822 part is one leaf (a
+/// forwarded message is an attachment here, not more body).
+fn leaf_parts(structure: &BodyStructure, prefix: &str, out: &mut Vec<Part>) {
+    let text = |s: &IString| String::from_utf8_lossy(s.as_ref()).to_ascii_lowercase();
+    let param = |list: &[(IString, IString)], key: &str| {
+        list.iter()
+            .find(|(k, _)| text(k) == key)
+            .map(|(_, v)| String::from_utf8_lossy(v.as_ref()).into_owned())
+    };
+    match structure {
+        BodyStructure::Multi { bodies, .. } => {
+            for (i, body) in bodies.as_ref().iter().enumerate() {
+                let section =
+                    if prefix.is_empty() { format!("{}", i + 1) } else { format!("{prefix}.{}", i + 1) };
+                leaf_parts(body, &section, out);
+            }
+        }
+        BodyStructure::Single { body, extension_data } => {
+            let mime = match &body.specific {
+                SpecificFields::Basic { r#type, subtype } => format!("{}/{}", text(r#type), text(subtype)),
+                SpecificFields::Message { .. } => "message/rfc822".to_string(),
+                SpecificFields::Text { subtype, .. } => format!("text/{}", text(subtype)),
+            };
+            let disposition =
+                extension_data.as_ref().and_then(|e| e.tail.as_ref()).and_then(|d| d.disposition.as_ref());
+            let marked = disposition.is_some_and(|(kind, _)| text(kind) == "attachment");
+            let name = disposition
+                .and_then(|(_, params)| param(params, "filename"))
+                .or_else(|| param(&body.basic.parameter_list, "name"));
+            let inline_image = mime.starts_with("image/") && body.basic.id.0.is_some();
+            let attachment = marked || (name.is_some() && !mime.starts_with("text/") && !inline_image);
+            out.push(Part {
+                // A single-part message's only part is section 1.
+                section: if prefix.is_empty() { "1".to_string() } else { prefix.to_string() },
+                mime,
+                encoding: text(&body.basic.content_transfer_encoding),
+                charset: param(&body.basic.parameter_list, "charset"),
+                size: body.basic.size,
+                name,
+                attachment,
+            });
+        }
+    }
 }
 
 /// Runs io-imap's coroutines against a tokio stream.
@@ -860,8 +953,16 @@ mod tests {
         let (stream, sent) = signed_in(
             "{tag} OK [CAPABILITY IMAP4rev1] in\r\n",
             vec![(
-                "UID FETCH 4 (UID FLAGS RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES)])",
-                "* 1 FETCH (UID 4 FLAGS (\\Seen) RFC822.SIZE 52000 BODY[HEADER.FIELDS (FROM SUBJECT)] {28}\r\n\
+                "UID FETCH 4 (UID FLAGS RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT \
+                 MESSAGE-ID IN-REPLY-TO REFERENCES LIST-ID LIST-UNSUBSCRIBE)])",
+                // multipart/mixed: (alternative: plain, html), a PDF attachment, an inline image.
+                "* 1 FETCH (UID 4 FLAGS (\\Seen) RFC822.SIZE 52000 BODYSTRUCTURE (\
+                 ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"QUOTED-PRINTABLE\" 120 4 NIL NIL NIL NIL)\
+                 (\"TEXT\" \"HTML\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 400 9 NIL NIL NIL NIL) \"ALTERNATIVE\")\
+                 (\"APPLICATION\" \"PDF\" (\"NAME\" \"r.pdf\") NIL NIL \"BASE64\" 50000 NIL \
+                 (\"ATTACHMENT\" (\"FILENAME\" \"r.pdf\")) NIL NIL)\
+                 (\"IMAGE\" \"PNG\" (\"NAME\" \"logo.png\") \"<logo>\" NIL \"BASE64\" 900 NIL (\"INLINE\" NIL) NIL NIL) \
+                 \"MIXED\") BODY[HEADER.FIELDS (FROM SUBJECT)] {28}\r\n\
                  From: a@b.c\r\nSubject: Hi\r\n\r\n)\r\n{tag} OK done\r\n",
             )],
         );
@@ -871,6 +972,22 @@ mod tests {
         assert_eq!((f.uid, f.seen, f.size), (4, true, Some(52000)));
         assert_eq!(f.header.as_deref(), Some(&b"From: a@b.c\r\nSubject: Hi\r\n\r\n"[..]));
         assert!(f.body.is_none());
+        let parts = f.structure.as_ref().expect("BODYSTRUCTURE parsed");
+        let summary: Vec<_> =
+            parts.iter().map(|p| (p.section.as_str(), p.mime.as_str(), p.attachment)).collect();
+        assert_eq!(
+            summary,
+            [
+                ("1.1", "text/plain", false),
+                ("1.2", "text/html", false),
+                ("2", "application/pdf", true),
+                ("3", "image/png", false)
+            ]
+        );
+        assert_eq!(parts[0].charset.as_deref(), Some("utf-8"));
+        assert_eq!(parts[0].encoding, "quoted-printable");
+        assert_eq!(parts[2].name.as_deref(), Some("r.pdf"));
+        assert_eq!(Part::text_part(parts).unwrap().section, "1.1");
         assert!(
             sent.lock().unwrap().iter().any(|c| c.contains("BODY.PEEK[HEADER.FIELDS")),
             "must not mark read"
