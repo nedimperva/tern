@@ -229,6 +229,23 @@ pub fn subject_norm(subject: &str) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
+/// The Starred split of the inbox, as a list target: `ListTarget::Role("starred")`.
+pub const STARRED: &str = "starred";
+
+/// SQL keeping the messages `m` that are in `target`, and the value for its parameter, numbered `n`.
+fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
+    match target {
+        ListTarget::Folder(id) => (format!("m.folder_id = ?{n}"), Value::Integer(*id)),
+        ListTarget::Role(role) if role == STARRED => (
+            format!("m.flagged AND m.folder_id IN (SELECT id FROM folders WHERE role = ?{n})"),
+            Value::Text("inbox".into()),
+        ),
+        ListTarget::Role(role) => {
+            (format!("m.folder_id IN (SELECT id FROM folders WHERE role = ?{n})"), Value::Text(role.clone()))
+        }
+    }
+}
+
 pub struct Store {
     conn: Mutex<Connection>,
 }
@@ -651,12 +668,7 @@ impl Store {
 
     /// One page of a list, newest first, starting after `before`.
     pub fn list(&self, target: &ListTarget, before: Option<Cursor>, limit: i64) -> Result<Vec<MessageRow>> {
-        let (filter, key) = match target {
-            ListTarget::Folder(id) => ("m.folder_id = ?1", Value::Integer(*id)),
-            ListTarget::Role(role) => {
-                ("m.folder_id IN (SELECT id FROM folders WHERE role = ?1)", Value::Text(role.clone()))
-            }
-        };
+        let (filter, key) = target_filter(target, 1);
         let before = before.unwrap_or(Cursor { date: i64::MAX, id: i64::MAX });
         let sql = format!(
             "SELECT {ROW} FROM messages m WHERE {filter} AND (m.date, m.id) < (?2, ?3)
@@ -683,12 +695,7 @@ impl Store {
         before: Option<Cursor>,
         limit: usize,
     ) -> Result<Vec<ThreadRow>> {
-        let (filter, key) = match target {
-            ListTarget::Folder(id) => ("m.folder_id = ?1", Value::Integer(*id)),
-            ListTarget::Role(role) => {
-                ("m.folder_id IN (SELECT id FROM folders WHERE role = ?1)", Value::Text(role.clone()))
-            }
-        };
+        let (filter, key) = target_filter(target, 1);
         let cursor = before.unwrap_or(Cursor { date: i64::MAX, id: i64::MAX });
         let conn = self.conn();
         let mut scan = conn.prepare_cached(&format!(
@@ -762,13 +769,14 @@ impl Store {
         let same_conversation = "SELECT m.id FROM messages m, messages o
              WHERE o.id = ?1 AND m.account_id = o.account_id AND m.thread_id = o.thread_id";
         let (sql, key) = match (action, target) {
-            (Action::Archive | Action::Trash, ListTarget::Folder(id)) => {
-                (format!("{same_conversation} AND m.folder_id = ?2"), Some(Value::Integer(*id)))
+            (Action::Archive | Action::Trash, _) => {
+                // Done from the Starred split takes the conversation out of the inbox, starred or not.
+                let inbox = ListTarget::Role("inbox".into());
+                let place =
+                    if matches!(target, ListTarget::Role(r) if r == STARRED) { &inbox } else { target };
+                let (filter, key) = target_filter(place, 2);
+                (format!("{same_conversation} AND {filter}"), Some(key))
             }
-            (Action::Archive | Action::Trash, ListTarget::Role(role)) => (
-                format!("{same_conversation} AND m.folder_id IN (SELECT id FROM folders WHERE role = ?2)"),
-                Some(Value::Text(role.clone())),
-            ),
             (Action::Unstar, _) => (format!("{same_conversation} AND m.flagged"), None),
             _ => (same_conversation.to_string(), None),
         };
@@ -1697,6 +1705,18 @@ mod tests {
         assert_eq!(ids(Action::Unstar), [2, 4], "every star in it");
         assert_eq!(ids(Action::Star), [newest]);
         assert_eq!(rows[0].participants, ["Ada"]);
+    }
+
+    #[test]
+    fn the_starred_split_is_starred_inbox_mail() {
+        let (store, account, inbox, archive) = setup();
+        let starred = |uid, date| NewMessage { flagged: true, ..message(uid, "s", date) };
+        store.insert_messages(account, inbox, &[starred(1, 10), message(2, "plain", 20)]).unwrap();
+        store.insert_messages(account, archive, &[starred(3, 30)]).unwrap();
+        let split = ListTarget::Role(STARRED.into());
+        let rows = store.list_threads(&split, None, 10).unwrap();
+        assert_eq!(rows.iter().map(|r| r.latest.id).collect::<Vec<_>>(), [1], "inbox only, starred only");
+        assert_eq!(store.conversation_ids(&[1], Action::Archive, &split).unwrap(), [1]);
     }
 
     #[test]

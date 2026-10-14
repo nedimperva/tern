@@ -203,8 +203,12 @@ function fake(): Api {
   const pending = new Map<number, () => void>();
   let nextToken = 1;
   const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, ...r }: ThreadMessage): MessageRow => r;
-  const inTarget = (m: ThreadMessage, t: Target) =>
-    "folder" in t ? m.folderId === t.folder : folders.find((f) => f.id === m.folderId)?.role === t.role;
+  const inTarget = (m: ThreadMessage, t: Target): boolean =>
+    "folder" in t
+      ? m.folderId === t.folder
+      : t.role === "starred"
+        ? m.flagged && inTarget(m, { role: "inbox" })
+        : folders.find((f) => f.id === m.folderId)?.role === t.role;
 
   return {
     accounts: async () => [account],
@@ -250,7 +254,7 @@ function fake(): Api {
         messages.filter((m) => threads.has(m.threadId) && keep(m)).map((m) => m.id);
       const chosen =
         action === "archive" || action === "trash"
-          ? members((m) => inTarget(m, target))
+          ? members((m) => inTarget(m, "role" in target && target.role === "starred" ? { role: "inbox" } : target))
           : action === "unstar"
             ? members((m) => m.flagged)
             : action === "star"
