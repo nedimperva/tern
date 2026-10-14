@@ -81,6 +81,8 @@ export type Draft = {
   bcc?: string[];
   subject: string;
   body: string;
+  /** The same message as rich text; `body` is its plain-text version. */
+  html?: string | null;
   inReplyTo?: string | null;
   references?: string[];
 };

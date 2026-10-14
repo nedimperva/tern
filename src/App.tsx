@@ -188,6 +188,10 @@ export default function App() {
     onCleanup(() => window.removeEventListener("resize", onResize));
     void loadSettings();
     void refresh();
+    // Fetch the compose editor while the person reads, so the first "c" opens at once.
+    const warm = () => void import("./components/Editor");
+    if ("requestIdleCallback" in window) requestIdleCallback(warm);
+    else setTimeout(warm, 1500);
   });
 
   createEffect(
@@ -441,6 +445,7 @@ export default function App() {
       bcc: d.bcc ?? [],
       subject: d.subject,
       body: d.body,
+      html: d.html ?? null,
       inReplyTo: d.inReplyTo ?? null,
       references: d.references ?? [],
       draftId: record.id,
