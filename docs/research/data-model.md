@@ -60,6 +60,13 @@ ALTER TABLE messages ADD COLUMN parts TEXT;   -- JSON [{section, mime, encoding,
 ```
 `body_state` gains `snippet` (headers plus a snippet from the text part; full body still to come).
 
+## v8 — package 01, conversations (implemented 2026-10-14)
+```sql
+ALTER TABLE messages ADD COLUMN subject_norm TEXT;   -- filled in from subject by the migration
+CREATE INDEX messages_subject ON messages (account_id, subject_norm, date) WHERE subject_norm IS NOT NULL;
+```
+No `threads` table: conversation rows are computed per page (see sprint 01, Decisions).
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'
