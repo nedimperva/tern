@@ -69,7 +69,13 @@ export type Action =
 export const moves = (a: Action) => typeof a === "object" || a === "archive" || a === "trash" || a === "junk" || a === "inbox";
 export type Target = { folder: number } | { role: string };
 export type Cursor = { date: number; id: number };
+/** A file attached to a draft (Tern's own copy). */
+export type OutgoingAttachment = { path: string; name: string; mime: string; size: number };
+/** Where a forwarded message is on the server; its attachments go along when the forward is sent. */
+export type ForwardOf = { folder: string; uid: number; validity: number | null; messageId: string | null };
 export type Draft = {
+  attachments?: OutgoingAttachment[];
+  forwardOf?: ForwardOf | null;
   to: string[];
   cc?: string[];
   bcc?: string[];
@@ -94,6 +100,7 @@ export type ReplyInit = {
   quoteText: string;
   quoteTo: string;
   quoteCc: string;
+  forwardOf: ForwardOf | null;
 };
 export type Preset = {
   imapHost: string;
@@ -142,6 +149,12 @@ export interface Api {
   undoDiscard(id: number): Promise<boolean>;
   /** A refused send, back as a draft to fix. */
   problemToDraft(id: number): Promise<DraftRecord>;
+  /** The system file picker; paths chosen (none if cancelled). */
+  pickFiles(): Promise<string[]>;
+  /** Copies files into Tern's attachment folder, for a draft. */
+  addAttachments(paths: string[]): Promise<OutgoingAttachment[]>;
+  /** Files dropped on the window from the file manager; returns the way to stop listening. */
+  onFilesDropped(f: (paths: string[]) => void): () => void;
   replyInit(id: number, kind: ReplyKind): Promise<ReplyInit>;
   problems(): Promise<OutboxProblem[]>;
   retryProblem(id: number): Promise<void>;
@@ -184,6 +197,24 @@ const tauri: Api = {
   discardDraft: (id) => invoke("discard_draft", { id }),
   undoDiscard: (id) => invoke("undo_discard", { id }),
   problemToDraft: (id) => invoke("problem_to_draft", { id }),
+  pickFiles: async () => {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const chosen = await open({ multiple: true, title: "Attach files" });
+    return chosen == null ? [] : Array.isArray(chosen) ? chosen : [chosen];
+  },
+  addAttachments: (paths) => invoke("add_attachments", { paths }),
+  onFilesDropped: (f) => {
+    let stop: (() => void) | undefined;
+    let stopped = false;
+    void import("@tauri-apps/api/webview").then(({ getCurrentWebview }) =>
+      getCurrentWebview()
+        .onDragDropEvent((e) => {
+          if (e.payload.type === "drop") f(e.payload.paths);
+        })
+        .then((unlisten) => (stopped ? unlisten() : (stop = unlisten))),
+    );
+    return () => ((stopped = true), stop?.());
+  },
   replyInit: (id, kind) => invoke("reply_init", { id, kind }),
   onChange: (f) => void listen("mail-changed", f),
   syncStates: () => invoke("sync_states"),
@@ -393,6 +424,11 @@ function fake(): Api {
     draftForMessage: async () => null,
     discardDraft: async (id) => void drafts.delete(id),
     undoDiscard: async () => false,
+    // The browser has no file paths; a picked "file" is made up so the strip can be worked on.
+    pickFiles: async () => ["/home/you/Documents/report.pdf"],
+    addAttachments: async (paths) =>
+      paths.map((p) => ({ path: p, name: p.split("/").pop()!, mime: "application/pdf", size: 1_234_567 })),
+    onFilesDropped: () => () => {},
     problemToDraft: async (id) => {
       problems = problems.filter((p) => p.id !== id);
       const record = { id: nextDraft++, accountId: 1, draft: { to: ["typo@exmaple.com"], subject: "Re: Quarterly numbers", body: "Numbers attached." }, updatedAt: now };
@@ -414,6 +450,7 @@ function fake(): Api {
         quoteText: m.bodyText ?? "",
         quoteTo: m.toAddrs,
         quoteCc: "",
+        forwardOf: forward && m.attachments.length ? { folder: "INBOX", uid: m.id, validity: 1, messageId: m.messageId } : null,
       };
     },
     // One sample, so the problems strip can be worked on in a plain browser.

@@ -361,6 +361,8 @@ export default function App() {
       references: init.references,
       focus: kind === "forward" ? "to" : "body",
       inline: kind !== "forward" && openRow() !== null,
+      forwardOf: init.forwardOf,
+      forwardFiles: init.forwardOf ? m.attachments : undefined,
     });
   }
 
@@ -433,6 +435,8 @@ export default function App() {
       inReplyTo: d.inReplyTo ?? null,
       references: d.references ?? [],
       draftId: record.id,
+      attachments: d.attachments ?? [],
+      forwardOf: d.forwardOf ?? null,
       focus: d.to.length ? "body" : "to",
       inline,
     });
