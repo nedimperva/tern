@@ -17,6 +17,7 @@ use io_imap::client::{ImapClientAsync, ImapClientError};
 use io_imap::codec::fragmentizer::Fragmentizer;
 use io_imap::coroutine::{ImapCoroutine, ImapCoroutineState, ImapYield};
 use io_imap::rfc2177::idle::{ImapIdle, ImapIdleOptions, ImapIdleYield};
+use io_imap::rfc2971::id::ImapServerIdOptions;
 use io_imap::rfc3501::copy::ImapMessageCopyOptions;
 use io_imap::rfc3501::fetch::ImapMessageFetchOptions;
 use io_imap::rfc3501::login::ImapLoginOptions;
@@ -25,7 +26,7 @@ use io_imap::rfc3501::select::{ImapMailboxSelectData, ImapMailboxSelectOptions};
 use io_imap::rfc3501::store::ImapMessageStoreOptions;
 use io_imap::rfc6851::r#move::ImapMessageMoveOptions;
 use io_imap::sasl::auth_plain::ImapAuthPlainOptions;
-use io_imap::types::core::{AString, Vec1};
+use io_imap::types::core::{AString, IString, NString, Vec1};
 use io_imap::types::extensions::enable::CapabilityEnable;
 use io_imap::types::fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Section};
 use io_imap::types::flag::{Flag, FlagFetch, StoreType};
@@ -187,8 +188,38 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
             let opts = ImapLoginOptions { ensure_capabilities: true, ..Default::default() };
             conn.login(username, password, opts).await
         }
-        .context("The server refused the sign-in")?;
-        Ok(Self { conn, capabilities, qresync: false })
+        .map_err(|e| match e {
+            // The connection broke while signing in: that says nothing about the password.
+            ImapClientError::Io(io) => {
+                anyhow::Error::new(io).context("The connection broke while signing in")
+            }
+            refused => anyhow::Error::new(refused).context(SignInRefused),
+        })?;
+        let mut imap = Self { conn, capabilities, qresync: false };
+        // Some servers (Gmail) ask clients to say who they are. Nothing depends on the answer.
+        if imap.has("ID") {
+            imap.identify().await?;
+        }
+        Ok(imap)
+    }
+
+    async fn identify(&mut self) -> Result<()> {
+        let field = |k: &str, v: &str| -> Result<(IString<'static>, NString<'static>)> {
+            Ok((IString::try_from(k.to_string())?, NString(Some(IString::try_from(v.to_string())?))))
+        };
+        let parameters = vec![
+            field("name", "Tern")?,
+            field("version", env!("CARGO_PKG_VERSION"))?,
+            field("support-url", "https://github.com/nedimperva/tern")?,
+        ];
+        match self.conn.id(ImapServerIdOptions { parameters: Some(parameters) }).await {
+            Ok(_) => Ok(()),
+            Err(ImapClientError::Io(e)) => Err(e.into()),
+            Err(e) => {
+                log::debug!("the server did not take ID: {e}");
+                Ok(())
+            }
+        }
     }
 
     /// Whether the server advertised `name` (for example `MOVE` or `UIDPLUS`).
@@ -430,6 +461,24 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
     }
 }
 
+/// The server said no to the user name and password (or token). Trying again with the same ones will not help and
+/// may lock the account, so callers wait for new ones.
+#[derive(Debug)]
+pub struct SignInRefused;
+
+impl std::fmt::Display for SignInRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("The server refused the sign-in")
+    }
+}
+
+impl std::error::Error for SignInRefused {}
+
+/// Whether `e` is the server refusing the sign-in.
+pub fn sign_in_refused(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<SignInRefused>().is_some()
+}
+
 /// Whether `e` came from the connection itself failing (reading or writing the socket), rather than from the
 /// server answering NO or BAD. io-imap wraps the I/O error transparently, so it is not in the error's source
 /// chain and has to be recognised by its variant.
@@ -578,6 +627,17 @@ mod tests {
         );
         let err = Imap::open(stream, "ada", "wrong").await.err().unwrap();
         assert!(format!("{err:#}").contains("refused the sign-in"));
+        assert!(sign_in_refused(&err));
+    }
+
+    #[tokio::test]
+    async fn says_who_it_is_where_asked() {
+        let (stream, sent) = signed_in(
+            "{tag} OK [CAPABILITY IMAP4rev1 ID] in\r\n",
+            vec![("ID (", "* ID (\"name\" \"Example\")\r\n{tag} OK done\r\n")],
+        );
+        Imap::open(stream, "ada", "x").await.unwrap();
+        assert!(sent.lock().unwrap()[2].contains("\"name\" \"Tern\""), "{:?}", sent.lock().unwrap());
     }
 
     #[tokio::test]
