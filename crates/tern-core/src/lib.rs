@@ -6,6 +6,8 @@ pub mod imap;
 pub mod mime;
 pub mod models;
 pub mod presets;
+#[cfg(test)]
+mod scripted;
 pub mod secrets;
 pub mod smtp;
 pub mod store;

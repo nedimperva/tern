@@ -11,12 +11,16 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tokio::sync::Notify;
 
-use crate::imap::{self, Idled, TlsImap};
-use crate::models::{Account, AccountConfig, FolderState, NewMessage, OutboxOp};
+use crate::imap::{self, Idled, Imap, TlsImap};
+use crate::models::{Account, AccountConfig, Failure, FolderState, NewMessage, OutboxOp};
 use crate::store::{now, Store};
 use crate::{mime, smtp};
 
 pub type Session = TlsImap;
+
+/// What an IMAP session can run over: TLS in the app, a scripted stream in tests.
+pub trait Stream: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send {}
+impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send> Stream for T {}
 
 /// How often every folder is checked. The inbox does not wait for this when the server has IDLE: `watch_inbox`
 /// wakes the worker the moment something changes there.
@@ -299,11 +303,13 @@ async fn sync_folder(
         changed = true;
     }
 
-    let mut new: Vec<u32> =
-        server.iter().filter(|u| !local.contains(u) && !pending.contains(u)).copied().collect();
+    let unknown: Vec<u32> = server.iter().filter(|u| !local.contains(u)).copied().collect();
+    let mut new: Vec<u32> = unknown.iter().filter(|u| !pending.contains(u)).copied().collect();
     new.sort_unstable_by(|a, b| b.cmp(a));
     let mut more = new.len() > PER_PASS;
-    let mut all_new_fetched = !more;
+    // Uids held back for queued work (a move still to go out, or stale uids after a renumbering) are looked at
+    // again on the next pass, so one that turns out to be new mail is not skipped for good.
+    let mut all_new_fetched = !more && new.len() == unknown.len();
     new.truncate(PER_PASS);
     // Headers first: a few hundred bytes a message, so the list fills in a round trip or two. Bodies follow.
     for chunk in new.chunks(HEADER_CHUNK) {
@@ -398,21 +404,26 @@ async fn fetch_bodies(
 /// Work the server refuses is recorded and the rest goes on, and so does the pass: one bad message must not hold
 /// up new mail. Only a connection that broke ends the pass, so it can reconnect; what was claimed and not tried
 /// goes back in the queue.
-async fn drain_outbox(s: &mut Session, store: &Store, account: &Account, password: &str) -> Result<bool> {
+async fn drain_outbox<S: Stream>(
+    s: &mut Imap<S>,
+    store: &Store,
+    account: &Account,
+    password: &str,
+) -> Result<bool> {
     let due = store.claim_due(account.id)?;
     let any = !due.is_empty();
-    for (id, op) in due {
-        let Err(e) = run_op(s, &account.config, password, &op).await else {
+    for (id, _) in due {
+        let Some(op) = store.outbox_op(id)? else { continue };
+        if matches!(op, OutboxOp::Send(_)) {
+            store.outbox_sending(id)?;
+        }
+        let Err(e) = run_op(s, store, account, password, &op).await else {
             store.outbox_done(id)?;
             continue;
         };
-        let permanent = smtp::is_permanent(&e);
-        store.outbox_failed(id, &format!("{e:#}"), permanent)?;
-        log::warn!(
-            "{}: queued work {id} failed{}: {e:#}",
-            account.config.email,
-            if permanent { " for good" } else { "" }
-        );
+        let failure = failure(&e);
+        store.outbox_failed(id, &format!("{e:#}"), failure)?;
+        log::warn!("{}: queued work {id} failed ({failure:?}): {e:#}", account.config.email);
         // A Send uses its own SMTP connection, so only IMAP work can leave this session broken.
         if !matches!(op, OutboxOp::Send(_)) && connection_broke(&e) {
             store.release_claims(account.id)?;
@@ -422,30 +433,123 @@ async fn drain_outbox(s: &mut Session, store: &Store, account: &Account, passwor
     Ok(any)
 }
 
+/// Work that cannot succeed however often it is tried (its messages are no longer on the server).
+#[derive(Debug)]
+struct Unworkable(String);
+
+impl std::fmt::Display for Unworkable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Unworkable {}
+
+fn failure(e: &anyhow::Error) -> Failure {
+    if smtp::maybe_sent(e) {
+        Failure::MaybeSent
+    } else if smtp::is_permanent(e) || e.chain().any(|c| c.is::<Unworkable>()) {
+        Failure::Permanent
+    } else {
+        Failure::Retry
+    }
+}
+
 /// Whether an error means the connection is gone (I/O error or no answer), not that the server said no.
 fn connection_broke(e: &anyhow::Error) -> bool {
     imap::connection_lost(e) || e.chain().any(|c| c.is::<tokio::time::error::Elapsed>())
 }
 
-async fn run_op(s: &mut Session, config: &AccountConfig, password: &str, op: &OutboxOp) -> Result<()> {
+async fn run_op<S: Stream>(
+    s: &mut Imap<S>,
+    store: &Store,
+    account: &Account,
+    password: &str,
+    op: &OutboxOp,
+) -> Result<()> {
     match op {
-        OutboxOp::Flags { folder, uids, flag, add, .. } => {
-            if uids.is_empty() {
+        OutboxOp::Flags { folder, uids, flag, add, revert, validity, waiting } => {
+            let ids: Vec<i64> = revert.iter().map(|r| r.0).collect();
+            let found = locate(s, store, folder, uids, *validity, waiting, &ids).await?;
+            if found.is_empty() {
                 return Ok(());
             }
-            within(s.select(folder)).await?;
-            within(s.store_flag(&uid_set(uids), flag, *add)).await?;
+            let set = uid_set(&found.keys().copied().collect::<Vec<_>>());
+            within(s.store_flag(&set, flag, *add)).await?;
         }
-        OutboxOp::Move { folder, dest, uids, .. } => {
-            if uids.is_empty() {
+        OutboxOp::Move { folder, dest, uids, revert, validity, waiting } => {
+            let ids: Vec<i64> = revert.iter().map(|r| r.0).collect();
+            let mut found = locate(s, store, folder, uids, *validity, waiting, &ids).await?;
+            // Uids that were known when the work was queued: which message each one is. (After a renumbering
+            // every entry already names its message, so a stale uid cannot claim one.)
+            for (id, _, uid) in revert {
+                if let Some(entry) = uid.and_then(|u| found.get_mut(&u)) {
+                    entry.get_or_insert(*id);
+                }
+            }
+            if found.is_empty() {
                 return Ok(());
             }
-            within(s.select(folder)).await?;
-            within(s.move_to(&uid_set(uids), dest)).await?;
+            let set = uid_set(&found.keys().copied().collect::<Vec<_>>());
+            let placed: Vec<(i64, u32)> = within(s.move_to(&set, dest))
+                .await?
+                .into_iter()
+                .filter_map(|(from, to)| Some((found.get(&from).copied().flatten()?, to)))
+                .collect();
+            // Later work on these messages may be waiting to learn where they went.
+            store.moved(account.id, dest, &placed)?;
         }
-        OutboxOp::Send(draft) => smtp::send(config, password, draft).await?,
+        OutboxOp::Send(draft) => smtp::send(&account.config, password, draft).await?,
     }
     Ok(())
+}
+
+/// Opens `folder` and works out which uids queued work should act on, as uid → message id (when known).
+///
+/// The uids it was queued with hold while the folder keeps its UIDVALIDITY. If the server renumbered the folder
+/// since, every message is looked up again by Message-ID; so are `waiting` messages, whose uid here was never
+/// learned. A message that cannot be found is skipped; when none can be, the work is unworkable.
+async fn locate<S: Stream>(
+    s: &mut Imap<S>,
+    store: &Store,
+    folder: &str,
+    uids: &[u32],
+    validity: Option<u32>,
+    waiting: &[i64],
+    ids: &[i64],
+) -> Result<HashMap<u32, Option<i64>>> {
+    let selected = within(s.select(folder)).await?;
+    let renumbered = validity.is_some() && selected.uid_validity != validity;
+    let mut found: HashMap<u32, Option<i64>> =
+        if renumbered { HashMap::new() } else { uids.iter().map(|u| (*u, None)).collect() };
+    let lookup = if renumbered { ids } else { waiting };
+    if lookup.is_empty() {
+        return Ok(found);
+    }
+    if renumbered {
+        log::info!("{folder} was renumbered on the server; finding queued messages by Message-ID");
+    }
+    let mut missing = Vec::new();
+    for (id, message_id) in store.message_ids(lookup)? {
+        let uids = within(s.find_message_id(&message_id)).await?;
+        if uids.is_empty() {
+            missing.push((id, message_id));
+        }
+        found.extend(uids.into_iter().map(|uid| (uid, Some(id))));
+    }
+    // The server found nothing by header search, which some cannot do (Stalwart): read every Message-ID in the
+    // folder once and match here. A renumbering or a server without COPYUID is rare enough to afford it.
+    if !missing.is_empty() && selected.exists > 0 {
+        for (uid, message_id) in within(s.message_ids("1:*")).await? {
+            if let Some((id, _)) = missing.iter().find(|(_, m)| *m == message_id) {
+                found.insert(uid, Some(*id));
+            }
+        }
+    }
+    if found.is_empty() {
+        return Err(Unworkable(format!("The messages are no longer in {folder} on the server")).into());
+    }
+    Ok(found)
 }
 
 /// Runs one IMAP command, giving up after COMMAND_TIMEOUT.
@@ -510,13 +614,224 @@ mod tests {
         assert_eq!(role("Receipts", &[]), "other");
     }
 
-    /// Two real sync passes against the dev mail server, with an outside flag change and move in between.
-    #[tokio::test]
-    #[ignore = "needs scripts/dev-mail-server.sh start; run with scripts/dev-mail-server.sh test"]
-    async fn second_pass_applies_outside_changes_through_qresync() {
-        use crate::models::{AccountConfig, Security};
+    /// Queued work run against a scripted server: the cases a real server rarely produces on demand.
+    mod outbox {
+        use super::super::drain_outbox;
+        use crate::imap::Imap;
+        use crate::models::{Account, AccountConfig, Action, FolderState, ListTarget, NewMessage, Security};
+        use crate::scripted::{signed_in, Script};
         use crate::store::Store;
 
+        const SIGNED_IN: &str = "{tag} OK [CAPABILITY IMAP4rev1 MOVE UIDPLUS] in\r\n";
+        const SELECT_INBOX: &str = "* 1 EXISTS\r\n* OK [UIDVALIDITY 7] v\r\n{tag} OK [READ-WRITE] s\r\n";
+        const SELECT_ARCHIVE: &str = "* 1 EXISTS\r\n* OK [UIDVALIDITY 3] v\r\n{tag} OK [READ-WRITE] s\r\n";
+
+        struct Mailbox {
+            store: Store,
+            account: Account,
+            inbox: i64,
+            archive: i64,
+            trash: i64,
+            /// One message, uid 4 in INBOX (UIDVALIDITY 7), Message-ID a1@example.com.
+            message: i64,
+        }
+
+        fn mailbox() -> Mailbox {
+            let store = Store::open_in_memory().unwrap();
+            let account = store
+                .add_account(&AccountConfig {
+                    email: "ada@example.com".into(),
+                    display_name: String::new(),
+                    username: "ada".into(),
+                    imap_host: "imap.example.com".into(),
+                    imap_port: 993,
+                    imap_security: Security::Tls,
+                    smtp_host: "smtp.example.com".into(),
+                    smtp_port: 465,
+                    smtp_security: Security::Tls,
+                })
+                .unwrap();
+            let inbox = store.upsert_folder(account.id, "INBOX", "inbox").unwrap();
+            let archive = store.upsert_folder(account.id, "Archive", "archive").unwrap();
+            let trash = store.upsert_folder(account.id, "Trash", "trash").unwrap();
+            let state = FolderState { uid_validity: Some(7), uid_next: Some(5), highest_modseq: None };
+            store.set_folder_state(inbox, &state).unwrap();
+            let m = NewMessage {
+                uid: 4,
+                message_id: Some("a1@example.com".into()),
+                subject: "hi".into(),
+                date: 1,
+                ..Default::default()
+            };
+            store.insert_messages(account.id, inbox, &[m]).unwrap();
+            let message = store.list(&ListTarget::Folder(inbox), None, 10).unwrap()[0].id;
+            Mailbox { store, account, inbox, archive, trash, message }
+        }
+
+        /// Runs the due outbox against `script`; returns the result and the commands sent after signing in.
+        async fn drain(m: &Mailbox, script: Script) -> (anyhow::Result<bool>, Vec<String>) {
+            let (stream, sent) = signed_in(SIGNED_IN, script);
+            let mut s = Imap::open(stream, "ada", "x").await.unwrap();
+            let result = drain_outbox(&mut s, &m.store, &m.account, "").await;
+            let sent = sent.lock().unwrap()[2..].to_vec();
+            (result, sent)
+        }
+
+        fn queue_empty(m: &Mailbox) -> bool {
+            m.store.next_due(m.account.id).unwrap().is_none() && m.store.outbox_problems().unwrap().is_empty()
+        }
+
+        #[tokio::test]
+        async fn a_renumbered_folder_is_searched_by_message_id() {
+            let m = mailbox();
+            m.store.apply(&[m.message], Action::Star, 0).unwrap();
+            let (result, sent) = drain(
+                &m,
+                vec![
+                    ("SELECT INBOX", "* 1 EXISTS\r\n* OK [UIDVALIDITY 8] v\r\n{tag} OK [READ-WRITE] s\r\n"),
+                    ("UID SEARCH HEADER Message-ID", "* SEARCH 15\r\n{tag} OK done\r\n"),
+                    ("UID STORE 15 +FLAGS (\\Flagged)", "{tag} OK done\r\n"),
+                ],
+            )
+            .await;
+            result.unwrap();
+            // Never the old uid 4, which now may be any message.
+            assert!(!sent.iter().any(|c| c.contains("STORE 4 ")), "{sent:?}");
+            assert!(queue_empty(&m));
+        }
+
+        #[tokio::test]
+        async fn without_header_search_the_folder_message_ids_are_read() {
+            let m = mailbox();
+            m.store.apply(&[m.message], Action::Star, 0).unwrap();
+            let (result, _) = drain(
+                &m,
+                vec![
+                    ("SELECT INBOX", "* 2 EXISTS\r\n* OK [UIDVALIDITY 8] v\r\n{tag} OK [READ-WRITE] s\r\n"),
+                    ("UID SEARCH HEADER Message-ID", "* SEARCH\r\n{tag} OK done\r\n"),
+                    (
+                        "UID FETCH 1:* (UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])",
+                        "* 1 FETCH (UID 15 BODY[HEADER.FIELDS (MESSAGE-ID)] {32}\r\nMessage-ID: <z9@example.com>\r\n\r\n)\r\n\
+                         * 2 FETCH (UID 16 BODY[HEADER.FIELDS (MESSAGE-ID)] {32}\r\nMessage-ID: <a1@example.com>\r\n\r\n)\r\n\
+                         {tag} OK done\r\n",
+                    ),
+                    ("UID STORE 16 +FLAGS (\\Flagged)", "{tag} OK done\r\n"),
+                ],
+            )
+            .await;
+            result.unwrap();
+            assert!(queue_empty(&m));
+        }
+
+        #[tokio::test]
+        async fn a_message_gone_after_renumbering_waits_for_the_person() {
+            let m = mailbox();
+            m.store.apply(&[m.message], Action::Star, 0).unwrap();
+            let (result, _) = drain(
+                &m,
+                vec![
+                    ("SELECT INBOX", "* 0 EXISTS\r\n* OK [UIDVALIDITY 8] v\r\n{tag} OK [READ-WRITE] s\r\n"),
+                    ("UID SEARCH HEADER Message-ID", "* SEARCH\r\n{tag} OK done\r\n"),
+                ],
+            )
+            .await;
+            result.unwrap();
+            let problems = m.store.outbox_problems().unwrap();
+            assert_eq!(problems.len(), 1, "given up at once, not retried against the wrong messages");
+            assert!(problems[0].last_error.contains("no longer in INBOX"));
+        }
+
+        #[tokio::test]
+        async fn a_star_made_before_the_archive_went_out_follows_the_message() {
+            let m = mailbox();
+            m.store.apply(&[m.message], Action::Archive, 0).unwrap();
+            // The row is in Archive now, its uid there not known until the move goes out.
+            m.store.apply(&[m.message], Action::Star, 0).unwrap();
+            let (result, sent) = drain(
+                &m,
+                vec![
+                    ("SELECT INBOX", SELECT_INBOX),
+                    ("UID MOVE 4 Archive", "* OK [COPYUID 3 4 9] moved\r\n* 1 EXPUNGE\r\n{tag} OK done\r\n"),
+                    ("SELECT Archive", SELECT_ARCHIVE),
+                    ("UID STORE 9 +FLAGS (\\Flagged)", "{tag} OK done\r\n"),
+                ],
+            )
+            .await;
+            result.unwrap();
+            assert!(!sent.iter().any(|c| c.contains("SEARCH")), "COPYUID said where it went: {sent:?}");
+            assert!(m.store.local_uids(m.archive).unwrap().contains(&9));
+            assert!(queue_empty(&m));
+        }
+
+        #[tokio::test]
+        async fn archive_then_trash_before_either_went_out() {
+            let m = mailbox();
+            m.store.apply(&[m.message], Action::Archive, 0).unwrap();
+            m.store.apply(&[m.message], Action::Trash, 0).unwrap();
+            let (result, _) = drain(
+                &m,
+                vec![
+                    ("SELECT INBOX", SELECT_INBOX),
+                    ("UID MOVE 4 Archive", "* OK [COPYUID 3 4 9] moved\r\n* 1 EXPUNGE\r\n{tag} OK done\r\n"),
+                    ("SELECT Archive", SELECT_ARCHIVE),
+                    ("UID MOVE 9 Trash", "* OK [COPYUID 5 9 20] moved\r\n* 1 EXPUNGE\r\n{tag} OK done\r\n"),
+                ],
+            )
+            .await;
+            result.unwrap();
+            assert_eq!(m.store.local_uids(m.trash).unwrap(), [20].into());
+            assert!(m.store.local_uids(m.archive).unwrap().is_empty());
+            assert!(queue_empty(&m));
+        }
+
+        #[tokio::test]
+        async fn without_copyuid_waiting_work_finds_the_message_by_message_id() {
+            let m = mailbox();
+            m.store.apply(&[m.message], Action::Archive, 0).unwrap();
+            m.store.apply(&[m.message], Action::Star, 0).unwrap();
+            let (result, _) = drain(
+                &m,
+                vec![
+                    ("SELECT INBOX", SELECT_INBOX),
+                    ("UID MOVE 4 Archive", "* 1 EXPUNGE\r\n{tag} OK done\r\n"),
+                    ("SELECT Archive", SELECT_ARCHIVE),
+                    ("UID SEARCH HEADER Message-ID", "* SEARCH 9\r\n{tag} OK done\r\n"),
+                    ("UID STORE 9 +FLAGS (\\Flagged)", "{tag} OK done\r\n"),
+                ],
+            )
+            .await;
+            result.unwrap();
+            assert!(queue_empty(&m));
+        }
+
+        #[tokio::test]
+        async fn a_dropped_connection_puts_the_work_back() {
+            let m = mailbox();
+            m.store.apply(&[m.message], Action::Archive, 0).unwrap();
+            // The server hangs up instead of answering the move.
+            let (result, _) =
+                drain(&m, vec![("SELECT INBOX", SELECT_INBOX), ("UID MOVE 4 Archive", "")]).await;
+            assert!(result.is_err());
+            assert!(m.store.outbox_problems().unwrap().is_empty());
+            assert!(m.store.next_due(m.account.id).unwrap().is_some(), "still queued, to try again");
+            assert!(m.store.local_uids(m.inbox).unwrap().is_empty(), "and still archived here");
+        }
+
+        #[test]
+        fn undo_is_refused_while_later_work_counts_on_the_move() {
+            let m = mailbox();
+            let archived = m.store.apply(&[m.message], Action::Archive, 5).unwrap();
+            let starred = m.store.apply(&[m.message], Action::Star, 5).unwrap();
+            assert!(!m.store.undo(&archived.token).unwrap());
+            assert!(m.store.undo(&starred.token).unwrap());
+            assert!(m.store.undo(&archived.token).unwrap(), "fine once nothing waits on it");
+            assert_eq!(m.store.local_uids(m.inbox).unwrap(), [4].into());
+        }
+    }
+
+    /// The dev mail server's test account and its password.
+    fn dev_account() -> (crate::models::AccountConfig, String) {
+        use crate::models::{AccountConfig, Security};
         let dir =
             std::path::PathBuf::from(std::env::var_os("HOME").unwrap()).join(".local/share/tern-devmail");
         let password = std::fs::read_to_string(dir.join("test-password")).unwrap().trim().to_string();
@@ -531,6 +846,16 @@ mod tests {
             smtp_port: 1465,
             smtp_security: Security::Tls,
         };
+        (config, password)
+    }
+
+    /// Two real sync passes against the dev mail server, with an outside flag change and move in between.
+    #[tokio::test]
+    #[ignore = "needs scripts/dev-mail-server.sh start; run with scripts/dev-mail-server.sh test"]
+    async fn second_pass_applies_outside_changes_through_qresync() {
+        use crate::store::Store;
+
+        let (config, password) = dev_account();
         let store = Store::open_in_memory().unwrap();
         let account = store.add_account(&config).unwrap();
         let mut session = None;
@@ -559,6 +884,62 @@ mod tests {
         // Put the flag back so the test leaves the mailbox as it found it.
         other.select("INBOX").await.unwrap();
         other.store_flag(&flag_me.to_string(), "\\Flagged", was_flagged).await.unwrap();
+        other.logout().await.unwrap();
+    }
+
+    /// Archive a message and star it before the archive has gone out, against the dev mail server: the star must
+    /// land on the archived copy, then both are undone on the server the same way.
+    #[tokio::test]
+    #[ignore = "needs scripts/dev-mail-server.sh start; run with scripts/dev-mail-server.sh test"]
+    async fn star_made_before_the_archive_went_out_reaches_the_archived_message() {
+        use crate::models::{Action, ListTarget};
+        use crate::store::Store;
+
+        let (config, password) = dev_account();
+        let store = Store::open_in_memory().unwrap();
+        let account = store.add_account(&config).unwrap();
+        let mut session = None;
+        let nothing = || {};
+        while super::pass(&store, &account, &password, &mut session, &nothing).await.unwrap() {}
+        let folder = |name: &str| {
+            store.folders_to_sync(account.id).unwrap().into_iter().find(|(_, n)| n == name).unwrap().0
+        };
+        let (inbox, archive) = (folder("INBOX"), folder("Archive"));
+        // The newest unstarred inbox message that has a Message-ID, so the check below can find it.
+        let row = store
+            .list(&ListTarget::Folder(inbox), None, 100)
+            .unwrap()
+            .into_iter()
+            .find(|r| !r.flagged && !store.message_ids(&[r.id]).unwrap().is_empty())
+            .expect("seed the inbox first");
+
+        store.apply(&[row.id], Action::Archive, 0).unwrap();
+        store.apply(&[row.id], Action::Star, 0).unwrap();
+        while super::pass(&store, &account, &password, &mut session, &nothing).await.unwrap() {}
+        let problems = store.outbox_problems().unwrap();
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(store.next_due(account.id).unwrap(), None);
+
+        // On the server: the archived copy carries the star.
+        let message_id = store.message_ids(&[row.id]).unwrap().remove(0).1;
+        let mut other = super::connect(&config, &password).await.unwrap();
+        other.select("Archive").await.unwrap();
+        // Stalwart cannot search Message-ID headers, so read them all.
+        let found: Vec<u32> = other
+            .message_ids("1:*")
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|(_, m)| *m == message_id)
+            .map(|(uid, _)| uid)
+            .collect();
+        assert_eq!(found.len(), 1, "archived once");
+        assert!(other.flags(&found[0].to_string()).await.unwrap()[0].flagged, "the star reached it");
+        assert!(store.local_uids(archive).unwrap().contains(&found[0]), "Tern knows its uid there");
+
+        // Leave the mailbox as it was: unstar it and put it back in the inbox.
+        other.store_flag(&found[0].to_string(), "\\Flagged", false).await.unwrap();
+        other.move_to(&found[0].to_string(), "INBOX").await.unwrap();
         other.logout().await.unwrap();
     }
 }

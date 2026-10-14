@@ -44,11 +44,17 @@ export function ProblemsDialog(props: {
                 <span class="error" title={p.lastError}>
                   {p.lastError}
                 </span>
-                <span class="note">{p.attempts === 1 ? "Tried once" : `Tried ${p.attempts} times`}</span>
+                <span class="note">
+                  {p.maybeSent
+                    ? "It may have been sent. Check Sent before sending it again."
+                    : p.attempts === 1
+                      ? "Tried once"
+                      : `Tried ${p.attempts} times`}
+                </span>
               </div>
-              <button onClick={() => props.onRetry(p.id)}>Retry</button>
+              <button onClick={() => props.onRetry(p.id)}>{p.maybeSent ? "Send again" : "Retry"}</button>
               <button class="danger" onClick={() => props.onDiscard(p.id)}>
-                Discard
+                {p.maybeSent ? "Don't send" : "Discard"}
               </button>
             </div>
           )}
