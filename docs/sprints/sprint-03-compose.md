@@ -33,9 +33,10 @@ marks done. Drafts land in the server's Drafts folder.
 
 ### Compose surface
 - [x] Inline at the bottom of the conversation for replies, a centred modal for new mail; `Cmd+Shift+O` pops out to its own window later (backlog).
-- [ ] Fields: From (account picker if > 1), To, Cc, Bcc (hidden until `Cmd+Shift+C/B`), Subject. `Tab` between fields; `Esc` closes (keeps the draft).
+- [x] Fields: From (account picker if > 1), To, Cc, Bcc (hidden until `Cmd+Shift+C/B`), Subject. `Tab` between fields; `Esc` closes (keeps the draft).
 - [x] Recipient chips; `Backspace` on an empty field edits the last chip; invalid addresses highlighted; paste a list of addresses splits them.
-- [ ] "Send & Mark Done", "Send Later" (stub until Sprint 5), "Remind me" (stub until Sprint 5) in a footer with their keys.
+- [x] "Send & Mark Done", "Send Later" (stub until Sprint 5), "Remind me" (stub until Sprint 5) in a footer with their keys.
+      Send & Done only; no stubs (see Decisions).
 
 ### Reply, reply-all, forward (core; rich quoting follows editor slice)
 - [x] Reply-all excludes our own addresses (all aliases from the account), honours `Reply-To`, `Mail-Followup-To`.
@@ -61,13 +62,14 @@ marks done. Drafts land in the server's Drafts folder.
 - [x] Sent conversation is marked done (archived) when "Send & Mark Done" was used.
 
 ### Signatures and identity
-- [ ] Per-account signature (ProseMirror doc), inserted above the quote; setting to place below.
+- [x] Per-account signature (ProseMirror doc), inserted above the quote; setting to place below.
+      Done as plain text until the editor lands (settings `signatures`, `signatureBelow`).
 - [ ] Aliases per account (`identities` table): name, address, signature; "From" picker lists them.
 
 ### Recipient autocomplete
-- [ ] `contacts` table built from headers as mail syncs: `email, name, sent_count, received_count, last_seen`.
-- [ ] Ranking: `3·sent + 1·received`, decayed by recency; prefix match on name parts and email.
-- [ ] Popup under the field, `↑/↓/Enter/Tab`, < 5 ms per keystroke (SQLite index on `email`, `name` collate nocase).
+- [x] `contacts` table built from headers as mail syncs: `email, name, sent_count, received_count, last_seen`.
+- [x] Ranking: `3·sent + 1·received`, decayed by recency; prefix match on name parts and email.
+- [x] Popup under the field, `↑/↓/Enter/Tab`, < 5 ms per keystroke (SQLite index on `email`, `name` collate nocase).
 
 ## Cut first
 Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
@@ -124,3 +126,9 @@ Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
   each file; drafts carry their attachments to the server copy too. Forwards carry the original's attachments.
   Checked on the dev server: a 200 kB binary and a UTF-8 text file arrive byte for byte, and a forward of that
   message carries both. 90 unit tests, 13 dev-server checks. Bundle 30.0 kB gzipped.
+- 2026-10-15 — Slice 4: signatures and autocomplete. A plain-text signature per account (Settings → Accounts),
+  after "-- ", above the quote in replies unless set below; above a forwarded message. `contacts` table (schema
+  v14, filled from stored mail by the migration): received mail counts the sender, sent mail (and every queued
+  send) its recipients; no-reply style senders are left out. Suggestions under To/Cc/Bcc rank 3·sent + received,
+  fading over months, matching the start of the address, the name or a word of it. `store_bench`: 0.09 ms a
+  query at 50,000 messages (target < 5 ms). Dev DB: 221 people from existing mail.

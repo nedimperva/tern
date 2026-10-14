@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 13;
+const SCHEMA_VERSION: i64 = 14;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -187,6 +187,17 @@ fn migrate(conn: &Connection) -> Result<()> {
             // Mail HTML is sanitised when stored from now on; the step cleans what is already there (below).
             9 => "",
             // Muted conversations: new mail in them skips the inbox.
+            // People mail goes to and comes from, for recipient autocomplete; filled from existing mail below.
+            13 => {
+                "CREATE TABLE contacts (
+                     email TEXT PRIMARY KEY COLLATE NOCASE,
+                     name TEXT NOT NULL DEFAULT '',
+                     sent_count INTEGER NOT NULL DEFAULT 0,
+                     received_count INTEGER NOT NULL DEFAULT 0,
+                     last_seen INTEGER NOT NULL DEFAULT 0
+                 );
+                 CREATE INDEX contacts_name ON contacts (name COLLATE NOCASE);"
+            }
             // Drafts being written: the payload is the Draft JSON; `message_id` (bare) ties it to its row in the
             // Drafts folder and to its copy on the server (`server_*`, each save bumps `version`; the version on
             // the server is `synced_version`).
@@ -226,7 +237,66 @@ fn migrate(conn: &Connection) -> Result<()> {
         if from == 9 {
             sanitize_stored_html(conn)?;
         }
+        if from == 13 {
+            fill_contacts(conn)?;
+        }
         conn.execute_batch(&format!("PRAGMA user_version = {}; COMMIT;", from + 1))?;
+    }
+    Ok(())
+}
+
+/// Counts the people in the mail already stored, as `insert_messages` does from now on.
+fn fill_contacts(conn: &Connection) -> Result<()> {
+    let rows: Vec<(String, NewMessage)> = conn
+        .prepare(
+            "SELECT lower(a.email), m.from_name, m.from_addr, m.to_addrs, m.cc_addrs, m.date
+             FROM messages m JOIN accounts a ON a.id = m.account_id",
+        )?
+        .query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                NewMessage {
+                    from_name: r.get(1)?,
+                    from_addr: r.get(2)?,
+                    to_addrs: r.get(3)?,
+                    cc_addrs: r.get(4)?,
+                    date: r.get(5)?,
+                    ..Default::default()
+                },
+            ))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    for (me, m) in rows {
+        note_people(conn, &me, &m)?;
+    }
+    Ok(())
+}
+
+/// Counts a message's people for autocomplete: mail this account sent counts for its recipients (three times
+/// over, in `contacts`' ranking), mail it received for the sender. Automated senders (no-reply) are left out.
+fn note_people(conn: &Connection, me: &str, m: &NewMessage) -> Result<()> {
+    let mut bump = conn.prepare_cached(
+        "INSERT INTO contacts (email, name, sent_count, received_count, last_seen) VALUES (lower(?1), ?2, ?3, ?4, ?5)
+         ON CONFLICT (email) DO UPDATE SET
+             name = CASE WHEN excluded.name != '' THEN excluded.name ELSE contacts.name END,
+             sent_count = contacts.sent_count + excluded.sent_count,
+             received_count = contacts.received_count + excluded.received_count,
+             last_seen = MAX(contacts.last_seen, excluded.last_seen)",
+    )?;
+    let automated = |a: &str| {
+        let a = a.to_lowercase();
+        ["noreply", "no-reply", "donotreply", "do-not-reply", "mailer-daemon", "notifications@"]
+            .iter()
+            .any(|n| a.contains(n))
+    };
+    if m.from_addr.eq_ignore_ascii_case(me) {
+        for addr in m.to_addrs.split(',').chain(m.cc_addrs.split(',')).map(str::trim) {
+            if addr.contains('@') && !addr.eq_ignore_ascii_case(me) {
+                bump.execute(params![addr, "", 1, 0, m.date])?;
+            }
+        }
+    } else if m.from_addr.contains('@') && !automated(&m.from_addr) {
+        bump.execute(params![m.from_addr, m.from_name, 0, 1, m.date])?;
     }
     Ok(())
 }
@@ -539,6 +609,8 @@ impl Store {
     pub fn insert_messages(&self, account_id: i64, folder_id: i64, messages: &[NewMessage]) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
+        let me: String =
+            tx.query_row("SELECT lower(email) FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
         for m in messages {
             // A message moved here on this device: it has a row already, waiting for its uid.
             if let Some(mid) = &m.message_id {
@@ -572,6 +644,8 @@ impl Store {
                 continue;
             }
             let id = tx.last_insert_rowid();
+            // After reading the row id: this inserts too.
+            note_people(&tx, &me, m)?;
             if !m.headers_only {
                 tx.execute(
                     "INSERT INTO bodies (message_id, text, html) VALUES (?1, ?2, ?3)",
@@ -921,6 +995,28 @@ impl Store {
             }
         }
         Ok(out)
+    }
+
+    // MARK: Contacts
+
+    /// People whose name or address starts with `query` (or a word of the name does), best first: written to
+    /// counts three times as much as written by, and both fade over months.
+    pub fn contacts(&self, query: &str, limit: i64) -> Result<Vec<Contact>> {
+        let q = query.trim().replace(['%', '_'], "");
+        if q.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT email, name FROM contacts
+             WHERE email LIKE ?1 || '%' OR name LIKE ?1 || '%' OR name LIKE '% ' || ?1 || '%'
+             ORDER BY (3 * sent_count + received_count) / (1.0 + (?2 - last_seen) / 2592000.0) DESC, email
+             LIMIT ?3",
+        )?;
+        let found = stmt
+            .query_map(params![q, now(), limit], |r| Ok(Contact { email: r.get(0)?, name: r.get(1)? }))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(found)
     }
 
     // MARK: Drafts
@@ -1487,6 +1583,17 @@ impl Store {
 
     pub fn queue_send(&self, account_id: i64, mut draft: Draft, delay: i64) -> Result<i64> {
         let conn = self.conn();
+        // Who the person writes to ranks first in autocomplete, before the copy in Sent is even synced.
+        let me: String =
+            conn.query_row("SELECT lower(email) FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
+        let sent = NewMessage {
+            from_addr: me.clone(),
+            to_addrs: draft.to.join(", "),
+            cc_addrs: [draft.cc.clone(), draft.bcc.clone()].concat().join(", "),
+            date: now(),
+            ..Default::default()
+        };
+        note_people(&conn, &me, &sent)?;
         if draft.message_id.is_none() {
             let email: String =
                 conn.query_row("SELECT email FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
@@ -2582,6 +2689,27 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     }
 
     #[test]
+    fn autocomplete_ranks_people_written_to_first() {
+        let (store, account, inbox, _) = setup();
+        let me = "me@example.com";
+        let mut batch = vec![
+            mail_to_me(1, "anna@x.com", me, ""),
+            mail_to_me(2, "anna@x.com", me, ""),
+            mail_to_me(3, "noreply@anything.com", me, ""),
+        ];
+        batch[0].from_name = "Anna Bell".into();
+        batch[1].from_name = "Anna Bell".into();
+        store.insert_messages(account, inbox, &batch).unwrap();
+        store.queue_send(account, Draft { to: vec!["andy@y.com".into()], ..draft_to("hi") }, 5).unwrap();
+        let names = |q: &str| store.contacts(q, 5).unwrap().into_iter().map(|c| c.email).collect::<Vec<_>>();
+        assert_eq!(names("an"), ["andy@y.com", "anna@x.com"], "one send beats two received");
+        assert_eq!(names("bell"), ["anna@x.com"], "a word of the name");
+        assert_eq!(store.contacts("anna", 5).unwrap()[0].name, "Anna Bell");
+        assert!(names("noreply").is_empty(), "automated senders are left out");
+        assert!(names("").is_empty());
+    }
+
+    #[test]
     fn settings_keep_their_json() {
         let store = Store::open_in_memory().unwrap();
         store.set_setting("theme", &serde_json::json!("dark")).unwrap();
@@ -2742,6 +2870,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                13 => "DROP TABLE contacts;",
                 12 => "DROP TABLE drafts;",
                 11 => {
                     "ALTER TABLE messages DROP COLUMN cc_addrs; ALTER TABLE messages DROP COLUMN reply_to;
