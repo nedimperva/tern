@@ -99,7 +99,7 @@ pub struct Fetched {
 }
 
 /// The header fields the list, threading and list handling need; the rest of the header comes with the body.
-const LIST_HEADERS: [&str; 10] = [
+const LIST_HEADERS: [&str; 12] = [
     "FROM",
     "TO",
     "CC",
@@ -110,6 +110,8 @@ const LIST_HEADERS: [&str; 10] = [
     "REFERENCES",
     "LIST-ID",
     "LIST-UNSUBSCRIBE",
+    "REPLY-TO",
+    "MAIL-FOLLOWUP-TO",
 ];
 
 pub struct Imap<S> {
@@ -962,7 +964,7 @@ mod tests {
             "{tag} OK [CAPABILITY IMAP4rev1] in\r\n",
             vec![(
                 "UID FETCH 4 (UID FLAGS RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT \
-                 MESSAGE-ID IN-REPLY-TO REFERENCES LIST-ID LIST-UNSUBSCRIBE)])",
+                 MESSAGE-ID IN-REPLY-TO REFERENCES LIST-ID LIST-UNSUBSCRIBE REPLY-TO MAIL-FOLLOWUP-TO)])",
                 // multipart/mixed: (alternative: plain, html), a PDF attachment, an inline image.
                 "* 1 FETCH (UID 4 FLAGS (\\Seen) RFC822.SIZE 52000 BODYSTRUCTURE (\
                  ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"QUOTED-PRINTABLE\" 120 4 NIL NIL NIL NIL)\

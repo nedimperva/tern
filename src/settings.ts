@@ -14,6 +14,8 @@ export type Settings = {
   readAfterMs: number;
   /** Remote images in mail: blocked until asked for, or always loaded. */
   loadImages: "ask" | "always";
+  /** Seconds a sent message waits before it goes, so Undo can stop it. */
+  sendDelay: number;
   /** Senders whose remote images always load ("Always for this sender"), lowercase. */
   imagesFrom: string[];
 };
@@ -25,6 +27,7 @@ export const DEFAULTS: Settings = {
   readAfterMs: 1000,
   loadImages: "ask",
   imagesFrom: [],
+  sendDelay: 5,
 };
 
 export const ROW_HEIGHTS: Record<Settings["density"], number> = { dense: 36, comfortable: 44, spacious: 52 };

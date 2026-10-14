@@ -11,10 +11,11 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
         .and_then(|a| a.first())
         .map(|a| (a.name().unwrap_or_default().to_string(), a.address().unwrap_or_default().to_string()))
         .unwrap_or_default();
-    let to_addrs = msg
-        .to()
-        .map(|list| list.iter().filter_map(|a| a.address()).collect::<Vec<_>>().join(", "))
-        .unwrap_or_default();
+    let addrs = |list: Option<&mail_parser::Address>| {
+        list.map(|list| list.iter().filter_map(|a| a.address()).collect::<Vec<_>>().join(", "))
+            .unwrap_or_default()
+    };
+    let to_addrs = addrs(msg.to());
 
     let body_text = msg.body_text(0).map(|t| t.into_owned());
     // mail-parser turns a text-only message into HTML; keep that as plain text so the reader can theme it.
@@ -43,6 +44,9 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
         headers_only: false,
         list_id: raw_header(&msg, "List-Id"),
         list_unsubscribe: raw_header(&msg, "List-Unsubscribe"),
+        cc_addrs: addrs(msg.cc()),
+        reply_to: addrs(msg.reply_to()),
+        followup_to: msg.header_raw("Mail-Followup-To").map(raw_addresses).unwrap_or_default(),
         parts: Some(attachments(&msg)),
     })
 }
@@ -104,6 +108,22 @@ pub fn sanitize_html(html: &str) -> String {
         })
         .clean(html)
         .to_string()
+}
+
+/// The addresses in a raw address-list header ("A <a@x>, b@y"), comma-separated, without names. For headers
+/// mail-parser does not parse as addresses (Mail-Followup-To).
+fn raw_addresses(raw: &str) -> String {
+    raw.split(',')
+        .filter_map(|part| {
+            let part = part.trim();
+            let addr = match (part.rfind('<'), part.rfind('>')) {
+                (Some(open), Some(close)) if open < close => &part[open + 1..close],
+                _ => part,
+            };
+            addr.contains('@').then(|| addr.trim().to_string())
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// A header's raw value on one line, for the fields mail-parser does not model (List-*).
@@ -257,6 +277,16 @@ Date: Mon, 12 Oct 2026 10:00:00 +0000\r\n\r\n";
             part_snippet(&html, b"<html><body><p>Meeting <b>moved</b> to 3pm</p><p>See"),
             "Meeting moved to 3pm See"
         );
+    }
+
+    #[test]
+    fn reply_headers_are_kept() {
+        let raw = b"From: Ada <ada@x.com>\r\nTo: me@example.com\r\nCc: Bob <bob@x.com>, carl@x.com\r\n\
+Reply-To: list@x.com\r\nMail-Followup-To: Team <team@x.com>, dan@x.com\r\nSubject: s\r\n\r\nbody\r\n";
+        let m = parse(1, raw, false, false).unwrap();
+        assert_eq!(m.cc_addrs, "bob@x.com, carl@x.com");
+        assert_eq!(m.reply_to, "list@x.com");
+        assert_eq!(m.followup_to, "team@x.com, dan@x.com");
     }
 
     #[test]

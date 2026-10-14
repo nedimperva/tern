@@ -72,9 +72,18 @@ fn build(config: &AccountConfig, draft: &Draft) -> Result<Message> {
     for cc in &draft.cc {
         builder = builder.cc(cc.parse()?);
     }
+    // lettre puts Bcc in the envelope and leaves it out of the formatted message.
+    for bcc in &draft.bcc {
+        builder = builder.bcc(bcc.parse()?);
+    }
+    let bracket = |id: &str| format!("<{}>", id.trim_matches(|c| c == '<' || c == '>'));
     if let Some(parent) = &draft.in_reply_to {
-        let id = format!("<{}>", parent.trim_matches(|c| c == '<' || c == '>'));
-        builder = builder.in_reply_to(id.clone()).references(id);
+        builder = builder.in_reply_to(bracket(parent));
+        let mut chain: Vec<String> = draft.references.iter().map(|r| bracket(r)).collect();
+        if !chain.contains(&bracket(parent)) {
+            chain.push(bracket(parent));
+        }
+        builder = builder.references(chain.join(" "));
     }
     Ok(builder.header(ContentType::TEXT_PLAIN).body(draft.body.clone())?)
 }
@@ -258,7 +267,9 @@ mod tests {
             cc: vec![],
             subject: "x".into(),
             body: "y".into(),
+            bcc: vec![],
             in_reply_to: None,
+            references: vec![],
             message_id: None,
         };
         let raw = String::from_utf8(build(&config, &draft).unwrap().formatted()).unwrap();
@@ -269,6 +280,38 @@ mod tests {
         let fixed = Draft { message_id: Some("<kept@example.com>".into()), ..draft };
         let raw = String::from_utf8(build(&config, &fixed).unwrap().formatted()).unwrap();
         assert!(raw.contains("Message-ID: <kept@example.com>"), "a queued send keeps its id");
+    }
+
+    #[test]
+    fn replies_carry_the_chain_and_bcc_stays_hidden() {
+        let config = AccountConfig {
+            email: "ada@example.com".into(),
+            display_name: "Ada".into(),
+            username: "ada".into(),
+            imap_host: String::new(),
+            imap_port: 993,
+            imap_security: Security::Tls,
+            smtp_host: String::new(),
+            smtp_port: 465,
+            smtp_security: Security::Tls,
+        };
+        let draft = Draft {
+            to: vec!["b@example.com".into()],
+            cc: vec![],
+            bcc: vec!["secret@example.com".into()],
+            subject: "Re: x".into(),
+            body: "y".into(),
+            in_reply_to: Some("2@x.com".into()),
+            references: vec!["1@x.com".into(), "2@x.com".into()],
+            message_id: None,
+        };
+        let message = build(&config, &draft).unwrap();
+        let raw = String::from_utf8(message.formatted()).unwrap();
+        assert!(raw.contains("In-Reply-To: <2@x.com>"), "{raw}");
+        assert!(raw.contains("References: <1@x.com> <2@x.com>"), "{raw}");
+        assert!(!raw.to_lowercase().contains("secret@"), "no Bcc in the message: {raw}");
+        let envelope: Vec<String> = message.envelope().to().iter().map(|a| a.to_string()).collect();
+        assert!(envelope.contains(&"secret@example.com".to_string()), "but it is delivered to");
     }
 
     #[tokio::test]
@@ -319,7 +362,9 @@ mod tests {
             cc: vec![],
             subject: "x".into(),
             body: "y".into(),
+            bcc: vec![],
             in_reply_to: None,
+            references: vec![],
             message_id: None,
         };
         let e = send(&config, "pw", &draft).await.unwrap_err();
