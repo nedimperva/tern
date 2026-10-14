@@ -107,7 +107,9 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 - [x] Persist send identity/MIME and distinguish confirmed, failed and unknown outcomes; stable Message-ID alone does not make SMTP exactly-once.
       Done in #17: the Message-ID is fixed when queued and kept across tries (the MIME is rebuilt from the stored
       draft, so only its Date changes); unknown outcomes become "may have been sent" problems.
-- [ ] `APPEND` sent mail to the Sent folder when the server does not copy it (detect via the preset / a one-time check).
+- [x] `APPEND` sent mail to the Sent folder when the server does not copy it (detect via the preset / a one-time check).
+      Done by host: Gmail and Outlook file sent mail themselves; elsewhere the send's outbox row becomes an
+      `Append` op in the same transaction, so a crash cannot lose the copy or send twice.
 - [x] Retry policy: 5 attempts with backoff, then surface in a "Sync problems" list in the UI; never drop silently.
 
 ## Cut first
@@ -205,3 +207,7 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   the attachment marker shows before the body. Phase B reads a snippet from the first 2 KB of the text part, so
   mail older than 90 days has one without its body (checked on the dev server with a fresh sync). Prefetch yields
   to opened messages. Rows stored before v7 have no parts and get no Phase B snippet (2 in the dev DB).
+- 2026-10-14 — Sent copies. Stalwart's Sent Items held none of the mail Tern had sent: SMTP servers mostly do
+  not file submissions. After a send, Tern now APPENDs the exact bytes it sent to the Sent folder, marked read
+  (skipped for Gmail and Outlook, which do it themselves). Checked end to end on the dev server: one copy in Sent
+  Items with the send's Message-ID.

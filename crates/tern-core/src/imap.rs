@@ -18,6 +18,7 @@ use io_imap::codec::fragmentizer::Fragmentizer;
 use io_imap::coroutine::{ImapCoroutine, ImapCoroutineState, ImapYield};
 use io_imap::rfc2177::idle::{ImapIdle, ImapIdleOptions, ImapIdleYield};
 use io_imap::rfc2971::id::ImapServerIdOptions;
+use io_imap::rfc3501::append::ImapMessageAppendOptions;
 use io_imap::rfc3501::copy::ImapMessageCopyOptions;
 use io_imap::rfc3501::fetch::ImapMessageFetchOptions;
 use io_imap::rfc3501::login::ImapLoginOptions;
@@ -478,6 +479,13 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
             copyuid
         };
         Ok(copyuid.map(|(_, from, to)| from.into_iter().zip(to).collect()).unwrap_or_default())
+    }
+
+    /// Adds `message` to `folder`, marked read (a copy of sent mail for Sent).
+    pub async fn append(&mut self, folder: &str, message: &[u8]) -> Result<()> {
+        let opts = ImapMessageAppendOptions { flags: vec![Flag::Seen], ..Default::default() };
+        self.conn.append(mailbox(folder)?, message, opts).await?;
+        Ok(())
     }
 
     /// UIDs in the selected folder of messages with this Message-ID (given without angle brackets), by SEARCH

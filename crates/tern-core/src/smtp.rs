@@ -41,18 +41,19 @@ impl std::error::Error for MaybeSent {
     }
 }
 
-/// Sends a plain-text message.
-/// TODO: HTML and attachments; APPEND a copy to Sent on servers that do not keep one themselves.
-pub async fn send(config: &AccountConfig, password: &str, draft: &Draft) -> Result<()> {
+/// Sends a plain-text message. Returns it exactly as sent, for the copy in Sent.
+/// TODO: HTML and attachments.
+pub async fn send(config: &AccountConfig, password: &str, draft: &Draft) -> Result<Vec<u8>> {
     let message = build(config, draft)?;
     let mut conn = tokio::time::timeout(COMMAND_TIMEOUT, connect(config))
         .await
         .with_context(|| format!("No answer from {}", config.smtp_host))??;
     let credentials = Credentials::new(config.username.clone(), password.to_string());
     within(conn.auth(DEFAULT_MECHANISMS, &credentials)).await.context("The server refused the sign-in")?;
-    let sent = transmit(&mut conn, message.envelope(), &message.formatted()).await;
+    let raw = message.formatted();
+    let sent = transmit(&mut conn, message.envelope(), &raw).await;
     conn.abort().await;
-    sent
+    sent.map(|()| raw)
 }
 
 fn build(config: &AccountConfig, draft: &Draft) -> Result<Message> {
