@@ -1,5 +1,6 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { api, type Account, type Draft } from "../api";
+import { api, type Account, type Draft, type ForwardOf, type OutgoingAttachment } from "../api";
+import { Icon } from "./Icon";
 import { RecipientField, splitAddresses, validAddress } from "./RecipientField";
 
 export type ComposeInit = {
@@ -17,7 +18,21 @@ export type ComposeInit = {
   inline?: boolean;
   /** Continues this saved draft. */
   draftId?: number | null;
+  attachments?: OutgoingAttachment[];
+  /** A forward: the original's attachments go along (the server has them), unless taken off. */
+  forwardOf?: ForwardOf | null;
+  /** Names and sizes of those, to show. */
+  forwardFiles?: { name: string; size: number }[];
 };
+
+/** Above this a message may bounce: many servers take 25 MB at most. */
+const LARGE_BYTES = 25_000_000;
+
+function size(bytes: number): string {
+  if (bytes < 1000) return `${bytes} B`;
+  if (bytes < 1_000_000) return `${Math.round(bytes / 1000)} KB`;
+  return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
 
 /** How long typing has to pause before the draft is saved. */
 const SAVE_AFTER_MS = 2000;
@@ -42,6 +57,23 @@ export function Compose(props: {
   const [subject, setSubject] = createSignal(props.init.subject ?? "");
   const [body, setBody] = createSignal(props.init.body ?? "");
   const [problem, setProblem] = createSignal("");
+  const [files, setFiles] = createSignal<OutgoingAttachment[]>(props.init.attachments ?? []);
+  const [forwardOf, setForwardOf] = createSignal(props.init.forwardOf ?? null);
+  const total = () =>
+    files().reduce((n, f) => n + f.size, 0) +
+    (forwardOf() ? (props.init.forwardFiles ?? []).reduce((n, f) => n + f.size, 0) : 0);
+  const attach = async (paths: string[]) => {
+    if (!paths.length) return;
+    try {
+      const added = await api.addAttachments(paths);
+      setFiles([...files(), ...added]);
+      changed();
+    } catch (e) {
+      setProblem(`Could not attach: ${e}`);
+    }
+  };
+  const pick = async () => attach(await api.pickFiles());
+  onMount(() => onCleanup(api.onFilesDropped((paths) => void attach(paths))));
   // The draft this compose saves to, once there is one, and whether anything changed since it opened.
   let draftId: number | null = props.init.draftId ?? null;
   let dirty = false;
@@ -54,6 +86,8 @@ export function Compose(props: {
     body: body(),
     inReplyTo: props.init.inReplyTo ?? null,
     references: props.init.references ?? [],
+    attachments: files(),
+    forwardOf: forwardOf(),
   });
   /** Saves the draft, if there is anything to keep. */
   const save = async (uploadNow: boolean) => {
@@ -121,6 +155,7 @@ export function Compose(props: {
     if (e.key === "Escape") void close();
     else if (ctrl && e.key === "Enter") send(e.shiftKey);
     else if (ctrl && e.shiftKey && (e.key === "," || e.key === "<")) discard();
+    else if (ctrl && e.shiftKey && e.key.toLowerCase() === "a") void pick();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "c") {
       setShowCc(true);
       queueMicrotask(() => ccInput?.focus());
@@ -158,6 +193,42 @@ export function Compose(props: {
         </label>
       </Show>
       <textarea ref={text} value={body()} onInput={(e) => (setBody(e.currentTarget.value), grow(), changed())} aria-label="Message" />
+      <Show when={files().length || forwardOf()}>
+        <div class="attachments outgoing" aria-label="Attachments">
+          <Show when={forwardOf()}>
+            <span class="file" title="Attached from the forwarded message when it is sent">
+              <Icon name="paperclip" size={13} />
+              <span class="name">
+                {props.init.forwardFiles?.length
+                  ? props.init.forwardFiles.map((f) => f.name).join(", ")
+                  : "Attachments of the forwarded message"}
+              </span>
+              <button type="button" aria-label="Do not forward the attachments" onClick={() => (setForwardOf(null), changed())}>
+                ×
+              </button>
+            </span>
+          </Show>
+          <For each={files()}>
+            {(f, i) => (
+              <span class="file" title={f.mime}>
+                <Icon name="paperclip" size={13} />
+                <span class="name">{f.name}</span>
+                <span class="size">{size(f.size)}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${f.name}`}
+                  onClick={() => (setFiles(files().filter((_, j) => j !== i())), changed())}
+                >
+                  ×
+                </button>
+              </span>
+            )}
+          </For>
+          <span class="total" classList={{ large: total() > LARGE_BYTES }}>
+            {total() > LARGE_BYTES ? `${size(total())}: many servers refuse mail over 25 MB` : size(total())}
+          </span>
+        </div>
+      </Show>
       <Show when={problem()}>
         <p class="error">{problem()}</p>
       </Show>
@@ -169,6 +240,9 @@ export function Compose(props: {
           Send & Done <kbd>Ctrl Shift ↵</kbd>
         </button>
         <span class="extras">
+          <button type="button" class="link" onClick={() => void pick()} title="Attach files (Ctrl+Shift+A), or drop them here">
+            Attach
+          </button>
           <Show when={!showCc()}>
             <button type="button" class="link" onClick={() => (setShowCc(true), queueMicrotask(() => ccInput?.focus()))}>
               Cc

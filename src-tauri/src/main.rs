@@ -88,6 +88,7 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -135,6 +136,7 @@ fn main() {
             commands::discard_draft,
             commands::undo_discard,
             commands::problem_to_draft,
+            commands::add_attachments,
             commands::muted,
         ])
         .run(tauri::generate_context!())

@@ -233,9 +233,35 @@ pub struct Draft {
     /// The conversation's Message-IDs, oldest first, ending with the one answered (References).
     #[serde(default)]
     pub references: Vec<String>,
+    /// Files to attach (Tern's own copies, so the draft keeps them whatever happens to the originals).
+    #[serde(default)]
+    pub attachments: Vec<OutgoingAttachment>,
+    /// A forward also carries the original's attachments, fetched from the server when it is sent.
+    #[serde(default)]
+    pub forward_of: Option<ForwardOf>,
     /// Set when the send is queued and kept, so a second try after an uncertain one is the same message to the
     /// recipient (and to Tern, matching the copy in Sent).
     #[serde(default)]
+    pub message_id: Option<String>,
+}
+
+/// A file attached to a draft, as Tern keeps it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutgoingAttachment {
+    pub path: String,
+    pub name: String,
+    pub mime: String,
+    pub size: u64,
+}
+
+/// Where a forwarded message is on the server, to fetch its attachments when the forward is sent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForwardOf {
+    pub folder: String,
+    pub uid: u32,
+    pub validity: Option<u32>,
     pub message_id: Option<String>,
 }
 
@@ -253,7 +279,7 @@ pub struct DraftRecord {
 #[derive(Debug, Clone)]
 pub enum DraftSync {
     /// Put this version in the Drafts folder, then delete the copy before it (`previous`: validity, uid).
-    Upload { id: i64, draft: Draft, version: i64, folder: String, previous: Option<(u32, u32)> },
+    Upload { id: i64, draft: Box<Draft>, version: i64, folder: String, previous: Option<(u32, u32)> },
     /// The draft was sent or discarded: delete its server copy, if any, and forget it.
     Remove { id: i64, folder: Option<String>, copy: Option<(u32, u32)> },
 }
@@ -283,6 +309,8 @@ pub struct ReplyInit {
     /// For a forward, the other headers of the original (To, Cc), for the forwarded-message block.
     pub quote_to: String,
     pub quote_cc: String,
+    /// For a forward of a message the server has, where it is (its attachments go along).
+    pub forward_of: Option<ForwardOf>,
 }
 
 /// Work waiting to go to the server. Each carries what it takes to put the local store back if it is undone.
