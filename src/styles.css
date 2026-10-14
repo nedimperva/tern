@@ -890,6 +890,78 @@ button.fold {
 .attachments .total.large {
   color: var(--warn);
 }
+/* MARK: Compose editor */
+
+.editor {
+  position: relative;
+  margin-top: var(--s-2);
+}
+.editor-body .ProseMirror {
+  min-height: 160px;
+  padding: var(--s-2) 0;
+  outline: none;
+  font: var(--t-rd) / 1.5 var(--font);
+  white-space: pre-wrap;
+  user-select: text;
+}
+.editor-body .ProseMirror p {
+  margin: 0 0 var(--s-2);
+}
+.editor-body .ProseMirror blockquote {
+  margin: 0 0 var(--s-2);
+  padding-left: var(--s-3);
+  border-left: 2px solid var(--line);
+  color: var(--fg-1);
+}
+.editor-body .ProseMirror ul,
+.editor-body .ProseMirror ol {
+  margin: 0 0 var(--s-2);
+  padding-left: var(--s-5);
+}
+.editor-body .ProseMirror code {
+  font: 0.92em var(--mono);
+  background: var(--bg-2);
+  border-radius: var(--r-sm);
+  padding: 0 3px;
+}
+.editor-body .ProseMirror a {
+  color: var(--accent);
+}
+/* A reply's quote starts folded behind the "···" pill. */
+.editor.quote-folded .ProseMirror > blockquote:last-child {
+  display: none;
+}
+.format-bar {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--fg-0);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+.format-bar button {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: var(--bg-0);
+  font-weight: 600;
+}
+.format-bar button.on,
+.format-bar button:hover {
+  background: color-mix(in srgb, var(--bg-0) 20%, transparent);
+}
+.format-bar .link-input {
+  width: 280px;
+  border: 0;
+  background: var(--bg-0);
+  color: var(--fg-0);
+  padding: var(--s-1) var(--s-2);
+}
+
 .compose footer {
   display: flex;
   align-items: center;

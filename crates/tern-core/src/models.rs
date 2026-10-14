@@ -225,7 +225,11 @@ pub struct Draft {
     #[serde(default)]
     pub cc: Vec<String>,
     pub subject: String,
+    /// The text, plain; with `html` it is the plain-text version of the same message.
     pub body: String,
+    /// The message as rich text, from the compose editor.
+    #[serde(default)]
+    pub html: Option<String>,
     #[serde(default)]
     pub bcc: Vec<String>,
     #[serde(default)]

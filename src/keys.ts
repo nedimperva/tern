@@ -51,6 +51,8 @@ export function typing(e: KeyboardEvent): boolean {
 export function keyHandler(bindings: () => Binding[], context: () => Context, blocked: () => boolean) {
   let pending = "";
   return (e: KeyboardEvent) => {
+    // Something nearer the keyboard (the compose editor) already handled it: Ctrl+K there is a link.
+    if (e.defaultPrevented) return;
     const name = keyName(e);
     const all = bindings();
     // Ctrl+K opens the palette from anywhere, the search field included; everything else waits while a dialog is
