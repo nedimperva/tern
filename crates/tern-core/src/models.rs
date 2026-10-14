@@ -80,6 +80,21 @@ pub struct MessageRow {
     pub has_attachments: bool,
 }
 
+/// One conversation in a list: its newest message in the listed folder(s), and what the whole conversation (in
+/// every folder) adds up to.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadRow {
+    #[serde(flatten)]
+    pub latest: MessageRow,
+    /// Messages in the conversation, each counted once however many folders hold it.
+    pub count: i64,
+    pub unread: i64,
+    pub flagged: bool,
+    /// Who wrote in it, first to last, each once (names where known), at most four.
+    pub participants: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadMessage {
