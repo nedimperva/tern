@@ -178,10 +178,23 @@ impl Part {
 pub enum Action {
     Archive,
     Trash,
+    /// Move to the account's junk folder (mark spam).
+    Junk,
+    /// Back to the inbox (Superhuman's "Mark Not Done").
+    Inbox,
+    /// Move to this folder. Messages of other accounts than the folder's are left where they are.
+    MoveTo(i64),
     MarkRead,
     MarkUnread,
     Star,
     Unstar,
+}
+
+impl Action {
+    /// Whether the action moves messages to another folder (so a list showing their folder loses them).
+    pub fn moves(self) -> bool {
+        matches!(self, Action::Archive | Action::Trash | Action::Junk | Action::Inbox | Action::MoveTo(_))
+    }
 }
 
 /// Which list to show: one folder, or every folder with a role (`{"role": "inbox"}` is the unified inbox).

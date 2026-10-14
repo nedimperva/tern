@@ -2,6 +2,7 @@ import { batch, createEffect, createMemo, createSignal, For, on, onCleanup, onMo
 import { createStore, reconcile } from "solid-js/store";
 import {
   api,
+  moves,
   type Account,
   type Action,
   type Folder,
@@ -23,7 +24,7 @@ import { ShortcutSheet } from "./components/ShortcutSheet";
 import { SettingsPage } from "./components/SettingsPage";
 import { PerfOverlay } from "./components/PerfOverlay";
 import { timeKey, timeQuery } from "./perf";
-import { loadSettings, ROW_HEIGHTS, settings } from "./settings";
+import { loadSettings, ROW_HEIGHTS, setSetting, settings } from "./settings";
 import { Icon } from "./components/Icon";
 import { VirtualList } from "./components/VirtualList";
 import { keyHandler, keyLabel, type Binding, type Context } from "./keys";
@@ -46,9 +47,11 @@ const asRow = (m: MessageRow): ThreadRow => ({
   participants: [m.fromName || m.fromAddr],
 });
 
-const DONE: Record<Action, string> = {
+const DONE: Record<Exclude<Action, object>, string> = {
   archive: "Archived",
   trash: "Moved to Trash",
+  junk: "Marked as spam",
+  inbox: "Moved to Inbox",
   markRead: "Marked read",
   markUnread: "Marked unread",
   star: "Starred",
@@ -74,9 +77,13 @@ export default function App() {
   const [expanded, setExpanded] = createSignal<ReadonlySet<number>>(new Set());
   const [width, setWidth] = createSignal(window.innerWidth);
   const [rail, setRail] = createSignal(false);
-  const [toast, setToast] = createSignal<{ text: string; token: number[] } | null>(null);
+  // `after` runs when the toast's change is undone (unmute after undoing a mute).
+  const [toast, setToast] = createSignal<{ text: string; token: number[]; after?: () => unknown } | null>(null);
   const [compose, setCompose] = createSignal<ComposeInit | null>(null);
   const [palette, setPalette] = createSignal(false);
+  // Opens the palette straight in one command's choices (g l → "Go to folder …").
+  const [paletteStart, setPaletteStart] = createSignal<string | undefined>();
+  const choose = (command: string) => batch(() => (setPaletteStart(command), setPalette(true)));
   const [setup, setSetup] = createSignal(false);
   const [ready, setReady] = createSignal(false);
   const [problems, setProblems] = createSignal<OutboxProblem[]>([]);
@@ -233,10 +240,11 @@ export default function App() {
   }
 
   /** Shows the change at once, then tells the engine. Every action can be undone for five seconds. */
-  async function act(action: Action, hit = targets(), announce = true) {
-    if (!hit.length) return;
+  /** Returns the undo token, empty if nothing was done. */
+  async function act(action: Action, hit = targets(), announce = true): Promise<number[]> {
+    if (!hit.length) return [];
     const keys = new Set(hit.map(keyOf));
-    if (action === "archive" || action === "trash") {
+    if (moves(action)) {
       // Focus moves to the next row, which takes the place of the first one removed.
       const first = rows().findIndex((r) => keys.has(keyOf(r)));
       const left = rows().filter((r) => !keys.has(keyOf(r)));
@@ -265,10 +273,16 @@ export default function App() {
       } else {
         token = (await api.applyConversations(hit.map((r) => r.id), action, target())).token;
       }
-      if (announce) showToast(hit.length === 1 ? DONE[action] : `${DONE[action]} ${hit.length} conversations`, token);
+      const done =
+        typeof action === "object"
+          ? `Moved to ${folderName(folders().find((f) => f.id === action.moveTo))}`
+          : DONE[action];
+      if (announce) showToast(hit.length === 1 ? done : `${done} (${hit.length} conversations)`, token);
+      return token;
     } catch (e) {
       showToast(String(e), []);
       void load();
+      return [];
     }
   }
 
@@ -278,9 +292,9 @@ export default function App() {
   const toggleRead = () => act(targets().some((r) => r.unread > 0) ? "markRead" : "markUnread");
 
   let toastTimer: number | undefined;
-  function showToast(text: string, token: number[]) {
+  function showToast(text: string, token: number[], after?: () => unknown) {
     clearTimeout(toastTimer);
-    setToast({ text, token });
+    setToast({ text, token, after });
     toastTimer = window.setTimeout(() => setToast(null), UNDO_MS);
   }
 
@@ -290,19 +304,77 @@ export default function App() {
     setToast(null);
     const undone = await api.undo(t.token);
     if (!undone) showToast("Too late to undo", []);
+    else await t.after?.();
     void load();
   }
 
-  function reply(m: ThreadMessage | undefined) {
+  /** Replies to the sender, or with `all` to everyone on the message but this account. */
+  function reply(m: ThreadMessage | undefined, all = false) {
     if (!m) return;
     const quoted = (m.bodyText ?? "").split("\n").map((l) => `> ${l}`).join("\n");
+    const mine = new Set(accounts().map((a) => a.email.toLowerCase()));
+    const others = m.toAddrs
+      .split(",")
+      .map((a) => a.trim())
+      .filter((a) => a && !mine.has(a.toLowerCase()) && a.toLowerCase() !== m.fromAddr.toLowerCase());
     setCompose({
       accountId: m.accountId,
       to: m.fromAddr,
+      cc: all && others.length ? others.join(", ") : undefined,
       subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`,
       body: `\n\nOn ${new Date(m.date * 1000).toLocaleString()}, ${m.fromName || m.fromAddr} wrote:\n${quoted}`,
       inReplyTo: m.messageId,
+      focus: "body",
     });
+  }
+
+  /** Forwards a message's text. Attachments do not go along yet (package 03 brings them to compose). */
+  function forward(m: ThreadMessage | undefined) {
+    if (!m) return;
+    const header = [
+      "---------- Forwarded message ----------",
+      `From: ${m.fromName ? `${m.fromName} <${m.fromAddr}>` : m.fromAddr}`,
+      `Date: ${new Date(m.date * 1000).toLocaleString()}`,
+      `Subject: ${m.subject}`,
+      `To: ${m.toAddrs}`,
+    ].join("\n");
+    setCompose({
+      accountId: m.accountId,
+      subject: /^fwd?:/i.test(m.subject) ? m.subject : `Fwd: ${m.subject}`,
+      body: `\n\n${header}\n\n${m.bodyText ?? ""}`,
+      focus: "to",
+    });
+  }
+
+  // Whether the open conversation is muted, for "Unmute" in the palette.
+  const [openMuted, setOpenMuted] = createSignal(false);
+  createEffect(on(openRow, (row) => (row ? void api.muted(row.id).then(setOpenMuted) : setOpenMuted(false))));
+  async function unmute() {
+    const row = openRow();
+    if (!row) return;
+    await api.mute([row.id], false);
+    setOpenMuted(false);
+    showToast("Unmuted", []);
+  }
+
+  /** Mutes the target conversations: out of the inbox now, and later replies skip it. */
+  async function mute() {
+    const hit = targets();
+    if (!hit.length) return;
+    const ids = hit.map((r) => r.id);
+    await api.mute(ids, true);
+    const token = await act("archive", hit, false);
+    showToast(hit.length === 1 ? "Muted" : `Muted ${hit.length} conversations`, token, () => api.mute(ids, false));
+  }
+
+  const folderName = (f: Folder | undefined) => (f ? ROLE_NAMES[f.role] ?? f.name : "folder");
+  const accountOf = (id: number) => accounts().find((a) => a.id === id)?.email ?? "";
+
+  /** The inbox of the account at this place in the account list (Ctrl+1 … Ctrl+9). */
+  function switchAccount(index: number) {
+    const account = accounts()[index];
+    const inbox = account && folders().find((f) => f.accountId === account.id && f.role === "inbox");
+    if (inbox) go({ folder: inbox.id });
   }
 
   async function send(accountId: number, draft: Parameters<typeof api.send>[1]) {
@@ -384,6 +456,9 @@ export default function App() {
     { keys: "o", name: "Open conversation", context: "list", run: () => open(current()), hidden: true },
     { keys: "Escape", name: "Back", run: escape },
     { keys: "e", name: "Done (archive)", run: () => act("archive") },
+    { keys: "E", name: "Not done (back to Inbox)", run: () => act("inbox") },
+    { keys: "!", name: "Mark as spam", run: () => act("junk") },
+    { keys: "m", name: "Mute", run: mute },
     { keys: "#", name: "Move to Trash", run: () => act("trash") },
     { keys: "Delete", name: "Move to Trash", run: () => act("trash"), hidden: true },
     { keys: "s", name: "Star or unstar", run: toggleStar },
@@ -395,7 +470,8 @@ export default function App() {
     { keys: "n", name: "Next message", context: "conversation", run: () => moveMessage(1) },
     { keys: "p", name: "Previous message", context: "conversation", run: () => moveMessage(-1) },
     { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
-    { keys: "Enter", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()), hidden: true },
+    { keys: "Enter", name: "Reply all", context: "conversation", run: () => reply(messages[messageFocus()], true) },
+    { keys: "f", name: "Forward", context: "conversation", run: () => forward(messages[messageFocus()]) },
     { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
     { keys: "r", name: "Reply", context: "conversation", run: () => reply(messages[messageFocus()]) },
     { keys: "z", name: "Undo", run: undo },
@@ -409,6 +485,14 @@ export default function App() {
     { keys: "g t", name: "Go to Sent", run: () => go({ role: "sent" }) },
     { keys: "g d", name: "Go to Drafts", run: () => go({ role: "drafts" }) },
     { keys: "g a", name: "Go to All Mail", run: () => go({ role: "all" }) },
+    { keys: "g !", name: "Go to Spam", run: () => go({ role: "junk" }) },
+    { keys: "g l", name: "Go to folder …", run: () => choose("Go to folder …") },
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
+      keys: `Ctrl+${n}`,
+      name: `Go to account ${n}`,
+      run: () => switchAccount(n - 1),
+      hidden: true,
+    })),
     { keys: "?", name: "Keyboard shortcuts", run: () => setSheet(true) },
     { keys: "Ctrl+,", name: "Settings", run: () => setSettingsOpen(true) },
     { keys: "Ctrl+P", name: "Performance overlay", run: () => setPerf(!perf()) },
@@ -418,13 +502,56 @@ export default function App() {
 
   const commands = createMemo<Command[]>(() => [
     ...bindings()
-      .filter((b) => !b.hidden && (!b.context || b.context === context()))
+      .filter((b) => !b.hidden && !b.keys.startsWith("Ctrl+,") && b.keys !== "g l" && (!b.context || b.context === context()))
       .map((b) => ({
         name: b.name,
         keys: keyLabel(b.keys),
         group: b.keys.startsWith("g ") ? "Go to" : "Actions",
         run: () => void b.run(),
       })),
+    {
+      name: "Move to …",
+      group: "Actions",
+      args: () => {
+        // Folders of the accounts the conversations are in, except where they are now.
+        const hit = targets();
+        const accountIds = new Set(hit.map((r) => r.accountId));
+        const here = new Set(hit.map((r) => r.folderId));
+        return folders()
+          .filter((f) => accountIds.has(f.accountId) && !here.has(f.id))
+          .map((f) => ({
+            name: accounts().length > 1 ? `${folderName(f)} — ${accountOf(f.accountId)}` : folderName(f),
+            run: () => void act({ moveTo: f.id }),
+          }));
+      },
+    },
+    {
+      name: "Go to folder …",
+      keys: keyLabel("g l"),
+      group: "Go to",
+      args: () =>
+        folders().map((f) => ({
+          name: accounts().length > 1 ? `${folderName(f)} — ${accountOf(f.accountId)}` : folderName(f),
+          run: () => go({ folder: f.id }),
+        })),
+    },
+    {
+      name: "Switch account …",
+      keys: "Ctrl 1–9",
+      group: "Accounts",
+      args: () => accounts().map((a, i) => ({ name: a.email, keys: `Ctrl ${i + 1}`, run: () => switchAccount(i) })),
+    },
+    {
+      name: "Theme …",
+      group: "Settings",
+      args: () =>
+        (["system", "light", "dark"] as const).map((t) => ({
+          name: t === "system" ? "Follow the system" : t === "light" ? "Light" : "Dark",
+          run: () => setSetting("theme", t),
+        })),
+    },
+    { name: "Settings", keys: keyLabel("Ctrl+,"), group: "Settings", run: () => setSettingsOpen(true) },
+    ...(openRow() && openMuted() ? [{ name: "Unmute conversation", group: "Actions", run: () => void unmute() }] : []),
     { name: "Add account", group: "Accounts", run: () => setSetup(true) },
     ...(problems().length ? [{ name: "Review changes that didn't go through", run: () => setReviewing(true) }] : []),
     ...folders().map((f) => ({
@@ -483,6 +610,12 @@ export default function App() {
       : width() >= (settings.openMode === "split" ? MIN_SPLIT_WIDTH : SPLIT_WIDTH);
   const split = () => openRow() !== null && roomForSplit();
   const inboxUnread = () => folders().filter((f) => f.role === "inbox").reduce((n, f) => n + f.unread, 0);
+  /** Inbox Zero's colour changes with the day, so it stays a small reward. */
+  const zeroHue = () => {
+    const now = new Date();
+    const day = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86_400_000);
+    return (day * 47) % 360;
+  };
   const inboxZero = () => ready() && !searching() && rows().length === 0 && "role" in target() && (target() as { role: string }).role === "inbox";
 
   /** One sentence for every account together; the rail names the account in trouble. */
@@ -536,7 +669,7 @@ export default function App() {
           when={rows().length}
           fallback={
             <Show when={inboxZero()} fallback={<div class="empty">{ready() ? "Nothing here." : ""}</div>}>
-              <div class="zero">
+              <div class="zero" style={{ "--zero-hue": String(zeroHue()) }}>
                 <div class="zero-time">{new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</div>
                 <div>You're done.</div>
               </div>
@@ -643,7 +776,11 @@ export default function App() {
         <ShortcutSheet bindings={bindings()} onClose={() => setSheet(false)} />
       </Show>
       <Show when={palette()}>
-        <CommandBar commands={commands()} onClose={() => setPalette(false)} />
+        <CommandBar
+          commands={commands()}
+          start={paletteStart()}
+          onClose={() => batch(() => (setPalette(false), setPaletteStart(undefined)))}
+        />
       </Show>
       <Show when={compose()}>
         {(init) => <Compose accounts={accounts()} init={init()} onSend={send} onClose={() => setCompose(null)} />}
