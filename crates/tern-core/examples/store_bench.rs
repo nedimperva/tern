@@ -2,7 +2,9 @@
 //!
 //!     cargo run --release -p tern-core --example store_bench
 //!
-//! Targets: a list page under 1 ms, search under 5 ms, archiving 50 under 20 ms.
+//! Targets: a list page under 1 ms, search under 5 ms, archiving 50 under 20 ms, a conversation list page under
+//! 1 ms, opening a conversation under 50 ms. About a third of the messages are replies, so conversations have
+//! one to a dozen messages.
 
 use std::time::{Duration, Instant};
 
@@ -50,9 +52,13 @@ fn main() -> anyhow::Result<()> {
                 let word = |n: u64| WORDS[(n % WORDS.len() as u64) as usize];
                 let subject = format!("{} {} #{uid}", word(next()), word(next()));
                 let body = (0..60).map(|_| word(next())).collect::<Vec<_>>().join(" ");
+                // A reply to one of the last 200 messages, a third of the time.
+                let parent = (uid > 200 && next() % 3 == 0)
+                    .then(|| format!("{}@bench", uid - 1 - (next() % 200) as u32));
                 NewMessage {
                     uid,
                     message_id: Some(format!("{uid}@bench")),
+                    in_reply_to: parent,
                     subject,
                     from_name: format!("Sender {}", next() % 500),
                     from_addr: format!("s{}@example.com", next() % 500),
@@ -85,9 +91,21 @@ fn main() -> anyhow::Result<()> {
     report("search two prefixes", 100, || {
         store.search("inv bud", 100).unwrap();
     });
-    let first = store.list(&target, None, 1)?[0].id;
-    report("open thread", 200, || {
-        store.thread(first).unwrap();
+    report("conversation page (50)", 200, || {
+        store.list_threads(&target, None, 50).unwrap();
+    });
+    let mut cursor = None;
+    for _ in 0..100 {
+        let page = store.list_threads(&target, cursor, 50)?;
+        cursor = page.last().map(|t| Cursor { date: t.latest.date, id: t.latest.id });
+    }
+    report("conversation page 101 (50)", 200, || {
+        store.list_threads(&target, cursor, 50).unwrap();
+    });
+    let biggest = store.list_threads(&target, None, 500)?.into_iter().max_by_key(|t| t.count).unwrap();
+    println!("largest conversation in the first 500: {} messages", biggest.count);
+    report("open conversation", 200, || {
+        store.thread(biggest.latest.id).unwrap();
     });
     report("folders + unread counts", 100, || {
         store.folders().unwrap();

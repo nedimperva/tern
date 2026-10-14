@@ -131,6 +131,14 @@ email = ["$EMAIL"]
 user = "admin"
 secret = "$pw"
 
+# Test traffic only: no inbound rate limits. Stalwart's defaults (5 connections a second per address, 25 messages
+# an hour per sender) are exceeded by a single run of the dev-server checks.
+[queue.limiter.inbound.ip]
+enable = false
+
+[queue.limiter.inbound.sender]
+enable = false
+
 [tracer.stdout]
 type = "stdout"
 level = "info"
@@ -154,7 +162,7 @@ seed() {
     printf 'From: Seed %s <seed%s@localhost>\r\nTo: %s\r\nSubject: Test message %s\r\nMessage-ID: <seed-%s-%s@localhost>\r\nDate: %s\r\n\r\nThis is test message %s.\r\n' \
       "$i" "$i" "$EMAIL" "$i" "$i" "$(date +%s%N)" "$(date -R)" "$i" |
       curl_mail --url smtps://localhost:1465 --mail-from "$EMAIL" --mail-rcpt "$EMAIL" --upload-file -
-    sleep 0.25 # Stalwart allows 5 connections a second per IP
+    sleep 0.25 # Stalwart allowed 5 connections a second per IP before its limits were turned off; kept for older setups
   done
   echo "Sent $n messages to $EMAIL."
 }
@@ -176,7 +184,8 @@ tern() {
 run_tests() {
   [ -f "$DIR/tls/trust-bundle.pem" ] || die "run setup first"
   cd "$REPO"
-  SSL_CERT_FILE="$DIR/tls/trust-bundle.pem" exec cargo test -p tern-core -- --ignored
+  # One at a time: the checks share one inbox.
+  SSL_CERT_FILE="$DIR/tls/trust-bundle.pem" exec cargo test -p tern-core -- --ignored --test-threads=1
 }
 
 reset() {

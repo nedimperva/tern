@@ -11,7 +11,10 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 8;
+/// Messages with the same normalised subject and a participant in common within this many seconds of each other
+/// join one conversation when nothing in their headers links them.
+const SUBJECT_WINDOW: i64 = 7 * 86_400;
 /// Tries before queued work stops retrying and waits for the person.
 const MAX_ATTEMPTS: i64 = 5;
 
@@ -170,11 +173,60 @@ fn migrate(conn: &Connection) -> Result<()> {
                  ALTER TABLE messages ADD COLUMN list_unsubscribe TEXT;
                  ALTER TABLE messages ADD COLUMN parts TEXT;"
             }
+            // Threading by subject: the normalised subject, filled in for existing rows below.
+            7 => {
+                "ALTER TABLE messages ADD COLUMN subject_norm TEXT;
+                 CREATE INDEX messages_subject ON messages (account_id, subject_norm, date)
+                     WHERE subject_norm IS NOT NULL;"
+            }
             _ => unreachable!("no migration from schema {from}"),
         };
-        conn.execute_batch(&format!("BEGIN; {step}; PRAGMA user_version = {}; COMMIT;", from + 1))?;
+        conn.execute_batch(&format!("BEGIN; {step};"))?;
+        if from == 7 {
+            fill_subject_norm(conn)?;
+        }
+        conn.execute_batch(&format!("PRAGMA user_version = {}; COMMIT;", from + 1))?;
     }
     Ok(())
+}
+
+fn fill_subject_norm(conn: &Connection) -> Result<()> {
+    let rows: Vec<(i64, String)> = conn
+        .prepare("SELECT id, subject FROM messages")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut update = conn.prepare("UPDATE messages SET subject_norm = ?2 WHERE id = ?1")?;
+    for (id, subject) in rows {
+        update.execute(params![id, subject_norm(&subject)])?;
+    }
+    Ok(())
+}
+
+/// A subject as conversations compare it: lowercase, without reply and forward prefixes ("Re:", "Fwd:", "AW:",
+/// "Re[2]:") or leading list tags ("[team]"). None when nothing is left, so empty subjects never join up.
+pub fn subject_norm(subject: &str) -> Option<String> {
+    const PREFIXES: &[&str] = &["re", "fw", "fwd", "aw", "wg", "sv", "vs", "antw", "tr", "rv", "ref", "odp"];
+    let mut s = subject.trim().to_lowercase();
+    loop {
+        let before = s.len();
+        if s.starts_with('[') {
+            if let Some(end) = s.find(']') {
+                s = s[end + 1..].trim_start().to_string();
+            }
+        }
+        if let Some(colon) = s.find(':') {
+            let head = s[..colon].trim();
+            let word = head.split('[').next().unwrap_or(head).trim();
+            if PREFIXES.contains(&word) {
+                s = s[colon + 1..].trim_start().to_string();
+            }
+        }
+        if s.len() == before {
+            break;
+        }
+    }
+    let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!s.is_empty()).then_some(s)
 }
 
 pub struct Store {
@@ -411,12 +463,12 @@ impl Store {
             let inserted = tx.execute(
                 "INSERT OR IGNORE INTO messages (account_id, folder_id, uid, message_id, thread_id, subject, from_name,
                                                  from_addr, to_addrs, date, snippet, seen, flagged, has_attachments,
-                                                 size, body_state, list_id, list_unsubscribe, parts)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                                                 size, body_state, list_id, list_unsubscribe, parts, subject_norm)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
                 params![
                     account_id, folder_id, m.uid, m.message_id, thread_id, m.subject, m.from_name, m.from_addr,
                     m.to_addrs, m.date, m.snippet, m.seen, m.flagged, m.has_attachments, m.size, body_state,
-                    m.list_id, m.list_unsubscribe, parts
+                    m.list_id, m.list_unsubscribe, parts, subject_norm(&m.subject)
                 ],
             )?;
             if inserted == 0 {
@@ -619,6 +671,78 @@ impl Store {
     }
 
     /// Every message in the conversation `id` belongs to, oldest first, once each.
+    /// A page of conversations with a message in `target`, newest first by their newest message there. `before` is
+    /// the newest message's (date, id) of the last conversation on the previous page.
+    ///
+    /// Computed from the messages, not kept in a table: the folder is walked newest first (the list index) until
+    /// `limit` conversations are found, and each is summed up through the thread index. Nothing to keep in step
+    /// when a message moves or changes flags, and a page costs well under a millisecond (`store_bench`).
+    pub fn list_threads(
+        &self,
+        target: &ListTarget,
+        before: Option<Cursor>,
+        limit: usize,
+    ) -> Result<Vec<ThreadRow>> {
+        let (filter, key) = match target {
+            ListTarget::Folder(id) => ("m.folder_id = ?1", Value::Integer(*id)),
+            ListTarget::Role(role) => {
+                ("m.folder_id IN (SELECT id FROM folders WHERE role = ?1)", Value::Text(role.clone()))
+            }
+        };
+        let cursor = before.unwrap_or(Cursor { date: i64::MAX, id: i64::MAX });
+        let conn = self.conn();
+        let mut scan = conn.prepare_cached(&format!(
+            "SELECT {ROW} FROM messages m WHERE {filter} AND (m.date, m.id) < (?2, ?3)
+             ORDER BY m.date DESC, m.id DESC"
+        ))?;
+        // A conversation already shown on an earlier page has a newer message here than the cursor.
+        let mut shown = conn.prepare_cached(&format!(
+            "SELECT EXISTS (SELECT 1 FROM messages m WHERE {filter} AND m.account_id = ?2 AND m.thread_id = ?3
+                            AND (m.date, m.id) >= (?4, ?5))"
+        ))?;
+        let mut sums = conn.prepare_cached(
+            "SELECT count(DISTINCT COALESCE(message_id, id)), count(*) FILTER (WHERE NOT seen), max(flagged)
+             FROM messages WHERE account_id = ?1 AND thread_id = ?2",
+        )?;
+        let mut senders = conn.prepare_cached(
+            "SELECT from_name, from_addr FROM messages WHERE account_id = ?1 AND thread_id = ?2 ORDER BY date, id",
+        )?;
+        let mut seen = HashSet::new();
+        let mut out = Vec::new();
+        let mut rows = scan.query(params![key, cursor.date, cursor.id])?;
+        while out.len() < limit {
+            let Some(r) = rows.next()? else { break };
+            let latest = row(r)?;
+            if !seen.insert((latest.account_id, latest.thread_id.clone())) {
+                continue;
+            }
+            if before.is_some()
+                && shown.query_row(
+                    params![key, latest.account_id, latest.thread_id, cursor.date, cursor.id],
+                    |r| r.get::<_, bool>(0),
+                )?
+            {
+                continue;
+            }
+            let (count, unread, flagged): (i64, i64, bool) = sums
+                .query_row(params![latest.account_id, latest.thread_id], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                })?;
+            let mut participants: Vec<String> = Vec::new();
+            for who in senders.query_map(params![latest.account_id, latest.thread_id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })? {
+                let (name, addr) = who?;
+                let who = if name.is_empty() { addr } else { name };
+                if participants.len() < 4 && !participants.contains(&who) {
+                    participants.push(who);
+                }
+            }
+            out.push(ThreadRow { latest, count, unread, flagged, participants });
+        }
+        Ok(out)
+    }
+
     pub fn thread(&self, id: i64) -> Result<Vec<ThreadMessage>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(&format!(
@@ -1156,11 +1280,55 @@ fn thread_for(conn: &Connection, account_id: i64, folder_id: i64, m: &NewMessage
             return Ok(thread);
         }
     }
-    Ok(related
-        .first()
-        .map(|s| s.to_string())
-        .or_else(|| m.message_id.clone())
-        .unwrap_or_else(|| format!("uid:{folder_id}:{}", m.uid)))
+    if let Some(first) = related.first() {
+        // Its parent has not arrived: the first message it names stands for the conversation until it does.
+        return Ok(first.to_string());
+    }
+    // Nothing in its headers links it. A reply that came first may already have named it.
+    if let Some(id) = &m.message_id {
+        let named: bool = conn
+            .prepare_cached(
+                "SELECT EXISTS (SELECT 1 FROM messages WHERE account_id = ?1 AND thread_id = ?2)",
+            )?
+            .query_row(params![account_id, id], |r| r.get(0))?;
+        if named {
+            return Ok(id.clone());
+        }
+    }
+    if let Some(thread) = thread_by_subject(conn, account_id, m)? {
+        return Ok(thread);
+    }
+    Ok(m.message_id.clone().unwrap_or_else(|| format!("uid:{folder_id}:{}", m.uid)))
+}
+
+/// The conversation of a message with the same normalised subject, within SUBJECT_WINDOW, that shares someone
+/// other than the account itself (which is on nearly every message), nearest in time first.
+fn thread_by_subject(conn: &Connection, account_id: i64, m: &NewMessage) -> Result<Option<String>> {
+    let Some(norm) = subject_norm(&m.subject) else { return Ok(None) };
+    let me: String =
+        conn.query_row("SELECT lower(email) FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
+    let people = |from: &str, to: &str| -> HashSet<String> {
+        std::iter::once(from)
+            .chain(to.split(','))
+            .map(|a| a.trim().to_lowercase())
+            .filter(|a| !a.is_empty() && *a != me)
+            .collect()
+    };
+    let ours = people(&m.from_addr, &m.to_addrs);
+    if ours.is_empty() {
+        return Ok(None);
+    }
+    let mut stmt = conn.prepare_cached(
+        "SELECT thread_id, from_addr, to_addrs FROM messages
+         WHERE account_id = ?1 AND subject_norm = ?2 AND date BETWEEN ?3 - ?4 AND ?3 + ?4
+         ORDER BY abs(date - ?3) LIMIT 20",
+    )?;
+    let candidates = stmt
+        .query_map(params![account_id, norm, m.date, SUBJECT_WINDOW], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(candidates.into_iter().find(|(_, from, to)| !people(from, to).is_disjoint(&ours)).map(|(t, _, _)| t))
 }
 
 fn fts_query(input: &str) -> String {
@@ -1376,6 +1544,106 @@ mod tests {
     }
 
     #[test]
+    fn subjects_compare_without_prefixes_and_tags() {
+        assert_eq!(subject_norm("Re: RE: Fwd: Lunch?").as_deref(), Some("lunch?"));
+        assert_eq!(subject_norm("AW: [team] Re[2]:  Budget   2027").as_deref(), Some("budget 2027"));
+        assert_eq!(subject_norm("Rebooking"), Some("rebooking".into()), "a word, not a prefix");
+        assert_eq!(subject_norm("Re: "), None);
+        assert_eq!(subject_norm(""), None);
+    }
+
+    fn mail(uid: u32, subject: &str, date: i64, from: &str, to: &str) -> NewMessage {
+        NewMessage {
+            uid,
+            message_id: Some(format!("{uid}@example.com")),
+            subject: subject.into(),
+            from_name: from.split('@').next().unwrap().into(),
+            from_addr: from.into(),
+            to_addrs: to.into(),
+            date,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn mail_without_references_joins_by_subject_and_people() {
+        let (store, account, inbox, _) = setup();
+        let day = 86_400;
+        store
+            .insert_messages(
+                account,
+                inbox,
+                &[
+                    mail(1, "Lunch?", day, "ada@x.com", "me@example.com"),
+                    // A reply from a client that sends no References, two days later.
+                    mail(2, "Re: Lunch?", 3 * day, "me@example.com", "ada@x.com"),
+                    // Same subject, someone else entirely: its own conversation.
+                    mail(3, "Lunch?", 3 * day, "bob@y.com", "me@example.com"),
+                    // Same people, but weeks later: its own conversation.
+                    mail(4, "Re: Lunch?", 30 * day, "ada@x.com", "me@example.com"),
+                ],
+            )
+            .unwrap();
+        let rows = store.list(&ListTarget::Folder(inbox), None, 10).unwrap();
+        let thread =
+            |uid: u32| rows.iter().find(|r| r.subject.contains("Lunch") && r.id == uid as i64).unwrap();
+        let t: Vec<&str> = (1..=4).map(|u| thread(u).thread_id.as_str()).collect();
+        assert_eq!(t[0], t[1]);
+        assert_ne!(t[0], t[2]);
+        assert_ne!(t[0], t[3]);
+    }
+
+    #[test]
+    fn thread_list_pages_by_conversation() {
+        let (store, account, inbox, archive) = setup();
+        let reply = |uid: u32, parent: u32, date: i64, seen: bool| NewMessage {
+            in_reply_to: Some(format!("{parent}@example.com")),
+            seen,
+            ..message(uid, &format!("re {parent}"), date)
+        };
+        let batch = vec![
+            message(1, "a", 10),
+            message(2, "b", 20),
+            message(3, "c", 30),
+            reply(4, 1, 40, false), // a's conversation becomes the newest
+            reply(5, 2, 25, true),
+        ];
+        store.insert_messages(account, inbox, &batch).unwrap();
+        // The archived copy of a still counts once in its conversation, as another message would.
+        store.insert_messages(account, archive, &[reply(6, 1, 15, true)]).unwrap();
+
+        let page = store.list_threads(&ListTarget::Folder(inbox), None, 2).unwrap();
+        let firsts: Vec<_> = page.iter().map(|t| (t.latest.date, t.count)).collect();
+        assert_eq!(firsts, [(40, 3), (30, 1)]);
+        assert_eq!(page[0].unread, 2, "the first message and the new reply");
+        let cursor = Cursor { date: page[1].latest.date, id: page[1].latest.id };
+        let next = store.list_threads(&ListTarget::Folder(inbox), Some(cursor), 2).unwrap();
+        let dates: Vec<_> = next.iter().map(|t| (t.latest.date, t.count)).collect();
+        assert_eq!(dates, [(25, 2)], "b's conversation, once, by its newest message; a is not repeated");
+        assert!(store
+            .list_threads(&ListTarget::Folder(inbox), Some(Cursor { date: 25, id: next[0].latest.id }), 2)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn migration_8_fills_in_normalised_subjects() {
+        let store = Store::open_in_memory().unwrap();
+        let account = store.add_account(&config()).unwrap().id;
+        let inbox = store.upsert_folder(account, "INBOX", "inbox").unwrap();
+        store.insert_messages(account, inbox, &[message(1, "Re: Budget", 1)]).unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        conn.execute_batch(
+            "DROP INDEX messages_subject; ALTER TABLE messages DROP COLUMN subject_norm; PRAGMA user_version = 7;",
+        )
+        .unwrap();
+        let store = Store::init(conn).unwrap();
+        let norm: String =
+            store.conn().query_row("SELECT subject_norm FROM messages", [], |r| r.get(0)).unwrap();
+        assert_eq!(norm, "budget");
+    }
+
+    #[test]
     fn snippets_fill_in_before_bodies() {
         let (store, account, inbox, _) = setup();
         let text = Part {
@@ -1551,7 +1819,7 @@ mod tests {
         store.insert_messages(account, folder, &[message(1, "a", 1), message(2, "b", 2)]).unwrap();
         let conn = store.conn.into_inner().unwrap();
         conn.execute_batch(
-            "DELETE FROM bodies; ALTER TABLE outbox DROP COLUMN maybe_sent; ALTER TABLE messages DROP COLUMN list_id; ALTER TABLE messages DROP COLUMN list_unsubscribe; ALTER TABLE messages DROP COLUMN parts; PRAGMA user_version = 4;",
+            "DELETE FROM bodies; ALTER TABLE outbox DROP COLUMN maybe_sent; ALTER TABLE messages DROP COLUMN list_id; ALTER TABLE messages DROP COLUMN list_unsubscribe; ALTER TABLE messages DROP COLUMN parts; DROP INDEX messages_subject; ALTER TABLE messages DROP COLUMN subject_norm; PRAGMA user_version = 4;",
         )
         .unwrap();
         let generated = mail_parser::MessageParser::default()
