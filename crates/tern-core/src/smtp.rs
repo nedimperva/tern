@@ -56,6 +56,11 @@ pub async fn send(config: &AccountConfig, password: &str, draft: &Draft) -> Resu
     sent.map(|()| raw)
 }
 
+/// The message as it would be sent, for the server copy of a draft.
+pub fn draft_bytes(config: &AccountConfig, draft: &Draft) -> Result<Vec<u8>> {
+    Ok(build(config, draft)?.formatted())
+}
+
 fn build(config: &AccountConfig, draft: &Draft) -> Result<Message> {
     let name = Some(config.display_name.clone()).filter(|n| !n.is_empty());
     let from: lettre::Address = config.email.parse()?;
@@ -68,6 +73,12 @@ fn build(config: &AccountConfig, draft: &Draft) -> Result<Message> {
         .subject(draft.subject.clone());
     for to in &draft.to {
         builder = builder.to(to.parse()?);
+    }
+    // A draft may have no recipients yet. lettre wants someone in the envelope to build a message at all; the
+    // envelope is never used for a draft (it is only stored), and no header changes.
+    if draft.to.is_empty() && draft.cc.is_empty() && draft.bcc.is_empty() {
+        let me: lettre::Address = config.email.parse()?;
+        builder = builder.envelope(Envelope::new(Some(me.clone()), vec![me])?);
     }
     for cc in &draft.cc {
         builder = builder.cc(cc.parse()?);

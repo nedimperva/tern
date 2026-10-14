@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use tokio::sync::Notify;
 
 use crate::imap::{self, Idled, Imap, TlsImap};
-use crate::models::{Account, AccountConfig, Failure, FolderState, NewMessage, OutboxOp};
+use crate::models::{Account, AccountConfig, DraftSync, Failure, FolderState, NewMessage, OutboxOp};
 use crate::store::{now, Store};
 use crate::{mime, presets, smtp};
 
@@ -312,6 +312,9 @@ async fn pass(
     let s = session.as_mut().expect("connected above");
 
     if drain_outbox(s, store, account, password).await? {
+        on_change();
+    }
+    if sync_drafts(s, store, account).await? {
         on_change();
     }
     // Messages someone opened before their body came: those first, whatever folder they are in.
@@ -729,6 +732,92 @@ async fn drain_outbox<S: Stream>(
     Ok(any)
 }
 
+/// Keeps the server's Drafts folder in step with drafts written in Tern: each draft has one copy there, replaced
+/// when it has rested (or compose closed), and removed once the draft is sent or discarded. Returns whether
+/// anything changed. A draft the server refuses is logged and tried again next pass; only a lost connection ends
+/// the pass.
+async fn sync_drafts<S: Stream>(s: &mut Imap<S>, store: &Store, account: &Account) -> Result<bool> {
+    let due = store.drafts_due(account.id)?;
+    let any = !due.is_empty();
+    for job in due {
+        let result = match job {
+            DraftSync::Upload { id, draft, version, folder, previous } => {
+                upload_draft(s, store, account, id, &draft, version, &folder, previous).await
+            }
+            DraftSync::Remove { id, folder, copy } => {
+                async {
+                    if let (Some(folder), Some(copy)) = (folder, copy) {
+                        delete_copy(s, &folder, copy).await?;
+                    }
+                    store.draft_removed(id)
+                }
+                .await
+            }
+        };
+        if let Err(e) = result {
+            log::warn!("{}: draft not synced: {e:#}", account.config.email);
+            if connection_broke(&e) {
+                return Err(e);
+            }
+        }
+    }
+    Ok(any)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn upload_draft<S: Stream>(
+    s: &mut Imap<S>,
+    store: &Store,
+    account: &Account,
+    id: i64,
+    draft: &crate::models::Draft,
+    version: i64,
+    folder: &str,
+    previous: Option<(u32, u32)>,
+) -> Result<()> {
+    let raw = smtp::draft_bytes(&account.config, draft)?;
+    let mut copy = within(s.append(folder, &raw, true)).await?;
+    if copy.is_none() {
+        // No APPENDUID: find the copy just added by its Message-ID, so the next version can replace it.
+        let selected = within(s.select(folder)).await?;
+        let bare = draft
+            .message_id
+            .as_deref()
+            .unwrap_or_default()
+            .trim_matches(|c| c == '<' || c == '>')
+            .to_string();
+        let mut uids = within(s.find_message_id(&bare)).await?;
+        if uids.is_empty() {
+            uids = within(s.message_ids("1:*"))
+                .await?
+                .into_iter()
+                .filter(|(_, m)| *m == bare)
+                .map(|(uid, _)| uid)
+                .collect();
+        }
+        let newest = uids.into_iter().filter(|u| Some(*u) != previous.map(|p| p.1)).max();
+        copy = selected.uid_validity.zip(newest);
+    }
+    if let Some(old) = previous {
+        if Some(old) != copy {
+            delete_copy(s, folder, old).await?;
+        }
+    }
+    store.draft_uploaded(id, folder, version, copy)
+}
+
+/// Deletes one copy (validity, uid) from `folder`, unless the folder was renumbered since: then the uid may be
+/// another message, and the stale copy is left for the person rather than risk that.
+async fn delete_copy<S: Stream>(s: &mut Imap<S>, folder: &str, (validity, uid): (u32, u32)) -> Result<()> {
+    let selected = within(s.select(folder)).await?;
+    if selected.uid_validity == Some(validity) {
+        within(s.delete(&uid.to_string())).await?;
+    } else {
+        log::warn!("{folder} was renumbered; an old draft copy may be left there");
+    }
+    Ok(())
+}
+
 /// Work that cannot succeed however often it is tried (its messages are no longer on the server).
 #[derive(Debug)]
 struct Unworkable(String);
@@ -796,7 +885,9 @@ async fn run_op<S: Stream>(
             store.moved(account.id, dest, &placed)?;
         }
         OutboxOp::Send(draft) => return smtp::send(&account.config, password, draft).await,
-        OutboxOp::Append { folder, message, .. } => within(s.append(folder, message.as_bytes())).await?,
+        OutboxOp::Append { folder, message, .. } => {
+            within(s.append(folder, message.as_bytes(), false)).await?;
+        }
     }
     Ok(Vec::new())
 }
@@ -928,7 +1019,9 @@ mod tests {
     mod outbox {
         use super::super::drain_outbox;
         use crate::imap::Imap;
-        use crate::models::{Account, AccountConfig, Action, FolderState, ListTarget, NewMessage, Security};
+        use crate::models::{
+            Account, AccountConfig, Action, DraftSync, FolderState, ListTarget, NewMessage, Security,
+        };
         use crate::scripted::{signed_in, Script};
         use crate::store::Store;
 
@@ -1138,10 +1231,7 @@ mod tests {
             m.store.outbox_sent(m.store.queue_send(m.account.id, draft(), 0).unwrap(), Some(copy)).unwrap();
             let (result, sent) = drain(
                 &m,
-                vec![
-                    ("APPEND Sent (\\Seen) {5}", "+ go\r\n"),
-                    ("hello", "{tag} OK [APPENDUID 3 7] done\r\n"),
-                ],
+                vec![("APPEND Sent (\\Seen) {5}", "+ go\r\n"), ("", "{tag} OK [APPENDUID 3 7] done\r\n")],
             )
             .await;
             result.unwrap();
@@ -1218,6 +1308,34 @@ mod tests {
             assert_eq!(m.store.flags_of(m.inbox, 4), Some((false, true)));
         }
 
+        #[tokio::test]
+        async fn a_new_draft_version_replaces_the_copy_before_it() {
+            let m = mailbox();
+            m.store.upsert_folder(m.account.id, "Drafts", "drafts").unwrap();
+            let id = m.store.save_draft(None, m.account.id, draft(), true).unwrap();
+            let DraftSync::Upload { version, .. } = m.store.drafts_due(m.account.id).unwrap().remove(0)
+            else {
+                panic!("an upload is due")
+            };
+            m.store.draft_uploaded(id, "Drafts", version, Some((9, 3))).unwrap();
+            let v2 = crate::models::Draft { body: "v2".into(), ..draft() };
+            m.store.save_draft(Some(id), m.account.id, v2, true).unwrap();
+            let (stream, sent) = signed_in(
+                SIGNED_IN,
+                vec![
+                    ("APPEND Drafts (\\Seen \\Draft)", "+ go\r\n"),
+                    ("", "{tag} OK [APPENDUID 9 4] done\r\n"),
+                    ("SELECT Drafts", "* 2 EXISTS\r\n* OK [UIDVALIDITY 9] v\r\n{tag} OK [READ-WRITE] s\r\n"),
+                    ("UID STORE 3 +FLAGS (\\Deleted)", "{tag} OK done\r\n"),
+                    ("UID EXPUNGE 3", "* 1 EXPUNGE\r\n{tag} OK done\r\n"),
+                ],
+            );
+            let mut s = Imap::open(stream, "ada", "x").await.unwrap();
+            assert!(super::super::sync_drafts(&mut s, &m.store, &m.account).await.unwrap());
+            assert!(m.store.drafts_due(m.account.id).unwrap().is_empty(), "this version is up");
+            assert!(sent.lock().unwrap().iter().any(|c| c.starts_with("UID EXPUNGE 3")), "the old copy went");
+        }
+
         #[test]
         fn undo_is_refused_while_later_work_counts_on_the_move() {
             let m = mailbox();
@@ -1290,6 +1408,73 @@ mod tests {
         let copies = other.message_ids("1:*").await.unwrap().into_iter().filter(|(_, m)| m == bare).count();
         assert_eq!(copies, 1);
         other.logout().await.unwrap();
+    }
+
+    /// A draft's life on the dev mail server: one copy in Drafts however often it is saved, none once sent, and the
+    /// message in Sent.
+    #[tokio::test]
+    #[ignore = "needs scripts/dev-mail-server.sh start; run with scripts/dev-mail-server.sh test"]
+    async fn a_draft_keeps_one_server_copy_until_it_is_sent() {
+        use crate::models::Draft;
+        use crate::store::Store;
+
+        let (config, password) = dev_account();
+        let store = Store::open_in_memory().unwrap();
+        let account = store.add_account(&config).unwrap();
+        let (mut session, mut schedule, nothing) = (None, super::Schedule::default(), || {});
+        while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap() {
+        }
+        let subject = format!("draft check {}", std::process::id());
+        let draft = |body: &str| Draft {
+            to: vec!["test@localhost".into()],
+            cc: vec![],
+            bcc: vec![],
+            subject: subject.clone(),
+            body: body.into(),
+            in_reply_to: None,
+            references: vec![],
+            message_id: None,
+        };
+        let copies = |message_id: String| {
+            let (config, password) = (config.clone(), password.clone());
+            async move {
+                let mut other = super::connect(&config, &password).await.unwrap();
+                let mut count = HashMap::new();
+                for folder in ["Drafts", "Sent Items"] {
+                    other.select(folder).await.unwrap();
+                    let n = other
+                        .message_ids("1:*")
+                        .await
+                        .unwrap()
+                        .into_iter()
+                        .filter(|(_, m)| *m == message_id)
+                        .count();
+                    count.insert(folder, n);
+                }
+                other.logout().await.unwrap();
+                count
+            }
+        };
+
+        let id = store.save_draft(None, account.id, draft("first"), true).unwrap();
+        let message_id = store.draft(id).unwrap().unwrap().draft.message_id.unwrap();
+        let bare = message_id.trim_matches(|c| c == '<' || c == '>').to_string();
+        super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap();
+        assert_eq!(copies(bare.clone()).await["Drafts"], 1);
+
+        store.save_draft(Some(id), account.id, draft("second"), true).unwrap();
+        super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap();
+        assert_eq!(copies(bare.clone()).await["Drafts"], 1, "replaced, not added");
+
+        let record = store.draft(id).unwrap().unwrap();
+        store.queue_send(account.id, record.draft, 0).unwrap();
+        store.draft_sent(id).unwrap();
+        for _ in 0..3 {
+            super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap();
+        }
+        let after = copies(bare).await;
+        assert_eq!((after["Drafts"], after["Sent Items"]), (0, 1), "sent: gone from Drafts, kept in Sent");
+        assert!(store.draft(id).unwrap().is_none(), "and forgotten here");
     }
 
     /// A fresh sync against the dev mail server: mail older than BODY_DAYS gets no body, but a snippet from its

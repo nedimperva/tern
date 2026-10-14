@@ -129,6 +129,12 @@ fn main() {
             commands::set_setting,
             commands::mute,
             commands::reply_init,
+            commands::save_draft,
+            commands::draft,
+            commands::draft_for_message,
+            commands::discard_draft,
+            commands::undo_discard,
+            commands::problem_to_draft,
             commands::muted,
         ])
         .run(tauri::generate_context!())
