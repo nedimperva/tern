@@ -59,7 +59,10 @@ fn build(config: &AccountConfig, draft: &Draft) -> Result<Message> {
     let name = Some(config.display_name.clone()).filter(|n| !n.is_empty());
     let from: lettre::Address = config.email.parse()?;
     let mut builder = Message::builder()
-        .message_id(Some(message_id(from.domain())?))
+        .message_id(Some(match &draft.message_id {
+            Some(id) => id.clone(),
+            None => new_message_id(from.domain())?,
+        }))
         .from(Mailbox::new(name, from))
         .subject(draft.subject.clone());
     for to in &draft.to {
@@ -77,7 +80,7 @@ fn build(config: &AccountConfig, draft: &Draft) -> Result<Message> {
 
 /// A new Message-ID at the sender's domain. lettre adds none on its own, and its default would carry this
 /// computer's host name; without one, replies cannot thread and Tern cannot match the copy in Sent.
-fn message_id(domain: &str) -> Result<String> {
+pub fn new_message_id(domain: &str) -> Result<String> {
     let mut random = [0u8; 16];
     rustls::crypto::ring::default_provider()
         .secure_random
@@ -255,12 +258,16 @@ mod tests {
             subject: "x".into(),
             body: "y".into(),
             in_reply_to: None,
+            message_id: None,
         };
         let raw = String::from_utf8(build(&config, &draft).unwrap().formatted()).unwrap();
         let line = raw.lines().find(|l| l.starts_with("Message-ID: <")).expect("a Message-ID");
         assert!(line.ends_with("@example.com>"), "{line}");
         let again = String::from_utf8(build(&config, &draft).unwrap().formatted()).unwrap();
         assert!(!again.contains(line), "each message gets its own");
+        let fixed = Draft { message_id: Some("<kept@example.com>".into()), ..draft };
+        let raw = String::from_utf8(build(&config, &fixed).unwrap().formatted()).unwrap();
+        assert!(raw.contains("Message-ID: <kept@example.com>"), "a queued send keeps its id");
     }
 
     #[tokio::test]
@@ -312,6 +319,7 @@ mod tests {
             subject: "x".into(),
             body: "y".into(),
             in_reply_to: None,
+            message_id: None,
         };
         let e = send(&config, "pw", &draft).await.unwrap_err();
         assert!(!is_permanent(&e) && !maybe_sent(&e), "{e:#}");
