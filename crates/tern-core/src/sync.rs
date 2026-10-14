@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use tokio::sync::Notify;
 
 use crate::imap::{self, Idled, Imap, TlsImap};
-use crate::models::{Account, AccountConfig, Failure, FolderState, NewMessage, OutboxOp};
+use crate::models::{Account, AccountConfig, DraftSync, Failure, FolderState, NewMessage, OutboxOp};
 use crate::store::{now, Store};
 use crate::{mime, presets, smtp};
 
@@ -312,6 +312,9 @@ async fn pass(
     let s = session.as_mut().expect("connected above");
 
     if drain_outbox(s, store, account, password).await? {
+        on_change();
+    }
+    if sync_drafts(s, store, account).await? {
         on_change();
     }
     // Messages someone opened before their body came: those first, whatever folder they are in.
@@ -729,6 +732,92 @@ async fn drain_outbox<S: Stream>(
     Ok(any)
 }
 
+/// Keeps the server's Drafts folder in step with drafts written in Tern: each draft has one copy there, replaced
+/// when it has rested (or compose closed), and removed once the draft is sent or discarded. Returns whether
+/// anything changed. A draft the server refuses is logged and tried again next pass; only a lost connection ends
+/// the pass.
+async fn sync_drafts<S: Stream>(s: &mut Imap<S>, store: &Store, account: &Account) -> Result<bool> {
+    let due = store.drafts_due(account.id)?;
+    let any = !due.is_empty();
+    for job in due {
+        let result = match job {
+            DraftSync::Upload { id, draft, version, folder, previous } => {
+                upload_draft(s, store, account, id, &draft, version, &folder, previous).await
+            }
+            DraftSync::Remove { id, folder, copy } => {
+                async {
+                    if let (Some(folder), Some(copy)) = (folder, copy) {
+                        delete_copy(s, &folder, copy).await?;
+                    }
+                    store.draft_removed(id)
+                }
+                .await
+            }
+        };
+        if let Err(e) = result {
+            log::warn!("{}: draft not synced: {e:#}", account.config.email);
+            if connection_broke(&e) {
+                return Err(e);
+            }
+        }
+    }
+    Ok(any)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn upload_draft<S: Stream>(
+    s: &mut Imap<S>,
+    store: &Store,
+    account: &Account,
+    id: i64,
+    draft: &crate::models::Draft,
+    version: i64,
+    folder: &str,
+    previous: Option<(u32, u32)>,
+) -> Result<()> {
+    let raw = smtp::draft_bytes(&account.config, draft)?;
+    let mut copy = within(s.append(folder, &raw, true)).await?;
+    if copy.is_none() {
+        // No APPENDUID: find the copy just added by its Message-ID, so the next version can replace it.
+        let selected = within(s.select(folder)).await?;
+        let bare = draft
+            .message_id
+            .as_deref()
+            .unwrap_or_default()
+            .trim_matches(|c| c == '<' || c == '>')
+            .to_string();
+        let mut uids = within(s.find_message_id(&bare)).await?;
+        if uids.is_empty() {
+            uids = within(s.message_ids("1:*"))
+                .await?
+                .into_iter()
+                .filter(|(_, m)| *m == bare)
+                .map(|(uid, _)| uid)
+                .collect();
+        }
+        let newest = uids.into_iter().filter(|u| Some(*u) != previous.map(|p| p.1)).max();
+        copy = selected.uid_validity.zip(newest);
+    }
+    if let Some(old) = previous {
+        if Some(old) != copy {
+            delete_copy(s, folder, old).await?;
+        }
+    }
+    store.draft_uploaded(id, folder, version, copy)
+}
+
+/// Deletes one copy (validity, uid) from `folder`, unless the folder was renumbered since: then the uid may be
+/// another message, and the stale copy is left for the person rather than risk that.
+async fn delete_copy<S: Stream>(s: &mut Imap<S>, folder: &str, (validity, uid): (u32, u32)) -> Result<()> {
+    let selected = within(s.select(folder)).await?;
+    if selected.uid_validity == Some(validity) {
+        within(s.delete(&uid.to_string())).await?;
+    } else {
+        log::warn!("{folder} was renumbered; an old draft copy may be left there");
+    }
+    Ok(())
+}
+
 /// Work that cannot succeed however often it is tried (its messages are no longer on the server).
 #[derive(Debug)]
 struct Unworkable(String);
@@ -796,7 +885,9 @@ async fn run_op<S: Stream>(
             store.moved(account.id, dest, &placed)?;
         }
         OutboxOp::Send(draft) => return smtp::send(&account.config, password, draft).await,
-        OutboxOp::Append { folder, message, .. } => within(s.append(folder, message.as_bytes())).await?,
+        OutboxOp::Append { folder, message, .. } => {
+            within(s.append(folder, message.as_bytes(), false)).await?;
+        }
     }
     Ok(Vec::new())
 }
@@ -928,7 +1019,9 @@ mod tests {
     mod outbox {
         use super::super::drain_outbox;
         use crate::imap::Imap;
-        use crate::models::{Account, AccountConfig, Action, FolderState, ListTarget, NewMessage, Security};
+        use crate::models::{
+            Account, AccountConfig, Action, DraftSync, FolderState, ListTarget, NewMessage, Security,
+        };
         use crate::scripted::{signed_in, Script};
         use crate::store::Store;
 
