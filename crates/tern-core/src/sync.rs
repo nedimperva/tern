@@ -545,6 +545,8 @@ async fn sync_folder<S: Stream>(
             })
             .collect();
         store.insert_messages(account_id, folder_id, &batch)?;
+        // New replies in muted conversations go straight to the archive.
+        store.archive_muted(folder_id)?;
         on_change();
     }
     // Phase B: a snippet for headers-only rows from the start of their text part, so the list reads well before

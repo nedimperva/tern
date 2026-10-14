@@ -127,6 +127,8 @@ fn main() {
             commands::apply_conversations,
             commands::settings,
             commands::set_setting,
+            commands::mute,
+            commands::muted,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tern");
