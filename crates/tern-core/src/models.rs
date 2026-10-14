@@ -156,6 +156,11 @@ pub struct Draft {
 }
 
 /// Work waiting to go to the server. Each carries what it takes to put the local store back if it is undone.
+///
+/// `uids` only mean something under the folder's `validity` (UIDVALIDITY) at the time; when the server has
+/// renumbered the folder since, the messages are found again by Message-ID. `waiting` are messages whose uid in
+/// `folder` was not known yet because an earlier move there had not finished: that move fills them in when the
+/// server says where the messages went (COPYUID), or they are found by Message-ID when this work runs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum OutboxOp {
@@ -166,6 +171,10 @@ pub enum OutboxOp {
         add: bool,
         /// (message id, seen, flagged) before the change.
         revert: Vec<(i64, bool, bool)>,
+        #[serde(default)]
+        validity: Option<u32>,
+        #[serde(default)]
+        waiting: Vec<i64>,
     },
     Move {
         folder: String,
@@ -173,6 +182,10 @@ pub enum OutboxOp {
         uids: Vec<u32>,
         /// (message id, folder id, uid) before the change.
         revert: Vec<(i64, i64, Option<u32>)>,
+        #[serde(default)]
+        validity: Option<u32>,
+        #[serde(default)]
+        waiting: Vec<i64>,
     },
     Send(Draft),
 }
@@ -198,6 +211,19 @@ pub struct OutboxProblem {
     pub attempts: i64,
     pub last_error: String,
     pub gave_up_at: i64,
+    /// A send that broke off after the message was handed to the server: it may well have gone out.
+    pub maybe_sent: bool,
+}
+
+/// How a try at queued work went wrong, which decides what happens to it next.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Failure {
+    /// Might work later: try again after a wait.
+    Retry,
+    /// The server said no in a way that trying again cannot change.
+    Permanent,
+    /// A send that may have gone out. Sending it again could deliver it twice, so the person decides.
+    MaybeSent,
 }
 
 /// What `Store::apply` did: hand `token` to `Store::undo` to take it back.
