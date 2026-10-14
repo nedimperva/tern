@@ -36,7 +36,7 @@ the help: `j`/`k`, `e`, `h` (placeholder until Sprint 5), `s`, `u`, `#`, `Enter`
 - [x] Three regions: a slim left rail (hidden by default, `Cmd+\` to toggle) with accounts and labels; the list;
       the conversation pane. List is full-width when nothing is open; `Enter` opens the conversation to the
       right (split) or full (setting); `Esc` returns to the list.
-- [ ] Split tabs across the top of the list (`Tab` / `Shift+Tab`). Sprint 2 ships "Inbox" and "Starred"; Sprint 5 adds Important/Other/custom.
+- [x] Split tabs across the top of the list (`Tab` / `Shift+Tab`). Sprint 2 ships "Inbox" and "Starred"; Sprint 5 adds Important/Other/custom.
 - [ ] Empty state: a full-bleed background image with the time and "You're done" — Inbox Zero is a feature.
 - [ ] Status strip, bottom right: sync state from Sprint 1, undo toast, keyboard hints after 2 s of inactivity.
 
@@ -60,14 +60,14 @@ the help: `j`/`k`, `e`, `h` (placeholder until Sprint 5), `s`, `u`, `#`, `Enter`
 - [x] Reading marks the thread read after 1 s in view (setting: immediately / after 1 s / manually).
 
 ### Keyboard model
-- [ ] Central key map (`src/keys.ts`): context (`list | thread | compose | palette | search`), chord support (`g i`), platform modifier (`Ctrl` on Linux/Windows shown as `Ctrl`, map `Cmd` in docs).
+- [x] Central key map (`src/keys.ts`): context (`list | thread | compose | palette | search`), chord support (`g i`), platform modifier (`Ctrl` on Linux/Windows shown as `Ctrl`, map `Cmd` in docs).
 - [ ] Implement the Superhuman set for list and thread (full table in `superhuman-reference.md`):
       `j k Enter Esc e Shift+E s u # ! m x Shift+J Shift+K Cmd+A Cmd+K / z r Enter(reply-all) f c n p o Shift+O Tab Shift+Tab g+i g+s g+d g+t g+e g+a g+l Cmd+\ ? Cmd+, Cmd+1..9`.
-- [ ] `?` opens a searchable shortcut sheet.
-- [ ] Every action in the palette shows its key; every key is discoverable through the palette.
+- [x] `?` opens a searchable shortcut sheet.
+- [x] Every action in the palette shows its key; every key is discoverable through the palette.
 
 ### Command palette (`Cmd+K`)
-- [ ] Fuzzy matcher (own, ~60 lines; no dependency) ranking by prefix, word-start, then subsequence.
+- [x] Fuzzy matcher (own, ~60 lines; no dependency) ranking by prefix, word-start, then subsequence.
 - [ ] Commands: all actions, "Go to label …", "Move to …", "Label …", "Switch account …", "Theme …", "Settings".
 - [ ] Recent commands first; arrow keys and `Enter`; argument mode for move/label with the same list.
 
@@ -112,4 +112,10 @@ Label chips on rows, then the empty-state artwork (use a solid colour), then `Cm
   key table `src/keys.ts` with contexts and `g` chords; the palette lists it. Checked in headless Chromium with
   keys only (light/dark, 1440 and 1000 px). Bundle 19.6 kB gzipped. Not yet: split tabs, label chips, sanitised
   HTML and quote folding, attachments strip, settings, fonts, shortcut sheet, palette ranking, perf overlay.
-
+- 2026-10-14 — Slice 2: keys and palette. Inbox / Starred split tabs (`Tab`, `Shift+Tab`; Starred = starred mail
+  in the inboxes, `ListTarget::Role("starred")`, Done from it takes the conversation out of the inbox). `g` chords
+  for Inbox, Starred, Done, Sent, Drafts, All Mail. `?` sheet, searchable, grouped by where keys work. Palette:
+  own fuzzy ranking (prefix, then word starts, then letters in order) with matches marked, Recent first (last 8,
+  window storage), groups (Recent, Actions, Go to, Accounts), chords as two keycaps. Status strip shows three
+  keys for the current context after 2 s without a keypress. Not yet: argument mode (Move to …, Label …), which
+  needs a move-to-folder action in the engine; `!` (spam) and `m` (mute) likewise.
