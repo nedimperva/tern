@@ -128,6 +128,7 @@ fn main() {
             commands::settings,
             commands::set_setting,
             commands::mute,
+            commands::reply_init,
             commands::muted,
         ])
         .run(tauri::generate_context!())
