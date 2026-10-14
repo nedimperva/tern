@@ -1379,14 +1379,34 @@ mod tests {
             store.folders_to_sync(account.id).unwrap().into_iter().find(|(_, n)| n == name).unwrap().0
         };
         let (inbox, archive) = (folder("INBOX"), folder("Archive"));
-        // The newest unstarred inbox message that has a Message-ID, so the check below can find it.
-        let row = store
-            .list(&ListTarget::Folder(inbox), None, 100)
-            .unwrap()
-            .into_iter()
-            .find(|r| !r.flagged && !store.message_ids(&[r.id]).unwrap().is_empty())
-            .expect("seed the inbox first");
-
+        // Its own message, so the other checks running against the same inbox cannot move it meanwhile.
+        let subject = format!("star after archive {}", std::process::id());
+        let draft = crate::models::Draft {
+            to: vec!["test@localhost".into()],
+            cc: vec![],
+            subject: subject.clone(),
+            body: "Archived and starred by a dev-server check.".into(),
+            in_reply_to: None,
+            message_id: None,
+        };
+        crate::smtp::send(&config, &password, &draft).await.unwrap();
+        let mut row = None;
+        for _ in 0..20 {
+            while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing)
+                .await
+                .unwrap()
+            {}
+            row = store
+                .list(&ListTarget::Folder(inbox), None, 50)
+                .unwrap()
+                .into_iter()
+                .find(|r| r.subject == subject);
+            if row.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        }
+        let row = row.expect("the message arrived");
         store.apply(&[row.id], Action::Archive, 0).unwrap();
         store.apply(&[row.id], Action::Star, 0).unwrap();
         while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap() {

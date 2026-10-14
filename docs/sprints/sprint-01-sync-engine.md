@@ -93,12 +93,16 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
       Done across v4 (`size`, `body_state` with `wanted`) and v7 (`parts`, `list_id`, `list_unsubscribe`, `snippet`).
 
 ### Conversations
-- [ ] `threads` table: `id, account_id, subject_norm, last_date, first_date, message_count, unread_count, flagged, participants (JSON), snippet, labels (JSON cache)`.
-- [ ] Threading: by `References` / `In-Reply-To` chain → existing thread; else by normalised subject
+- [x] `threads` table: `id, account_id, subject_norm, last_date, first_date, message_count, unread_count, flagged, participants (JSON), snippet, labels (JSON cache)`.
+      Done differently (see Decisions): `Store::list_threads` computes each page from the messages; no table.
+- [x] Threading: by `References` / `In-Reply-To` chain → existing thread; else by normalised subject
       (strip `Re:`, `Fwd:`, `[list]`) within 7 days and overlapping participants; else new thread.
 - [ ] Gmail: when `X-GM-THRID` is present it is the thread key, no heuristics.
-- [ ] Keep `threads` in sync via store methods (not triggers) so the counts are right when a row moves or flips `seen`.
-- [ ] `store_bench`: add "thread list page" and "thread open" timings.
+      Moves with Gmail to the API path (package 12): the API's `threadId` plays this part.
+- [x] Keep `threads` in sync via store methods (not triggers) so the counts are right when a row moves or flips `seen`.
+      Nothing to keep in sync: counts are read when the page is drawn.
+- [x] `store_bench`: add "thread list page" and "thread open" timings.
+      50,000 messages, a third replies: page 0.32 ms (0.41 ms 100 pages deep), open a 19-message one 0.06 ms.
 
 ### Outbox
 - [x] `MOVE` (RFC 6851) when advertised, else `COPY` + `STORE \Deleted` + targeted `UID EXPUNGE` when supported. Without UIDPLUS, choose a conservative fallback; never globally EXPUNGE unrelated deleted mail.
@@ -135,6 +139,12 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   async-imap. Owner decided (2026-10-13), **provisionally: io-imap**, together with the Gmail API for Gmail.
   Confirm when the Gmail comparison runs. Conditions: pin exact versions, keep the `nom/alloc` workaround, keep
   every io-imap call inside one engine module so a later swap touches one file, send fixes upstream.
+- 2026-10-14 — **No `threads` table.** Conversation rows are computed per page: walk the folder newest first on
+  the list index until 50 conversations are found, then count each through the thread index. `store_bench` at
+  50,000 messages: 0.32 ms a page (target < 1 ms), 0.41 ms a hundred pages deep. A table would need every
+  move, flag change, expunge, undo and renumbering to update it in step, which is where counts go wrong; this
+  has nothing to drift. Revisit if a measured page goes over 1 ms (very long conversations spread over a big
+  folder are the case to watch).
 
 ## Log
 
@@ -211,3 +221,9 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   not file submissions. After a send, Tern now APPENDs the exact bytes it sent to the Sent folder, marked read
   (skipped for Gmail and Outlook, which do it themselves). Checked end to end on the dev server: one copy in Sent
   Items with the send's Message-ID.
+- 2026-10-14 — Conversations in the store. Mail with no References/In-Reply-To joins a conversation with the same
+  normalised subject (prefixes like Re:/Fwd:/AW:/Re[2]: and [list] tags removed) within 7 days that shares a
+  participant other than the account itself (schema v8, `messages.subject_norm`, filled in for existing rows).
+  `Store::list_threads` pages conversations (count, unread, starred, up to four participants); the UI moves to
+  it in package 02. Dev server: Stalwart's inbound limits (25 messages an hour per sender) are off in the dev
+  config, and the checks run one at a time; a session of testing had used up the hour.
