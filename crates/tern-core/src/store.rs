@@ -11,7 +11,10 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 12;
+const SCHEMA_VERSION: i64 = 13;
+/// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
+/// (for Undo) before its server copy goes.
+const DRAFT_REST: i64 = 30;
 /// Messages with the same normalised subject and a participant in common within this many seconds of each other
 /// join one conversation when nothing in their headers links them.
 const SUBJECT_WINDOW: i64 = 7 * 86_400;
@@ -184,6 +187,27 @@ fn migrate(conn: &Connection) -> Result<()> {
             // Mail HTML is sanitised when stored from now on; the step cleans what is already there (below).
             9 => "",
             // Muted conversations: new mail in them skips the inbox.
+            // Drafts being written: the payload is the Draft JSON; `message_id` (bare) ties it to its row in the
+            // Drafts folder and to its copy on the server (`server_*`, each save bumps `version`; the version on
+            // the server is `synced_version`).
+            12 => {
+                "CREATE TABLE drafts (
+                     id INTEGER PRIMARY KEY,
+                     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                     message_id TEXT NOT NULL,
+                     payload TEXT NOT NULL,
+                     updated_at INTEGER NOT NULL,
+                     version INTEGER NOT NULL DEFAULT 1,
+                     upload_now INTEGER NOT NULL DEFAULT 0,
+                     synced_version INTEGER,
+                     server_folder TEXT,
+                     server_validity INTEGER,
+                     server_uid INTEGER,
+                     discarded_at INTEGER,
+                     sent_at INTEGER
+                 );
+                 CREATE INDEX drafts_message ON drafts (account_id, message_id);"
+            }
             // What replies need from the original: its Cc, Reply-To, Mail-Followup-To and References.
             11 => {
                 "ALTER TABLE messages ADD COLUMN cc_addrs TEXT NOT NULL DEFAULT '';
@@ -899,6 +923,264 @@ impl Store {
         Ok(out)
     }
 
+    // MARK: Drafts
+
+    /// Saves what compose holds. The first save gives the draft its Message-ID, kept for every later version, its
+    /// server copies and the message finally sent. Also keeps the draft's row in the account's Drafts folder up to
+    /// date, so it shows there and in its conversation before the server has it. `upload_now` (compose closed)
+    /// skips the rest before the server copy is replaced. Saving a sent or discarded draft brings it back.
+    pub fn save_draft(
+        &self,
+        id: Option<i64>,
+        account_id: i64,
+        mut draft: Draft,
+        upload_now: bool,
+    ) -> Result<i64> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let existing: Option<String> = match id {
+            Some(id) => {
+                tx.query_row("SELECT payload FROM drafts WHERE id = ?1", [id], |r| r.get(0)).optional()?
+            }
+            None => None,
+        };
+        if let Some(payload) = &existing {
+            draft.message_id = serde_json::from_str::<Draft>(payload)?.message_id;
+        }
+        if draft.message_id.is_none() {
+            let email: String =
+                tx.query_row("SELECT email FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
+            draft.message_id =
+                Some(crate::smtp::new_message_id(email.rsplit_once('@').map_or("localhost", |p| p.1))?);
+        }
+        let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
+        let payload = serde_json::to_string(&draft)?;
+        let id = match (id, existing) {
+            (Some(id), Some(_)) => {
+                tx.execute(
+                    "UPDATE drafts SET payload = ?2, updated_at = ?3, upload_now = upload_now OR ?4, version = version + 1,
+                                       discarded_at = NULL, sent_at = NULL
+                     WHERE id = ?1",
+                    params![id, payload, now(), upload_now],
+                )?;
+                id
+            }
+            _ => {
+                tx.execute(
+                    "INSERT INTO drafts (account_id, message_id, payload, updated_at, upload_now) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![account_id, bare, payload, now(), upload_now],
+                )?;
+                tx.last_insert_rowid()
+            }
+        };
+        mirror_draft(&tx, account_id, &draft)?;
+        tx.commit()?;
+        Ok(id)
+    }
+
+    pub fn draft(&self, id: i64) -> Result<Option<DraftRecord>> {
+        let row: Option<(i64, String, i64)> = self
+            .conn()
+            .query_row("SELECT account_id, payload, updated_at FROM drafts WHERE id = ?1", [id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .optional()?;
+        row.map(|(account_id, payload, updated_at)| {
+            Ok(DraftRecord { id, account_id, draft: serde_json::from_str(&payload)?, updated_at })
+        })
+        .transpose()
+    }
+
+    /// The draft a message row stands for (a row in a Drafts folder, or a draft card in a conversation), if it is
+    /// one being written in Tern.
+    pub fn draft_for_message(&self, message: i64) -> Result<Option<DraftRecord>> {
+        let id: Option<i64> = self
+            .conn()
+            .query_row(
+                "SELECT d.id FROM drafts d JOIN messages m ON m.account_id = d.account_id AND m.message_id = d.message_id
+                 WHERE m.id = ?1 AND d.discarded_at IS NULL AND d.sent_at IS NULL",
+                [message],
+                |r| r.get(0),
+            )
+            .optional()?;
+        id.map(|id| self.draft(id)).transpose().map(Option::flatten)
+    }
+
+    /// Discards a draft. It leaves the Drafts folder at once; its server copy goes after DRAFT_REST seconds, until
+    /// when `undo_discard` brings it all back.
+    pub fn discard_draft(&self, id: i64) -> Result<()> {
+        let conn = self.conn();
+        conn.execute("UPDATE drafts SET discarded_at = ?2 WHERE id = ?1", params![id, now()])?;
+        unmirror_draft(&conn, id)
+    }
+
+    pub fn undo_discard(&self, id: i64) -> Result<bool> {
+        let Some(record) = self.draft(id)? else { return Ok(false) };
+        self.save_draft(Some(id), record.account_id, record.draft, false)?;
+        Ok(true)
+    }
+
+    /// The draft went into the outbox: it leaves the Drafts folder, and its server copy goes once the send is done.
+    pub fn draft_sent(&self, id: i64) -> Result<()> {
+        let conn = self.conn();
+        conn.execute("UPDATE drafts SET sent_at = ?2 WHERE id = ?1", params![id, now()])?;
+        unmirror_draft(&conn, id)
+    }
+
+    /// Turns a send that was refused into a draft again, for the person to fix and send (problems list "Edit").
+    pub fn problem_to_draft(&self, outbox_id: i64) -> Result<DraftRecord> {
+        let (account_id, payload): (i64, String) = self.conn().query_row(
+            "SELECT account_id, payload FROM outbox WHERE id = ?1 AND gave_up_at IS NOT NULL",
+            [outbox_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let OutboxOp::Send(draft) = serde_json::from_str(&payload)? else {
+            bail!("Only a send can be edited")
+        };
+        let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
+        let existing: Option<i64> = self
+            .conn()
+            .query_row(
+                "SELECT id FROM drafts WHERE account_id = ?1 AND message_id = ?2",
+                params![account_id, bare],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let id = self.save_draft(existing, account_id, draft, false)?;
+        self.conn().execute("DELETE FROM outbox WHERE id = ?1", [outbox_id])?;
+        Ok(self.draft(id)?.expect("just saved"))
+    }
+
+    /// The server work drafts of this account need now.
+    pub fn drafts_due(&self, account_id: i64) -> Result<Vec<DraftSync>> {
+        let conn = self.conn();
+        let folder: Option<String> = conn
+            .query_row(
+                "SELECT name FROM folders WHERE account_id = ?1 AND role = 'drafts'",
+                [account_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        struct Row {
+            id: i64,
+            bare: String,
+            payload: String,
+            updated_at: i64,
+            version: i64,
+            upload_now: bool,
+            synced: Option<i64>,
+            server_folder: Option<String>,
+            copy: Option<(u32, u32)>,
+            discarded: Option<i64>,
+            sent: Option<i64>,
+        }
+        let rows: Vec<Row> = conn
+            .prepare_cached(
+                "SELECT id, message_id, payload, updated_at, version, upload_now, synced_version, server_folder,
+                        server_validity, server_uid, discarded_at, sent_at
+                 FROM drafts WHERE account_id = ?1",
+            )?
+            .query_map([account_id], |r| {
+                Ok(Row {
+                    id: r.get(0)?,
+                    bare: r.get(1)?,
+                    payload: r.get(2)?,
+                    updated_at: r.get(3)?,
+                    version: r.get(4)?,
+                    upload_now: r.get(5)?,
+                    synced: r.get(6)?,
+                    server_folder: r.get(7)?,
+                    copy: r.get::<_, Option<u32>>(8)?.zip(r.get::<_, Option<u32>>(9)?),
+                    discarded: r.get(10)?,
+                    sent: r.get(11)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        // Outbox payloads are tagged {"kind": "send", ...the draft's fields}.
+        let mut sending = conn.prepare_cached(
+            "SELECT EXISTS (SELECT 1 FROM outbox WHERE account_id = ?1 AND json_extract(payload, '$.kind') = 'send'
+                            AND json_extract(payload, '$.messageId') IN (?2, '<' || ?2 || '>'))",
+        )?;
+        let mut due = Vec::new();
+        for row in rows {
+            let gone = match (row.discarded, row.sent) {
+                (Some(at), _) => at <= now() - DRAFT_REST,
+                // Sent: once the send has left the outbox (it went out).
+                (None, Some(_)) => {
+                    !sending.query_row(params![account_id, row.bare], |r| r.get::<_, bool>(0))?
+                }
+                (None, None) => false,
+            };
+            if gone {
+                due.push(DraftSync::Remove { id: row.id, folder: row.server_folder, copy: row.copy });
+                continue;
+            }
+            // Each save bumps the version; timestamps would miss two saves in one second.
+            let changed = row.synced.is_none_or(|s| s < row.version);
+            let rested = row.upload_now || row.updated_at <= now() - DRAFT_REST;
+            if row.discarded.is_none() && row.sent.is_none() && changed && rested {
+                if let Some(folder) = &folder {
+                    let previous =
+                        if row.server_folder.as_deref() == Some(folder.as_str()) { row.copy } else { None };
+                    due.push(DraftSync::Upload {
+                        id: row.id,
+                        draft: serde_json::from_str(&row.payload)?,
+                        version: row.version,
+                        folder: folder.clone(),
+                        previous,
+                    });
+                }
+            }
+        }
+        Ok(due)
+    }
+
+    /// `version` of the draft is on the server as `copy` (validity, uid), when the server said. The
+    /// draft's row in the Drafts folder takes that uid, or none so the folder's sync claims it by Message-ID.
+    pub fn draft_uploaded(
+        &self,
+        id: i64,
+        folder: &str,
+        version: i64,
+        copy: Option<(u32, u32)>,
+    ) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "UPDATE drafts SET synced_version = ?2, upload_now = 0, server_folder = ?3, server_validity = ?4,
+                               server_uid = ?5
+             WHERE id = ?1",
+            params![id, version, folder, copy.map(|c| c.0), copy.map(|c| c.1)],
+        )?;
+        let row: Option<(i64, i64)> = tx
+            .query_row(
+                "SELECT m.id, m.folder_id FROM drafts d
+                 JOIN messages m ON m.account_id = d.account_id AND m.message_id = d.message_id
+                 JOIN folders f ON f.id = m.folder_id AND f.role = 'drafts'
+                 WHERE d.id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        if let Some((message, folder_id)) = row {
+            if let Some((_, uid)) = copy {
+                tx.execute(
+                    "DELETE FROM messages WHERE folder_id = ?1 AND uid = ?2 AND id != ?3",
+                    params![folder_id, uid, message],
+                )?;
+            }
+            tx.execute("UPDATE messages SET uid = ?2 WHERE id = ?1", params![message, copy.map(|c| c.1)])?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The draft's server copy is gone (or it never had one): forget the draft.
+    pub fn draft_removed(&self, id: i64) -> Result<()> {
+        self.conn().execute("DELETE FROM drafts WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
     /// How a reply, reply-all or forward to this message starts (recipients, subject, threading, quote).
     ///
     /// Reply goes to Reply-To, else the sender; to a message this account sent, it goes back to its recipients.
@@ -1009,7 +1291,9 @@ impl Store {
     pub fn thread(&self, id: i64) -> Result<Vec<ThreadMessage>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(&format!(
-            "SELECT {ROW}, m.message_id, m.to_addrs, b.text, b.html, m.body_state = 'full', m.parts
+            "SELECT {ROW}, m.message_id, m.to_addrs, b.text, b.html, m.body_state = 'full', m.parts,
+                    (SELECT d.id FROM drafts d WHERE d.account_id = m.account_id AND d.message_id = m.message_id
+                       AND d.discarded_at IS NULL AND d.sent_at IS NULL)
              FROM messages m LEFT JOIN bodies b ON b.message_id = m.id
              WHERE m.account_id = (SELECT account_id FROM messages WHERE id = ?1)
                AND m.thread_id = (SELECT thread_id FROM messages WHERE id = ?1)
@@ -1026,6 +1310,7 @@ impl Store {
                     body_html: r.get(15)?,
                     body_loaded: r.get(16)?,
                     attachments: attachments_of(r.get::<_, Option<String>>(17)?.as_deref()),
+                    draft_id: r.get(18)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1468,6 +1753,86 @@ impl Store {
 }
 
 /// Puts the local store back as it was before `op`.
+/// A Message-ID without its angle brackets, as messages store them.
+fn bare_id(id: &str) -> String {
+    id.trim().trim_start_matches('<').trim_end_matches('>').to_string()
+}
+
+/// Puts a draft's current version in its account's Drafts folder as a message row (uid NULL until the server copy
+/// is there), so lists and its conversation show it. No Drafts folder: nothing to show it in.
+fn mirror_draft(tx: &Connection, account_id: i64, draft: &Draft) -> Result<()> {
+    let folder: Option<i64> = tx
+        .query_row("SELECT id FROM folders WHERE account_id = ?1 AND role = 'drafts'", [account_id], |r| {
+            r.get(0)
+        })
+        .optional()?;
+    let Some(folder_id) = folder else { return Ok(()) };
+    let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
+    let (email, name): (String, String) =
+        tx.query_row("SELECT email, display_name FROM accounts WHERE id = ?1", [account_id], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })?;
+    let snippet = crate::mime::snippet(&draft.body);
+    let to = draft.to.join(", ");
+    let existing: Option<i64> = tx
+        .query_row(
+            "SELECT id FROM messages WHERE account_id = ?1 AND folder_id = ?2 AND message_id = ?3",
+            params![account_id, folder_id, bare],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let id = match existing {
+        Some(id) => {
+            tx.execute(
+                "UPDATE messages SET subject = ?2, to_addrs = ?3, snippet = ?4, date = ?5, subject_norm = ?6 WHERE id = ?1",
+                params![id, draft.subject, to, snippet, now(), subject_norm(&draft.subject)],
+            )?;
+            id
+        }
+        None => {
+            let m = NewMessage {
+                message_id: Some(bare.clone()),
+                in_reply_to: draft.in_reply_to.as_deref().map(bare_id),
+                references: draft.references.iter().map(|r| bare_id(r)).collect(),
+                subject: draft.subject.clone(),
+                from_addr: email.clone(),
+                to_addrs: to.clone(),
+                date: now(),
+                ..Default::default()
+            };
+            let thread_id = thread_for(tx, account_id, folder_id, &m)?;
+            tx.execute(
+                "INSERT INTO messages (account_id, folder_id, uid, message_id, thread_id, subject, from_name, from_addr,
+                                       to_addrs, date, snippet, seen, body_state, subject_norm)
+                 VALUES (?1, ?2, NULL, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, 'full', ?11)",
+                params![
+                    account_id, folder_id, bare, thread_id, draft.subject, name, email, to, now(), snippet,
+                    subject_norm(&draft.subject)
+                ],
+            )?;
+            tx.last_insert_rowid()
+        }
+    };
+    tx.execute(
+        "INSERT OR REPLACE INTO bodies (message_id, text, html) VALUES (?1, ?2, NULL)",
+        params![id, draft.body],
+    )?;
+    Ok(())
+}
+
+/// Takes a draft's row out of the Drafts folder (sent or discarded).
+fn unmirror_draft(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute(
+        "DELETE FROM messages WHERE id IN (
+             SELECT m.id FROM drafts d
+             JOIN messages m ON m.account_id = d.account_id AND m.message_id = d.message_id
+             JOIN folders f ON f.id = m.folder_id AND f.role = 'drafts'
+             WHERE d.id = ?1)",
+        [id],
+    )?;
+    Ok(())
+}
+
 /// Every queued op of the account, in order.
 fn queued(conn: &Connection, account_id: i64) -> Result<Vec<OutboxOp>> {
     let mut stmt = conn.prepare_cached("SELECT payload FROM outbox WHERE account_id = ?1 ORDER BY id")?;
@@ -2092,6 +2457,83 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         assert_eq!(fwd.subject, "Fwd: Plan");
     }
 
+    fn draft_to(subject: &str) -> Draft {
+        Draft {
+            to: vec!["b@x".into()],
+            cc: vec![],
+            bcc: vec![],
+            subject: subject.into(),
+            body: "first words".into(),
+            in_reply_to: None,
+            references: vec![],
+            message_id: None,
+        }
+    }
+
+    #[test]
+    fn a_draft_shows_in_drafts_and_in_its_conversation() {
+        let (store, account, inbox, _) = setup();
+        let drafts = store.upsert_folder(account, "Drafts", "drafts").unwrap();
+        store.insert_messages(account, inbox, &[message(1, "plan", 10)]).unwrap();
+        let original = store.list(&ListTarget::Folder(inbox), None, 1).unwrap()[0].id;
+
+        let reply = Draft { in_reply_to: Some("1@example.com".into()), ..draft_to("Re: plan") };
+        let id = store.save_draft(None, account, reply.clone(), false).unwrap();
+        let again =
+            store.save_draft(Some(id), account, Draft { body: "more words".into(), ..reply }, false).unwrap();
+        assert_eq!(id, again);
+        let rows = store.list(&ListTarget::Folder(drafts), None, 9).unwrap();
+        assert_eq!(rows.len(), 1, "one row however often it is saved");
+        assert_eq!(rows[0].snippet, "more words");
+        let conversation = store.thread(original).unwrap();
+        assert_eq!(conversation.len(), 2, "the draft sits in the conversation it answers");
+        assert_eq!(conversation[1].draft_id, Some(id));
+        assert_eq!(store.draft_for_message(rows[0].id).unwrap().unwrap().id, id);
+
+        store.discard_draft(id).unwrap();
+        assert!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().is_empty());
+        assert!(store.undo_discard(id).unwrap());
+        assert_eq!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().len(), 1);
+        store.draft_sent(id).unwrap();
+        assert!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().is_empty());
+    }
+
+    #[test]
+    fn drafts_go_to_the_server_when_they_rest_and_leave_when_sent() {
+        let (store, account, _, _) = setup();
+        store.upsert_folder(account, "Drafts", "drafts").unwrap();
+        let id = store.save_draft(None, account, draft_to("hi"), false).unwrap();
+        assert!(store.drafts_due(account).unwrap().is_empty(), "still being typed");
+        store.save_draft(Some(id), account, draft_to("hi"), true).unwrap();
+        let due = store.drafts_due(account).unwrap();
+        let DraftSync::Upload { version, previous, .. } = &due[0] else { panic!("{due:?}") };
+        assert!(previous.is_none());
+        store.draft_uploaded(id, "Drafts", *version, Some((7, 41))).unwrap();
+        assert!(store.drafts_due(account).unwrap().is_empty(), "this version is up");
+
+        let draft = store.draft(id).unwrap().unwrap().draft;
+        store.queue_send(account, draft, 5).unwrap();
+        store.draft_sent(id).unwrap();
+        assert!(store.drafts_due(account).unwrap().is_empty(), "its copy stays while the send waits");
+        let work = store.claim_due(account).unwrap();
+        assert!(work.is_empty(), "still in the undo window");
+        store.conn().execute("DELETE FROM outbox", []).unwrap();
+        let due = store.drafts_due(account).unwrap();
+        assert!(matches!(&due[0], DraftSync::Remove { copy: Some((7, 41)), .. }), "{due:?}");
+    }
+
+    #[test]
+    fn a_refused_send_comes_back_as_a_draft() {
+        let (store, account, _, _) = setup();
+        let work = store.queue_send(account, draft_to("oops"), 0).unwrap();
+        store.claim_due(account).unwrap();
+        store.outbox_failed(work, "550 no such user", Failure::Permanent).unwrap();
+        let record = store.problem_to_draft(work).unwrap();
+        assert_eq!(record.draft.subject, "oops");
+        assert!(store.outbox_problems().unwrap().is_empty());
+        assert!(record.draft.message_id.is_some(), "keeps its Message-ID");
+    }
+
     #[test]
     fn settings_keep_their_json() {
         let store = Store::open_in_memory().unwrap();
@@ -2251,6 +2693,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                12 => "DROP TABLE drafts;",
                 11 => {
                     "ALTER TABLE messages DROP COLUMN cc_addrs; ALTER TABLE messages DROP COLUMN reply_to;
                      ALTER TABLE messages DROP COLUMN followup_to; ALTER TABLE messages DROP COLUMN refs;"

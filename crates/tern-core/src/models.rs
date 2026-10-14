@@ -108,6 +108,8 @@ pub struct ThreadMessage {
     pub body_loaded: bool,
     /// Files attached, as far as known (from BODYSTRUCTURE or the parsed body).
     pub attachments: Vec<Attachment>,
+    /// Set when this is a draft being written in Tern: compose reopens it.
+    pub draft_id: Option<i64>,
 }
 
 /// An attached file, for the strip under a message.
@@ -235,6 +237,25 @@ pub struct Draft {
     /// recipient (and to Tern, matching the copy in Sent).
     #[serde(default)]
     pub message_id: Option<String>,
+}
+
+/// A draft as compose last saved it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftRecord {
+    pub id: i64,
+    pub account_id: i64,
+    pub draft: Draft,
+    pub updated_at: i64,
+}
+
+/// What a pass does about one draft on the server.
+#[derive(Debug, Clone)]
+pub enum DraftSync {
+    /// Put this version in the Drafts folder, then delete the copy before it (`previous`: validity, uid).
+    Upload { id: i64, draft: Draft, version: i64, folder: String, previous: Option<(u32, u32)> },
+    /// The draft was sent or discarded: delete its server copy, if any, and forget it.
+    Remove { id: i64, folder: Option<String>, copy: Option<(u32, u32)> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
