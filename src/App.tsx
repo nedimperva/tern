@@ -327,13 +327,19 @@ export default function App() {
     void load();
   }
 
+  /** The account's signature with its "-- " line, or nothing. */
+  const signature = (accountId = accounts()[0]?.id) => {
+    const text = accountId == null ? "" : (settings.signatures[String(accountId)] ?? "").trim();
+    return text ? `-- \n${text}` : "";
+  };
+
   /** Opens a reply, reply-all or forward to `m`, set up by the engine from the message's headers. Replies sit
    * under the open conversation; a forward is a new message in its own dialog. */
   async function respond(m: ThreadMessage | undefined, kind: ReplyKind) {
     if (!m) return;
     const init = await api.replyInit(m.id, kind);
     const date = new Date(init.quoteDate * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-    const body =
+    const quote =
       kind === "forward"
         ? [
             "",
@@ -351,6 +357,9 @@ export default function App() {
             .split("\n")
             .map((l) => (l.startsWith(">") ? `>${l}` : `> ${l}`))
             .join("\n")}`;
+    // The signature goes above what is quoted or forwarded, unless set to go below a quote.
+    const sig = signature(init.accountId);
+    const body = !sig ? quote : kind !== "forward" && settings.signatureBelow ? `${quote}\n\n${sig}` : `\n\n${sig}${quote}`;
     setCompose({
       accountId: init.accountId,
       to: init.to,
@@ -548,7 +557,7 @@ export default function App() {
     { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
     { keys: "r", name: "Reply (or continue the draft)", context: "conversation", run: reply },
     { keys: "z", name: "Undo", run: undo },
-    { keys: "c", name: "Compose", run: () => setCompose({}) },
+    { keys: "c", name: "Compose", run: () => setCompose({ body: signature() ? `\n\n${signature()}` : "" }) },
     { keys: "/", name: "Search", run: () => searchInput.focus() },
     { keys: "Tab", name: "Next split", context: "list", run: () => nextSplit(1) },
     { keys: "Shift+Tab", name: "Previous split", context: "list", run: () => nextSplit(-1) },
@@ -848,7 +857,7 @@ export default function App() {
         />
       </Show>
       <Show when={settingsOpen()}>
-        <SettingsPage onClose={() => setSettingsOpen(false)} />
+        <SettingsPage accounts={accounts()} onClose={() => setSettingsOpen(false)} />
       </Show>
       <Show when={perf()}>
         <PerfOverlay />

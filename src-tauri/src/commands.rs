@@ -3,8 +3,9 @@
 use tauri::{AppHandle, Emitter, Manager, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
-    secrets, sync, Account, AccountConfig, Action, Applied, Cursor, Draft, DraftRecord, Folder, ListTarget,
-    MessageRow, OutboxProblem, OutgoingAttachment, ReplyInit, ReplyKind, ThreadMessage, ThreadRow,
+    secrets, sync, Account, AccountConfig, Action, Applied, Contact, Cursor, Draft, DraftRecord, Folder,
+    ListTarget, MessageRow, OutboxProblem, OutgoingAttachment, ReplyInit, ReplyKind, ThreadMessage,
+    ThreadRow,
 };
 
 use std::collections::HashMap;
@@ -310,4 +311,10 @@ fn mime_for(name: &str) -> &'static str {
         "mp4" => "video/mp4",
         _ => "application/octet-stream",
     }
+}
+
+/// Recipients to suggest for what is typed in a To, Cc or Bcc field.
+#[tauri::command]
+pub async fn contacts(state: State<'_, AppState>, query: String) -> Reply<Vec<Contact>> {
+    state.store.contacts(&query, 5).map_err(text)
 }

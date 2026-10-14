@@ -808,6 +808,39 @@ button.fold {
   background: transparent;
   padding: var(--s-1) 0;
 }
+.compose .recipients {
+  position: relative;
+}
+.suggestions {
+  position: absolute;
+  left: 64px;
+  top: 100%;
+  z-index: 5;
+  min-width: 320px;
+  margin: 0;
+  padding: var(--s-1);
+  list-style: none;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+.suggestions li {
+  display: flex;
+  gap: var(--s-2);
+  align-items: baseline;
+  padding: 6px var(--s-2);
+  border-radius: var(--r-sm);
+  font-size: var(--t-md);
+  cursor: default;
+}
+.suggestions li.pointed {
+  background: var(--accent-soft);
+}
+.suggestions .addr {
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
 .compose .chip {
   display: inline-flex;
   align-items: center;
@@ -1020,6 +1053,14 @@ button.fold {
 }
 .setting .title {
   font-size: var(--t-rd);
+}
+.setting.signature {
+  grid-template-columns: 1fr;
+}
+.setting.signature textarea {
+  width: 100%;
+  resize: vertical;
+  font: var(--t-rd) / 1.5 var(--font);
 }
 .setting .help {
   grid-column: 1 / -1;

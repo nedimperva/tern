@@ -245,6 +245,14 @@ pub struct Draft {
     pub message_id: Option<String>,
 }
 
+/// Someone to suggest as a recipient.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Contact {
+    pub email: String,
+    pub name: String,
+}
+
 /// A file attached to a draft, as Tern keeps it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
