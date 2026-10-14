@@ -222,6 +222,12 @@ pub enum OutboxOp {
         waiting: Vec<i64>,
     },
     Send(Draft),
+    /// A copy of a sent message for the Sent folder, exactly as it went out.
+    Append {
+        folder: String,
+        subject: String,
+        message: String,
+    },
 }
 
 /// Where a folder's sync stands, kept between passes.
