@@ -180,3 +180,14 @@ pub async fn settings(state: State<'_, AppState>) -> Reply<HashMap<String, serde
 pub async fn set_setting(state: State<'_, AppState>, key: String, value: serde_json::Value) -> Reply<()> {
     state.store.set_setting(&key, &value).map_err(text)
 }
+
+/// Mutes or unmutes the conversations of these messages (muting does not archive; the UI does that too).
+#[tauri::command]
+pub async fn mute(state: State<'_, AppState>, ids: Vec<i64>, mute: bool) -> Reply<()> {
+    state.store.mute(&ids, mute).map_err(text)
+}
+
+#[tauri::command]
+pub async fn muted(state: State<'_, AppState>, id: i64) -> Reply<bool> {
+    state.store.muted(id).map_err(text)
+}

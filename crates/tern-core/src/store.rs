@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 10;
+const SCHEMA_VERSION: i64 = 11;
 /// Messages with the same normalised subject and a participant in common within this many seconds of each other
 /// join one conversation when nothing in their headers links them.
 const SUBJECT_WINDOW: i64 = 7 * 86_400;
@@ -183,6 +183,9 @@ fn migrate(conn: &Connection) -> Result<()> {
             8 => "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
             // Mail HTML is sanitised when stored from now on; the step cleans what is already there (below).
             9 => "",
+            // Muted conversations: new mail in them skips the inbox.
+            10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                       thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
         };
         conn.execute_batch(&format!("BEGIN; {step};"))?;
@@ -802,6 +805,50 @@ impl Store {
         Ok(out)
     }
 
+    /// Mutes the conversations of these messages: they leave the inbox now (see `apply`), and mail that arrives in
+    /// them later skips it (`archive_muted`).
+    pub fn mute(&self, ids: &[i64], mute: bool) -> Result<()> {
+        let conn = self.conn();
+        for id in ids {
+            let sql = if mute {
+                "INSERT OR IGNORE INTO muted (account_id, thread_id) SELECT account_id, thread_id FROM messages WHERE id = ?1"
+            } else {
+                "DELETE FROM muted WHERE (account_id, thread_id) = (SELECT account_id, thread_id FROM messages WHERE id = ?1)"
+            };
+            conn.execute(sql, [id])?;
+        }
+        Ok(())
+    }
+
+    /// Whether the conversation of this message is muted.
+    pub fn muted(&self, id: i64) -> Result<bool> {
+        Ok(self.conn().query_row(
+            "SELECT EXISTS (SELECT 1 FROM muted u JOIN messages m USING (account_id, thread_id) WHERE m.id = ?1)",
+            [id],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Archives messages in an inbox folder whose conversation is muted (new replies to it). Returns whether any
+    /// were; the move goes to the server through the outbox like any archive.
+    pub fn archive_muted(&self, folder_id: i64) -> Result<bool> {
+        let ids: Vec<i64> = {
+            let conn = self.conn();
+            let mut stmt = conn.prepare_cached(
+                "SELECT m.id FROM messages m JOIN folders f ON f.id = m.folder_id
+                 JOIN muted u ON u.account_id = m.account_id AND u.thread_id = m.thread_id
+                 WHERE m.folder_id = ?1 AND f.role = 'inbox' AND m.uid IS NOT NULL",
+            )?;
+            let ids = stmt.query_map([folder_id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+            ids
+        };
+        if ids.is_empty() {
+            return Ok(false);
+        }
+        self.apply(&ids, Action::Archive, 0)?;
+        Ok(true)
+    }
+
     /// What an action on whole conversations touches. Each id is a message standing for its conversation (the
     /// newest one in a list row). Archive and Trash take the conversation's messages in `target`, the folder the
     /// person is looking at; read and unread take the whole conversation wherever it is; a star goes on that one
@@ -813,7 +860,7 @@ impl Store {
         let same_conversation = "SELECT m.id FROM messages m, messages o
              WHERE o.id = ?1 AND m.account_id = o.account_id AND m.thread_id = o.thread_id";
         let (sql, key) = match (action, target) {
-            (Action::Archive | Action::Trash, _) => {
+            (action, _) if action.moves() => {
                 // Done from the Starred split takes the conversation out of the inbox, starred or not.
                 let inbox = ListTarget::Role("inbox".into());
                 let place =
@@ -959,21 +1006,39 @@ impl Store {
                         waiting,
                     }
                 }
-                Action::Archive | Action::Trash => {
-                    // Gmail has no Archive folder: archiving there is a move to All Mail.
-                    let roles =
-                        if action == Action::Archive { ["archive", "all"] } else { ["trash", "trash"] };
-                    let dest: Option<(i64, String)> = tx
-                        .query_row(
-                            "SELECT id, name FROM folders WHERE account_id = ?1 AND role IN (?2, ?3)
-                             ORDER BY role = ?2 DESC LIMIT 1",
-                            params![account_id, roles[0], roles[1]],
-                            |r| Ok((r.get(0)?, r.get(1)?)),
-                        )
-                        .optional()?;
-                    let Some((dest_id, dest)) = dest else {
-                        bail!("This account has no {} folder", roles[0]);
+                Action::Archive | Action::Trash | Action::Junk | Action::Inbox | Action::MoveTo(_) => {
+                    let dest: Option<(i64, String)> = match action {
+                        Action::MoveTo(folder) => tx
+                            .query_row(
+                                "SELECT id, name FROM folders WHERE id = ?1 AND account_id = ?2",
+                                params![folder, account_id],
+                                |r| Ok((r.get(0)?, r.get(1)?)),
+                            )
+                            .optional()?,
+                        _ => {
+                            // Gmail has no Archive folder: archiving there is a move to All Mail.
+                            let roles = match action {
+                                Action::Archive => ["archive", "all"],
+                                Action::Trash => ["trash", "trash"],
+                                Action::Junk => ["junk", "junk"],
+                                _ => ["inbox", "inbox"],
+                            };
+                            let found = tx
+                                .query_row(
+                                    "SELECT id, name FROM folders WHERE account_id = ?1 AND role IN (?2, ?3)
+                                     ORDER BY role = ?2 DESC LIMIT 1",
+                                    params![account_id, roles[0], roles[1]],
+                                    |r| Ok((r.get(0)?, r.get(1)?)),
+                                )
+                                .optional()?;
+                            if found.is_none() {
+                                bail!("This account has no {} folder", roles[0]);
+                            }
+                            found
+                        }
                     };
+                    // A folder of another account: these messages stay where they are.
+                    let Some((dest_id, dest)) = dest else { continue };
                     if dest_id == folder_id {
                         continue;
                     }
@@ -1793,6 +1858,42 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     }
 
     #[test]
+    fn moves_to_any_folder_junk_and_back_to_the_inbox() {
+        let (store, account, inbox, archive) = setup();
+        let junk = store.upsert_folder(account, "Junk", "junk").unwrap();
+        store.insert_messages(account, inbox, &[message(1, "a", 1)]).unwrap();
+        let id = store.list(&ListTarget::Folder(inbox), None, 1).unwrap()[0].id;
+        store.apply(&[id], Action::Junk, 5).unwrap();
+        assert_eq!(store.list(&ListTarget::Folder(junk), None, 5).unwrap().len(), 1);
+        store.apply(&[id], Action::MoveTo(archive), 5).unwrap();
+        assert_eq!(store.list(&ListTarget::Folder(archive), None, 5).unwrap().len(), 1);
+        store.apply(&[id], Action::Inbox, 5).unwrap();
+        assert_eq!(store.list(&ListTarget::Folder(inbox), None, 5).unwrap().len(), 1);
+        let other = store.add_account(&AccountConfig { email: "b@x".into(), ..config() }).unwrap().id;
+        let theirs = store.upsert_folder(other, "Archive", "archive").unwrap();
+        let applied = store.apply(&[id], Action::MoveTo(theirs), 5).unwrap();
+        assert!(applied.token.is_empty(), "no move across accounts");
+    }
+
+    #[test]
+    fn muted_conversations_skip_the_inbox() {
+        let (store, account, inbox, archive) = setup();
+        store.insert_messages(account, inbox, &[message(1, "a", 1)]).unwrap();
+        let id = store.list(&ListTarget::Folder(inbox), None, 1).unwrap()[0].id;
+        store.mute(&[id], true).unwrap();
+        assert!(store.muted(id).unwrap());
+        let reply = NewMessage { in_reply_to: Some("1@example.com".into()), ..message(2, "re a", 2) };
+        store.insert_messages(account, inbox, &[reply, message(3, "other", 3)]).unwrap();
+        assert!(store.archive_muted(inbox).unwrap());
+        let left: Vec<String> =
+            store.list(&ListTarget::Folder(inbox), None, 9).unwrap().into_iter().map(|r| r.subject).collect();
+        assert_eq!(left, ["other"]);
+        assert_eq!(store.list(&ListTarget::Folder(archive), None, 9).unwrap().len(), 2);
+        store.mute(&[id], false).unwrap();
+        assert!(!store.muted(id).unwrap());
+    }
+
+    #[test]
     fn settings_keep_their_json() {
         let store = Store::open_in_memory().unwrap();
         store.set_setting("theme", &serde_json::json!("dark")).unwrap();
@@ -1949,6 +2050,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                10 => "DROP TABLE muted;",
                 // Step 9 only changed data.
                 9 => "",
                 8 => "DROP TABLE settings;",

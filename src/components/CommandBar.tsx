@@ -1,6 +1,13 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { batch, createMemo, createSignal, For, Show } from "solid-js";
 
-export type Command = { name: string; keys?: string; group?: string; run: () => void };
+export type Command = {
+  name: string;
+  keys?: string;
+  group?: string;
+  run?: () => void;
+  /** A command that needs a choice ("Move to …"): Enter or Tab shows these instead, under its name. */
+  args?: () => Command[];
+};
 
 /**
  * How well `query` matches `text`, and where: a prefix beats letters that start words ("gti" → "Go To Inbox"),
@@ -65,23 +72,27 @@ function Marked(props: { text: string; at: number[] }) {
 }
 
 /** Ctrl+K: every command, found by typing a few letters of it (docs/design/ui.md §4.3). */
-export function CommandBar(props: { commands: Command[]; onClose: () => void }) {
+export function CommandBar(props: { commands: Command[]; onClose: () => void; /** Open in this command's choices. */ start?: string }) {
   const [query, setQuery] = createSignal("");
   const [index, setIndex] = createSignal(0);
+  // The command whose choices are showing, if any (argument mode, §4.3).
+  const [parent, setParent] = createSignal<Command | null>(props.commands.find((c) => c.name === props.start && c.args) ?? null);
   const remembered = recent();
+  const list = () => parent()?.args?.() ?? props.commands;
 
   const matches = createMemo(() => {
     const q = query().trim();
+    if (parent() && !q) return list().map((c) => ({ c, at: [] as number[], group: "" }));
     if (!q) {
       // Recent first, then everything in its group's order.
-      const byName = new Map(props.commands.map((c) => [c.name, c]));
+      const byName = new Map(list().map((c) => [c.name, c]));
       const first = remembered.flatMap((n) => byName.get(n) ?? []).map((c) => ({ c, at: [], group: "Recent" }));
-      const rest = props.commands
+      const rest = list()
         .filter((c) => !remembered.includes(c.name))
         .map((c) => ({ c, at: [] as number[], group: c.group ?? "Actions" }));
       return [...first, ...rest];
     }
-    return props.commands
+    return list()
       .flatMap((c) => {
         const m = fuzzy(c.name, q);
         // A command run before gets a little ahead of an equal match.
@@ -90,15 +101,23 @@ export function CommandBar(props: { commands: Command[]; onClose: () => void }) 
       .sort((a, b) => b.score - a.score);
   });
 
+  const enter = (c: Command) => {
+    remember(c.name);
+    batch(() => (setParent(c), setQuery(""), setIndex(0)));
+  };
+
   const run = (c?: Command) => {
     if (!c) return;
-    remember(c.name);
+    if (c.args) return enter(c);
+    if (!parent()) remember(c.name);
     props.onClose();
-    c.run();
+    c.run?.();
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") props.onClose();
+    // Esc steps back out of a command's choices before it closes the palette.
+    if (e.key === "Escape") parent() && !props.start ? batch(() => (setParent(null), setQuery(""), setIndex(0))) : props.onClose();
+    else if (e.key === "Tab" && matches()[index()]?.c.args) enter(matches()[index()].c);
     else if (e.key === "ArrowDown" || (e.key === "n" && e.ctrlKey)) setIndex(Math.min(index() + 1, matches().length - 1));
     else if (e.key === "ArrowUp" || (e.key === "p" && e.ctrlKey)) setIndex(Math.max(index() - 1, 0));
     else if (e.key === "Enter") run(matches()[index()]?.c);
@@ -110,13 +129,18 @@ export function CommandBar(props: { commands: Command[]; onClose: () => void }) 
   return (
     <div class="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <div class="command-bar" role="dialog" aria-label="Commands">
-        <input
-          ref={(el) => queueMicrotask(() => el.focus())}
-          placeholder="Type a command"
-          value={query()}
-          onInput={(e) => (setQuery(e.currentTarget.value), setIndex(0))}
-          onKeyDown={onKeyDown}
-        />
+        <div class="head">
+          <Show when={parent()}>
+            <span class="context">{parent()!.name.replace(/ …$/, "")}</span>
+          </Show>
+          <input
+            ref={(el) => queueMicrotask(() => el.focus())}
+            placeholder={parent() ? "Choose" : "Type a command"}
+            value={query()}
+            onInput={(e) => (setQuery(e.currentTarget.value), setIndex(0))}
+            onKeyDown={onKeyDown}
+          />
+        </div>
         <ul>
           <For each={matches()} fallback={<li class="none">No command matches</li>}>
             {(m, i) => (

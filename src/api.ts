@@ -52,7 +52,19 @@ export type ThreadRow = MessageRow & {
 };
 /** Where an account's sync stands. */
 export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed";
-export type Action = "archive" | "trash" | "markRead" | "markUnread" | "star" | "unstar";
+/** "junk" marks spam; "inbox" is Mark Not Done; `moveTo` takes a folder id (folders of other accounts are skipped). */
+export type Action =
+  | "archive"
+  | "trash"
+  | "junk"
+  | "inbox"
+  | { moveTo: number }
+  | "markRead"
+  | "markUnread"
+  | "star"
+  | "unstar";
+/** Whether the action moves mail to another folder, so the list it is in loses it. */
+export const moves = (a: Action) => typeof a === "object" || a === "archive" || a === "trash" || a === "junk" || a === "inbox";
 export type Target = { folder: number } | { role: string };
 export type Cursor = { date: number; id: number };
 export type Draft = { to: string[]; cc?: string[]; subject: string; body: string; inReplyTo?: string | null };
@@ -98,6 +110,9 @@ export interface Api {
   /** Drops the work and puts the mailbox back as it was before it, as undo would. */
   discardProblem(id: number): Promise<void>;
   onChange(f: () => void): void;
+  /** Mutes (or unmutes) the conversations of these messages: later replies skip the inbox. */
+  mute(ids: number[], mute: boolean): Promise<void>;
+  muted(id: number): Promise<boolean>;
   /** Settings the person changed, by name; the UI holds the defaults. */
   settings(): Promise<Record<string, unknown>>;
   setSetting(key: string, value: unknown): Promise<void>;
@@ -127,6 +142,8 @@ const tauri: Api = {
   send: (accountId, draft) => invoke("send", { accountId, draft }),
   onChange: (f) => void listen("mail-changed", f),
   syncStates: () => invoke("sync_states"),
+  mute: (ids, mute) => invoke("mute", { ids, mute }),
+  muted: (id) => invoke("muted", { id }),
   settings: () => invoke("settings"),
   setSetting: (key, value) => invoke("set_setting", { key, value }),
   checkFolder: (id) => invoke("check_folder", { id }),
@@ -158,7 +175,10 @@ function fake(): Api {
     { id: 2, accountId: 1, name: "Archive", role: "archive", unread: 0 },
     { id: 3, accountId: 1, name: "Sent", role: "sent", unread: 0 },
     { id: 4, accountId: 1, name: "Trash", role: "trash", unread: 0 },
+    { id: 5, accountId: 1, name: "Junk", role: "junk", unread: 0 },
+    { id: 6, accountId: 1, name: "Receipts", role: "other", unread: 0 },
   ];
+  const mutedThreads = new Set<string>();
   // Open the page with #big for a mailbox the size the performance targets are set for (about 10,000 conversations).
   const size = location.hash === "#big" ? 25_000 : 5000;
   let messages: ThreadMessage[] = Array.from({ length: size }, (_, i) => {
@@ -170,7 +190,8 @@ function fake(): Api {
     return {
       id: i + 1,
       accountId: 1,
-      folderId: i % 9 === 0 ? 2 : 1,
+      // #empty: everything archived, to see Inbox Zero.
+      folderId: i % 9 === 0 || location.hash === "#empty" ? 2 : 1,
       // Every fifth message starts a conversation that the next two answer.
       threadId: i % 5 < 3 ? `t${i - (i % 5)}` : `t${i}`,
       subject,
@@ -269,7 +290,7 @@ function fake(): Api {
       const members = (keep: (m: ThreadMessage) => boolean) =>
         messages.filter((m) => threads.has(m.threadId) && keep(m)).map((m) => m.id);
       const chosen =
-        action === "archive" || action === "trash"
+        moves(action)
           ? members((m) => inTarget(m, "role" in target && target.role === "starred" ? { role: "inbox" } : target))
           : action === "unstar"
             ? members((m) => m.flagged)
@@ -287,7 +308,10 @@ function fake(): Api {
     },
     apply: async (ids, action) => {
       const before = messages.map((m) => ({ ...m }));
-      const dest = action === "archive" ? 2 : action === "trash" ? 4 : null;
+      const dest =
+        typeof action === "object"
+          ? action.moveTo
+          : ({ archive: 2, trash: 4, junk: 5, inbox: 1 } as Record<string, number>)[action] ?? null;
       messages = messages.map((m) => {
         if (!ids.includes(m.id)) return m;
         if (dest) return { ...m, folderId: dest };
@@ -324,6 +348,13 @@ function fake(): Api {
     syncStates: async () => ({ 1: location.hash === "#offline" ? "offline" : "idle" }),
     onSyncState: () => {},
     checkFolder: async () => {},
+    mute: async (ids, mute) => {
+      for (const m of messages.filter((m) => ids.includes(m.id))) {
+        if (mute) mutedThreads.add(m.threadId);
+        else mutedThreads.delete(m.threadId);
+      }
+    },
+    muted: async (id) => mutedThreads.has(messages.find((m) => m.id === id)?.threadId ?? ""),
     // The browser fake keeps settings in this window's storage.
     settings: async () => {
       try {
