@@ -5,7 +5,8 @@ mod commands;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, WindowEvent};
+use tern_core::sync::SyncState;
 use tern_core::{secrets, sync, Account, Store};
 use tokio::sync::Notify;
 
@@ -16,11 +17,28 @@ pub struct AppState {
     pub store: Arc<Store>,
     /// One per account: notify to make its sync worker look at the outbox now.
     pub wakers: Mutex<HashMap<i64, Arc<Notify>>>,
+    /// The last `SyncState` each account's worker reported, for a window that asks after the event went out.
+    pub states: Arc<Mutex<HashMap<i64, SyncState>>>,
+}
+
+/// What the "sync-state" event carries.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StateEvent {
+    account_id: i64,
+    state: SyncState,
 }
 
 impl AppState {
     pub fn wake(&self, account_id: i64) {
         if let Some(waker) = self.wakers.lock().unwrap().get(&account_id) {
+            waker.notify_one();
+        }
+    }
+
+    /// Every account looks now: the window got focus, so the person is about to look at their mail.
+    pub fn wake_all(&self) {
+        for waker in self.wakers.lock().unwrap().values() {
             waker.notify_one();
         }
     }
@@ -32,6 +50,7 @@ pub fn start_account(app: &AppHandle, state: &AppState, account: Account) {
         Ok(p) => p,
         Err(e) => {
             log::error!("{e:#}");
+            state.states.lock().unwrap().insert(account.id, SyncState::AuthFailed);
             return;
         }
     };
@@ -41,7 +60,19 @@ pub fn start_account(app: &AppHandle, state: &AppState, account: Account) {
     let on_change: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
         let _ = handle.emit("mail-changed", ());
     });
-    tauri::async_runtime::spawn(sync::run_account(state.store.clone(), account, password, wake, on_change));
+    let (handle, states, account_id) = (app.clone(), state.states.clone(), account.id);
+    let on_state: Arc<dyn Fn(SyncState) + Send + Sync> = Arc::new(move |s| {
+        states.lock().unwrap().insert(account_id, s);
+        let _ = handle.emit("sync-state", StateEvent { account_id, state: s });
+    });
+    tauri::async_runtime::spawn(sync::run_account(
+        state.store.clone(),
+        account,
+        password,
+        wake,
+        on_change,
+        on_state,
+    ));
 }
 
 fn main() {
@@ -60,13 +91,21 @@ fn main() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
-            let state =
-                AppState { store: Arc::new(Store::open(&dir.join("mail.db"))?), wakers: Default::default() };
+            let state = AppState {
+                store: Arc::new(Store::open(&dir.join("mail.db"))?),
+                wakers: Default::default(),
+                states: Default::default(),
+            };
             for account in state.store.accounts()? {
                 start_account(app.handle(), &state, account);
             }
             app.manage(state);
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::Focused(true) = event {
+                window.state::<AppState>().wake_all();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::accounts,
@@ -82,6 +121,7 @@ fn main() {
             commands::problems,
             commands::retry_problem,
             commands::discard_problem,
+            commands::sync_states,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tern");
