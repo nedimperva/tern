@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 /// Tries before queued work stops retrying and waits for the person.
 const MAX_ATTEMPTS: i64 = 5;
 
@@ -154,6 +154,12 @@ fn migrate(conn: &Connection) -> Result<()> {
                 "ALTER TABLE messages ADD COLUMN size INTEGER;
                  ALTER TABLE messages ADD COLUMN body_state TEXT NOT NULL DEFAULT 'full';
                  CREATE INDEX messages_bodyless ON messages (folder_id, date DESC) WHERE body_state != 'full';"
+            }
+            // Text-only mail was stored with the HTML mail-parser makes from it, which the reader shows on white.
+            // Drop exactly that generated HTML; anything a sender wrote stays.
+            4 => {
+                "UPDATE bodies SET html = NULL WHERE text IS NOT NULL AND html = '<html><body>' ||
+                   replace(replace(replace(text, char(13), ''), '<', '&lt;'), char(10), '<br/>') || '</body></html>';"
             }
             _ => unreachable!("no migration from schema {from}"),
         };
@@ -1159,6 +1165,38 @@ mod tests {
         let fresh = Store::open_in_memory().unwrap();
         let migrated = Store::init(schema_1_with_accounts()).unwrap();
         assert_eq!(columns(&fresh), columns(&migrated));
+    }
+
+    #[test]
+    fn migration_5_drops_only_generated_html() {
+        // A current database with two bodies in it, wound back to schema 4.
+        let store = Store::open_in_memory().unwrap();
+        let account = store.add_account(&config()).unwrap().id;
+        let folder = store.upsert_folder(account, "INBOX", "inbox").unwrap();
+        store.insert_messages(account, folder, &[message(1, "a", 1), message(2, "b", 2)]).unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        conn.execute_batch("DELETE FROM bodies; PRAGMA user_version = 4;").unwrap();
+        let generated = mail_parser::MessageParser::default()
+            .parse(b"Subject: x\r\n\r\na < b\r\nline two\r\n".as_slice())
+            .unwrap()
+            .body_html(0)
+            .unwrap()
+            .into_owned();
+        conn.execute(
+            "INSERT INTO bodies (message_id, text, html) VALUES (1, ?1, ?2), (2, 'hi', '<p>hi</p>')",
+            params!["a < b\r\nline two\r\n", generated],
+        )
+        .unwrap();
+        let store = Store::init(conn).unwrap();
+        let html: Vec<Option<String>> = store
+            .conn()
+            .prepare("SELECT html FROM bodies ORDER BY message_id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(html, [None, Some("<p>hi</p>".to_string())]);
     }
 
     #[test]

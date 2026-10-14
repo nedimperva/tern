@@ -256,6 +256,8 @@ button.primary kbd {
 
 .reading-pane {
   overflow-y: auto;
+  /* Classic scrollbars (Windows) would otherwise narrow the pane as a message grows, reflow it, and loop. */
+  scrollbar-gutter: stable;
   min-width: 0;
 }
 .empty {

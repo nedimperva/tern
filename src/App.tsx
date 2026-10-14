@@ -1,4 +1,5 @@
 import { batch, createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 import { api, type Account, type Action, type Folder, type MessageRow as Row, type OutboxProblem, type Target, type ThreadMessage } from "./api";
 import { AccountSetup } from "./components/AccountSetup";
 import { ProblemsDialog, ProblemsStrip } from "./components/Problems";
@@ -31,7 +32,10 @@ export default function App() {
   const [rows, setRows] = createSignal<Row[]>([]);
   const [selected, setSelected] = createSignal(0);
   const [query, setQuery] = createSignal("");
-  const [thread, setThread] = createSignal<ThreadMessage[]>([]);
+  // Sync reloads the open thread on every change. Reconciling by id keeps unchanged messages as they are, so their
+  // HTML frames are not rebuilt (which flickered, most visibly on Windows).
+  const [thread, setThreadStore] = createStore<ThreadMessage[]>([]);
+  const setThread = (t: ThreadMessage[]) => setThreadStore(reconcile(t, { key: "id" }));
   const [toast, setToast] = createSignal<{ text: string; token: number[] } | null>(null);
   const [compose, setCompose] = createSignal<ComposeInit | null>(null);
   const [palette, setPalette] = createSignal(false);
@@ -191,7 +195,7 @@ export default function App() {
   const commands = createMemo<Command[]>(() => [
     { name: "Compose", keys: "c", run: () => setCompose({}) },
     { name: "Search", keys: "/", run: () => searchInput.focus() },
-    { name: "Reply", keys: "r", run: () => thread().length && reply(thread()[thread().length - 1]) },
+    { name: "Reply", keys: "r", run: () => thread.length && reply(thread[thread.length - 1]) },
     { name: "Archive", keys: "e", run: () => act("archive") },
     { name: "Move to Trash", keys: "#", run: () => act("trash") },
     { name: "Mark as read", keys: "Shift I", run: () => act("markRead") },
@@ -235,7 +239,7 @@ export default function App() {
       U: () => act("markUnread"),
       z: undo,
       c: () => setCompose({}),
-      r: () => thread().length && reply(thread()[thread().length - 1]),
+      r: () => thread.length && reply(thread[thread.length - 1]),
       "/": () => searchInput.focus(),
       Escape: () => query() && setQuery(""),
       "g i": () => go({ role: "inbox" }),
@@ -333,8 +337,8 @@ export default function App() {
       </main>
 
       <section class="reading-pane">
-        <Show when={thread().length} fallback={<div class="empty">No message selected</div>}>
-          <ThreadView messages={thread()} onReply={reply} />
+        <Show when={thread.length} fallback={<div class="empty">No message selected</div>}>
+          <ThreadView messages={thread} onReply={reply} />
         </Show>
       </section>
 
