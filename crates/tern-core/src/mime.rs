@@ -1,6 +1,6 @@
 use mail_parser::{HeaderValue, MessageParser, PartType};
 
-use crate::models::NewMessage;
+use crate::models::{NewMessage, Part};
 
 /// Parses one raw RFC 5322 message. None when it is not mail at all.
 pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessage> {
@@ -41,7 +41,17 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
         body_html,
         size: None,
         headers_only: false,
+        list_id: raw_header(&msg, "List-Id"),
+        list_unsubscribe: raw_header(&msg, "List-Unsubscribe"),
+        parts: None,
     })
+}
+
+/// A header's raw value on one line, for the fields mail-parser does not model (List-*).
+fn raw_header(msg: &mail_parser::Message, name: &str) -> Option<String> {
+    let value = msg.header_raw(name)?;
+    let one_line = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!one_line.is_empty()).then_some(one_line)
 }
 
 /// Parses just the header block of a message (from a HEADER.FIELDS fetch): enough for the list, no body yet.
@@ -51,15 +61,35 @@ pub fn parse_headers(
     seen: bool,
     flagged: bool,
     size: Option<u32>,
+    parts: Option<Vec<Part>>,
 ) -> Option<NewMessage> {
     let mut m = parse(uid, header, seen, flagged)?;
     m.snippet.clear();
     m.body_text = None;
     m.body_html = None;
-    m.has_attachments = false;
+    // BODYSTRUCTURE says whether there are attachments before the body comes.
+    m.has_attachments = parts.as_ref().is_some_and(|p| p.iter().any(|p| p.attachment));
+    m.parts = parts;
     m.size = size;
     m.headers_only = true;
     Some(m)
+}
+
+/// A snippet from the first bytes of a text part (fetched alone, so without its MIME headers): decoded per the
+/// part's transfer encoding and charset, HTML turned into text. The cut may fall mid-character or mid-word; the
+/// decoders tolerate it and the snippet is cut shorter anyway.
+pub fn part_snippet(part: &Part, start: &[u8]) -> String {
+    let charset = part.charset.as_deref().unwrap_or("us-ascii").replace('"', "");
+    let mut raw = format!(
+        "Content-Type: {}; charset=\"{charset}\"\r\nContent-Transfer-Encoding: {}\r\n\r\n",
+        part.mime, part.encoding
+    )
+    .into_bytes();
+    raw.extend_from_slice(start);
+    MessageParser::default()
+        .parse(&raw[..])
+        .and_then(|m| m.body_text(0).map(|t| snippet(&t)))
+        .unwrap_or_default()
 }
 
 fn ids(value: &HeaderValue) -> Vec<String> {
@@ -131,10 +161,42 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b1--\r\n";
     fn parses_a_header_block_alone() {
         let header = b"From: Ada <ada@example.com>\r\nSubject: Hello\r\nMessage-ID: <b@example.com>\r\n\
 Date: Mon, 12 Oct 2026 10:00:00 +0000\r\n\r\n";
-        let m = parse_headers(9, header, false, true, Some(4321)).unwrap();
+        let m = parse_headers(9, header, false, true, Some(4321), None).unwrap();
         assert_eq!((m.uid, m.subject.as_str(), m.from_addr.as_str()), (9, "Hello", "ada@example.com"));
         assert_eq!((m.size, m.headers_only, m.flagged), (Some(4321), true, true));
         assert!(m.body_text.is_none() && m.snippet.is_empty());
         assert!(m.date > 0);
+    }
+
+    fn part(mime: &str, encoding: &str, charset: &str) -> Part {
+        Part {
+            section: "1".into(),
+            mime: mime.into(),
+            encoding: encoding.into(),
+            charset: Some(charset.into()),
+            size: 0,
+            name: None,
+            attachment: false,
+        }
+    }
+
+    #[test]
+    fn snippets_from_the_start_of_a_part() {
+        let qp = part("text/plain", "quoted-printable", "utf-8");
+        assert_eq!(
+            part_snippet(&qp, b"Zdravo, =C4=8Dovje=C5=BEe!\r\n> old\r\nNovo."),
+            "Zdravo, čovježe! Novo."
+        );
+
+        // Cut mid-line in base64, as a 2 KB partial fetch would.
+        let b64 = part("text/plain", "base64", "utf-8");
+        assert!(part_snippet(&b64, b"SGVsbG8gdGhlcmUsIGhvdyBhcmUgeW91IGRvaW5nIHRvZGF5Pw0K\r\nU2Vl")
+            .starts_with("Hello there"));
+
+        let html = part("text/html", "7bit", "us-ascii");
+        assert_eq!(
+            part_snippet(&html, b"<html><body><p>Meeting <b>moved</b> to 3pm</p><p>See"),
+            "Meeting moved to 3pm See"
+        );
     }
 }
