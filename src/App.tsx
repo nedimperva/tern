@@ -1,35 +1,53 @@
-import { batch, createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import { api, type Account, type Action, type Folder, type MessageRow as Row, type OutboxProblem, type SyncState, type Target, type ThreadMessage } from "./api";
+import {
+  api,
+  type Account,
+  type Action,
+  type Folder,
+  type MessageRow,
+  type OutboxProblem,
+  type SyncState,
+  type Target,
+  type ThreadMessage,
+  type ThreadRow,
+} from "./api";
 import { AccountSetup } from "./components/AccountSetup";
-import { ProblemsDialog, ProblemsStrip } from "./components/Problems";
 import { CommandBar, type Command } from "./components/CommandBar";
 import { Compose, type ComposeInit } from "./components/Compose";
-import { MessageRow } from "./components/MessageRow";
-import { ThreadView } from "./components/ThreadView";
+import { ConversationRow } from "./components/ConversationRow";
+import { ConversationView } from "./components/ConversationView";
+import { ProblemsDialog } from "./components/Problems";
+import { Rail, ROLE_NAMES } from "./components/Rail";
 import { VirtualList } from "./components/VirtualList";
+import { keyHandler, keyLabel, type Binding, type Context } from "./keys";
 
 const PAGE = 100;
-const ROW_HEIGHT = 64;
+const ROW_HEIGHT = 36;
 const UNDO_MS = 5000;
-/// How long a message has to stay open before it counts as read.
-const READ_AFTER_MS = 800;
+/** How long a conversation has to stay open before it counts as read. */
+const READ_AFTER_MS = 1000;
+/** From this width an open conversation sits beside the list; narrower, it covers it. */
+const SPLIT_WIDTH = 1200;
 
-const ROLE_NAMES: Record<string, string> = {
-  inbox: "Inbox",
-  archive: "Archive",
-  all: "All Mail",
-  sent: "Sent",
-  drafts: "Drafts",
-  junk: "Junk",
-  trash: "Trash",
-};
+/** A conversation's identity across reloads: its newest message, and so the row's id, changes as mail arrives. */
+const keyOf = (r: MessageRow) => `${r.accountId}:${r.threadId}`;
 
-/** Said next to the account only when it is not simply working: up to date or syncing shows nothing. */
-const SYNC_LABELS: Partial<Record<SyncState, string>> = {
-  connecting: "Connecting…",
-  offline: "Offline",
-  "auth-failed": "Sign-in failed",
+/** A search hit shown like a conversation row. */
+const asRow = (m: MessageRow): ThreadRow => ({
+  ...m,
+  count: 1,
+  unread: m.seen ? 0 : 1,
+  participants: [m.fromName || m.fromAddr],
+});
+
+const DONE: Record<Action, string> = {
+  archive: "Archived",
+  trash: "Moved to Trash",
+  markRead: "Marked read",
+  markUnread: "Marked unread",
+  star: "Starred",
+  unstar: "Unstarred",
 };
 
 export default function App() {
@@ -37,13 +55,20 @@ export default function App() {
   const [syncStates, setSyncStates] = createSignal<Record<number, SyncState>>({});
   const [folders, setFolders] = createSignal<Folder[]>([]);
   const [target, setTarget] = createSignal<Target>({ role: "inbox" });
-  const [rows, setRows] = createSignal<Row[]>([]);
-  const [selected, setSelected] = createSignal(0);
   const [query, setQuery] = createSignal("");
-  // Sync reloads the open thread on every change. Reconciling by id keeps unchanged messages as they are, so their
-  // HTML frames are not rebuilt (which flickered, most visibly on Windows).
-  const [thread, setThreadStore] = createStore<ThreadMessage[]>([]);
-  const setThread = (t: ThreadMessage[]) => setThreadStore(reconcile(t, { key: "id" }));
+  const [rows, setRows] = createSignal<ThreadRow[]>([]);
+  const [focus, setFocus] = createSignal(0);
+  const [selection, setSelection] = createSignal<ReadonlySet<string>>(new Set());
+  // The open conversation, by key, and the row it was opened from (kept if the row leaves the list).
+  const [openRow, setOpenRow] = createSignal<ThreadRow | null>(null);
+  // Sync reloads the open conversation on every change. Reconciling by id keeps unchanged messages as they are,
+  // so their HTML frames are not rebuilt (which flickered, most visibly on Windows).
+  const [messages, setMessagesStore] = createStore<ThreadMessage[]>([]);
+  const setMessages = (t: ThreadMessage[]) => setMessagesStore(reconcile(t, { key: "id" }));
+  const [messageFocus, setMessageFocus] = createSignal(0);
+  const [expanded, setExpanded] = createSignal<ReadonlySet<number>>(new Set());
+  const [wide, setWide] = createSignal(window.innerWidth >= SPLIT_WIDTH);
+  const [rail, setRail] = createSignal(false);
   const [toast, setToast] = createSignal<{ text: string; token: number[] } | null>(null);
   const [compose, setCompose] = createSignal<ComposeInit | null>(null);
   const [palette, setPalette] = createSignal(false);
@@ -55,30 +80,39 @@ export default function App() {
   let exhausted = false;
   let generation = 0;
 
-  const current = () => rows()[selected()];
-  const overlay = () => reviewing() || palette() || compose() !== null || setup();
+  const current = () => rows()[focus()];
+  const context = (): Context => (openRow() ? "conversation" : "list");
+  const dialog = () => reviewing() || palette() || compose() !== null || setup() || rail();
+  const searching = () => query().trim() !== "";
 
   // MARK: Loading
 
-  /// Reloads the list. Keeps as many rows as are loaded, so a change from sync never makes the list jump.
+  /** Reloads the list. Keeps as many rows as are loaded, so a change from sync never makes the list jump. */
   async function load() {
     const ticket = ++generation;
     const q = query().trim();
-    const page = q ? await api.search(q, 500) : await api.list(target(), null, Math.max(PAGE, rows().length));
+    const page = q
+      ? (await api.search(q, 500)).map(asRow)
+      : await api.listThreads(target(), null, Math.max(PAGE, rows().length));
     if (ticket !== generation) return;
     exhausted = q !== "" || page.length < PAGE;
+    // Focus stays on the same conversation if it is still there, else on the same place in the list.
+    const focusedKey = current() && keyOf(current()!);
     batch(() => {
       setRows(page);
-      setSelected(Math.min(selected(), Math.max(0, page.length - 1)));
+      const at = focusedKey ? page.findIndex((r) => keyOf(r) === focusedKey) : -1;
+      setFocus(at >= 0 ? at : Math.min(focus(), Math.max(0, page.length - 1)));
+      const keys = new Set(page.map(keyOf));
+      setSelection(new Set([...selection()].filter((k) => keys.has(k))));
     });
   }
 
   async function loadMore() {
     const last = rows()[rows().length - 1];
-    if (exhausted || !last || query().trim()) return;
+    if (exhausted || !last || searching()) return;
     exhausted = true;
     const ticket = generation;
-    const page = await api.list(target(), { date: last.date, id: last.id }, PAGE);
+    const page = await api.listThreads(target(), { date: last.date, id: last.id }, PAGE);
     if (ticket !== generation) return;
     exhausted = page.length < PAGE;
     setRows([...rows(), ...page]);
@@ -95,6 +129,17 @@ export default function App() {
     await load();
   }
 
+  /** Reloads the open conversation from any of its messages that still exists. */
+  async function reloadConversation() {
+    const open = openRow();
+    if (!open) return;
+    const ids = [open.id, ...messages.map((m) => m.id)];
+    for (const id of ids) {
+      const found = await api.thread(id);
+      if (found.length) return void setMessages(found);
+    }
+  }
+
   // Sync can report many changes a second; draw once per frame at most.
   let pending = false;
   const onChange = () => {
@@ -103,8 +148,7 @@ export default function App() {
     requestAnimationFrame(() => {
       pending = false;
       void refresh();
-      const open = current();
-      if (open) void api.thread(open.id).then(setThread);
+      void reloadConversation();
     });
   };
 
@@ -112,54 +156,114 @@ export default function App() {
     api.onSyncState((id, state) => setSyncStates({ ...syncStates(), [id]: state }));
     void api.syncStates().then((s) => setSyncStates({ ...s, ...syncStates() }));
     api.onChange(onChange);
+    const onResize = () => setWide(window.innerWidth >= SPLIT_WIDTH);
+    window.addEventListener("resize", onResize);
+    onCleanup(() => window.removeEventListener("resize", onResize));
     void refresh();
   });
 
-  createEffect(on([target, query], () => {
-    setSelected(0);
-    void load();
-  }, { defer: true }));
+  createEffect(
+    on(
+      [target, query],
+      () => {
+        batch(() => (setFocus(0), setSelection(new Set<string>()), setOpenRow(null)));
+        void load();
+      },
+      { defer: true },
+    ),
+  );
 
-  // The reading pane follows the selection; a message that stays open is marked read.
+  // MARK: The open conversation
+
   let readTimer: number | undefined;
-  createEffect(on(() => current()?.id, (id) => {
+  async function open(row: ThreadRow | undefined) {
     clearTimeout(readTimer);
-    if (id == null) return setThread([]);
-    void api.thread(id).then((t) => current()?.id === id && setThread(t));
-    if (!current()!.seen) readTimer = window.setTimeout(() => act("markRead", false), READ_AFTER_MS);
-  }));
+    if (!row) return close();
+    setOpenRow(row);
+    const found = await api.thread(row.id);
+    if (openRow() !== row) return;
+    batch(() => {
+      setMessages(found);
+      // The newest message and anything unread start open, as they are what there is to read.
+      setExpanded(new Set(found.filter((m, i) => !m.seen || i === found.length - 1).map((m) => m.id)));
+      setMessageFocus(Math.max(0, found.length - 1));
+    });
+    if (row.unread > 0) {
+      readTimer = window.setTimeout(() => {
+        if (openRow() === row) void act("markRead", [row], false);
+      }, READ_AFTER_MS);
+    }
+  }
+
+  function close() {
+    clearTimeout(readTimer);
+    batch(() => (setOpenRow(null), setMessages([])));
+  }
+
+  const toggleMessage = (index: number) => {
+    const m = messages[index];
+    if (!m) return;
+    const next = new Set(expanded());
+    if (next.has(m.id)) next.delete(m.id);
+    else next.add(m.id);
+    batch(() => (setExpanded(next), setMessageFocus(index)));
+  };
+  const moveMessage = (by: number) => setMessageFocus(Math.max(0, Math.min(messages.length - 1, messageFocus() + by)));
 
   // MARK: Actions
 
-  const LABELS: Record<Action, string> = {
-    archive: "Archived",
-    trash: "Moved to Trash",
-    markRead: "Marked read",
-    markUnread: "Marked unread",
-    star: "Starred",
-    unstar: "Unstarred",
-  };
+  /** What an action applies to: the selection if there is one, else the open conversation or the focused row. */
+  function targets(): ThreadRow[] {
+    const chosen = selection();
+    if (chosen.size) return rows().filter((r) => chosen.has(keyOf(r)));
+    const one = openRow() ?? current();
+    return one ? [one] : [];
+  }
 
-  /// Shows the change at once, then tells the engine. Every action can be undone for five seconds.
-  async function act(action: Action, announce = true) {
-    const row = current();
-    if (!row) return;
+  /** Shows the change at once, then tells the engine. Every action can be undone for five seconds. */
+  async function act(action: Action, hit = targets(), announce = true) {
+    if (!hit.length) return;
+    const keys = new Set(hit.map(keyOf));
     if (action === "archive" || action === "trash") {
-      setRows(rows().filter((r) => r.id !== row.id));
-      setSelected(Math.min(selected(), Math.max(0, rows().length - 1)));
+      // Focus moves to the next row, which takes the place of the first one removed.
+      const first = rows().findIndex((r) => keys.has(keyOf(r)));
+      const left = rows().filter((r) => !keys.has(keyOf(r)));
+      const wasOpen = openRow() && keys.has(keyOf(openRow()!));
+      const next = Math.min(first < 0 ? focus() : first, Math.max(0, left.length - 1));
+      batch(() => {
+        setRows(left);
+        setFocus(next);
+        setSelection(new Set<string>());
+      });
+      if (wasOpen) void open(left[next]);
     } else {
-      const patch: Partial<Row> =
-        action === "markRead" ? { seen: true } : action === "markUnread" ? { seen: false } : { flagged: action === "star" };
-      setRows(rows().map((r) => (r.id === row.id ? { ...r, ...patch } : r)));
+      const patch = (r: ThreadRow): ThreadRow =>
+        action === "markRead"
+          ? { ...r, unread: 0, seen: true }
+          : action === "markUnread"
+            ? { ...r, unread: Math.max(1, r.unread), seen: false }
+            : { ...r, flagged: action === "star" };
+      setRows(rows().map((r) => (keys.has(keyOf(r)) ? patch(r) : r)));
     }
     try {
-      const applied = await api.apply([row.id], action);
-      if (announce) showToast(LABELS[action], applied.token);
+      let token: number[] = [];
+      if (searching()) {
+        // Search spans folders: each hit is acted on where it is.
+        for (const r of hit) token = token.concat((await api.applyConversations([r.id], action, { folder: r.folderId })).token);
+      } else {
+        token = (await api.applyConversations(hit.map((r) => r.id), action, target())).token;
+      }
+      if (announce) showToast(hit.length === 1 ? DONE[action] : `${DONE[action]} ${hit.length} conversations`, token);
     } catch (e) {
       showToast(String(e), []);
       void load();
     }
   }
+
+  /** Star when any of the targets lacks one, else take the stars off. */
+  const toggleStar = () => act(targets().every((r) => r.flagged) ? "unstar" : "star");
+  /** Mark read when anything is unread, else mark unread. */
+  const toggleRead = () => act(targets().some((r) => r.unread > 0) ? "markRead" : "markUnread");
 
   let toastTimer: number | undefined;
   function showToast(text: string, token: number[]) {
@@ -177,7 +281,8 @@ export default function App() {
     void load();
   }
 
-  function reply(m: ThreadMessage) {
+  function reply(m: ThreadMessage | undefined) {
+    if (!m) return;
     const quoted = (m.bodyText ?? "").split("\n").map((l) => `> ${l}`).join("\n");
     setCompose({
       accountId: m.accountId,
@@ -201,21 +306,86 @@ export default function App() {
     batch(() => (setQuery(""), setTarget(t)));
     if ("folder" in t) void api.checkFolder(t.folder);
   };
-  const move = (by: number) => setSelected(Math.max(0, Math.min(rows().length - 1, selected() + by)));
 
-  // MARK: Keyboard (Gmail's keys)
+  // MARK: Focus and selection
+
+  /** Moves the focus; with a conversation open, the next one opens in its place. */
+  function move(by: number) {
+    const next = Math.max(0, Math.min(rows().length - 1, focus() + by));
+    if (next === focus()) return;
+    setFocus(next);
+    if (openRow()) void open(rows()[next]);
+  }
+
+  function toggleSelected(row = current()) {
+    if (!row) return;
+    const next = new Set(selection());
+    if (next.has(keyOf(row))) next.delete(keyOf(row));
+    else next.add(keyOf(row));
+    setSelection(next);
+  }
+
+  /** Shift+J / Shift+K: select the focused row and the one it moves to. */
+  function extend(by: number) {
+    const from = current();
+    if (!from) return;
+    const next = new Set(selection()).add(keyOf(from));
+    const to = rows()[focus() + by];
+    if (to) {
+      next.add(keyOf(to));
+      setFocus(focus() + by);
+    }
+    setSelection(next);
+  }
+
+  /** Esc goes one level up, never two: conversation → list → selection → search. */
+  function escape() {
+    if (openRow()) close();
+    else if (selection().size) setSelection(new Set<string>());
+    else if (query()) setQuery("");
+  }
+
+  // MARK: Keys
+
+  const bindings = createMemo<Binding[]>(() => [
+    { keys: "j", name: "Next conversation", run: () => move(1) },
+    { keys: "k", name: "Previous conversation", run: () => move(-1) },
+    { keys: "ArrowDown", name: "Next conversation", run: () => move(1), hidden: true },
+    { keys: "ArrowUp", name: "Previous conversation", run: () => move(-1), hidden: true },
+    { keys: "PageDown", name: "Down a page", run: () => move(15), hidden: true },
+    { keys: "PageUp", name: "Up a page", run: () => move(-15), hidden: true },
+    { keys: "Home", name: "First conversation", run: () => move(-focus()), hidden: true },
+    { keys: "End", name: "Last conversation", run: () => move(rows().length), hidden: true },
+    { keys: "Enter", name: "Open conversation", context: "list", run: () => open(current()) },
+    { keys: "o", name: "Open conversation", context: "list", run: () => open(current()), hidden: true },
+    { keys: "Escape", name: "Back", run: escape },
+    { keys: "e", name: "Done (archive)", run: () => act("archive") },
+    { keys: "#", name: "Move to Trash", run: () => act("trash") },
+    { keys: "Delete", name: "Move to Trash", run: () => act("trash"), hidden: true },
+    { keys: "s", name: "Star or unstar", run: toggleStar },
+    { keys: "u", name: "Mark read or unread", run: toggleRead },
+    { keys: "x", name: "Select conversation", context: "list", run: () => toggleSelected() },
+    { keys: "J", name: "Select and move down", context: "list", run: () => extend(1) },
+    { keys: "K", name: "Select and move up", context: "list", run: () => extend(-1) },
+    { keys: "Ctrl+a", name: "Select all", context: "list", run: () => setSelection(new Set(rows().map(keyOf))) },
+    { keys: "n", name: "Next message", context: "conversation", run: () => moveMessage(1) },
+    { keys: "p", name: "Previous message", context: "conversation", run: () => moveMessage(-1) },
+    { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
+    { keys: "Enter", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()), hidden: true },
+    { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
+    { keys: "r", name: "Reply", context: "conversation", run: () => reply(messages[messageFocus()]) },
+    { keys: "z", name: "Undo", run: undo },
+    { keys: "c", name: "Compose", run: () => setCompose({}) },
+    { keys: "/", name: "Search", run: () => searchInput.focus() },
+    { keys: "g i", name: "Go to All Inboxes", run: () => go({ role: "inbox" }) },
+    { keys: "Ctrl+\\", name: "Accounts and folders", run: () => setRail(!rail()) },
+    { keys: "Ctrl+k", name: "Command palette", run: () => setPalette(!palette()), hidden: true },
+  ]);
 
   const commands = createMemo<Command[]>(() => [
-    { name: "Compose", keys: "c", run: () => setCompose({}) },
-    { name: "Search", keys: "/", run: () => searchInput.focus() },
-    { name: "Reply", keys: "r", run: () => thread.length && reply(thread[thread.length - 1]) },
-    { name: "Archive", keys: "e", run: () => act("archive") },
-    { name: "Move to Trash", keys: "#", run: () => act("trash") },
-    { name: "Mark as read", keys: "Shift I", run: () => act("markRead") },
-    { name: "Mark as unread", keys: "Shift U", run: () => act("markUnread") },
-    { name: "Star / unstar", keys: "s", run: () => act(current()?.flagged ? "unstar" : "star") },
-    { name: "Undo", keys: "z", run: undo },
-    { name: "Go to All Inboxes", keys: "g i", run: () => go({ role: "inbox" }) },
+    ...bindings()
+      .filter((b) => !b.hidden && (!b.context || b.context === context()))
+      .map((b) => ({ name: b.name, keys: keyLabel(b.keys), run: () => void b.run() })),
     { name: "Add account", run: () => setSetup(true) },
     ...(problems().length ? [{ name: "Review changes that didn't go through", run: () => setReviewing(true) }] : []),
     ...folders().map((f) => ({
@@ -224,45 +394,7 @@ export default function App() {
     })),
   ]);
 
-  let lastKey = "";
-  const onKeyDown = (e: KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-      e.preventDefault();
-      setPalette(!palette());
-      return;
-    }
-    const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
-    if (typing || overlay() || e.ctrlKey || e.metaKey || e.altKey) return;
-    const chord = lastKey === "g" ? `g ${e.key}` : e.key;
-    lastKey = e.key;
-    const handlers: Record<string, () => unknown> = {
-      j: () => move(1),
-      ArrowDown: () => move(1),
-      k: () => move(-1),
-      ArrowUp: () => move(-1),
-      PageDown: () => move(10),
-      PageUp: () => move(-10),
-      Home: () => setSelected(0),
-      End: () => setSelected(rows().length - 1),
-      e: () => act("archive"),
-      "#": () => act("trash"),
-      Delete: () => act("trash"),
-      s: () => act(current()?.flagged ? "unstar" : "star"),
-      I: () => act("markRead"),
-      U: () => act("markUnread"),
-      z: undo,
-      c: () => setCompose({}),
-      r: () => thread.length && reply(thread[thread.length - 1]),
-      "/": () => searchInput.focus(),
-      Escape: () => query() && setQuery(""),
-      "g i": () => go({ role: "inbox" }),
-    };
-    const handler = handlers[chord] ?? handlers[e.key];
-    if (handler) {
-      e.preventDefault();
-      handler();
-    }
-  };
+  const onKeyDown = keyHandler(bindings, context, dialog);
   onMount(() => window.addEventListener("keydown", onKeyDown));
   onCleanup(() => window.removeEventListener("keydown", onKeyDown));
 
@@ -279,98 +411,126 @@ export default function App() {
   // MARK: Layout
 
   const isTarget = (t: Target) => JSON.stringify(t) === JSON.stringify(target()) && !query();
-  const inboxUnread = () => folders().filter((f) => f.role === "inbox").reduce((n, f) => n + f.unread, 0);
   const title = () => {
-    if (query()) return `Search: ${query()}`;
+    if (searching()) return `Search: ${query()}`;
     const t = target();
     if ("role" in t) return t.role === "inbox" ? "All Inboxes" : ROLE_NAMES[t.role] ?? t.role;
     const f = folders().find((f) => f.id === t.folder);
     return f ? ROLE_NAMES[f.role] ?? f.name : "";
   };
+  const split = () => openRow() !== null && wide();
+  const inboxZero = () => ready() && !searching() && rows().length === 0 && "role" in target() && (target() as { role: string }).role === "inbox";
+
+  /** One sentence for every account together; the rail names the account in trouble. */
+  const syncSentence = () => {
+    const states = Object.values(syncStates());
+    if (states.includes("auth-failed")) return { text: "Sign-in failed. Open accounts with Ctrl+\\.", tone: "danger" };
+    if (states.includes("offline")) return { text: "Offline. Changes wait and go out when back.", tone: "warn" };
+    if (states.includes("connecting")) return { text: "Connecting…", tone: "warn" };
+    return { text: states.length ? "Up to date" : "", tone: "ok" };
+  };
 
   return (
-    <div class="app">
-      <nav class="sidebar">
-        <button class="compose-button" onClick={() => setCompose({})}>
-          Compose <kbd>c</kbd>
-        </button>
-        <a classList={{ active: isTarget({ role: "inbox" }) }} onClick={() => go({ role: "inbox" })}>
-          <span>All Inboxes</span>
-          <Show when={inboxUnread()}>
-            <span class="count">{inboxUnread()}</span>
-          </Show>
-        </a>
-        <For each={accounts()}>
-          {(account) => (
-            <section>
-              <h3>
-                <span>{account.email}</span>
-                <Show when={SYNC_LABELS[syncStates()[account.id]]}>
-                  {(label) => <span class={`sync-state ${syncStates()[account.id]}`}>{label()}</span>}
-                </Show>
-              </h3>
-              <For each={folders().filter((f) => f.accountId === account.id)}>
-                {(f) => (
-                  <a classList={{ active: isTarget({ folder: f.id }) }} onClick={() => go({ folder: f.id })}>
-                    <span>{ROLE_NAMES[f.role] ?? f.name}</span>
-                    <Show when={f.unread && f.role !== "trash" && f.role !== "junk"}>
-                      <span class="count">{f.unread}</span>
-                    </Show>
-                  </a>
-                )}
-              </For>
-            </section>
-          )}
-        </For>
-        <button class="link add-account" onClick={() => setSetup(true)}>
-          + Add account
-        </button>
-      </nav>
-
+    <div class="app" classList={{ split: split(), full: openRow() !== null && !wide() }}>
       <main class="list-pane">
         <header class="list-header">
+          <button class="link rail-button" onClick={() => setRail(true)} title="Accounts and folders (Ctrl+\)">
+            ☰
+          </button>
+          <h2>{title()}</h2>
           <input
             ref={searchInput}
             class="search"
-            placeholder="Search mail   /"
+            placeholder="Search   /"
             value={query()}
             onInput={(e) => setQuery(e.currentTarget.value)}
             onKeyDown={onSearchKey}
           />
-          <div class="list-title">
-            <span>{title()}</span>
-            <button class="link" title="Command bar" onClick={() => setPalette(true)}>
-              <kbd>Ctrl K</kbd>
-            </button>
-          </div>
+          <button class="link" title="Command palette" onClick={() => setPalette(true)}>
+            <kbd>Ctrl K</kbd>
+          </button>
         </header>
-        <Show when={rows().length} fallback={<div class="empty">{ready() ? "Nothing here." : ""}</div>}>
-          <VirtualList items={rows()} rowHeight={ROW_HEIGHT} selected={selected()} onEnd={loadMore}>
-            {(row, index) => <MessageRow row={row} selected={index() === selected()} onClick={() => setSelected(index())} />}
+        <Show
+          when={rows().length}
+          fallback={
+            <Show when={inboxZero()} fallback={<div class="empty">{ready() ? "Nothing here." : ""}</div>}>
+              <div class="zero">
+                <div class="zero-time">{new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</div>
+                <div>You're done.</div>
+              </div>
+            </Show>
+          }
+        >
+          <VirtualList items={rows()} rowHeight={ROW_HEIGHT} selected={focus()} onEnd={loadMore}>
+            {(row, index) => (
+              <ConversationRow
+                row={row}
+                focused={index() === focus()}
+                selected={selection().has(keyOf(row))}
+                narrow={split()}
+                onClick={(e) => {
+                  setFocus(index());
+                  if (e.shiftKey || e.ctrlKey || e.metaKey) toggleSelected(row);
+                  else if (openRow()) void open(row);
+                }}
+                onOpen={() => open(row)}
+              />
+            )}
           </VirtualList>
         </Show>
-        <Show when={problems().length}>
-          <ProblemsStrip count={problems().length} onOpen={() => setReviewing(true)} />
-        </Show>
+        <footer class="status">
+          <span class={`sync ${syncSentence().tone}`}>
+            <span class="dot" />
+            {syncSentence().text}
+          </span>
+          <Show when={problems().length}>
+            <button class="link problems-link" onClick={() => setReviewing(true)}>
+              {problems().length === 1 ? "1 change didn't go through" : `${problems().length} changes didn't go through`}
+            </button>
+          </Show>
+          <Show when={selection().size}>
+            <span class="selected-count">{selection().size} selected</span>
+          </Show>
+          <span class="spacer" />
+          <Show when={toast()}>
+            {(t) => (
+              <span class="toast" role="status">
+                <span>{t().text}</span>
+                <Show when={t().token.length}>
+                  <button class="link" onClick={undo}>
+                    Undo <kbd>Z</kbd>
+                  </button>
+                </Show>
+              </span>
+            )}
+          </Show>
+        </footer>
       </main>
 
-      <section class="reading-pane">
-        <Show when={thread.length} fallback={<div class="empty">No message selected</div>}>
-          <ThreadView messages={thread} onReply={reply} />
-        </Show>
-      </section>
+      <Show when={openRow()}>
+        <section class="conversation-pane">
+          <ConversationView
+            messages={messages}
+            focused={messageFocus()}
+            expanded={(id) => expanded().has(id)}
+            onToggle={toggleMessage}
+            onReply={reply}
+            onDone={() => act("archive")}
+            onClose={close}
+          />
+        </section>
+      </Show>
 
-      <Show when={toast()}>
-        {(t) => (
-          <div class="toast">
-            <span>{t().text}</span>
-            <Show when={t().token.length}>
-              <button onClick={undo}>
-                Undo <kbd>z</kbd>
-              </button>
-            </Show>
-          </div>
-        )}
+      <Show when={rail()}>
+        <Rail
+          accounts={accounts()}
+          folders={folders()}
+          syncStates={syncStates()}
+          isTarget={isTarget}
+          onGo={go}
+          onAddAccount={() => setSetup(true)}
+          onClose={() => setRail(false)}
+        />
       </Show>
       <Show when={reviewing()}>
         <ProblemsDialog

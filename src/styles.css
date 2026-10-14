@@ -1,34 +1,4 @@
-:root {
-  --bg: #ffffff;
-  --bg-side: #f6f6f4;
-  --bg-hover: #f0f0ee;
-  --bg-selected: #e7eefc;
-  --line: #e6e6e3;
-  --text: #1b1b1a;
-  --text-dim: #6b6b67;
-  --accent: #2f6fed;
-  --accent-text: #ffffff;
-  --star: #e8a400;
-  --danger: #c62828;
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #18181a;
-    --bg-side: #121214;
-    --bg-hover: #222226;
-    --bg-selected: #23304d;
-    --line: #2a2a2e;
-    --text: #ececea;
-    --text-dim: #9a9a96;
-    --accent: #5b8cff;
-    --danger: #ef6b66;
-    --shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-    color-scheme: dark;
-  }
-}
+/* Component styles. Values come from styles/tokens.css (docs/design/ui.md §2). */
 
 * {
   box-sizing: border-box;
@@ -43,9 +13,10 @@ body,
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
-  font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Inter", "Cantarell", sans-serif;
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: var(--t-rd) / 1.4 var(--font);
+  font-feature-settings: "cv11", "ss01";
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
@@ -53,26 +24,29 @@ body {
 button {
   font: inherit;
   color: inherit;
-  background: var(--bg-hover);
+  background: var(--bg-2);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 6px 12px;
+  border-radius: var(--r-md);
+  padding: 6px var(--s-3);
   cursor: pointer;
 }
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--accent-text);
+  color: var(--accent-fg);
 }
 button.link {
   background: none;
   border: none;
-  padding: 4px 0;
-  color: var(--text-dim);
+  padding: var(--s-1) 0;
+  color: var(--fg-1);
 }
 button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+button.danger {
+  color: var(--danger);
 }
 
 input,
@@ -80,10 +54,10 @@ textarea,
 select {
   font: inherit;
   color: inherit;
-  background: var(--bg);
+  background: var(--bg-0);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 8px 10px;
+  border-radius: var(--r-md);
+  padding: var(--s-2) 10px;
   outline: none;
   user-select: text;
 }
@@ -94,14 +68,19 @@ select:focus {
 }
 
 kbd {
-  font: 11px/1 ui-monospace, "Cascadia Mono", monospace;
-  padding: 2px 5px;
-  border-radius: 4px;
+  display: inline-block;
+  min-width: 18px;
+  font: 500 var(--t-xs) / 16px var(--mono);
+  text-align: center;
+  padding: 0 var(--s-1);
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
-  color: var(--text-dim);
+  background: var(--bg-2);
+  color: var(--fg-1);
   margin-left: 6px;
 }
 button.primary kbd {
+  background: transparent;
   color: inherit;
   border-color: rgba(255, 255, 255, 0.4);
 }
@@ -110,80 +89,55 @@ button.primary kbd {
 
 .app {
   display: grid;
-  grid-template-columns: 220px minmax(320px, 420px) 1fr;
+  grid-template-columns: 1fr;
   height: 100%;
 }
-
-.sidebar {
-  background: var(--bg-side);
-  border-right: 1px solid var(--line);
-  padding: 12px 8px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+/* A conversation beside the list (wide windows) or over it (narrow ones). */
+.app.split {
+  grid-template-columns: minmax(360px, 40%) 1fr;
 }
-.sidebar .compose-button {
-  margin: 0 4px 12px;
-  text-align: left;
-}
-.sidebar h3 {
-  display: flex;
-  gap: 6px;
-  align-items: baseline;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-dim);
-  margin: 16px 8px 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sidebar a {
-  display: flex;
-  justify-content: space-between;
-  padding: 5px 8px;
-  border-radius: 6px;
-  cursor: default;
-}
-.sidebar a:hover {
-  background: var(--bg-hover);
-}
-.sidebar a.active {
-  background: var(--bg-selected);
-  font-weight: 600;
-}
-.sidebar .count {
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-.sidebar .add-account {
-  margin: 16px 8px 0;
-  text-align: left;
+.app.full .list-pane {
+  display: none;
 }
 
 .list-pane {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--line);
   min-width: 0;
+  background: var(--bg-0);
+}
+.app.split .list-pane {
+  border-right: 1px solid var(--line);
 }
 .list-header {
-  padding: 10px 12px 6px;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: 48px;
+  padding: 0 var(--s-3);
   border-bottom: 1px solid var(--line);
 }
-.search {
-  width: 100%;
-}
-.list-title {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 8px;
+.list-header h2 {
+  font-size: var(--t-lg);
   font-weight: 600;
-  font-size: 16px;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rail-button {
+  font-size: var(--t-lg);
+  color: var(--fg-1);
+}
+.search {
+  width: 200px;
+  padding: var(--s-1) 10px;
+  transition: width var(--d-base) var(--ease);
+}
+.search:focus {
+  width: 320px;
 }
 
 .vlist {
@@ -199,81 +153,242 @@ button.primary kbd {
   will-change: transform;
 }
 
-.row {
-  height: 100%;
-  padding: 10px 14px 0 10px;
-  border-bottom: 1px solid var(--line);
-  cursor: default;
-  overflow: hidden;
-}
-.row:hover {
-  background: var(--bg-hover);
-}
-.row.selected {
-  background: var(--bg-selected);
-}
-.row-top {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.row .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex: none;
-}
-.row.unread .dot {
-  background: var(--accent);
-}
-.row .from {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.row.unread .from,
-.row.unread .subject {
-  font-weight: 600;
-}
-.row .date {
-  color: var(--text-dim);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-.row .star {
-  color: var(--star);
-}
-.row .clip {
-  font-size: 11px;
-}
-.row-bottom {
-  margin: 3px 0 0 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.row .snippet {
-  color: var(--text-dim);
-}
-
-.reading-pane {
-  overflow-y: auto;
-  /* Classic scrollbars (Windows) would otherwise narrow the pane as a message grows, reflow it, and loop. */
-  scrollbar-gutter: stable;
-  min-width: 0;
-}
 .empty {
   display: grid;
   place-items: center;
   height: 100%;
-  color: var(--text-dim);
+  color: var(--fg-2);
 }
 
-.sidebar h3 > span:first-child {
+/* Inbox Zero gets the best screen in the app (§4.7); solid colour until the artwork exists. */
+.zero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  background: linear-gradient(180deg, var(--accent-soft), var(--bg-0));
+  color: var(--fg-1);
+  font-size: var(--t-lg);
+}
+.zero-time {
+  font-size: var(--t-xl);
+  font-weight: 600;
+  color: var(--fg-0);
+  font-variant-numeric: tabular-nums;
+}
+
+/* MARK: Conversation rows (§4.1) */
+
+.crow {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0 var(--s-3) 0 var(--s-2);
+  font-size: var(--t-md);
+  color: var(--fg-1);
+  cursor: default;
+  white-space: nowrap;
+}
+.crow:hover {
+  background: var(--bg-2);
+}
+.crow.selected {
+  background: var(--accent-soft);
+}
+.crow.focused {
+  background: var(--bg-3);
+}
+.crow.focused::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+}
+.crow .mark {
+  width: 12px;
+  flex: none;
+  color: var(--accent);
+  font-size: var(--t-sm);
+}
+.crow .who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: var(--participants-w);
+  flex: none;
+  overflow: hidden;
+}
+.crow .names {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.crow .count {
+  flex: none;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.crow .what {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.crow .snippet {
+  color: var(--fg-2);
+  margin-left: var(--s-2);
+}
+.crow.unread {
+  color: var(--fg-0);
+}
+.crow.unread .names,
+.crow.unread .subject {
+  font-weight: 600;
+}
+.crow .glyphs {
+  display: flex;
+  gap: var(--s-1);
+  flex: none;
+}
+.crow .star {
+  color: var(--star);
+}
+.crow .clip {
+  color: var(--fg-2);
+}
+.crow .date {
+  flex: none;
+  min-width: 44px;
+  text-align: right;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* MARK: Status strip (§3) */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: 28px;
+  padding: 0 var(--s-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.status .sync {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.status .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.status .sync.warn .dot {
+  background: var(--warn);
+}
+.status .sync.danger {
+  color: var(--danger);
+}
+.status .sync.danger .dot {
+  background: var(--danger);
+}
+.status .spacer {
+  flex: 1;
+}
+.status .problems-link {
+  color: var(--danger);
+  text-decoration: underline;
+  font-size: inherit;
+}
+.status .toast {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--fg-0);
+}
+.status .toast button {
+  font-size: inherit;
+  color: var(--accent);
+}
+
+/* MARK: Rail (§3) */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+  z-index: 15;
+}
+.rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 240px;
+  background: var(--bg-1);
+  box-shadow: var(--shadow);
+  padding: var(--s-3) var(--s-2);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: slide-in var(--d-base) var(--ease);
+}
+@keyframes slide-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+.rail h3 {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-2);
+  margin: var(--s-4) var(--s-2) var(--s-1);
+  white-space: nowrap;
+}
+.rail h3 > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+.rail a {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px var(--s-2);
+  border-radius: var(--r-md);
+  font-size: var(--t-md);
+  cursor: default;
+}
+.rail a:hover {
+  background: var(--bg-2);
+}
+.rail a.active {
+  background: var(--bg-3);
+  font-weight: 600;
+}
+.rail .count {
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.rail .add-account {
+  margin: var(--s-4) var(--s-2) 0;
+  text-align: left;
 }
 .sync-state {
   flex: none;
@@ -286,54 +401,98 @@ button.primary kbd {
   color: var(--danger);
 }
 
-/* MARK: Thread */
+/* MARK: Conversation (§4.2) */
 
-.thread {
+.conversation-pane {
+  overflow-y: auto;
+  /* Classic scrollbars (Windows) would otherwise narrow the pane as a message grows, reflow it, and loop. */
+  scrollbar-gutter: stable;
+  min-width: 0;
+  background: var(--bg-0);
+}
+.conversation {
   max-width: 860px;
   margin: 0 auto;
-  padding: 24px 32px 64px;
+  padding: var(--s-5) var(--s-6) 64px;
   user-select: text;
 }
-.thread-subject {
-  font-size: 22px;
-  font-weight: 600;
-  margin: 0 0 16px;
-}
-.message {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 16px 18px;
-  margin-bottom: 12px;
-}
-.message header {
+.conversation-head {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  margin-bottom: 12px;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
 }
-.avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
+.conversation-head h1 {
+  flex: 1;
+  font-size: var(--t-lg);
+  font-weight: 600;
+  margin: 0;
+}
+.card {
+  border-top: 1px solid var(--line);
+  padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
+  position: relative;
+}
+.card.focused::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--s-3);
+  bottom: var(--s-3);
+  width: 3px;
+  border-radius: 2px;
   background: var(--accent);
-  color: var(--accent-text);
+}
+.card > header {
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+  cursor: default;
+}
+.card .avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--accent-fg);
   display: grid;
   place-items: center;
+  font-size: var(--t-xs);
   font-weight: 600;
   flex: none;
 }
-.who {
+.card .who {
   flex: 1;
   min-width: 0;
+  display: flex;
+  gap: var(--s-2);
+  align-items: baseline;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: var(--t-md);
 }
-.who .addr,
-.who .to,
-.message time {
-  color: var(--text-dim);
-  font-size: 12px;
+.card .who .snippet,
+.card .who .addr,
+.card .who .to {
+  color: var(--fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--t-sm);
+}
+.card time {
+  flex: none;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+}
+.card.unread .who strong {
+  color: var(--accent);
+}
+.card .body {
+  margin: var(--s-3) 0 0 40px;
+  font-size: var(--t-rd);
 }
 .loading {
-  color: var(--text-dim);
+  color: var(--fg-2);
 }
 .plain {
   white-space: pre-wrap;
@@ -345,20 +504,21 @@ button.primary kbd {
   border: 0;
   display: block;
   min-height: 40px;
-  border-radius: 6px;
+  border-radius: var(--r-md);
+  /* Mail HTML is written for white; it keeps it in either theme. */
   background: #fff;
 }
 .remote-bar {
-  font-size: 12px;
-  color: var(--text-dim);
-  margin-bottom: 8px;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  margin-bottom: var(--s-2);
 }
 .remote-bar button {
-  padding: 2px 8px;
+  padding: 2px var(--s-2);
   margin-left: 6px;
 }
 .reply {
-  margin-top: 4px;
+  margin: var(--s-3) 0 0 var(--s-4);
 }
 
 /* MARK: Overlays */
@@ -366,17 +526,17 @@ button.primary kbd {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--scrim);
   display: grid;
   place-items: start center;
-  padding-top: 12vh;
+  padding-top: 20vh;
   z-index: 10;
 }
 
 .command-bar {
   width: min(560px, 92vw);
-  background: var(--bg);
-  border-radius: 12px;
+  background: var(--bg-1);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow);
   overflow: hidden;
 }
@@ -385,8 +545,9 @@ button.primary kbd {
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
-  padding: 14px 16px;
-  font-size: 16px;
+  background: transparent;
+  padding: 14px var(--s-4);
+  font-size: var(--t-lg);
 }
 .command-bar ul {
   list-style: none;
@@ -398,23 +559,26 @@ button.primary kbd {
 .command-bar li {
   display: flex;
   justify-content: space-between;
-  padding: 8px 10px;
-  border-radius: 6px;
+  align-items: center;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: var(--r-md);
+  font-size: var(--t-md);
 }
 .command-bar li.active {
-  background: var(--bg-selected);
+  background: var(--accent-soft);
 }
 
 .compose,
 .setup {
   width: min(640px, 92vw);
-  background: var(--bg);
-  border-radius: 12px;
+  background: var(--bg-1);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow);
-  padding: 16px;
+  padding: var(--s-4);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--s-2);
 }
 .compose textarea {
   min-height: 280px;
@@ -423,29 +587,29 @@ button.primary kbd {
 .compose footer,
 .setup footer {
   display: flex;
-  gap: 8px;
+  gap: var(--s-2);
 }
 .setup h2 {
-  margin: 0 0 8px;
-  font-size: 18px;
+  margin: 0 0 var(--s-2);
+  font-size: var(--t-lg);
 }
 .setup label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-dim);
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
 }
 .setup label input,
 .setup label select {
-  color: var(--text);
-  font-size: 14px;
+  color: var(--fg-0);
+  font-size: var(--t-rd);
 }
 /* Username on its own row, then one row each for IMAP and SMTP: server, port, security. */
 .setup .grid {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr;
-  gap: 8px;
+  gap: var(--s-2);
 }
 .setup .grid > label:first-child {
   grid-column: 1 / -1;
@@ -455,8 +619,8 @@ button.primary kbd {
 }
 .note {
   margin: 0;
-  font-size: 12px;
-  color: var(--text-dim);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
 }
 .error {
   margin: 0;
@@ -464,80 +628,25 @@ button.primary kbd {
   user-select: text;
 }
 
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: 20px;
-  transform: translateX(-50%);
-  background: var(--text);
-  color: var(--bg);
-  padding: 10px 14px;
-  border-radius: 8px;
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  box-shadow: var(--shadow);
-  z-index: 20;
-}
-.toast button {
-  background: none;
-  border: 0;
-  color: inherit;
-  font-weight: 600;
-  padding: 0;
-}
-.toast kbd {
-  color: inherit;
-  border-color: currentColor;
-  opacity: 0.6;
-}
-
-@media (max-width: 1000px) {
-  .app {
-    grid-template-columns: 180px minmax(280px, 1fr) 1.2fr;
-  }
-}
-
-/* Work that stopped being retried: a strip under the list until each is retried or discarded. */
-.problems-strip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 28px;
-  padding: 0 12px;
-  border-top: 1px solid var(--line);
-  font-size: 12px;
-  color: var(--danger);
-}
-.problems-strip .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--danger);
-}
-.problems-strip button.link {
-  color: var(--danger);
-  text-decoration: underline;
-}
 .problems {
   width: min(560px, 92vw);
-  background: var(--bg);
-  border-radius: 12px;
+  background: var(--bg-1);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow);
-  padding: 16px;
+  padding: var(--s-4);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--s-2);
 }
 .problems h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--t-lg);
 }
 .problem {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 0;
+  gap: var(--s-2);
+  padding: var(--s-2) 0;
   border-top: 1px solid var(--line);
 }
 .problem .what {
@@ -548,8 +657,7 @@ button.primary kbd {
   gap: 2px;
 }
 .problem .error {
-  font-size: 12px;
-  color: var(--danger);
+  font-size: var(--t-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -557,7 +665,4 @@ button.primary kbd {
 .problems footer {
   display: flex;
   justify-content: flex-end;
-}
-button.danger {
-  color: var(--danger);
 }

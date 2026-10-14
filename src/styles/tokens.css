@@ -1,0 +1,113 @@
+/* Design tokens (docs/design/ui.md §2). Components use these, never raw colours, sizes or durations. Light by
+   default; dark follows the system unless a theme is set on <html data-theme>. */
+
+:root {
+  --bg-0: #ffffff;
+  --bg-1: #fafafa;
+  --bg-2: #f4f4f5;
+  --bg-3: #e9e9ec;
+  --fg-0: #18181b;
+  --fg-1: #52525b;
+  /* Darker than the spec's #a1a1aa (2.6:1 on white); this keeps meta text at AA (4.5:1) on every row background, focused included. */
+  --fg-2: #686871;
+  --line: #e4e4e7;
+  --accent: #5b5bd6;
+  --accent-fg: #ffffff;
+  --accent-soft: #eeeefb;
+  --ok: #2f9e6e;
+  --warn: #c98a1b;
+  --danger: #d0453f;
+  --star: #e9b81c;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  --scrim: rgba(0, 0, 0, 0.25);
+  color-scheme: light;
+
+  --t-xs: 11px;
+  --t-sm: 12px;
+  --t-md: 13px;
+  --t-rd: 14px;
+  --t-lg: 16px;
+  --t-xl: 22px;
+
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+
+  --d-fast: 120ms;
+  --d-base: 160ms;
+  --d-slow: 240ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --row-h: 36px;
+  --participants-w: 180px;
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Cantarell", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", monospace;
+
+  /* Older names, kept until every rule uses the tokens above. */
+  --bg: var(--bg-0);
+  --bg-side: var(--bg-1);
+  --bg-hover: var(--bg-2);
+  --bg-selected: var(--bg-3);
+  --text: var(--fg-0);
+  --text-dim: var(--fg-1);
+  --accent-text: var(--accent-fg);
+}
+
+
+:root[data-theme="dark"] {
+  --bg-0: #111113;
+  --bg-1: #18181b;
+  --bg-2: #1f1f23;
+  --bg-3: #27272b;
+  --fg-0: #ededef;
+  --fg-1: #a1a1aa;
+  /* Lighter than the spec's #71717a (3.9:1 on #111113): AA on every row background. */
+  --fg-2: #8d8d96;
+  --line: #27272a;
+  --accent: #7c7cf0;
+  --accent-soft: #232347;
+  --ok: #3fbf85;
+  --warn: #e0a63a;
+  --danger: #ef6b66;
+  --star: #f2c94c;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-0: #111113;
+    --bg-1: #18181b;
+    --bg-2: #1f1f23;
+    --bg-3: #27272b;
+    --fg-0: #ededef;
+    --fg-1: #a1a1aa;
+    --fg-2: #8d8d96;
+    --line: #27272a;
+    --accent: #7c7cf0;
+    --accent-soft: #232347;
+    --ok: #3fbf85;
+    --warn: #e0a63a;
+    --danger: #ef6b66;
+    --star: #f2c94c;
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+    --scrim: rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --d-fast: 0ms;
+    --d-base: 0ms;
+    --d-slow: 0ms;
+  }
+}
