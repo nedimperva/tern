@@ -63,12 +63,16 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 
 ### Incremental sync
 - [x] `ENABLE CONDSTORE QRESYNC` when advertised. Store `highest_modseq` per folder (column exists).
-- [ ] Folder check = `SELECT (QRESYNC ...)` → apply `VANISHED` + changed flags from the response; fall back to
+- [x] Folder check = `SELECT (QRESYNC ...)` → apply `VANISHED` + changed flags from the response; fall back to
       `UID SEARCH MODSEQ n` on CONDSTORE-only servers; fall back to `UID FETCH 1:* (FLAGS)` in batches of 5,000 on plain servers.
+      Done: CONDSTORE-only uses `UID FETCH 1:* (FLAGS) (CHANGEDSINCE n)` (one round trip instead of SEARCH then
+      FETCH); plain servers read flags in UID ranges of 5,000. Both run against the scripted server in tests.
 - [x] `UIDVALIDITY` change: drop the folder's rows (respecting `pending_uids`) and resync.
       Done in the reliability gate (#17): rows queued work points at stay with their uid cleared; sync claims
       them back by Message-ID.
-- [ ] Interval for non-inbox folders: 5 minutes, or on demand when the user opens the folder.
+- [x] Interval for non-inbox folders: 5 minutes, or on demand when the user opens the folder.
+      Done: `sync::Schedule`; opening a folder calls `check_folder`; a send asks for Sent; a folder still
+      backfilling is checked every pass.
 
 ### Headers first, bodies later
 - [ ] Phase A: `UID FETCH <new> (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES LIST-UNSUBSCRIBE LIST-ID)] BODYSTRUCTURE)`
@@ -185,3 +189,9 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   server: stopping it showed Offline within a second and backoff of 4, 6, 13, 25 s; starting it again synced 6 s
   later. Also, for the owner's slow first send on Windows: queued work is now sent between folders and stops body
   backfill, instead of waiting for a whole pass (up to 15 s of backfill plus every folder) to finish.
+- 2026-10-14 — Folder checks. The inbox is checked every pass; other folders every 5 minutes, when opened
+  (`check_folder`, called on navigation only: the list reloads on every change, so tying it to listing would
+  loop), right after a send (Sent), or while backfilling. CONDSTORE-only servers read only changed flags;
+  plain servers read flags in 5,000-UID ranges. Live: each minute's pass is now one SELECT of INBOX.
+  Seen once and not reproduced in two later runs: a dev-server check hit the 60 s command timeout in its first
+  pass while the app was restarting against the same server.

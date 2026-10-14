@@ -122,6 +122,7 @@ fn main() {
             commands::retry_problem,
             commands::discard_problem,
             commands::sync_states,
+            commands::check_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tern");
