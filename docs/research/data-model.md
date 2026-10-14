@@ -67,6 +67,14 @@ CREATE INDEX messages_subject ON messages (account_id, subject_norm, date) WHERE
 ```
 No `threads` table: conversation rows are computed per page (see sprint 01, Decisions).
 
+## v9, v10 — package 02 (implemented 2026-10-14)
+```sql
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- v9: value is JSON
+-- v10: data only: bodies.html re-cleaned with mime::sanitize_html
+```
+`messages.parts` now also holds attachments found in a parsed body (no section number) when BODYSTRUCTURE gave
+none.
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'

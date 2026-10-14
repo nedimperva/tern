@@ -564,6 +564,50 @@ button.primary kbd {
 .reply {
   margin: var(--s-3) 0 0 var(--s-4);
 }
+/* The "···" pill that unfolds a quoted reply or signature. */
+button.fold {
+  display: block;
+  margin-top: var(--s-2);
+  padding: 0 var(--s-2);
+  height: 18px;
+  line-height: 14px;
+  font-size: var(--t-sm);
+  letter-spacing: 0.1em;
+  color: var(--fg-1);
+  background: var(--bg-2);
+  border-radius: var(--r-sm);
+}
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+.attachments .file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.attachments .name {
+  color: var(--fg-0);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachments .size {
+  color: var(--fg-2);
+}
+.remote-bar button + button {
+  margin-left: var(--s-1);
+}
 
 /* MARK: Overlays */
 

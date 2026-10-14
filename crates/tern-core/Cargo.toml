@@ -6,6 +6,8 @@ license = "MIT"
 description = "Local-first mail engine: SQLite store, IMAP sync, SMTP send, outbox with undo."
 
 [dependencies]
+# Mail HTML is cleaned when stored (scripts, forms, frames out; styles kept). See mime::sanitize_html.
+ammonia = "4"
 anyhow = "1"
 # Jitter for reconnect waits.
 fastrand = "2"
