@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 /// Tries before queued work stops retrying and waits for the person.
 const MAX_ATTEMPTS: i64 = 5;
 
@@ -161,6 +161,8 @@ fn migrate(conn: &Connection) -> Result<()> {
                 "UPDATE bodies SET html = NULL WHERE text IS NOT NULL AND html = '<html><body>' ||
                    replace(replace(replace(text, char(13), ''), '<', '&lt;'), char(10), '<br/>') || '</body></html>';"
             }
+            // A send that broke off after the message was handed over, so it may have gone out.
+            5 => "ALTER TABLE outbox ADD COLUMN maybe_sent INTEGER NOT NULL DEFAULT 0;",
             _ => unreachable!("no migration from schema {from}"),
         };
         conn.execute_batch(&format!("BEGIN; {step}; PRAGMA user_version = {}; COMMIT;", from + 1))?;
@@ -190,8 +192,15 @@ impl Store {
              PRAGMA mmap_size = 268435456;",
         )?;
         migrate(&conn)?;
-        // Work claimed by a run that did not finish is free to go again.
+        // Work claimed by a run that did not finish is free to go again, except a send that had started: it may
+        // have gone out, so it waits for the person (claimed = 2, see `outbox_sending`).
         conn.execute("UPDATE outbox SET claimed = 0 WHERE claimed = 1", [])?;
+        conn.execute(
+            "UPDATE outbox SET claimed = 0, maybe_sent = 1, gave_up_at = ?1, attempts = attempts + 1,
+                               last_error = 'Tern stopped while sending this, so it may have been sent'
+             WHERE claimed = 2",
+            [now()],
+        )?;
         Ok(Self { conn: Mutex::new(conn) })
     }
 
@@ -332,14 +341,34 @@ impl Store {
             .ok()
     }
 
-    /// The server renumbered the folder (UIDVALIDITY changed): forget what we know of it.
+    /// The server renumbered the folder (UIDVALIDITY changed): forget what we know of it. Messages queued work
+    /// is about to change stay, without a uid, so what the person did still shows; the folder's next sync finds
+    /// them again by Message-ID, and the queued work finds them on the server the same way.
     pub fn reset_folder(&self, folder_id: i64) -> Result<()> {
-        let conn = self.conn();
-        conn.execute("DELETE FROM messages WHERE folder_id = ?1 AND uid IS NOT NULL", [folder_id])?;
-        conn.execute(
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let account_id: i64 =
+            tx.query_row("SELECT account_id FROM folders WHERE id = ?1", [folder_id], |r| r.get(0))?;
+        let mut keep = HashSet::new();
+        for op in queued(&tx, account_id)? {
+            match op {
+                OutboxOp::Flags { revert, .. } => keep.extend(revert.iter().map(|r| r.0)),
+                OutboxOp::Move { revert, .. } => keep.extend(revert.iter().map(|r| r.0)),
+                OutboxOp::Send(_) => {}
+            }
+        }
+        for id in &keep {
+            tx.execute(
+                "UPDATE messages SET uid = NULL WHERE id = ?1 AND folder_id = ?2",
+                params![id, folder_id],
+            )?;
+        }
+        tx.execute("DELETE FROM messages WHERE folder_id = ?1 AND uid IS NOT NULL", [folder_id])?;
+        tx.execute(
             "UPDATE folders SET uid_validity = NULL, uid_next = NULL, highest_modseq = NULL WHERE id = ?1",
             [folder_id],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -586,6 +615,7 @@ impl Store {
             uid: Option<u32>,
             seen: bool,
             flagged: bool,
+            validity: Option<u32>,
         }
 
         let mut conn = self.conn();
@@ -594,7 +624,7 @@ impl Store {
         for id in ids {
             let hit = tx
                 .query_row(
-                    "SELECT m.id, m.account_id, m.folder_id, f.name, m.uid, m.seen, m.flagged
+                    "SELECT m.id, m.account_id, m.folder_id, f.name, m.uid, m.seen, m.flagged, f.uid_validity
                      FROM messages m JOIN folders f ON f.id = m.folder_id WHERE m.id = ?1",
                     [id],
                     |r| {
@@ -607,6 +637,7 @@ impl Store {
                                 uid: r.get(4)?,
                                 seen: r.get(5)?,
                                 flagged: r.get(6)?,
+                                validity: r.get(7)?,
                             },
                         ))
                     },
@@ -622,6 +653,9 @@ impl Store {
         for ((account_id, folder_id), hits) in groups {
             let folder = hits[0].folder.clone();
             let uids: Vec<u32> = hits.iter().filter_map(|h| h.uid).collect();
+            // Moved here by work still queued: their uid here is not known yet.
+            let waiting: Vec<i64> = hits.iter().filter(|h| h.uid.is_none()).map(|h| h.id).collect();
+            let validity = hits[0].validity;
             let op = match action {
                 Action::MarkRead | Action::MarkUnread | Action::Star | Action::Unstar => {
                     let (column, flag, add) = match action {
@@ -642,6 +676,8 @@ impl Store {
                         flag: flag.into(),
                         add,
                         revert: hits.iter().map(|h| (h.id, h.seen, h.flagged)).collect(),
+                        validity,
+                        waiting,
                     }
                 }
                 Action::Archive | Action::Trash => {
@@ -673,6 +709,8 @@ impl Store {
                         dest,
                         uids,
                         revert: hits.iter().map(|h| (h.id, h.folder_id, h.uid)).collect(),
+                        validity,
+                        waiting,
                     }
                 }
             };
@@ -683,8 +721,15 @@ impl Store {
         Ok(Applied { token, accounts: accounts.into_iter().collect() })
     }
 
-    pub fn queue_send(&self, account_id: i64, draft: Draft, delay: i64) -> Result<i64> {
-        enqueue(&self.conn(), account_id, &OutboxOp::Send(draft), delay)
+    pub fn queue_send(&self, account_id: i64, mut draft: Draft, delay: i64) -> Result<i64> {
+        let conn = self.conn();
+        if draft.message_id.is_none() {
+            let email: String =
+                conn.query_row("SELECT email FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
+            let domain = email.rsplit_once('@').map_or("localhost", |(_, d)| d);
+            draft.message_id = Some(crate::smtp::new_message_id(domain)?);
+        }
+        enqueue(&conn, account_id, &OutboxOp::Send(draft), delay)
     }
 
     /// Takes back what `apply` or `queue_send` did, if it has not gone to the server yet.
@@ -701,7 +746,12 @@ impl Store {
                 )
                 .optional()?;
             let Some(payload) = payload else { continue };
-            revert(&tx, &serde_json::from_str(&payload)?)?;
+            let op: OutboxOp = serde_json::from_str(&payload)?;
+            // Later work on the same messages counts on this move happening; taking it back would strand that.
+            if waited_on(&tx, *id, &op)? {
+                continue;
+            }
+            revert(&tx, &op)?;
             tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
             undone = true;
         }
@@ -735,15 +785,116 @@ impl Store {
     /// Puts the work back, to try again later: 20 s, 40 s, … up to an hour. After MAX_ATTEMPTS, or at once when
     /// the server's answer means trying again cannot help (`permanent`), it stops being tried and waits in
     /// `outbox_problems` for the person to retry or discard it. It is never dropped on its own.
-    pub fn outbox_failed(&self, id: i64, error: &str, permanent: bool) -> Result<()> {
+    pub fn outbox_failed(&self, id: i64, error: &str, failure: Failure) -> Result<()> {
+        let maybe_sent = failure == Failure::MaybeSent;
+        let stop = failure != Failure::Retry;
         self.conn().execute(
-            "UPDATE outbox SET claimed = 0, attempts = attempts + 1, last_error = ?2,
+            "UPDATE outbox SET claimed = 0, attempts = attempts + 1, last_error = ?2, maybe_sent = ?6,
                                not_before = ?3 + MIN(3600, 10 << MIN(attempts + 1, 9)),
                                gave_up_at = CASE WHEN ?4 OR attempts + 1 >= ?5 THEN ?3 END
              WHERE id = ?1",
-            params![id, error, now(), permanent, MAX_ATTEMPTS],
+            params![id, error, now(), stop, MAX_ATTEMPTS, maybe_sent],
         )?;
         Ok(())
+    }
+
+    /// One queued op as it stands now. Claimed work is read again just before it runs, since an earlier op in the
+    /// same pass may have filled in its uids (`moved`). None if it is gone.
+    pub fn outbox_op(&self, id: i64) -> Result<Option<OutboxOp>> {
+        let payload: Option<String> = self
+            .conn()
+            .query_row("SELECT payload FROM outbox WHERE id = ?1", [id], |r| r.get(0))
+            .optional()?;
+        payload.map(|p| Ok(serde_json::from_str(&p)?)).transpose()
+    }
+
+    /// Marks claimed work as handed to the server. A send marked so and never finished (Tern was closed or
+    /// crashed) may have gone out: the next start puts it in the problems list instead of sending it again.
+    pub fn outbox_sending(&self, id: i64) -> Result<()> {
+        self.conn().execute("UPDATE outbox SET claimed = 2 WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Records where a move put its messages: `placed` is (message id, uid in `dest`), from the server's COPYUID.
+    /// A message still in `dest` here takes its uid at once, and queued work that waited to learn it (a star, or a
+    /// further move, made before this move went out) has it filled in.
+    pub fn moved(&self, account_id: i64, dest: &str, placed: &[(i64, u32)]) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        for &(id, uid) in placed {
+            // Only a row still waiting for its uid in `dest`; one moved on again since is left to the later work.
+            let folder: Option<i64> = tx
+                .query_row(
+                    "SELECT m.folder_id FROM messages m JOIN folders f ON f.id = m.folder_id
+                     WHERE m.id = ?1 AND m.uid IS NULL AND f.account_id = ?2 AND f.name = ?3",
+                    params![id, account_id, dest],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let Some(folder) = folder else { continue };
+            // A row for the same uid may already be here (a message without Message-ID that sync could not
+            // match): it is this message, so the moved row takes its place.
+            tx.execute(
+                "DELETE FROM messages WHERE folder_id = ?1 AND uid = ?2 AND id != ?3",
+                params![folder, uid, id],
+            )?;
+            tx.execute("UPDATE messages SET uid = ?2 WHERE id = ?1", params![id, uid])?;
+        }
+        if !placed.is_empty() {
+            let rows: Vec<(i64, String)> = tx
+                .prepare("SELECT id, payload FROM outbox WHERE account_id = ?1 AND claimed != 2 ORDER BY id")?
+                .query_map([account_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<rusqlite::Result<_>>()?;
+            for (row, payload) in rows {
+                let mut op: OutboxOp = serde_json::from_str(&payload)?;
+                let changed = match &mut op {
+                    OutboxOp::Flags { folder, uids, waiting, .. }
+                    | OutboxOp::Move { folder, uids, waiting, .. }
+                        if folder == dest =>
+                    {
+                        let before = waiting.len();
+                        for &(id, uid) in placed {
+                            if let Some(i) = waiting.iter().position(|w| *w == id) {
+                                waiting.remove(i);
+                                uids.push(uid);
+                            }
+                        }
+                        waiting.len() != before
+                    }
+                    _ => false,
+                };
+                // A further move also notes where it takes each message from, both to report where that one
+                // went and so that undoing it puts the message back with its uid.
+                if let (true, OutboxOp::Move { revert, .. }) = (changed, &mut op) {
+                    for (id, _, from) in revert.iter_mut() {
+                        if let Some(&(_, uid)) = placed.iter().find(|p| p.0 == *id) {
+                            from.get_or_insert(uid);
+                        }
+                    }
+                }
+                if changed {
+                    tx.execute(
+                        "UPDATE outbox SET payload = ?2 WHERE id = ?1",
+                        params![row, serde_json::to_string(&op)?],
+                    )?;
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The Message-ID of each message, for finding it on the server when its uid cannot be trusted.
+    pub fn message_ids(&self, ids: &[i64]) -> Result<Vec<(i64, String)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached("SELECT message_id FROM messages WHERE id = ?1")?;
+        let mut out = Vec::new();
+        for &id in ids {
+            if let Some(Some(mid)) = stmt.query_row([id], |r| r.get::<_, Option<String>>(0)).optional()? {
+                out.push((id, mid));
+            }
+        }
+        Ok(out)
     }
 
     /// Hands claimed but untried work back to the queue, after a pass ended early.
@@ -757,18 +908,27 @@ impl Store {
     pub fn outbox_problems(&self) -> Result<Vec<OutboxProblem>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
-            "SELECT id, account_id, payload, attempts, COALESCE(last_error, ''), gave_up_at
+            "SELECT id, account_id, payload, attempts, COALESCE(last_error, ''), gave_up_at, maybe_sent
              FROM outbox WHERE gave_up_at IS NOT NULL ORDER BY gave_up_at, id",
         )?;
+        type Problem = (i64, i64, String, i64, String, i64, bool);
         let rows = stmt
             .query_map([], |r| {
-                Ok((r.get::<_, i64>(0)?, r.get(1)?, r.get::<_, String>(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                ))
             })?
-            .collect::<rusqlite::Result<Vec<(i64, i64, String, i64, String, i64)>>>()?;
+            .collect::<rusqlite::Result<Vec<Problem>>>()?;
         rows.into_iter()
-            .map(|(id, account_id, payload, attempts, last_error, gave_up_at)| {
+            .map(|(id, account_id, payload, attempts, last_error, gave_up_at, maybe_sent)| {
                 let what = describe(&serde_json::from_str(&payload)?);
-                Ok(OutboxProblem { id, account_id, what, attempts, last_error, gave_up_at })
+                Ok(OutboxProblem { id, account_id, what, attempts, last_error, gave_up_at, maybe_sent })
             })
             .collect()
     }
@@ -776,7 +936,7 @@ impl Store {
     /// Tries given-up work again from the start.
     pub fn retry_outbox(&self, id: i64) -> Result<()> {
         self.conn().execute(
-            "UPDATE outbox SET gave_up_at = NULL, attempts = 0, not_before = ?2, claimed = 0
+            "UPDATE outbox SET gave_up_at = NULL, attempts = 0, not_before = ?2, claimed = 0, maybe_sent = 0
              WHERE id = ?1 AND gave_up_at IS NOT NULL",
             params![id, now()],
         )?;
@@ -832,6 +992,35 @@ impl Store {
 }
 
 /// Puts the local store back as it was before `op`.
+/// Every queued op of the account, in order.
+fn queued(conn: &Connection, account_id: i64) -> Result<Vec<OutboxOp>> {
+    let mut stmt = conn.prepare_cached("SELECT payload FROM outbox WHERE account_id = ?1 ORDER BY id")?;
+    let payloads =
+        stmt.query_map([account_id], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    payloads.iter().map(|p| Ok(serde_json::from_str(p)?)).collect()
+}
+
+/// Whether work queued after `id` waits on a message that `op` moves.
+fn waited_on(conn: &Connection, id: i64, op: &OutboxOp) -> Result<bool> {
+    let OutboxOp::Move { revert, .. } = op else { return Ok(false) };
+    let moved: HashSet<i64> = revert.iter().map(|r| r.0).collect();
+    let mut stmt = conn.prepare_cached(
+        "SELECT payload FROM outbox WHERE id > ?1 AND account_id = (SELECT account_id FROM outbox WHERE id = ?1)",
+    )?;
+    let later = stmt.query_map([id], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    for payload in later {
+        match serde_json::from_str::<OutboxOp>(&payload)? {
+            OutboxOp::Flags { waiting, .. } | OutboxOp::Move { waiting, .. }
+                if waiting.iter().any(|w| moved.contains(w)) =>
+            {
+                return Ok(true)
+            }
+            _ => {}
+        }
+    }
+    Ok(false)
+}
+
 fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
     match op {
         OutboxOp::Flags { revert, .. } => {
@@ -1045,7 +1234,7 @@ mod tests {
         let due = store.claim_due(account).unwrap();
         assert_eq!(due.len(), 1);
         assert!(store.claim_due(account).unwrap().is_empty(), "claimed work is not handed out twice");
-        store.outbox_failed(due[0].0, "offline", false).unwrap();
+        store.outbox_failed(due[0].0, "offline", Failure::Retry).unwrap();
         assert!(store.next_due(account).unwrap().unwrap() > now());
     }
 
@@ -1061,7 +1250,7 @@ mod tests {
     fn a_permanent_refusal_stops_retrying_at_once() {
         let (store, account, inbox, _) = setup();
         let work = queued_mark_read(&store, account, inbox);
-        store.outbox_failed(work, "550 no such mailbox", true).unwrap();
+        store.outbox_failed(work, "550 no such mailbox", Failure::Permanent).unwrap();
         assert_eq!(store.next_due(account).unwrap(), None, "given-up work is not scheduled");
         let problems = store.outbox_problems().unwrap();
         assert_eq!(
@@ -1076,10 +1265,10 @@ mod tests {
         let (store, account, inbox, _) = setup();
         let work = queued_mark_read(&store, account, inbox);
         for _ in 1..MAX_ATTEMPTS {
-            store.outbox_failed(work, "timed out", false).unwrap();
+            store.outbox_failed(work, "timed out", Failure::Retry).unwrap();
             assert!(store.outbox_problems().unwrap().is_empty());
         }
-        store.outbox_failed(work, "timed out", false).unwrap();
+        store.outbox_failed(work, "timed out", Failure::Retry).unwrap();
         assert_eq!(store.outbox_problems().unwrap().len(), 1);
         // Never dropped: the row is still there, just no longer tried.
         let rows: i64 = store.conn().query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0)).unwrap();
@@ -1090,7 +1279,7 @@ mod tests {
     fn retry_puts_given_up_work_back_in_the_queue() {
         let (store, account, inbox, _) = setup();
         let work = queued_mark_read(&store, account, inbox);
-        store.outbox_failed(work, "550", true).unwrap();
+        store.outbox_failed(work, "550", Failure::Permanent).unwrap();
         store.retry_outbox(work).unwrap();
         assert!(store.outbox_problems().unwrap().is_empty());
         assert_eq!(store.claim_due(account).unwrap()[0].0, work);
@@ -1100,7 +1289,7 @@ mod tests {
     fn discard_drops_given_up_work_and_reverts_the_local_change() {
         let (store, account, inbox, _) = setup();
         let work = queued_mark_read(&store, account, inbox);
-        store.outbox_failed(work, "550", true).unwrap();
+        store.outbox_failed(work, "550", Failure::Permanent).unwrap();
         store.discard_outbox(work).unwrap();
         assert!(store.outbox_problems().unwrap().is_empty());
         assert!(!store.list(&ListTarget::Folder(inbox), None, 10).unwrap()[0].seen, "back to unread");
@@ -1113,6 +1302,89 @@ mod tests {
         let work = queued_mark_read(&store, account, inbox);
         store.release_claims(account).unwrap();
         assert_eq!(store.claim_due(account).unwrap()[0].0, work);
+    }
+
+    fn draft() -> Draft {
+        Draft {
+            to: vec!["b@x".into()],
+            cc: vec![],
+            subject: "Lunch?".into(),
+            body: "".into(),
+            in_reply_to: None,
+            message_id: None,
+        }
+    }
+
+    #[test]
+    fn a_send_that_may_have_gone_out_waits_for_the_person() {
+        let (store, account, _, _) = setup();
+        let work = store.queue_send(account, draft(), 0).unwrap();
+        store.claim_due(account).unwrap();
+        store.outbox_failed(work, "connection reset", Failure::MaybeSent).unwrap();
+        assert_eq!(store.next_due(account).unwrap(), None, "not sent again on its own");
+        let problems = store.outbox_problems().unwrap();
+        assert!(problems[0].maybe_sent);
+        let id_before = match store.outbox_op(work).unwrap() {
+            Some(OutboxOp::Send(d)) => d.message_id.expect("queued sends get a Message-ID"),
+            other => panic!("{other:?}"),
+        };
+        assert!(id_before.ends_with("@example.com>"), "{id_before}");
+        store.retry_outbox(work).unwrap();
+        let again = store.claim_due(account).unwrap().remove(0);
+        assert_eq!(again.0, work, "the person can send it again");
+        assert!(
+            matches!(again.1, OutboxOp::Send(d) if d.message_id == Some(id_before)),
+            "as the same message"
+        );
+    }
+
+    /// Tern stopped (closed, crashed, power cut) in the middle of a pass, then starts again on the same file.
+    #[test]
+    fn restart_recovers_interrupted_work() {
+        let path = std::env::temp_dir().join(format!("tern-restart-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let (sending, waiting, marking) = {
+            let store = Store::open(&path).unwrap();
+            let account = store.add_account(&config()).unwrap().id;
+            let inbox = store.upsert_folder(account, "INBOX", "inbox").unwrap();
+            let marking = queued_mark_read(&store, account, inbox);
+            let sending = store.queue_send(account, draft(), 0).unwrap();
+            let waiting = store.queue_send(account, draft(), 0).unwrap();
+            store.claim_due(account).unwrap();
+            store.outbox_sending(sending).unwrap();
+            (sending, waiting, marking)
+        };
+        let store = Store::open(&path).unwrap();
+        let problems = store.outbox_problems().unwrap();
+        assert_eq!(problems.iter().map(|p| (p.id, p.maybe_sent)).collect::<Vec<_>>(), [(sending, true)]);
+        let mut due: Vec<i64> = store.claim_due(1).unwrap().into_iter().map(|(id, _)| id).collect();
+        due.sort();
+        assert_eq!(due, [marking, waiting], "work that had not started goes again");
+        drop(store);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    #[test]
+    fn renumbering_keeps_messages_queued_work_is_about_to_change() {
+        let (store, account, inbox, _) = setup();
+        store.insert_messages(account, inbox, &[message(1, "a", 1), message(2, "b", 2)]).unwrap();
+        let rows = store.list(&ListTarget::Folder(inbox), None, 10).unwrap();
+        let (b, a) = (rows[0].id, rows[1].id);
+        store.apply(&[a], Action::Star, 5).unwrap();
+        store.reset_folder(inbox).unwrap();
+        assert!(store.local_uids(inbox).unwrap().is_empty(), "no uid of the old numbering survives");
+        let left: Vec<i64> =
+            store.list(&ListTarget::Folder(inbox), None, 10).unwrap().iter().map(|r| r.id).collect();
+        assert_eq!(left, [a], "the starred one stays, still starred, until the server has the star");
+        assert!(store.list(&ListTarget::Folder(inbox), None, 10).unwrap()[0].flagged);
+        assert!(!left.contains(&b));
+        // The next sync claims it back by Message-ID under the new numbering.
+        let mut again = message(1, "a", 1);
+        again.uid = 41;
+        store.insert_messages(account, inbox, &[again]).unwrap();
+        assert_eq!(store.local_uids(inbox).unwrap(), [41].into());
     }
 
     /// A database as Tern wrote it before connection security was stored (schema 1).
@@ -1175,7 +1447,10 @@ mod tests {
         let folder = store.upsert_folder(account, "INBOX", "inbox").unwrap();
         store.insert_messages(account, folder, &[message(1, "a", 1), message(2, "b", 2)]).unwrap();
         let conn = store.conn.into_inner().unwrap();
-        conn.execute_batch("DELETE FROM bodies; PRAGMA user_version = 4;").unwrap();
+        conn.execute_batch(
+            "DELETE FROM bodies; ALTER TABLE outbox DROP COLUMN maybe_sent; PRAGMA user_version = 4;",
+        )
+        .unwrap();
         let generated = mail_parser::MessageParser::default()
             .parse(b"Subject: x\r\n\r\na < b\r\nline two\r\n".as_slice())
             .unwrap()

@@ -103,6 +103,7 @@ async fn send_and_find(config: &AccountConfig) {
         subject: subject.clone(),
         body: "Sent by the dev-server checks.".into(),
         in_reply_to: None,
+        message_id: None,
     };
     let mut s = sign_in().await;
     s.select("INBOX").await.unwrap();
@@ -146,6 +147,7 @@ async fn unknown_recipient_is_a_permanent_failure() {
         subject: "to nobody".into(),
         body: "This address does not exist on the dev server.".into(),
         in_reply_to: None,
+        message_id: None,
     };
     let err = tern_core::smtp::send(&account(1465, Security::Tls), &password(), &draft).await.err().unwrap();
     assert!(tern_core::smtp::is_permanent(&err), "{err:#}");
@@ -165,6 +167,7 @@ async fn idle_wakes_on_new_mail() {
             subject: "idle check".into(),
             body: "Wakes IDLE.".into(),
             in_reply_to: None,
+            message_id: None,
         };
         tern_core::smtp::send(&account(1465, Security::Tls), &password(), &draft).await.unwrap();
     });

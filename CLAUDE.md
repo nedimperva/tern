@@ -54,6 +54,15 @@ policy review. No implementation or real-provider acceptance was completed by th
   Failed work retries with backoff and stops after 5 tries, or at once on a permanent refusal (SMTP 5xx); it then
   waits in `outbox_problems` for retry or discard (discard reverts like undo). It is never dropped on its own, and a
   failure never stops the rest of the pass; only a lost connection does.
+- **Uncertain sends are never resent on their own.** SMTP runs step by step (`smtp::transmit`): a failure up to
+  DATA is safe to retry; a break after the message was written, or Tern stopping mid-send (`claimed = 2`), makes
+  a `maybe_sent` problem the person resolves ("Send again" / "Don't send"). Sent mail gets a Message-ID at the
+  sender's domain (lettre adds none by itself).
+- **Queued uids are checked before use.** Ops carry the folder's UIDVALIDITY; on a mismatch, and for `waiting`
+  messages (acted on before an earlier move went out), messages are found by Message-ID (SEARCH HEADER, else one
+  FETCH of every Message-ID in the folder: Stalwart cannot search that header). A move's COPYUID fills in waiting
+  work at once. Undo refuses a move that later queued work depends on. Tests for these run against
+  `scripted::signed_in` (a scripted IMAP server) in `sync::tests::outbox`.
 - **Moves and UIDs.** A moved message gets a new UID in the destination folder. Locally the row moves at once with
   `uid = NULL`; when the destination folder syncs, `insert_messages` claims that row by `Message-ID` instead of
   inserting a duplicate. Sync must never delete or overwrite rows with pending outbox ops (`pending_uids`).
