@@ -26,11 +26,11 @@ the help: `j`/`k`, `e`, `h` (placeholder until Sprint 5), `s`, `u`, `#`, `Enter`
 - [x] CSS custom properties for colour, spacing, radius, type scale, motion. Two themes (`light`, `dark`), follow
       the system by default (`prefers-color-scheme`), override in settings. Omarchy sets the GTK theme; we only
       follow light/dark, not the palette.
-- [ ] Bundle Inter (variable) and JetBrains Mono as `woff2`; set `font-feature-settings: "cv11", "ss01"`
+- [x] Bundle Inter (variable) and JetBrains Mono as `woff2`; set `font-feature-settings: "cv11", "ss01"`
       for Inter's single-storey a and open digits (closest to Superhuman's feel).
-- [ ] Type scale: 13 px list, 14 px reading, 12 px meta; line-height 1.4; row height 36 px (dense) / 44 px (comfortable).
+- [x] Type scale: 13 px list, 14 px reading, 12 px meta; line-height 1.4; row height 36 px (dense) / 44 px (comfortable).
 - [x] Motion: 120 ms ease-out for list moves, 160 ms for panels, none when `prefers-reduced-motion`.
-- [ ] Icon set: Lucide (tree-shaken, inline SVG). No icon font.
+- [x] Icon set: Lucide (tree-shaken, inline SVG). No icon font.
 
 ### Layout
 - [x] Three regions: a slim left rail (hidden by default, `Cmd+\` to toggle) with accounts and labels; the list;
@@ -72,12 +72,12 @@ the help: `j`/`k`, `e`, `h` (placeholder until Sprint 5), `s`, `u`, `#`, `Enter`
 - [ ] Recent commands first; arrow keys and `Enter`; argument mode for move/label with the same list.
 
 ### Settings
-- [ ] `settings` table (key/value JSON) in SQLite, `settings.ts` signal store, settings pane reachable with `Cmd+,`.
-- [ ] Sprint 2 keys: theme, density, open-conversation mode, mark-read delay, load-images-default.
+- [x] `settings` table (key/value JSON) in SQLite, `settings.ts` signal store, settings pane reachable with `Cmd+,`.
+- [x] Sprint 2 keys: theme, density, open-conversation mode, mark-read delay, load-images-default.
 
 ### Perf overlay
-- [ ] `Cmd+Shift+P` toggles an overlay with last keypress → paint time, list query time (from the command reply), FPS, and bundle size at build.
-- [ ] Log a warning in dev when any of the Sprint targets is exceeded.
+- [x] `Cmd+Shift+P` toggles an overlay with last keypress → paint time, list query time (from the command reply), FPS, and bundle size at build.
+- [x] Log a warning in dev when any of the Sprint targets is exceeded.
 
 ## Cut first
 Label chips on rows, then the empty-state artwork (use a solid colour), then `Cmd+1..9` account switching.
@@ -99,6 +99,10 @@ Label chips on rows, then the empty-state artwork (use a solid colour), then `Cm
   conversation's messages in the folder being viewed, read/unread the whole conversation, a star the newest
   message, unstar every star in it. Search results stay message rows (one per hit), shown in the same row.
 
+- 2026-10-14 — **Icons inlined, not imported.** `lucide-solid` tree-shook to the three icons used but still added
+  4.7 kB gzipped (its icon component and helpers). The path data is copied from Lucide (ISC, credited in
+  `src/components/Icon.tsx`); a new icon is a new entry there.
+
 ## Log
 
 - 2026-10-14 — Slice 1: conversation list and pane. Tokens (`src/styles/tokens.css`, old names aliased), one
@@ -119,3 +123,11 @@ Label chips on rows, then the empty-state artwork (use a solid colour), then `Cm
   window storage), groups (Recent, Actions, Go to, Accounts), chords as two keycaps. Status strip shows three
   keys for the current context after 2 s without a keypress. Not yet: argument mode (Move to …, Label …), which
   needs a move-to-folder action in the engine; `!` (spam) and `m` (mute) likewise.
+- 2026-10-14 — Slice 3: settings, type, perf. `settings` table (schema v9) behind `settings`/`set_setting`;
+  `Ctrl+,` opens Appearance (theme, density) and Reading (open mode, mark-read delay, remote images); changes
+  apply and save at once. Inter (variable) and JetBrains Mono bundled from Fontsource (OFL); only the scripts
+  in use are downloaded. `Ctrl+Shift+P` shows key → paint (from the event's timestamp to the first painted
+  frame after the handler), last list query, fps; slow ones warn in dev. Measured in headless Chromium on the
+  browser fake with about 10,000 conversations, 201 real key events (j, then k): key → paint p50 23.2 ms, p95
+  33.0 ms. Still to do for the acceptance check: the same in the Tauri window during a sync. Migration tests now
+  wind a current database back with one helper (`wind_back`). Bundle 23.5 kB gzipped JS.

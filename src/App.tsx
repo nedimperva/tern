@@ -20,16 +20,20 @@ import { ConversationView } from "./components/ConversationView";
 import { ProblemsDialog } from "./components/Problems";
 import { Rail, ROLE_NAMES } from "./components/Rail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
+import { SettingsPage } from "./components/SettingsPage";
+import { PerfOverlay } from "./components/PerfOverlay";
+import { timeKey, timeQuery } from "./perf";
+import { loadSettings, ROW_HEIGHTS, settings } from "./settings";
+import { Icon } from "./components/Icon";
 import { VirtualList } from "./components/VirtualList";
 import { keyHandler, keyLabel, type Binding, type Context } from "./keys";
 
 const PAGE = 100;
-const ROW_HEIGHT = 36;
 const UNDO_MS = 5000;
-/** How long a conversation has to stay open before it counts as read. */
-const READ_AFTER_MS = 1000;
-/** From this width an open conversation sits beside the list; narrower, it covers it. */
+/** With the "auto" open mode, from this width an open conversation sits beside the list; narrower, it covers it. */
 const SPLIT_WIDTH = 1200;
+/** Below this width there is no room for the list beside a conversation, whatever the setting (§3). */
+const MIN_SPLIT_WIDTH = 960;
 
 /** A conversation's identity across reloads: its newest message, and so the row's id, changes as mail arrives. */
 const keyOf = (r: MessageRow) => `${r.accountId}:${r.threadId}`;
@@ -68,7 +72,7 @@ export default function App() {
   const setMessages = (t: ThreadMessage[]) => setMessagesStore(reconcile(t, { key: "id" }));
   const [messageFocus, setMessageFocus] = createSignal(0);
   const [expanded, setExpanded] = createSignal<ReadonlySet<number>>(new Set());
-  const [wide, setWide] = createSignal(window.innerWidth >= SPLIT_WIDTH);
+  const [width, setWidth] = createSignal(window.innerWidth);
   const [rail, setRail] = createSignal(false);
   const [toast, setToast] = createSignal<{ text: string; token: number[] } | null>(null);
   const [compose, setCompose] = createSignal<ComposeInit | null>(null);
@@ -78,6 +82,8 @@ export default function App() {
   const [problems, setProblems] = createSignal<OutboxProblem[]>([]);
   const [reviewing, setReviewing] = createSignal(false);
   const [sheet, setSheet] = createSignal(false);
+  const [settingsOpen, setSettingsOpen] = createSignal(false);
+  const [perf, setPerf] = createSignal(false);
   // A few useful keys in the status strip once the keyboard has been still for a moment.
   const [idle, setIdle] = createSignal(false);
   let searchInput!: HTMLInputElement;
@@ -86,7 +92,8 @@ export default function App() {
 
   const current = () => rows()[focus()];
   const context = (): Context => (openRow() ? "conversation" : "list");
-  const dialog = () => reviewing() || palette() || sheet() || compose() !== null || setup() || rail();
+  const dialog = () =>
+    reviewing() || palette() || sheet() || settingsOpen() || compose() !== null || setup() || rail();
   const searching = () => query().trim() !== "";
 
   // MARK: Loading
@@ -97,7 +104,7 @@ export default function App() {
     const q = query().trim();
     const page = q
       ? (await api.search(q, 500)).map(asRow)
-      : await api.listThreads(target(), null, Math.max(PAGE, rows().length));
+      : await timeQuery(() => api.listThreads(target(), null, Math.max(PAGE, rows().length)));
     if (ticket !== generation) return;
     exhausted = q !== "" || page.length < PAGE;
     // Focus stays on the same conversation if it is still there, else on the same place in the list.
@@ -160,9 +167,10 @@ export default function App() {
     api.onSyncState((id, state) => setSyncStates({ ...syncStates(), [id]: state }));
     void api.syncStates().then((s) => setSyncStates({ ...s, ...syncStates() }));
     api.onChange(onChange);
-    const onResize = () => setWide(window.innerWidth >= SPLIT_WIDTH);
+    const onResize = () => setWidth(window.innerWidth);
     window.addEventListener("resize", onResize);
     onCleanup(() => window.removeEventListener("resize", onResize));
+    void loadSettings();
     void refresh();
   });
 
@@ -192,10 +200,10 @@ export default function App() {
       setExpanded(new Set(found.filter((m, i) => !m.seen || i === found.length - 1).map((m) => m.id)));
       setMessageFocus(Math.max(0, found.length - 1));
     });
-    if (row.unread > 0) {
+    if (row.unread > 0 && settings.readAfterMs >= 0) {
       readTimer = window.setTimeout(() => {
         if (openRow() === row) void act("markRead", [row], false);
-      }, READ_AFTER_MS);
+      }, settings.readAfterMs);
     }
   }
 
@@ -402,6 +410,8 @@ export default function App() {
     { keys: "g d", name: "Go to Drafts", run: () => go({ role: "drafts" }) },
     { keys: "g a", name: "Go to All Mail", run: () => go({ role: "all" }) },
     { keys: "?", name: "Keyboard shortcuts", run: () => setSheet(true) },
+    { keys: "Ctrl+,", name: "Settings", run: () => setSettingsOpen(true) },
+    { keys: "Ctrl+P", name: "Performance overlay", run: () => setPerf(!perf()) },
     { keys: "Ctrl+\\", name: "Accounts and folders", run: () => setRail(!rail()) },
     { keys: "Ctrl+k", name: "Command palette", run: () => setPalette(!palette()), hidden: true },
   ]);
@@ -427,6 +437,7 @@ export default function App() {
   const handleKey = keyHandler(bindings, context, dialog);
   let idleTimer: number | undefined;
   const onKeyDown = (e: KeyboardEvent) => {
+    timeKey(e);
     setIdle(false);
     clearTimeout(idleTimer);
     idleTimer = window.setTimeout(() => setIdle(true), 2000);
@@ -466,7 +477,11 @@ export default function App() {
     const f = folders().find((f) => f.id === t.folder);
     return f ? ROLE_NAMES[f.role] ?? f.name : "";
   };
-  const split = () => openRow() !== null && wide();
+  const roomForSplit = () =>
+    settings.openMode === "full"
+      ? false
+      : width() >= (settings.openMode === "split" ? MIN_SPLIT_WIDTH : SPLIT_WIDTH);
+  const split = () => openRow() !== null && roomForSplit();
   const inboxUnread = () => folders().filter((f) => f.role === "inbox").reduce((n, f) => n + f.unread, 0);
   const inboxZero = () => ready() && !searching() && rows().length === 0 && "role" in target() && (target() as { role: string }).role === "inbox";
 
@@ -480,11 +495,16 @@ export default function App() {
   };
 
   return (
-    <div class="app" classList={{ split: split(), full: openRow() !== null && !wide() }}>
+    <div class="app" classList={{ split: split(), full: openRow() !== null && !roomForSplit() }}>
       <main class="list-pane">
         <header class="list-header">
-          <button class="link rail-button" onClick={() => setRail(true)} title="Accounts and folders (Ctrl+\)">
-            ☰
+          <button
+            class="link rail-button"
+            onClick={() => setRail(true)}
+            title="Accounts and folders (Ctrl+\)"
+            aria-label="Accounts and folders"
+          >
+            <Icon name="menu" size={18} />
           </button>
           <Show when={splitIndex() >= 0 && !searching()} fallback={<h2>{title()}</h2>}>
             <nav class="splits" role="tablist">
@@ -523,7 +543,7 @@ export default function App() {
             </Show>
           }
         >
-          <VirtualList items={rows()} rowHeight={ROW_HEIGHT} selected={focus()} onEnd={loadMore}>
+          <VirtualList items={rows()} rowHeight={ROW_HEIGHTS[settings.density]} selected={focus()} onEnd={loadMore}>
             {(row, index) => (
               <ConversationRow
                 row={row}
@@ -612,6 +632,12 @@ export default function App() {
           onDiscard={(id) => void api.discardProblem(id).then(refresh)}
           onClose={() => setReviewing(false)}
         />
+      </Show>
+      <Show when={settingsOpen()}>
+        <SettingsPage onClose={() => setSettingsOpen(false)} />
+      </Show>
+      <Show when={perf()}>
+        <PerfOverlay />
       </Show>
       <Show when={sheet()}>
         <ShortcutSheet bindings={bindings()} onClose={() => setSheet(false)} />

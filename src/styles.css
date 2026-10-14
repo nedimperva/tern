@@ -128,8 +128,15 @@ button.primary kbd {
   text-overflow: ellipsis;
 }
 .rail-button {
-  font-size: var(--t-lg);
+  display: flex;
   color: var(--fg-1);
+}
+/* Roomier densities also set type a pixel larger (§2). */
+:root[data-density="comfortable"] .crow {
+  font-size: calc(var(--t-md) + 1px);
+}
+:root[data-density="spacious"] .crow {
+  font-size: calc(var(--t-md) + 2px);
 }
 .search {
   width: 200px;
@@ -282,6 +289,7 @@ button.primary kbd {
 }
 .crow .glyphs {
   display: flex;
+  align-items: center;
   gap: var(--s-1);
   flex: none;
 }
@@ -767,4 +775,83 @@ button.primary kbd {
 .problems footer {
   display: flex;
   justify-content: flex-end;
+}
+
+/* MARK: Settings (§4.8) */
+
+.settings-page {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  background: var(--bg-0);
+}
+.settings-page nav {
+  background: var(--bg-1);
+  border-right: 1px solid var(--line);
+  padding: var(--s-5) var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-page nav h2 {
+  font-size: var(--t-lg);
+  margin: 0 var(--s-2) var(--s-4);
+}
+.settings-page nav a {
+  padding: 6px var(--s-2);
+  border-radius: var(--r-md);
+  font-size: var(--t-md);
+  cursor: default;
+}
+.settings-page nav a.active {
+  background: var(--bg-3);
+  font-weight: 600;
+}
+.settings-page nav button {
+  margin-top: auto;
+  align-self: flex-start;
+  padding-left: var(--s-2);
+}
+.settings-body {
+  width: min(640px, 100%);
+  padding: var(--s-5) var(--s-6);
+  overflow-y: auto;
+}
+.settings-body h1 {
+  font-size: var(--t-xl);
+  margin: 0 0 var(--s-5);
+}
+.setting {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s-1) var(--s-4);
+  align-items: center;
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.setting .title {
+  font-size: var(--t-rd);
+}
+.setting .help {
+  grid-column: 1 / -1;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+
+/* MARK: Performance overlay */
+
+.perf {
+  position: fixed;
+  right: var(--s-3);
+  top: 56px;
+  z-index: 30;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--fg-0);
+  color: var(--bg-0);
+  font: var(--t-sm) / 1.5 var(--mono);
+  pointer-events: none;
+  opacity: 0.9;
 }
