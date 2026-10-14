@@ -548,6 +548,10 @@ button.primary kbd {
   font-size: var(--t-sm);
   font-variant-numeric: tabular-nums;
 }
+.card .draft-label {
+  color: var(--danger);
+  font-size: var(--t-sm);
+}
 .card.unread .who strong {
   color: var(--accent);
 }

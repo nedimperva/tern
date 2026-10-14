@@ -1,5 +1,5 @@
-import { createSignal, For, onMount, Show } from "solid-js";
-import type { Account, Draft } from "../api";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { api, type Account, type Draft } from "../api";
 import { RecipientField, splitAddresses, validAddress } from "./RecipientField";
 
 export type ComposeInit = {
@@ -15,15 +15,23 @@ export type ComposeInit = {
   focus?: "to" | "body";
   /** Shown at the bottom of the open conversation rather than as a dialog. */
   inline?: boolean;
+  /** Continues this saved draft. */
+  draftId?: number | null;
 };
+
+/** How long typing has to pause before the draft is saved. */
+const SAVE_AFTER_MS = 2000;
 
 /** New mail, reply or forward (docs/design/ui.md §4.4). Ctrl+Enter sends, Ctrl+Shift+Enter sends and marks the
  * conversation done; Ctrl+Shift+C / B add Cc / Bcc; Esc closes. */
 export function Compose(props: {
   accounts: Account[];
   init: ComposeInit;
-  onSend: (accountId: number, draft: Draft, done: boolean) => void;
-  onClose: () => void;
+  onSend: (accountId: number, draft: Draft, done: boolean, draftId: number | null) => void;
+  /** Closed; `saved` is the draft id when what was written was kept as a draft. */
+  onClose: (saved: number | null) => void;
+  /** Discarded; the draft id when one had been saved (so it can be undone). */
+  onDiscard: (draftId: number | null) => void;
 }) {
   const [from, setFrom] = createSignal(props.init.accountId ?? props.accounts[0]?.id);
   const [to, setTo] = createSignal(props.init.to ?? []);
@@ -34,6 +42,46 @@ export function Compose(props: {
   const [subject, setSubject] = createSignal(props.init.subject ?? "");
   const [body, setBody] = createSignal(props.init.body ?? "");
   const [problem, setProblem] = createSignal("");
+  // The draft this compose saves to, once there is one, and whether anything changed since it opened.
+  let draftId: number | null = props.init.draftId ?? null;
+  let dirty = false;
+  let saveTimer: number | undefined;
+  const draft = (): Draft => ({
+    to: to(),
+    cc: cc(),
+    bcc: bcc(),
+    subject: subject(),
+    body: body(),
+    inReplyTo: props.init.inReplyTo ?? null,
+    references: props.init.references ?? [],
+  });
+  /** Saves the draft, if there is anything to keep. */
+  const save = async (uploadNow: boolean) => {
+    clearTimeout(saveTimer);
+    if (!dirty || from() == null) return;
+    draftId = await api.saveDraft(draftId, from()!, draft(), uploadNow);
+  };
+  /** Something changed: save once typing pauses. */
+  const changed = () => {
+    dirty = true;
+    clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(() => void save(false), SAVE_AFTER_MS);
+  };
+  // A pending save is not lost if compose goes away some other way.
+  onCleanup(() => {
+    if (saveTimer !== undefined && dirty) void save(true);
+  });
+  const close = async () => {
+    await save(true);
+    dirty = false;
+    props.onClose(draftId);
+  };
+  const discard = () => {
+    clearTimeout(saveTimer);
+    dirty = false;
+    if (draftId != null) void api.discardDraft(draftId);
+    props.onDiscard(draftId);
+  };
   let toInput!: HTMLInputElement;
   let ccInput: HTMLInputElement | undefined;
   let bccInput: HTMLInputElement | undefined;
@@ -63,23 +111,16 @@ export function Compose(props: {
     const bad = everyone.filter((a) => !validAddress(a));
     if (bad.length) return setProblem(`${bad.join(", ")} does not look like an address.`);
     if (from() == null) return;
-    props.onSend(
-      from()!,
-      {
-        ...recipients,
-        subject: subject(),
-        body: body(),
-        inReplyTo: props.init.inReplyTo ?? null,
-        references: props.init.references ?? [],
-      },
-      done,
-    );
+    clearTimeout(saveTimer);
+    dirty = false;
+    props.onSend(from()!, { ...draft(), ...recipients }, done, draftId);
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
     const ctrl = e.ctrlKey || e.metaKey;
-    if (e.key === "Escape") props.onClose();
+    if (e.key === "Escape") void close();
     else if (ctrl && e.key === "Enter") send(e.shiftKey);
+    else if (ctrl && e.shiftKey && (e.key === "," || e.key === "<")) discard();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "c") {
       setShowCc(true);
       queueMicrotask(() => ccInput?.focus());
@@ -103,20 +144,20 @@ export function Compose(props: {
           </select>
         </label>
       </Show>
-      <RecipientField label="To" value={to()} onChange={setTo} ref={(el) => (toInput = el)} />
+      <RecipientField label="To" value={to()} onChange={(v) => (setTo(v), changed())} ref={(el) => (toInput = el)} />
       <Show when={showCc()}>
-        <RecipientField label="Cc" value={cc()} onChange={setCc} ref={(el) => (ccInput = el)} />
+        <RecipientField label="Cc" value={cc()} onChange={(v) => (setCc(v), changed())} ref={(el) => (ccInput = el)} />
       </Show>
       <Show when={showBcc()}>
-        <RecipientField label="Bcc" value={bcc()} onChange={setBcc} ref={(el) => (bccInput = el)} />
+        <RecipientField label="Bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} />
       </Show>
       <Show when={!props.init.inline || !props.init.inReplyTo}>
         <label class="field">
           <span class="label">Subject</span>
-          <input value={subject()} onInput={(e) => setSubject(e.currentTarget.value)} />
+          <input value={subject()} onInput={(e) => (setSubject(e.currentTarget.value), changed())} />
         </label>
       </Show>
-      <textarea ref={text} value={body()} onInput={(e) => (setBody(e.currentTarget.value), grow())} aria-label="Message" />
+      <textarea ref={text} value={body()} onInput={(e) => (setBody(e.currentTarget.value), grow(), changed())} aria-label="Message" />
       <Show when={problem()}>
         <p class="error">{problem()}</p>
       </Show>
@@ -139,8 +180,11 @@ export function Compose(props: {
             </button>
           </Show>
         </span>
-        <button type="button" class="link discard" onClick={props.onClose}>
-          Discard <kbd>Esc</kbd>
+        <button type="button" class="link discard" onClick={discard} title="Discard (Ctrl+Shift+,)">
+          Discard
+        </button>
+        <button type="button" class="link" onClick={() => void close()} title="Close and keep the draft">
+          Close <kbd>Esc</kbd>
         </button>
       </footer>
     </form>
@@ -148,7 +192,7 @@ export function Compose(props: {
 
   return (
     <Show when={!props.init.inline} fallback={form}>
-      <div class="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
+      <div class="overlay" onMouseDown={(e) => e.target === e.currentTarget && void close()}>
         {form}
       </div>
     </Show>

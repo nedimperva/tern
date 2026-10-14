@@ -1498,6 +1498,19 @@ impl Store {
                 continue;
             }
             revert(&tx, &op)?;
+            // An unsent message that was a draft is a draft again, back in Drafts.
+            if let OutboxOp::Send(draft) = &op {
+                let account_id: i64 =
+                    tx.query_row("SELECT account_id FROM outbox WHERE id = ?1", [id], |r| r.get(0))?;
+                let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
+                let restored = tx.execute(
+                    "UPDATE drafts SET sent_at = NULL WHERE account_id = ?1 AND message_id = ?2 AND sent_at IS NOT NULL",
+                    params![account_id, bare],
+                )?;
+                if restored > 0 {
+                    mirror_draft(&tx, account_id, draft)?;
+                }
+            }
             tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
             undone = true;
         }
@@ -2520,6 +2533,20 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         store.conn().execute("DELETE FROM outbox", []).unwrap();
         let due = store.drafts_due(account).unwrap();
         assert!(matches!(&due[0], DraftSync::Remove { copy: Some((7, 41)), .. }), "{due:?}");
+    }
+
+    #[test]
+    fn undoing_a_send_makes_it_a_draft_again() {
+        let (store, account, _, _) = setup();
+        let drafts = store.upsert_folder(account, "Drafts", "drafts").unwrap();
+        let id = store.save_draft(None, account, draft_to("hi"), false).unwrap();
+        let draft = store.draft(id).unwrap().unwrap().draft;
+        let token = store.queue_send(account, draft, 5).unwrap();
+        store.draft_sent(id).unwrap();
+        assert!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().is_empty());
+        assert!(store.undo(&[token]).unwrap());
+        assert_eq!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().len(), 1, "back in Drafts");
+        assert!(store.drafts_due(account).unwrap().iter().all(|d| !matches!(d, DraftSync::Remove { .. })));
     }
 
     #[test]
