@@ -1,6 +1,6 @@
 # Sprint 3 — Compose
 
-**Status:** in progress · started 2026-10-14
+**Status:** tasks done (aliases cut) · acceptance checks with the owner · started 2026-10-14
 
 ## Delivery scope
 
@@ -67,6 +67,7 @@ marks done. Drafts land in the server's Drafts folder.
 - [x] Per-account signature (ProseMirror doc), inserted above the quote; setting to place below.
       Done as plain text until the editor lands (settings `signatures`, `signatureBelow`).
 - [ ] Aliases per account (`identities` table): name, address, signature; "From" picker lists them.
+      Cut for M1, as the delivery scope allows (aliases, image paste and pop-out are deferred).
 
 ### Recipient autocomplete
 - [x] `contacts` table built from headers as mail syncs: `email, name, sent_count, received_count, last_seen`.
