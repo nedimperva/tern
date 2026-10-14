@@ -60,22 +60,79 @@ pub async fn check_login(config: &AccountConfig, password: &str) -> Result<()> {
     Ok(())
 }
 
+/// Where an account's sync stands, for the UI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SyncState {
+    /// Opening a connection (first start, or after one was lost).
+    Connecting,
+    /// Connected and working through a pass.
+    Syncing,
+    /// Connected and up to date; waiting for IDLE, the next poll, or queued work.
+    Idle,
+    /// The server cannot be reached; trying again with backoff.
+    Offline,
+    /// The server refused the password. Not retried until the app starts again or is woken (window focus), so a
+    /// wrong password does not lock the account.
+    AuthFailed,
+}
+
+/// How long a refused sign-in waits before the next try, unless woken sooner.
+const AUTH_RETRY: Duration = Duration::from_secs(30 * 60);
+/// How often the wall clock is compared with the time that passed, to notice the computer slept.
+const CLOCK_TICK: Duration = Duration::from_secs(10);
+/// More time than this unaccounted for between ticks means the computer was asleep: connections are likely dead
+/// without knowing it, so they are dropped and opened again.
+const SLEPT: Duration = Duration::from_secs(30);
+
 /// Runs for as long as the app does. `wake` cuts a wait short (new work in the outbox, the window got focus);
-/// `on_change` is called whenever the store changed.
+/// `on_change` is called whenever the store changed, `on_state` whenever the account's `SyncState` changes.
 pub async fn run_account(
     store: Arc<Store>,
     account: Account,
     password: String,
     wake: Arc<Notify>,
     on_change: Arc<dyn Fn() + Send + Sync>,
+    on_state: Arc<dyn Fn(SyncState) + Send + Sync>,
 ) {
-    tokio::spawn(watch_inbox(account.clone(), password.clone(), wake.clone()));
+    let mut resumed = watch_clock();
+    tokio::spawn(watch_inbox(account.clone(), password.clone(), wake.clone(), resumed.clone()));
     let mut session: Option<Session> = None;
     let mut failures: u32 = 0;
+    let mut last: Option<SyncState> = None;
+    let mut report = |state: SyncState| {
+        if last != Some(state) {
+            last = Some(state);
+            log::debug!("{}: {state:?}", account.config.email);
+            on_state(state);
+        }
+    };
     loop {
-        let wait = match pass(&store, &account, &password, &mut session, &*on_change).await {
+        if resumed.has_changed().unwrap_or(false) {
+            resumed.mark_unchanged();
+            log::info!("{}: the computer woke from sleep; reconnecting", account.config.email);
+            session = None;
+            failures = 0;
+        }
+        let mut connected = session.is_some();
+        // While offline or refused, a retry says nothing until it gets through, so the label does not flicker.
+        let quiet = failures > 0;
+        let result = async {
+            if session.is_none() {
+                if !quiet {
+                    report(SyncState::Connecting);
+                }
+                session = Some(open(&store, &account, &password, &*on_change).await?);
+                connected = true;
+            }
+            report(SyncState::Syncing);
+            pass(&store, &account, &password, &mut session, &*on_change).await
+        }
+        .await;
+        let wait = match result {
             Ok(more) => {
                 failures = 0;
+                report(SyncState::Idle);
                 match store.next_due(account.id) {
                     _ if more => Duration::ZERO,
                     Ok(Some(due)) => Duration::from_secs((due - now()).max(0) as u64).min(POLL),
@@ -86,20 +143,53 @@ pub async fn run_account(
                 log::warn!("{}: {e:#}", account.config.email);
                 session = None;
                 failures += 1;
-                backoff(failures)
+                if imap::sign_in_refused(&e) {
+                    report(SyncState::AuthFailed);
+                    AUTH_RETRY
+                } else {
+                    // A server that answered and then refused one command is not offline; the pass is tried
+                    // again on a fresh connection all the same.
+                    let reachable = connected && !connection_broke(&e);
+                    report(if reachable { SyncState::Idle } else { SyncState::Offline });
+                    backoff(failures)
+                }
             }
         };
         tokio::select! {
             _ = wake.notified() => {}
             _ = tokio::time::sleep(wait) => {}
+            _ = resumed.changed() => {}
         }
     }
+}
+
+/// Counts the times the computer woke from sleep, noticed as wall-clock time that passed while the process did
+/// not run. Works the same everywhere, without listening to each system's power events.
+fn watch_clock() -> tokio::sync::watch::Receiver<u64> {
+    let (tx, rx) = tokio::sync::watch::channel(0);
+    tokio::spawn(async move {
+        let mut before = std::time::SystemTime::now();
+        while !tx.is_closed() {
+            tokio::time::sleep(CLOCK_TICK).await;
+            let after = std::time::SystemTime::now();
+            if after.duration_since(before).unwrap_or_default() > CLOCK_TICK + SLEPT {
+                tx.send_modify(|n| *n += 1);
+            }
+            before = after;
+        }
+    });
+    rx
 }
 
 /// Keeps a second connection in IDLE on the inbox and wakes the sync worker as soon as the server reports a change
 /// there. It only ever selects the inbox and idles, so it never competes with the worker's commands. Without IDLE
 /// on the server it stops, and the worker's poll is what finds new mail.
-async fn watch_inbox(account: Account, password: String, wake: Arc<Notify>) {
+async fn watch_inbox(
+    account: Account,
+    password: String,
+    wake: Arc<Notify>,
+    mut resumed: tokio::sync::watch::Receiver<u64>,
+) {
     let email = &account.config.email;
     let mut failures: u32 = 0;
     loop {
@@ -108,7 +198,11 @@ async fn watch_inbox(account: Account, password: String, wake: Arc<Notify>) {
             Err(e) => {
                 failures += 1;
                 log::warn!("{email}: inbox watch could not connect: {e:#}");
-                tokio::time::sleep(backoff(failures)).await;
+                let wait = if imap::sign_in_refused(&e) { AUTH_RETRY } else { backoff(failures) };
+                tokio::select! {
+                    _ = tokio::time::sleep(wait) => {}
+                    _ = resumed.changed() => {}
+                }
                 continue;
             }
         };
@@ -121,9 +215,15 @@ async fn watch_inbox(account: Account, password: String, wake: Arc<Notify>) {
             let _ = s.logout().await;
             return;
         }
-        if let Err(e) = keep_idling(&mut s, &wake).await {
-            log::warn!("{email}: inbox watch stopped: {e:#}");
-            tokio::time::sleep(backoff(1)).await;
+        tokio::select! {
+            stopped = keep_idling(&mut s, &wake) => {
+                if let Err(e) = stopped {
+                    log::warn!("{email}: inbox watch stopped: {e:#}");
+                    tokio::time::sleep(backoff(1)).await;
+                }
+            }
+            // After sleep the connection is most likely dead without either side knowing; start a new one.
+            _ = resumed.changed() => {}
         }
     }
 }
@@ -138,9 +238,16 @@ async fn keep_idling(s: &mut Session, wake: &Notify) -> Result<()> {
     }
 }
 
-/// Wait before trying again after `failures` failures in a row: 10 s, 20 s, … up to 5 minutes.
+/// Wait before trying again after `failures` failures in a row: about 1 s, 2 s, 4 s, … up to a minute, each
+/// between half and all of that at random so many clients do not come back in step after an outage.
 fn backoff(failures: u32) -> Duration {
-    Duration::from_secs((5u64 << failures.min(6)).min(300))
+    let cap = Duration::from_secs(1u64 << failures.saturating_sub(1).min(6)).min(Duration::from_secs(60));
+    cap / 2 + cap.mul_f64(fastrand::f64() / 2.0)
+}
+
+/// Whether queued work is due, so a long pass stops to send it rather than finishing the backfill first.
+fn outbox_due(store: &Store, account_id: i64) -> Result<bool> {
+    Ok(store.next_due(account_id)?.is_some_and(|due| due <= now()))
 }
 
 async fn pass(
@@ -151,14 +258,7 @@ async fn pass(
     on_change: &(dyn Fn() + Send + Sync),
 ) -> Result<bool> {
     if session.is_none() {
-        let mut fresh = tokio::time::timeout(COMMAND_TIMEOUT, connect(&account.config, password))
-            .await
-            .with_context(|| format!("No answer from {}", account.config.imap_host))??;
-        // Folders then report their changes as part of SELECT (sync_folder).
-        within(fresh.enable_qresync()).await?;
-        discover_folders(&mut fresh, store, account.id).await?;
-        on_change();
-        *session = Some(fresh);
+        *session = Some(open(store, account, password, on_change).await?);
     }
     let s = session.as_mut().expect("connected above");
 
@@ -169,14 +269,25 @@ async fn pass(
     for (folder_id, name) in store.folders_with_wanted_bodies(account.id)? {
         within(s.select(&name)).await.with_context(|| format!("Could not open {name}"))?;
         let opened_only = i64::MAX;
-        fetch_bodies(s, store, folder_id, &name, opened_only, Instant::now() + BACKFILL_BUDGET, on_change)
-            .await?;
+        fetch_bodies(
+            s,
+            store,
+            account.id,
+            (folder_id, &name),
+            opened_only,
+            Instant::now() + BACKFILL_BUDGET,
+            on_change,
+        )
+        .await?;
     }
     // Every folder gets its new mail looked for, but old mail only comes down until the deadline; the next pass
     // starts at once and carries on, after the outbox and inbox have had their turn.
     let deadline = Instant::now() + BACKFILL_BUDGET;
     let mut more = false;
     for (folder_id, name) in store.folders_to_sync(account.id)? {
+        if outbox_due(store, account.id)? && drain_outbox(s, store, account, password).await? {
+            on_change();
+        }
         let (changed, unfinished) =
             sync_folder(s, store, account.id, folder_id, &name, deadline, on_change).await?;
         if changed {
@@ -185,6 +296,23 @@ async fn pass(
         more |= unfinished;
     }
     Ok(more)
+}
+
+/// Signs in, turns on QRESYNC, and brings the folder list up to date.
+async fn open(
+    store: &Store,
+    account: &Account,
+    password: &str,
+    on_change: &(dyn Fn() + Send + Sync),
+) -> Result<Session> {
+    let mut fresh = tokio::time::timeout(COMMAND_TIMEOUT, connect(&account.config, password))
+        .await
+        .with_context(|| format!("No answer from {}", account.config.imap_host))??;
+    // Folders then report their changes as part of SELECT (sync_folder).
+    within(fresh.enable_qresync()).await?;
+    discover_folders(&mut fresh, store, account.id).await?;
+    on_change();
+    Ok(fresh)
 }
 
 async fn discover_folders(s: &mut Session, store: &Store, account_id: i64) -> Result<()> {
@@ -332,7 +460,9 @@ async fn sync_folder(
         store.insert_messages(account_id, folder_id, &batch)?;
         on_change();
     }
-    if fetch_bodies(s, store, folder_id, name, now() - BODY_DAYS * 86_400, deadline, on_change).await? {
+    if fetch_bodies(s, store, account_id, (folder_id, name), now() - BODY_DAYS * 86_400, deadline, on_change)
+        .await?
+    {
         more = true;
     }
 
@@ -347,12 +477,12 @@ async fn sync_folder(
 }
 
 /// Fills in bodies for rows that have only headers: opened ones first, then the newest received since `since`,
-/// until `deadline`. Returns true when some are left for a later pass.
+/// until `deadline` or until queued work is due. Returns true when some are left for a later pass.
 async fn fetch_bodies(
     s: &mut Session,
     store: &Store,
-    folder_id: i64,
-    name: &str,
+    account_id: i64,
+    (folder_id, name): (i64, &str),
     since: i64,
     deadline: Instant,
     on_change: &(dyn Fn() + Send + Sync),
@@ -367,7 +497,8 @@ async fn fetch_bodies(
             needed.iter().filter_map(|(uid, size)| Some((*uid, (*size)?))).collect();
         let mut filled = 0;
         for chunk in by_size(&uids, &sizes) {
-            if Instant::now() >= deadline {
+            // Out of time, or something the person did is waiting to go out: leave the rest for later.
+            if Instant::now() >= deadline || outbox_due(store, account_id)? {
                 return Ok(true);
             }
             let set = uid_set(chunk);
@@ -601,6 +732,19 @@ mod tests {
         let sizes: HashMap<u32, u32> = [(1, 1_000), (2, big), (3, 1_000), (4, 1_000)].into();
         let batches = by_size(&[1, 2, 3, 4], &sizes);
         assert_eq!(batches, [&[1][..], &[2][..], &[3, 4][..]]);
+    }
+
+    #[test]
+    fn reconnect_waits_grow_to_a_minute_with_jitter() {
+        use std::time::Duration;
+        for _ in 0..100 {
+            let first = super::backoff(1);
+            assert!(first >= Duration::from_millis(500) && first <= Duration::from_secs(1), "{first:?}");
+            let late = super::backoff(20);
+            assert!(late >= Duration::from_secs(30) && late <= Duration::from_secs(60), "{late:?}");
+        }
+        let spread: std::collections::HashSet<_> = (0..20).map(|_| super::backoff(6)).collect();
+        assert!(spread.len() > 1, "jittered");
     }
 
     #[test]

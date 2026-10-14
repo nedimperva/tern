@@ -7,6 +7,10 @@ use tern_core::{
     OutboxProblem, ThreadMessage,
 };
 
+use std::collections::HashMap;
+
+use tern_core::sync::SyncState;
+
 use crate::{start_account, AppState, UNDO_SECONDS};
 
 type Reply<T> = Result<T, String>;
@@ -128,4 +132,10 @@ pub async fn send(state: State<'_, AppState>, account_id: i64, draft: Draft) -> 
     let id = state.store.queue_send(account_id, draft, UNDO_SECONDS).map_err(text)?;
     state.wake(account_id);
     Ok(vec![id])
+}
+
+/// Each account's sync state as last reported; "sync-state" events follow.
+#[tauri::command]
+pub async fn sync_states(state: State<'_, AppState>) -> Reply<HashMap<i64, SyncState>> {
+    Ok(state.states.lock().unwrap().clone())
 }

@@ -4721,6 +4721,7 @@ name = "tern-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "fastrand",
  "io-imap",
  "keyring",
  "lettre",

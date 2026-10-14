@@ -41,6 +41,8 @@ export type ThreadMessage = MessageRow & {
   /** False while only the headers are here; opening the message asks for the body, and "mail-changed" follows. */
   bodyLoaded: boolean;
 };
+/** Where an account's sync stands. */
+export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed";
 export type Action = "archive" | "trash" | "markRead" | "markUnread" | "star" | "unstar";
 export type Target = { folder: number } | { role: string };
 export type Cursor = { date: number; id: number };
@@ -83,6 +85,9 @@ export interface Api {
   /** Drops the work and puts the mailbox back as it was before it, as undo would. */
   discardProblem(id: number): Promise<void>;
   onChange(f: () => void): void;
+  /** Each account's sync state as last reported; `onSyncState` has the changes after that. */
+  syncStates(): Promise<Record<number, SyncState>>;
+  onSyncState(f: (accountId: number, state: SyncState) => void): void;
   openUrl(url: string): void;
 }
 
@@ -101,6 +106,9 @@ const tauri: Api = {
   undo: (token) => invoke("undo", { token }),
   send: (accountId, draft) => invoke("send", { accountId, draft }),
   onChange: (f) => void listen("mail-changed", f),
+  syncStates: () => invoke("sync_states"),
+  onSyncState: (f) =>
+    void listen<{ accountId: number; state: SyncState }>("sync-state", (e) => f(e.payload.accountId, e.payload.state)),
   openUrl: (url) => void import("@tauri-apps/plugin-opener").then((m) => m.openUrl(url)),
 };
 
@@ -243,6 +251,9 @@ function fake(): Api {
       changed();
     },
     onChange: (f) => void listeners.push(f),
+    // Open the page with #offline to see how a lost connection looks.
+    syncStates: async () => ({ 1: location.hash === "#offline" ? "offline" : "idle" }),
+    onSyncState: () => {},
     openUrl: (url) => void window.open(url, "_blank", "noopener"),
   };
 }

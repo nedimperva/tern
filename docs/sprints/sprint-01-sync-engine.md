@@ -48,14 +48,18 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
       (`cargo tree -i openssl-sys` is empty). The grep still shows `openssl-probe`, a pure-Rust crate the platform
       verifier uses to find certificate files; it is not OpenSSL.
 - [x] STARTTLS on 143 and 587 as a preset option; prefer implicit TLS (993/465) by default.
-- [ ] Send `ID ("name" "Tern" "version" ... "contact" ...)` after login where `ID` is advertised (Gmail asks for it).
+- [x] Send `ID ("name" "Tern" "version" ... "contact" ...)` after login where `ID` is advertised (Gmail asks for it).
+      Done: name, version and support-url; a refusal is only logged.
 
 ### Connections
 - [x] Two connections per account: one **idle** connection parked on the Inbox, one **worker** for everything else.
       The idle connection only ever does `SELECT INBOX`, `IDLE`, `DONE`, `NOOP`.
-- [ ] Reconnect with exponential backoff (1 s → 60 s cap, jitter). Surface state to the UI via a `sync-state` event: `connecting | idle | syncing | offline | auth-failed`.
+- [x] Reconnect with exponential backoff (1 s → 60 s cap, jitter). Surface state to the UI via a `sync-state` event: `connecting | idle | syncing | offline | auth-failed`.
+      Done: a refused sign-in waits 30 min or until the window gets focus (any focus wakes every account).
 - [x] Re-issue `IDLE` every 25 minutes; servers drop at 30.
-- [ ] Wake on resume from sleep: on Linux listen to `org.freedesktop.login1.Manager.PrepareForSleep` over D-Bus (`zbus`), or fall back to detecting a clock jump > 60 s.
+- [x] Wake on resume from sleep: on Linux listen to `org.freedesktop.login1.Manager.PrepareForSleep` over D-Bus (`zbus`), or fall back to detecting a clock jump > 60 s.
+      Done with the clock jump only (works on Windows too): > 30 s unaccounted for in a 10 s tick drops both
+      connections and syncs at once. D-Bus cut, as the Cut-first list allows. Not yet tried across a real suspend.
 
 ### Incremental sync
 - [x] `ENABLE CONDSTORE QRESYNC` when advertised. Store `highest_modseq` per folder (column exists).
@@ -174,3 +178,10 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   as HTML now; schema v5 clears the generated HTML already stored (exact match only). Dev DB: 657 of 657 cleared.
   Noted from the same test: sending felt slow right after adding the account — not reproduced; to look at with the
   reliability work.
+- 2026-10-14 — Connection state. `SyncState` (connecting, syncing, idle, offline, auth-failed) goes to the UI as a
+  `sync-state` event and a `sync_states` command; the sidebar says "Offline", "Connecting…" or "Sign-in failed"
+  next to the account. Reconnects wait 1 s → 60 s with jitter (were 10 s → 5 min); retries while offline stay
+  quiet so the label does not flicker. Sleep is noticed by the clock. IMAP `ID` after sign-in. Live on the dev
+  server: stopping it showed Offline within a second and backoff of 4, 6, 13, 25 s; starting it again synced 6 s
+  later. Also, for the owner's slow first send on Windows: queued work is now sent between folders and stops body
+  backfill, instead of waiting for a whole pass (up to 15 s of backfill plus every folder) to finish.
