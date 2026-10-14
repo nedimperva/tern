@@ -1019,9 +1019,7 @@ mod tests {
     mod outbox {
         use super::super::drain_outbox;
         use crate::imap::Imap;
-        use crate::models::{
-            Account, AccountConfig, Action, DraftSync, FolderState, ListTarget, NewMessage, Security,
-        };
+        use crate::models::{Account, AccountConfig, Action, FolderState, ListTarget, NewMessage, Security};
         use crate::scripted::{signed_in, Script};
         use crate::store::Store;
 
