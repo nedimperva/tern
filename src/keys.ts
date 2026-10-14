@@ -15,17 +15,23 @@ export type Binding = {
   hidden?: boolean;
 };
 
-/** A keydown as bindings name it. Shift shows in the letter's case ("J"), so it is only spelt out with Ctrl. */
+/** A keydown as bindings name it. Shift shows in a letter's case ("J"); for named keys it is spelt out
+ * ("Shift+Tab"). */
 export function keyName(e: KeyboardEvent): string {
   const key = e.key.length === 1 && (e.ctrlKey || e.metaKey) ? e.key.toLowerCase() : e.key;
   if (e.ctrlKey || e.metaKey) return `Ctrl+${e.shiftKey && key.length === 1 ? key.toUpperCase() : key}`;
+  if (e.shiftKey && key.length > 1) return `Shift+${key}`;
   return key;
 }
 
 /** How a binding's keys read on a keycap: "Shift J", "Ctrl K", "G then I". */
 export function keyLabel(keys: string): string {
   if (keys.includes(" ")) return keys.split(" ").map((k) => k.toUpperCase()).join(" then ");
-  const [mod, key] = keys.startsWith("Ctrl+") ? ["Ctrl ", keys.slice(5)] : ["", keys];
+  const [mod, key] = keys.startsWith("Ctrl+")
+    ? ["Ctrl ", keys.slice(5)]
+    : keys.startsWith("Shift+")
+      ? ["Shift ", keys.slice(6)]
+      : ["", keys];
   const shift = key.length === 1 && key !== key.toLowerCase() ? "Shift " : "";
   const names: Record<string, string> = { ArrowDown: "↓", ArrowUp: "↑", Escape: "Esc", "\\": "\\" };
   return `${mod}${shift}${names[key] ?? (key.length === 1 ? key.toUpperCase() : key)}`;

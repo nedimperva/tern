@@ -1,4 +1,4 @@
-import { batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js";
+import { batch, createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import {
   api,
@@ -19,6 +19,7 @@ import { ConversationRow } from "./components/ConversationRow";
 import { ConversationView } from "./components/ConversationView";
 import { ProblemsDialog } from "./components/Problems";
 import { Rail, ROLE_NAMES } from "./components/Rail";
+import { ShortcutSheet } from "./components/ShortcutSheet";
 import { VirtualList } from "./components/VirtualList";
 import { keyHandler, keyLabel, type Binding, type Context } from "./keys";
 
@@ -76,13 +77,16 @@ export default function App() {
   const [ready, setReady] = createSignal(false);
   const [problems, setProblems] = createSignal<OutboxProblem[]>([]);
   const [reviewing, setReviewing] = createSignal(false);
+  const [sheet, setSheet] = createSignal(false);
+  // A few useful keys in the status strip once the keyboard has been still for a moment.
+  const [idle, setIdle] = createSignal(false);
   let searchInput!: HTMLInputElement;
   let exhausted = false;
   let generation = 0;
 
   const current = () => rows()[focus()];
   const context = (): Context => (openRow() ? "conversation" : "list");
-  const dialog = () => reviewing() || palette() || compose() !== null || setup() || rail();
+  const dialog = () => reviewing() || palette() || sheet() || compose() !== null || setup() || rail();
   const searching = () => query().trim() !== "";
 
   // MARK: Loading
@@ -302,6 +306,18 @@ export default function App() {
     }
   }
 
+  /** The inbox splits, shown as tabs over the unified inbox. */
+  const SPLITS: { name: string; target: Target }[] = [
+    { name: "Inbox", target: { role: "inbox" } },
+    { name: "Starred", target: { role: "starred" } },
+  ];
+  const splitIndex = () => SPLITS.findIndex((s) => JSON.stringify(s.target) === JSON.stringify(target()));
+  const nextSplit = (by: number) => {
+    const at = splitIndex();
+    if (at < 0) return go(SPLITS[0].target);
+    go(SPLITS[(at + by + SPLITS.length) % SPLITS.length].target);
+  };
+
   const go = (t: Target) => {
     batch(() => (setQuery(""), setTarget(t)));
     if ("folder" in t) void api.checkFolder(t.folder);
@@ -377,7 +393,15 @@ export default function App() {
     { keys: "z", name: "Undo", run: undo },
     { keys: "c", name: "Compose", run: () => setCompose({}) },
     { keys: "/", name: "Search", run: () => searchInput.focus() },
-    { keys: "g i", name: "Go to All Inboxes", run: () => go({ role: "inbox" }) },
+    { keys: "Tab", name: "Next split", context: "list", run: () => nextSplit(1) },
+    { keys: "Shift+Tab", name: "Previous split", context: "list", run: () => nextSplit(-1) },
+    { keys: "g i", name: "Go to Inbox", run: () => go({ role: "inbox" }) },
+    { keys: "g s", name: "Go to Starred", run: () => go({ role: "starred" }) },
+    { keys: "g e", name: "Go to Done (Archive)", run: () => go({ role: "archive" }) },
+    { keys: "g t", name: "Go to Sent", run: () => go({ role: "sent" }) },
+    { keys: "g d", name: "Go to Drafts", run: () => go({ role: "drafts" }) },
+    { keys: "g a", name: "Go to All Mail", run: () => go({ role: "all" }) },
+    { keys: "?", name: "Keyboard shortcuts", run: () => setSheet(true) },
     { keys: "Ctrl+\\", name: "Accounts and folders", run: () => setRail(!rail()) },
     { keys: "Ctrl+k", name: "Command palette", run: () => setPalette(!palette()), hidden: true },
   ]);
@@ -385,18 +409,42 @@ export default function App() {
   const commands = createMemo<Command[]>(() => [
     ...bindings()
       .filter((b) => !b.hidden && (!b.context || b.context === context()))
-      .map((b) => ({ name: b.name, keys: keyLabel(b.keys), run: () => void b.run() })),
-    { name: "Add account", run: () => setSetup(true) },
+      .map((b) => ({
+        name: b.name,
+        keys: keyLabel(b.keys),
+        group: b.keys.startsWith("g ") ? "Go to" : "Actions",
+        run: () => void b.run(),
+      })),
+    { name: "Add account", group: "Accounts", run: () => setSetup(true) },
     ...(problems().length ? [{ name: "Review changes that didn't go through", run: () => setReviewing(true) }] : []),
     ...folders().map((f) => ({
+      group: "Go to",
       name: `Go to ${ROLE_NAMES[f.role] ?? f.name} — ${accounts().find((a) => a.id === f.accountId)?.email ?? ""}`,
       run: () => go({ folder: f.id }),
     })),
   ]);
 
-  const onKeyDown = keyHandler(bindings, context, dialog);
-  onMount(() => window.addEventListener("keydown", onKeyDown));
+  const handleKey = keyHandler(bindings, context, dialog);
+  let idleTimer: number | undefined;
+  const onKeyDown = (e: KeyboardEvent) => {
+    setIdle(false);
+    clearTimeout(idleTimer);
+    idleTimer = window.setTimeout(() => setIdle(true), 2000);
+    handleKey(e);
+  };
+  onMount(() => {
+    window.addEventListener("keydown", onKeyDown);
+    idleTimer = window.setTimeout(() => setIdle(true), 2000);
+  });
   onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+
+  /** The three most useful keys where the keyboard is now. */
+  const hints = () =>
+    context() === "conversation"
+      ? [["R", "reply"], ["E", "done"], ["Esc", "back"]]
+      : rows().length
+        ? [["Enter", "open"], ["E", "done"], ["Ctrl K", "commands"]]
+        : [["C", "compose"], ["?", "shortcuts"], ["Ctrl K", "commands"]];
 
   const onSearchKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -414,11 +462,12 @@ export default function App() {
   const title = () => {
     if (searching()) return `Search: ${query()}`;
     const t = target();
-    if ("role" in t) return t.role === "inbox" ? "All Inboxes" : ROLE_NAMES[t.role] ?? t.role;
+    if ("role" in t) return t.role === "inbox" ? "Inbox" : t.role === "starred" ? "Starred" : ROLE_NAMES[t.role] ?? t.role;
     const f = folders().find((f) => f.id === t.folder);
     return f ? ROLE_NAMES[f.role] ?? f.name : "";
   };
   const split = () => openRow() !== null && wide();
+  const inboxUnread = () => folders().filter((f) => f.role === "inbox").reduce((n, f) => n + f.unread, 0);
   const inboxZero = () => ready() && !searching() && rows().length === 0 && "role" in target() && (target() as { role: string }).role === "inbox";
 
   /** One sentence for every account together; the rail names the account in trouble. */
@@ -437,7 +486,20 @@ export default function App() {
           <button class="link rail-button" onClick={() => setRail(true)} title="Accounts and folders (Ctrl+\)">
             ☰
           </button>
-          <h2>{title()}</h2>
+          <Show when={splitIndex() >= 0 && !searching()} fallback={<h2>{title()}</h2>}>
+            <nav class="splits" role="tablist">
+              <For each={SPLITS}>
+                {(s, i) => (
+                  <button role="tab" aria-selected={i() === splitIndex()} classList={{ active: i() === splitIndex() }} onClick={() => go(s.target)}>
+                    {s.name}
+                    <Show when={i() === 0 && inboxUnread()}>
+                      <span class="count">{inboxUnread()}</span>
+                    </Show>
+                  </button>
+                )}
+              </For>
+            </nav>
+          </Show>
           <input
             ref={searchInput}
             class="search"
@@ -492,6 +554,17 @@ export default function App() {
             <span class="selected-count">{selection().size} selected</span>
           </Show>
           <span class="spacer" />
+          <Show when={!toast() && idle()}>
+            <span class="hints">
+              <For each={hints()}>
+                {([k, what]) => (
+                  <span>
+                    <kbd>{k}</kbd> {what}
+                  </span>
+                )}
+              </For>
+            </span>
+          </Show>
           <Show when={toast()}>
             {(t) => (
               <span class="toast" role="status">
@@ -539,6 +612,9 @@ export default function App() {
           onDiscard={(id) => void api.discardProblem(id).then(refresh)}
           onClose={() => setReviewing(false)}
         />
+      </Show>
+      <Show when={sheet()}>
+        <ShortcutSheet bindings={bindings()} onClose={() => setSheet(false)} />
       </Show>
       <Show when={palette()}>
         <CommandBar commands={commands()} onClose={() => setPalette(false)} />
