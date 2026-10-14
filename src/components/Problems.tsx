@@ -1,19 +1,6 @@
 import { For, onCleanup, onMount } from "solid-js";
 import type { OutboxProblem } from "../api";
 
-/** Bottom of the list while any work has stopped being retried. Stays until each one is retried or discarded. */
-export function ProblemsStrip(props: { count: number; onOpen: () => void }) {
-  return (
-    <div class="problems-strip" role="status">
-      <span class="dot" />
-      <span>{props.count === 1 ? "1 change didn't go through" : `${props.count} changes didn't go through`}</span>
-      <button class="link" onClick={props.onOpen}>
-        Review
-      </button>
-    </div>
-  );
-}
-
 export function ProblemsDialog(props: {
   problems: OutboxProblem[];
   onRetry: (id: number) => void;
