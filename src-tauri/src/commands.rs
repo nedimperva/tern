@@ -1,10 +1,10 @@
 //! What the UI can ask for. Reads answer from the store and never touch the network.
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
     secrets, sync, Account, AccountConfig, Action, Applied, Cursor, Draft, DraftRecord, Folder, ListTarget,
-    MessageRow, OutboxProblem, ReplyInit, ReplyKind, ThreadMessage, ThreadRow,
+    MessageRow, OutboxProblem, OutgoingAttachment, ReplyInit, ReplyKind, ThreadMessage, ThreadRow,
 };
 
 use std::collections::HashMap;
@@ -253,4 +253,61 @@ pub async fn mute(state: State<'_, AppState>, ids: Vec<i64>, mute: bool) -> Repl
 #[tauri::command]
 pub async fn muted(state: State<'_, AppState>, id: i64) -> Reply<bool> {
     state.store.muted(id).map_err(text)
+}
+
+/// Copies files into Tern's own folder for attachments, so a draft keeps them whatever happens to the
+/// originals (moved, deleted, on a drive that is gone). Each file gets a folder of its own, so names never clash.
+#[tauri::command]
+pub async fn add_attachments(app: AppHandle, paths: Vec<String>) -> Reply<Vec<OutgoingAttachment>> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?.join("attachments");
+    let mut added = Vec::new();
+    for path in paths {
+        let source = std::path::PathBuf::from(&path);
+        let name = source.file_name().map(|n| n.to_string_lossy().into_owned()).ok_or("Not a file")?;
+        let stamp =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let folder = base.join(format!("{stamp}-{}", NEXT.fetch_add(1, Ordering::Relaxed)));
+        std::fs::create_dir_all(&folder).map_err(|e| format!("{name}: {e}"))?;
+        let copy = folder.join(&name);
+        let size = std::fs::copy(&source, &copy).map_err(|e| format!("{name}: {e}"))?;
+        added.push(OutgoingAttachment {
+            path: copy.display().to_string(),
+            mime: mime_for(&name).into(),
+            name,
+            size,
+        });
+    }
+    Ok(added)
+}
+
+/// A file's type from its extension: the common ones, else a plain stream of bytes.
+fn mime_for(name: &str) -> &'static str {
+    let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    match ext.as_str() {
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "txt" | "md" | "log" => "text/plain",
+        "csv" => "text/csv",
+        "html" | "htm" => "text/html",
+        "ics" => "text/calendar",
+        "zip" => "application/zip",
+        "json" => "application/json",
+        "doc" => "application/msword",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls" => "application/vnd.ms-excel",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "ppt" => "application/vnd.ms-powerpoint",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "odt" => "application/vnd.oasis.opendocument.text",
+        "ods" => "application/vnd.oasis.opendocument.spreadsheet",
+        "mp3" => "audio/mpeg",
+        "mp4" => "video/mp4",
+        _ => "application/octet-stream",
+    }
 }

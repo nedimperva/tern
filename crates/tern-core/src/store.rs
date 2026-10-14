@@ -1124,7 +1124,7 @@ impl Store {
                         if row.server_folder.as_deref() == Some(folder.as_str()) { row.copy } else { None };
                     due.push(DraftSync::Upload {
                         id: row.id,
-                        draft: serde_json::from_str(&row.payload)?,
+                        draft: Box::new(serde_json::from_str(&row.payload)?),
                         version: row.version,
                         folder: folder.clone(),
                         previous,
@@ -1285,6 +1285,24 @@ impl Store {
             quote_text: text.unwrap_or_default(),
             quote_to: to,
             quote_cc: cc,
+            forward_of: match kind {
+                ReplyKind::Forward => conn
+                    .query_row(
+                        "SELECT f.name, m.uid, f.uid_validity, m.message_id FROM messages m
+                         JOIN folders f ON f.id = m.folder_id WHERE m.id = ?1 AND m.uid IS NOT NULL",
+                        [id],
+                        |r| {
+                            Ok(ForwardOf {
+                                folder: r.get(0)?,
+                                uid: r.get(1)?,
+                                validity: r.get(2)?,
+                                message_id: r.get(3)?,
+                            })
+                        },
+                    )
+                    .optional()?,
+                _ => None,
+            },
         })
     }
 
@@ -2479,6 +2497,8 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
             body: "first words".into(),
             in_reply_to: None,
             references: vec![],
+            attachments: vec![],
+            forward_of: None,
             message_id: None,
         }
     }
@@ -2639,6 +2659,8 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
             bcc: vec![],
             in_reply_to: None,
             references: vec![],
+            attachments: vec![],
+            forward_of: None,
             message_id: None,
         }
     }

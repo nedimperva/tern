@@ -10,7 +10,7 @@ use std::time::Duration;
 use anyhow::{bail, Context, Result};
 use lettre::address::Envelope;
 use lettre::message::header::ContentType;
-use lettre::message::Mailbox;
+use lettre::message::{Attachment, Mailbox, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::{Credentials, DEFAULT_MECHANISMS};
 use lettre::transport::smtp::client::{AsyncSmtpConnection, TlsParameters};
 use lettre::transport::smtp::commands::{Data, Mail, Rcpt};
@@ -41,10 +41,19 @@ impl std::error::Error for MaybeSent {
     }
 }
 
-/// Sends a plain-text message. Returns it exactly as sent, for the copy in Sent.
-/// TODO: HTML and attachments.
-pub async fn send(config: &AccountConfig, password: &str, draft: &Draft) -> Result<Vec<u8>> {
-    let message = build(config, draft)?;
+/// A file to attach that is already in memory (a forwarded message's attachments): name, type, contents.
+pub type FileBytes = (String, String, Vec<u8>);
+
+/// Sends a plain-text message with the draft's attachments and `extra` ones. Returns it exactly as sent, for the
+/// copy in Sent.
+/// TODO: HTML (with the rich editor).
+pub async fn send(
+    config: &AccountConfig,
+    password: &str,
+    draft: &Draft,
+    extra: &[FileBytes],
+) -> Result<Vec<u8>> {
+    let message = build(config, draft, extra)?;
     let mut conn = tokio::time::timeout(COMMAND_TIMEOUT, connect(config))
         .await
         .with_context(|| format!("No answer from {}", config.smtp_host))??;
@@ -58,10 +67,10 @@ pub async fn send(config: &AccountConfig, password: &str, draft: &Draft) -> Resu
 
 /// The message as it would be sent, for the server copy of a draft.
 pub fn draft_bytes(config: &AccountConfig, draft: &Draft) -> Result<Vec<u8>> {
-    Ok(build(config, draft)?.formatted())
+    Ok(build(config, draft, &[])?.formatted())
 }
 
-fn build(config: &AccountConfig, draft: &Draft) -> Result<Message> {
+fn build(config: &AccountConfig, draft: &Draft, extra: &[FileBytes]) -> Result<Message> {
     let name = Some(config.display_name.clone()).filter(|n| !n.is_empty());
     let from: lettre::Address = config.email.parse()?;
     let mut builder = Message::builder()
@@ -96,7 +105,24 @@ fn build(config: &AccountConfig, draft: &Draft) -> Result<Message> {
         }
         builder = builder.references(chain.join(" "));
     }
-    Ok(builder.header(ContentType::TEXT_PLAIN).body(draft.body.clone())?)
+    if draft.attachments.is_empty() && extra.is_empty() {
+        return Ok(builder.header(ContentType::TEXT_PLAIN).body(draft.body.clone())?);
+    }
+    let mut parts = MultiPart::mixed().singlepart(SinglePart::plain(draft.body.clone()));
+    for file in &draft.attachments {
+        let bytes = std::fs::read(&file.path)
+            .with_context(|| format!("Could not read the attachment {}", file.name))?;
+        parts = parts.singlepart(Attachment::new(file.name.clone()).body(bytes, content_type(&file.mime)));
+    }
+    for (name, mime, bytes) in extra {
+        parts = parts.singlepart(Attachment::new(name.clone()).body(bytes.clone(), content_type(mime)));
+    }
+    Ok(builder.multipart(parts)?)
+}
+
+fn content_type(mime: &str) -> ContentType {
+    ContentType::parse(mime)
+        .unwrap_or_else(|_| ContentType::parse("application/octet-stream").expect("valid"))
 }
 
 /// A new Message-ID at the sender's domain. lettre adds none on its own, and its default would carry this
@@ -281,15 +307,17 @@ mod tests {
             bcc: vec![],
             in_reply_to: None,
             references: vec![],
+            attachments: vec![],
+            forward_of: None,
             message_id: None,
         };
-        let raw = String::from_utf8(build(&config, &draft).unwrap().formatted()).unwrap();
+        let raw = String::from_utf8(build(&config, &draft, &[]).unwrap().formatted()).unwrap();
         let line = raw.lines().find(|l| l.starts_with("Message-ID: <")).expect("a Message-ID");
         assert!(line.ends_with("@example.com>"), "{line}");
-        let again = String::from_utf8(build(&config, &draft).unwrap().formatted()).unwrap();
+        let again = String::from_utf8(build(&config, &draft, &[]).unwrap().formatted()).unwrap();
         assert!(!again.contains(line), "each message gets its own");
         let fixed = Draft { message_id: Some("<kept@example.com>".into()), ..draft };
-        let raw = String::from_utf8(build(&config, &fixed).unwrap().formatted()).unwrap();
+        let raw = String::from_utf8(build(&config, &fixed, &[]).unwrap().formatted()).unwrap();
         assert!(raw.contains("Message-ID: <kept@example.com>"), "a queued send keeps its id");
     }
 
@@ -314,15 +342,63 @@ mod tests {
             body: "y".into(),
             in_reply_to: Some("2@x.com".into()),
             references: vec!["1@x.com".into(), "2@x.com".into()],
+            attachments: vec![],
+            forward_of: None,
             message_id: None,
         };
-        let message = build(&config, &draft).unwrap();
+        let message = build(&config, &draft, &[]).unwrap();
         let raw = String::from_utf8(message.formatted()).unwrap();
         assert!(raw.contains("In-Reply-To: <2@x.com>"), "{raw}");
         assert!(raw.contains("References: <1@x.com> <2@x.com>"), "{raw}");
         assert!(!raw.to_lowercase().contains("secret@"), "no Bcc in the message: {raw}");
         let envelope: Vec<String> = message.envelope().to().iter().map(|a| a.to_string()).collect();
         assert!(envelope.contains(&"secret@example.com".to_string()), "but it is delivered to");
+    }
+
+    #[test]
+    fn attachments_go_out_and_come_back_whole() {
+        let dir = std::env::temp_dir().join(format!("tern-attach-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pdf: Vec<u8> = (0..=255u8).cycle().take(5000).collect();
+        std::fs::write(dir.join("q3.pdf"), &pdf).unwrap();
+        let config = AccountConfig {
+            email: "ada@example.com".into(),
+            display_name: String::new(),
+            username: "ada".into(),
+            imap_host: String::new(),
+            imap_port: 993,
+            imap_security: Security::Tls,
+            smtp_host: String::new(),
+            smtp_port: 465,
+            smtp_security: Security::Tls,
+        };
+        let draft = Draft {
+            to: vec!["b@example.com".into()],
+            cc: vec![],
+            bcc: vec![],
+            subject: "files".into(),
+            body: "Two files.".into(),
+            in_reply_to: None,
+            references: vec![],
+            attachments: vec![crate::models::OutgoingAttachment {
+                path: dir.join("q3.pdf").display().to_string(),
+                name: "q3.pdf".into(),
+                mime: "application/pdf".into(),
+                size: pdf.len() as u64,
+            }],
+            forward_of: None,
+            message_id: None,
+        };
+        let extra = vec![("notes.txt".to_string(), "text/plain".to_string(), b"forwarded along".to_vec())];
+        let raw = build(&config, &draft, &extra).unwrap().formatted();
+        let files = crate::mime::attachment_files(&raw);
+        assert_eq!(files.len(), 2);
+        assert_eq!((files[0].0.as_str(), files[0].1.as_str()), ("q3.pdf", "application/pdf"));
+        assert_eq!(files[0].2, pdf, "bytes survive the trip");
+        assert_eq!(files[1].2, b"forwarded along");
+        let parsed = crate::mime::parse(1, &raw, false, false).unwrap();
+        assert_eq!(parsed.body_text.as_deref().map(str::trim), Some("Two files."));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[tokio::test]
@@ -376,9 +452,11 @@ mod tests {
             bcc: vec![],
             in_reply_to: None,
             references: vec![],
+            attachments: vec![],
+            forward_of: None,
             message_id: None,
         };
-        let e = send(&config, "pw", &draft).await.unwrap_err();
+        let e = send(&config, "pw", &draft, &[]).await.unwrap_err();
         assert!(!is_permanent(&e) && !maybe_sent(&e), "{e:#}");
     }
 }

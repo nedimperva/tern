@@ -840,6 +840,23 @@ button.fold {
   overflow: hidden;
   font: var(--t-rd) / 1.5 var(--font);
 }
+.attachments.outgoing {
+  margin-top: var(--s-2);
+  align-items: center;
+}
+.attachments.outgoing button {
+  background: none;
+  border: 0;
+  padding: 0 var(--s-1);
+  color: var(--fg-2);
+}
+.attachments .total {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.attachments .total.large {
+  color: var(--warn);
+}
 .compose footer {
   display: flex;
   align-items: center;
