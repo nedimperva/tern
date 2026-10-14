@@ -170,3 +170,13 @@ pub async fn check_folder(state: State<'_, AppState>, id: i64) -> Reply<()> {
 pub async fn sync_states(state: State<'_, AppState>) -> Reply<HashMap<i64, SyncState>> {
     Ok(state.states.lock().unwrap().clone())
 }
+
+#[tauri::command]
+pub async fn settings(state: State<'_, AppState>) -> Reply<HashMap<String, serde_json::Value>> {
+    state.store.settings().map_err(text)
+}
+
+#[tauri::command]
+pub async fn set_setting(state: State<'_, AppState>, key: String, value: serde_json::Value) -> Reply<()> {
+    state.store.set_setting(&key, &value).map_err(text)
+}
