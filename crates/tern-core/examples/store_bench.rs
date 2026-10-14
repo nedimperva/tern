@@ -107,6 +107,12 @@ fn main() -> anyhow::Result<()> {
     report("open conversation", 200, || {
         store.thread(biggest.latest.id).unwrap();
     });
+    report("autocomplete \"s\" (5)", 200, || {
+        store.contacts("s", 5).unwrap();
+    });
+    report("autocomplete \"sender 4\" (5)", 200, || {
+        store.contacts("sender 4", 5).unwrap();
+    });
     report("folders + unread counts", 100, || {
         store.folders().unwrap();
     });
