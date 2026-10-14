@@ -115,6 +115,36 @@ pub struct NewMessage {
     pub size: Option<u32>,
     /// Only the headers were fetched: no body, no snippet yet.
     pub headers_only: bool,
+    /// List-Id and List-Unsubscribe, raw, for mailing-list handling later.
+    pub list_id: Option<String>,
+    pub list_unsubscribe: Option<String>,
+    /// The message's parts from BODYSTRUCTURE, when the server sent it with the headers.
+    pub parts: Option<Vec<Part>>,
+}
+
+/// One leaf part of a message, from BODYSTRUCTURE: enough to fetch just that part, or to list it as an attachment
+/// without fetching it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Part {
+    /// IMAP section number: "1" for a single-part message, "1.2" for the second part of the first multipart.
+    pub section: String,
+    /// Lowercase type/subtype, such as "text/plain".
+    pub mime: String,
+    /// Content-Transfer-Encoding, lowercase.
+    pub encoding: String,
+    pub charset: Option<String>,
+    pub size: u32,
+    pub name: Option<String>,
+    /// Shown as an attachment: marked so, or a named part that is not text and not an inline image.
+    pub attachment: bool,
+}
+
+impl Part {
+    /// The part to read a snippet from: the first plain-text body part, else the first HTML one.
+    pub fn text_part(parts: &[Part]) -> Option<&Part> {
+        let body = |mime: &str| parts.iter().find(|p| p.mime == mime && !p.attachment);
+        body("text/plain").or_else(|| body("text/html"))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
