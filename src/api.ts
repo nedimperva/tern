@@ -87,6 +87,8 @@ export interface Api {
   onChange(f: () => void): void;
   /** Each account's sync state as last reported; `onSyncState` has the changes after that. */
   syncStates(): Promise<Record<number, SyncState>>;
+  /** The person opened this folder: check it on the server now. */
+  checkFolder(id: number): Promise<void>;
   onSyncState(f: (accountId: number, state: SyncState) => void): void;
   openUrl(url: string): void;
 }
@@ -107,6 +109,7 @@ const tauri: Api = {
   send: (accountId, draft) => invoke("send", { accountId, draft }),
   onChange: (f) => void listen("mail-changed", f),
   syncStates: () => invoke("sync_states"),
+  checkFolder: (id) => invoke("check_folder", { id }),
   onSyncState: (f) =>
     void listen<{ accountId: number; state: SyncState }>("sync-state", (e) => f(e.payload.accountId, e.payload.state)),
   openUrl: (url) => void import("@tauri-apps/plugin-opener").then((m) => m.openUrl(url)),
@@ -254,6 +257,7 @@ function fake(): Api {
     // Open the page with #offline to see how a lost connection looks.
     syncStates: async () => ({ 1: location.hash === "#offline" ? "offline" : "idle" }),
     onSyncState: () => {},
+    checkFolder: async () => {},
     openUrl: (url) => void window.open(url, "_blank", "noopener"),
   };
 }
