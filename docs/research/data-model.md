@@ -52,6 +52,14 @@ On start, 1 goes back to 0; a send left at 2 becomes a problem with `maybe_sent 
 Payloads (JSON, no migration needed) gained `validity` (the folder's UIDVALIDITY when queued) and `waiting` (row
 ids whose uid in the folder is not known yet), both defaulting for rows queued by older versions.
 
+## v7 — package 01, headers phase A/B (implemented 2026-10-14)
+```sql
+ALTER TABLE messages ADD COLUMN list_id TEXT;
+ALTER TABLE messages ADD COLUMN list_unsubscribe TEXT;
+ALTER TABLE messages ADD COLUMN parts TEXT;   -- JSON [{section, mime, encoding, charset, size, name, attachment}]
+```
+`body_state` gains `snippet` (headers plus a snippet from the text part; full body still to come).
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'

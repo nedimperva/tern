@@ -75,16 +75,22 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
       backfilling is checked every pass.
 
 ### Headers first, bodies later
-- [ ] Phase A: `UID FETCH <new> (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES LIST-UNSUBSCRIBE LIST-ID)] BODYSTRUCTURE)`
+- [x] Phase A: `UID FETCH <new> (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES LIST-UNSUBSCRIBE LIST-ID)] BODYSTRUCTURE)`
       in batches by count and size (`by_size` exists). Insert rows with `has_attachments` from `BODYSTRUCTURE`
       and an empty snippet.
-- [ ] Phase B: fetch the text part only (from `BODYSTRUCTURE`, prefer `text/plain`, else `text/html`) for the
+      Done without INTERNALDATE (the Date header is what the list sorts by). Parts are stored as JSON
+      (`messages.parts`); attachment = marked attachment, or a named non-text part that is not an inline image.
+- [x] Phase B: fetch the text part only (from `BODYSTRUCTURE`, prefer `text/plain`, else `text/html`) for the
       snippet, newest first, 200 at a time.
-- [ ] Phase C: full bodies for the last 90 days (configurable), newest first, low priority, pausable when the user is active.
+      Done: the first 2 KB of the part (`BODY.PEEK[1.1]<0.2048>`), decoded through mail-parser.
+- [x] Phase C: full bodies for the last 90 days (configurable), newest first, low priority, pausable when the user is active.
+      Done: prefetch stops for queued work and for any opened message still without a body. 90 days is a
+      constant, not yet a setting.
 - [x] On demand: opening a message without a body fetches it immediately on the worker connection and emits `body-ready`.
       Done as: the `thread` command marks it `wanted` and wakes the worker, which fetches wanted bodies first;
       the existing `mail-changed` event reloads the open thread (no separate `body-ready`).
-- [ ] Store `size`, `bodystructure` (JSON) and `body_state` (`none | snippet | full`) on `messages`. Schema migration v2 (see `docs/research/data-model.md`).
+- [x] Store `size`, `bodystructure` (JSON) and `body_state` (`none | snippet | full`) on `messages`. Schema migration v2 (see `docs/research/data-model.md`).
+      Done across v4 (`size`, `body_state` with `wanted`) and v7 (`parts`, `list_id`, `list_unsubscribe`, `snippet`).
 
 ### Conversations
 - [ ] `threads` table: `id, account_id, subject_norm, last_date, first_date, message_count, unread_count, flagged, participants (JSON), snippet, labels (JSON cache)`.
@@ -195,3 +201,7 @@ Sleep/resume via D-Bus (keep the clock-jump fallback), then Phase C body prefetc
   plain servers read flags in 5,000-UID ranges. Live: each minute's pass is now one SELECT of INBOX.
   Seen once and not reproduced in two later runs: a dev-server check hit the 60 s command timeout in its first
   pass while the app was restarting against the same server.
+- 2026-10-14 — Headers phases A–C. BODYSTRUCTURE and List-Id/List-Unsubscribe come with the headers (schema v7);
+  the attachment marker shows before the body. Phase B reads a snippet from the first 2 KB of the text part, so
+  mail older than 90 days has one without its body (checked on the dev server with a fresh sync). Prefetch yields
+  to opened messages. Rows stored before v7 have no parts and get no Phase B snippet (2 in the dev DB).

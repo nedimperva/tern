@@ -48,6 +48,9 @@ const PER_PASS: usize = 2_000;
 const HEADER_CHUNK: usize = 500;
 /// Bodies are fetched ahead of time for mail this recent; older mail gets its body when it is opened.
 const BODY_DAYS: i64 = 90;
+/// Snippets read per round, and bytes read from each text part for one.
+const SNIPPET_ROUND: i64 = 200;
+const SNIPPET_BYTES: u32 = 2_048;
 /// Rows looked at per round of body fetching.
 const BODY_ROUND: i64 = 200;
 /// Longest one IMAP command may take. Without a limit, a reply the parser never finishes leaves the worker waiting
@@ -530,10 +533,24 @@ async fn sync_folder<S: Stream>(
         }
         let batch: Vec<NewMessage> = fetched
             .iter()
-            .filter_map(|f| mime::parse_headers(f.uid, f.header.as_deref()?, f.seen, f.flagged, f.size))
+            .filter_map(|f| {
+                mime::parse_headers(
+                    f.uid,
+                    f.header.as_deref()?,
+                    f.seen,
+                    f.flagged,
+                    f.size,
+                    f.structure.clone(),
+                )
+            })
             .collect();
         store.insert_messages(account_id, folder_id, &batch)?;
         on_change();
+    }
+    // Phase B: a snippet for headers-only rows from the start of their text part, so the list reads well before
+    // the bodies come (and mail older than BODY_DAYS, which gets its body only when opened, has one at all).
+    if fetch_snippets(s, store, account_id, (folder_id, name), deadline, on_change).await? {
+        more = true;
     }
     if fetch_bodies(s, store, account_id, (folder_id, name), now() - BODY_DAYS * 86_400, deadline, on_change)
         .await?
@@ -549,6 +566,51 @@ async fn sync_folder<S: Stream>(
     };
     store.set_folder_state(folder_id, &state)?;
     Ok((changed, more))
+}
+
+/// Reads snippets for headers-only rows from the first bytes of their text part, newest first, until `deadline`,
+/// queued work, or an opened message without a body needs the connection. Returns true when some are left.
+async fn fetch_snippets<S: Stream>(
+    s: &mut Imap<S>,
+    store: &Store,
+    account_id: i64,
+    (folder_id, name): (i64, &str),
+    deadline: Instant,
+    on_change: &(dyn Fn() + Send + Sync),
+) -> Result<bool> {
+    loop {
+        let needed = store.snippets_needed(folder_id, SNIPPET_ROUND)?;
+        if needed.is_empty() {
+            return Ok(false);
+        }
+        if Instant::now() >= deadline
+            || outbox_due(store, account_id)?
+            || !store.folders_with_wanted_bodies(account_id)?.is_empty()
+        {
+            return Ok(true);
+        }
+        // One FETCH per section number: most messages share "1" or "1.1".
+        let mut by_section: HashMap<&str, Vec<u32>> = HashMap::new();
+        for (uid, part) in &needed {
+            by_section.entry(part.section.as_str()).or_default().push(*uid);
+        }
+        let parts: HashMap<u32, &crate::models::Part> = needed.iter().map(|(uid, p)| (*uid, p)).collect();
+        let mut snippets: HashMap<u32, String> =
+            needed.iter().map(|(uid, _)| (*uid, String::new())).collect();
+        for (section, uids) in by_section {
+            let fetched = within(s.part_start(&uid_set(&uids), section, SNIPPET_BYTES))
+                .await
+                .with_context(|| format!("Could not read snippets in {name}"))?;
+            for f in fetched {
+                if let (Some(bytes), Some(part)) = (f.part.as_deref(), parts.get(&f.uid)) {
+                    snippets.insert(f.uid, mime::part_snippet(part, bytes));
+                }
+            }
+        }
+        // Rows the server sent nothing for get an empty snippet, so they are not asked for again and again.
+        store.set_snippets(folder_id, &snippets.into_iter().collect::<Vec<_>>())?;
+        on_change();
+    }
 }
 
 /// Fills in bodies for rows that have only headers: opened ones first, then the newest received since `since`,
@@ -572,8 +634,13 @@ async fn fetch_bodies<S: Stream>(
             needed.iter().filter_map(|(uid, size)| Some((*uid, (*size)?))).collect();
         let mut filled = 0;
         for chunk in by_size(&uids, &sizes) {
-            // Out of time, or something the person did is waiting to go out: leave the rest for later.
-            if Instant::now() >= deadline || outbox_due(store, account_id)? {
+            // Out of time, or something the person did is waiting: leave the rest for later. Prefetch also stops
+            // for a message someone opened that has no body yet.
+            let prefetching = since != i64::MAX;
+            if Instant::now() >= deadline
+                || outbox_due(store, account_id)?
+                || (prefetching && !store.folders_with_wanted_bodies(account_id)?.is_empty())
+            {
                 return Ok(true);
             }
             let set = uid_set(chunk);
@@ -1130,6 +1197,38 @@ mod tests {
             smtp_security: Security::Tls,
         };
         (config, password)
+    }
+
+    /// A fresh sync against the dev mail server: mail older than BODY_DAYS gets no body, but a snippet from its
+    /// text part.
+    #[tokio::test]
+    #[ignore = "needs scripts/dev-mail-server.sh start; run with scripts/dev-mail-server.sh test"]
+    async fn old_mail_gets_a_snippet_without_its_body() {
+        use crate::models::ListTarget;
+        use crate::store::Store;
+
+        let (config, password) = dev_account();
+        let store = Store::open_in_memory().unwrap();
+        let account = store.add_account(&config).unwrap();
+        let (mut session, mut schedule, nothing) = (None, super::Schedule::default(), || {});
+        while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap() {
+        }
+        let inbox =
+            store.folders_to_sync(account.id).unwrap().into_iter().find(|(_, n)| n == "INBOX").unwrap().0;
+        let old: Vec<_> = store
+            .list(&ListTarget::Folder(inbox), None, 10_000)
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.date < crate::store::now() - super::BODY_DAYS * 86_400)
+            .collect();
+        assert!(!old.is_empty(), "the dev inbox has mail older than {} days (seed it)", super::BODY_DAYS);
+        for row in &old {
+            assert!(!row.snippet.is_empty(), "{:?} has a snippet", row.subject);
+            assert!(
+                !store.thread(row.id).unwrap().iter().any(|m| m.row.id == row.id && m.body_loaded),
+                "no body"
+            );
+        }
     }
 
     /// Two real sync passes against the dev mail server, with an outside flag change and move in between.

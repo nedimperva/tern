@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 /// Tries before queued work stops retrying and waits for the person.
 const MAX_ATTEMPTS: i64 = 5;
 
@@ -163,6 +163,13 @@ fn migrate(conn: &Connection) -> Result<()> {
             }
             // A send that broke off after the message was handed over, so it may have gone out.
             5 => "ALTER TABLE outbox ADD COLUMN maybe_sent INTEGER NOT NULL DEFAULT 0;",
+            // From the header fetch: mailing-list headers and the parts (BODYSTRUCTURE as JSON). body_state gains
+            // 'snippet': headers plus a snippet read from the text part alone, full body still to come.
+            6 => {
+                "ALTER TABLE messages ADD COLUMN list_id TEXT;
+                 ALTER TABLE messages ADD COLUMN list_unsubscribe TEXT;
+                 ALTER TABLE messages ADD COLUMN parts TEXT;"
+            }
             _ => unreachable!("no migration from schema {from}"),
         };
         conn.execute_batch(&format!("BEGIN; {step}; PRAGMA user_version = {}; COMMIT;", from + 1))?;
@@ -400,14 +407,16 @@ impl Store {
             }
             let thread_id = thread_for(&tx, account_id, folder_id, m)?;
             let body_state = if m.headers_only { "none" } else { "full" };
+            let parts = m.parts.as_ref().map(serde_json::to_string).transpose()?;
             let inserted = tx.execute(
                 "INSERT OR IGNORE INTO messages (account_id, folder_id, uid, message_id, thread_id, subject, from_name,
                                                  from_addr, to_addrs, date, snippet, seen, flagged, has_attachments,
-                                                 size, body_state)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                                                 size, body_state, list_id, list_unsubscribe, parts)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
                 params![
                     account_id, folder_id, m.uid, m.message_id, thread_id, m.subject, m.from_name, m.from_addr,
-                    m.to_addrs, m.date, m.snippet, m.seen, m.flagged, m.has_attachments, m.size, body_state
+                    m.to_addrs, m.date, m.snippet, m.seen, m.flagged, m.has_attachments, m.size, body_state,
+                    m.list_id, m.list_unsubscribe, parts
                 ],
             )?;
             if inserted == 0 {
@@ -446,7 +455,10 @@ impl Store {
                 .optional()?;
             let Some((id, subject, from_name, from_addr)) = row else { continue };
             tx.execute(
-                "UPDATE messages SET snippet = ?2, has_attachments = ?3, body_state = 'full' WHERE id = ?1",
+                "UPDATE messages SET snippet = ?2, body_state = 'full',
+                        -- BODYSTRUCTURE's answer, where there was one, is the one the list has shown all along.
+                        has_attachments = CASE WHEN parts IS NULL THEN ?3 ELSE has_attachments END
+                 WHERE id = ?1",
                 params![id, m.snippet, m.has_attachments],
             )?;
             tx.execute(
@@ -467,6 +479,49 @@ impl Store {
 
     /// Rows in a folder still without a body, as (uid, size): opened ones first, then the newest. Mail older than
     /// `since` is left for when it is opened.
+    /// Headers-only rows that still need a snippet, newest first: (uid, the part to read it from). Rows whose parts
+    /// have no text are given an empty snippet here and not asked about again.
+    pub fn snippets_needed(&self, folder_id: i64, limit: i64) -> Result<Vec<(u32, Part)>> {
+        let conn = self.conn();
+        let rows: Vec<(u32, String)> = conn
+            .prepare_cached(
+                "SELECT uid, parts FROM messages
+                 WHERE folder_id = ?1 AND body_state = 'none' AND parts IS NOT NULL AND uid IS NOT NULL
+                 ORDER BY date DESC LIMIT ?2",
+            )?
+            .query_map(params![folder_id, limit], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        let mut out = Vec::new();
+        for (uid, parts) in rows {
+            let parts: Vec<Part> = serde_json::from_str(&parts)?;
+            match Part::text_part(&parts) {
+                Some(part) => out.push((uid, part.clone())),
+                None => {
+                    conn.execute(
+                        "UPDATE messages SET body_state = 'snippet' WHERE folder_id = ?1 AND uid = ?2",
+                        params![folder_id, uid],
+                    )?;
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Stores snippets read from text parts: (uid, snippet). Rows that got their body meanwhile are left alone.
+    pub fn set_snippets(&self, folder_id: i64, snippets: &[(u32, String)]) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        for (uid, snippet) in snippets {
+            tx.execute(
+                "UPDATE messages SET snippet = ?3, body_state = 'snippet'
+                 WHERE folder_id = ?1 AND uid = ?2 AND body_state = 'none'",
+                params![folder_id, uid, snippet],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn bodies_needed(&self, folder_id: i64, since: i64, limit: i64) -> Result<Vec<(u32, Option<u32>)>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
@@ -498,7 +553,7 @@ impl Store {
         for id in ids {
             let account: Option<i64> = conn
                 .query_row(
-                    "UPDATE messages SET body_state = 'wanted' WHERE id = ?1 AND body_state = 'none'
+                    "UPDATE messages SET body_state = 'wanted' WHERE id = ?1 AND body_state IN ('none', 'snippet')
                      RETURNING account_id",
                     [id],
                     |r| r.get(0),
@@ -1304,6 +1359,38 @@ mod tests {
         assert_eq!(store.claim_due(account).unwrap()[0].0, work);
     }
 
+    #[test]
+    fn snippets_fill_in_before_bodies() {
+        let (store, account, inbox, _) = setup();
+        let text = Part {
+            section: "1.1".into(),
+            mime: "text/plain".into(),
+            encoding: "7bit".into(),
+            charset: None,
+            size: 10,
+            name: None,
+            attachment: false,
+        };
+        let image = Part { section: "1".into(), mime: "image/png".into(), ..text.clone() };
+        let mut with_text = message(1, "a", 2);
+        let mut no_text = message(2, "b", 1);
+        for (m, parts) in [(&mut with_text, vec![text.clone()]), (&mut no_text, vec![image])] {
+            m.headers_only = true;
+            m.parts = Some(parts);
+        }
+        store.insert_messages(account, inbox, &[with_text, no_text]).unwrap();
+        assert_eq!(
+            store.snippets_needed(inbox, 10).unwrap(),
+            [(1, text)],
+            "a part without text is not fetched"
+        );
+        store.set_snippets(inbox, &[(1, "Hi there".into())]).unwrap();
+        assert!(store.snippets_needed(inbox, 10).unwrap().is_empty());
+        let row = store.list(&ListTarget::Folder(inbox), None, 10).unwrap().remove(0);
+        assert_eq!(row.snippet, "Hi there");
+        assert_eq!(store.bodies_needed(inbox, 0, 10).unwrap().len(), 2, "both still want their bodies");
+    }
+
     fn draft() -> Draft {
         Draft {
             to: vec!["b@x".into()],
@@ -1448,7 +1535,7 @@ mod tests {
         store.insert_messages(account, folder, &[message(1, "a", 1), message(2, "b", 2)]).unwrap();
         let conn = store.conn.into_inner().unwrap();
         conn.execute_batch(
-            "DELETE FROM bodies; ALTER TABLE outbox DROP COLUMN maybe_sent; PRAGMA user_version = 4;",
+            "DELETE FROM bodies; ALTER TABLE outbox DROP COLUMN maybe_sent; ALTER TABLE messages DROP COLUMN list_id; ALTER TABLE messages DROP COLUMN list_unsubscribe; ALTER TABLE messages DROP COLUMN parts; PRAGMA user_version = 4;",
         )
         .unwrap();
         let generated = mail_parser::MessageParser::default()
