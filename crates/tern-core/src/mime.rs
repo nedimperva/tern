@@ -1,4 +1,4 @@
-use mail_parser::{HeaderValue, MessageParser, PartType};
+use mail_parser::{HeaderValue, MessageParser, MimeHeaders, PartType};
 
 use crate::models::{NewMessage, Part};
 
@@ -19,7 +19,7 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
     let body_text = msg.body_text(0).map(|t| t.into_owned());
     // mail-parser turns a text-only message into HTML; keep that as plain text so the reader can theme it.
     let body_html = match msg.html_part(0).map(|p| &p.body) {
-        Some(PartType::Html(html)) => Some(html.clone().into_owned()),
+        Some(PartType::Html(html)) => Some(sanitize_html(html)),
         _ => None,
     };
 
@@ -43,8 +43,67 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
         headers_only: false,
         list_id: raw_header(&msg, "List-Id"),
         list_unsubscribe: raw_header(&msg, "List-Unsubscribe"),
-        parts: None,
+        parts: Some(attachments(&msg)),
     })
+}
+
+/// The attachments of a parsed message, as parts. They have no IMAP section number (the body is already here).
+fn attachments(msg: &mail_parser::Message) -> Vec<Part> {
+    msg.attachments()
+        .map(|a| {
+            let mime = a
+                .content_type()
+                .map(|t| format!("{}/{}", t.ctype(), t.subtype().unwrap_or("octet-stream")).to_lowercase())
+                .unwrap_or_else(|| "application/octet-stream".into());
+            Part {
+                section: String::new(),
+                charset: None,
+                encoding: String::new(),
+                size: a.len() as u32,
+                name: Some(a.attachment_name().unwrap_or("Untitled").to_string()),
+                mime,
+                attachment: true,
+            }
+        })
+        .collect()
+}
+
+/// Mail HTML made safe to keep: no scripts, event handlers, forms, frames, objects or `javascript:` links, while
+/// the layout survives (inline `style`, `<style>` blocks, tables and their old attributes, `class`). It still renders
+/// only in a sandboxed frame without scripts and with a CSP that blocks remote loads; this is a second wall.
+pub fn sanitize_html(html: &str) -> String {
+    use std::sync::OnceLock;
+    static CLEANER: OnceLock<ammonia::Builder<'static>> = OnceLock::new();
+    CLEANER
+        .get_or_init(|| {
+            let mut b = ammonia::Builder::default();
+            b.add_tags(["style", "font", "center", "body", "html", "head", "meta"])
+                .rm_clean_content_tags(["style"])
+                .add_generic_attributes([
+                    "style",
+                    "class",
+                    "id",
+                    "align",
+                    "valign",
+                    "bgcolor",
+                    "background",
+                    "width",
+                    "height",
+                    "border",
+                    "cellpadding",
+                    "cellspacing",
+                    "color",
+                    "face",
+                    "size",
+                    "dir",
+                    "lang",
+                ])
+                .add_url_schemes(["cid", "data"])
+                .link_rel(Some("noopener noreferrer"));
+            b
+        })
+        .clean(html)
+        .to_string()
 }
 
 /// A header's raw value on one line, for the fields mail-parser does not model (List-*).
@@ -198,5 +257,28 @@ Date: Mon, 12 Oct 2026 10:00:00 +0000\r\n\r\n";
             part_snippet(&html, b"<html><body><p>Meeting <b>moved</b> to 3pm</p><p>See"),
             "Meeting moved to 3pm See"
         );
+    }
+
+    #[test]
+    fn html_keeps_its_looks_and_loses_its_teeth() {
+        let dirty = r##"<html><head><style>p > b { color: red }</style></head><body>
+            <script>alert(1)</script><p style="color:blue" onclick="steal()">Hi <b>there</b></p>
+            <a href="javascript:steal()">x</a><a href="https://example.com">y</a>
+            <form action="https://evil.example"><input name="pw"></form><iframe src="https://evil.example"></iframe>
+            <table width="600" bgcolor="#fff"><tr><td align="center">t</td></tr></table><img src="cid:logo"></body></html>"##;
+        let clean = sanitize_html(dirty);
+        for gone in ["<script", "alert(1)", "onclick", "javascript:", "<form", "<input", "<iframe"] {
+            assert!(!clean.contains(gone), "{gone} should be gone: {clean}");
+        }
+        for kept in [
+            "p > b { color: red }",
+            r#"style="color:blue""#,
+            r#"width="600""#,
+            r#"align="center""#,
+            "cid:logo",
+        ] {
+            assert!(clean.contains(kept), "{kept} should stay: {clean}");
+        }
+        assert!(clean.contains(r#"href="https://example.com""#));
     }
 }

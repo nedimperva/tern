@@ -1,7 +1,9 @@
 import { createSignal, For, Show } from "solid-js";
 import { api, type ThreadMessage } from "../api";
-import { settings } from "../settings";
+import { foldAt, HTML_FOLD_CSS, HTML_FOLD_SELECTOR } from "../fold";
+import { setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
+import { Icon } from "./Icon";
 
 // Mail is untrusted: no scripts, and no remote content (tracking pixels) until asked for.
 function frameHtml(html: string, remote: boolean): string {
@@ -13,19 +15,28 @@ function frameHtml(html: string, remote: boolean): string {
   body{padding:4px 2px;word-wrap:break-word}
   img{max-width:100%;height:auto}
   pre{white-space:pre-wrap}
+  ${HTML_FOLD_CSS}
 </style></head><body>${html}</body></html>`;
 }
 
-function HtmlBody(props: { html: string }) {
-  const [remote, setRemote] = createSignal(settings.loadImages === "always");
+function HtmlBody(props: { html: string; sender: string }) {
+  const trusted = () => settings.loadImages === "always" || settings.imagesFrom.includes(props.sender.toLowerCase());
+  const [asked, setAsked] = createSignal(false);
+  const remote = () => trusted() || asked();
   const hasRemote = /<img[^>]+src=["']?https?:/i.test(props.html) || /url\(["']?https?:/i.test(props.html);
+  // Quoted replies and signatures start folded; the pill below the frame opens them.
+  const [foldable, setFoldable] = createSignal(false);
+  const [unfolded, setUnfolded] = createSignal(false);
+  let frame: HTMLIFrameElement | undefined;
 
   // Same-origin without scripts: the frame cannot run anything, but we can measure it and catch link clicks.
   const onLoad = (e: Event) => {
-    const frame = e.currentTarget as HTMLIFrameElement;
+    frame = e.currentTarget as HTMLIFrameElement;
     const doc = frame.contentDocument;
     if (!doc) return;
-    const fit = () => (frame.style.height = `${doc.documentElement.scrollHeight}px`);
+    setFoldable(doc.querySelector(HTML_FOLD_SELECTOR) !== null);
+    doc.documentElement.classList.toggle("tern-fold", !unfolded());
+    const fit = () => (frame!.style.height = `${doc.documentElement.scrollHeight}px`);
     fit();
     new ResizeObserver(fit).observe(doc.body);
     doc.addEventListener("click", (ev) => {
@@ -40,12 +51,58 @@ function HtmlBody(props: { html: string }) {
     <>
       <Show when={hasRemote && !remote()}>
         <div class="remote-bar">
-          Remote images are blocked. <button onClick={() => setRemote(true)}>Load images</button>
+          Remote images are blocked.
+          <button onClick={() => setAsked(true)}>Load images</button>
+          <button
+            onClick={() => setSetting("imagesFrom", [...settings.imagesFrom, props.sender.toLowerCase()])}
+          >
+            Always for this sender
+          </button>
         </div>
       </Show>
       <iframe class="html-body" sandbox="allow-same-origin" srcdoc={frameHtml(props.html, remote())} onLoad={onLoad} />
+      <Show when={foldable()}>
+        <button
+          class="fold"
+          title={unfolded() ? "Hide quoted text" : "Show quoted text"}
+          aria-expanded={unfolded()}
+          onClick={() => {
+            setUnfolded(!unfolded());
+            frame?.contentDocument?.documentElement.classList.toggle("tern-fold", !unfolded());
+          }}
+        >
+          ···
+        </button>
+      </Show>
     </>
   );
+}
+
+/** A plain-text body with its quoted reply or signature folded behind "···". */
+function PlainBody(props: { text: string }) {
+  const [unfolded, setUnfolded] = createSignal(false);
+  const at = () => foldAt(props.text);
+  return (
+    <>
+      <pre class="plain">{at() < 0 || unfolded() ? props.text : props.text.slice(0, at())}</pre>
+      <Show when={at() >= 0}>
+        <button
+          class="fold"
+          title={unfolded() ? "Hide quoted text" : "Show quoted text"}
+          aria-expanded={unfolded()}
+          onClick={() => setUnfolded(!unfolded())}
+        >
+          ···
+        </button>
+      </Show>
+    </>
+  );
+}
+
+function size(bytes: number): string {
+  if (bytes < 1000) return `${bytes} B`;
+  if (bytes < 1_000_000) return `${Math.round(bytes / 1000)} KB`;
+  return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
 const PALETTE = ["#5b5bd6", "#2f9e6e", "#d0453f", "#c98a1b", "#0e9bb5", "#b24fb0", "#7a7f8a", "#e07a30"];
@@ -104,9 +161,22 @@ export function ConversationView(props: {
             <Show when={props.expanded(m.id)}>
               <div class="body">
                 <Show when={m.bodyLoaded} fallback={<p class="loading">Loading message…</p>}>
-                  <Show when={m.bodyHtml} fallback={<pre class="plain">{m.bodyText ?? ""}</pre>}>
-                    <HtmlBody html={m.bodyHtml!} />
+                  <Show when={m.bodyHtml} fallback={<PlainBody text={m.bodyText ?? ""} />}>
+                    <HtmlBody html={m.bodyHtml!} sender={m.fromAddr} />
                   </Show>
+                </Show>
+                <Show when={m.attachments.length}>
+                  <div class="attachments" aria-label="Attachments">
+                    <For each={m.attachments}>
+                      {(a) => (
+                        <span class="file" title={a.mime}>
+                          <Icon name="paperclip" size={13} />
+                          <span class="name">{a.name}</span>
+                          <span class="size">{size(a.size)}</span>
+                        </span>
+                      )}
+                    </For>
+                  </div>
                 </Show>
               </div>
             </Show>

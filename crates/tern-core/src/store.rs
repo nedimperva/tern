@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 9;
+const SCHEMA_VERSION: i64 = 10;
 /// Messages with the same normalised subject and a participant in common within this many seconds of each other
 /// join one conversation when nothing in their headers links them.
 const SUBJECT_WINDOW: i64 = 7 * 86_400;
@@ -181,13 +181,30 @@ fn migrate(conn: &Connection) -> Result<()> {
             }
             // The person's settings: one row per key, the value as JSON.
             8 => "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+            // Mail HTML is sanitised when stored from now on; the step cleans what is already there (below).
+            9 => "",
             _ => unreachable!("no migration from schema {from}"),
         };
         conn.execute_batch(&format!("BEGIN; {step};"))?;
         if from == 7 {
             fill_subject_norm(conn)?;
         }
+        if from == 9 {
+            sanitize_stored_html(conn)?;
+        }
         conn.execute_batch(&format!("PRAGMA user_version = {}; COMMIT;", from + 1))?;
+    }
+    Ok(())
+}
+
+fn sanitize_stored_html(conn: &Connection) -> Result<()> {
+    let rows: Vec<(i64, String)> = conn
+        .prepare("SELECT message_id, html FROM bodies WHERE html IS NOT NULL")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut update = conn.prepare("UPDATE bodies SET html = ?2 WHERE message_id = ?1")?;
+    for (id, html) in rows {
+        update.execute(params![id, crate::mime::sanitize_html(&html)])?;
     }
     Ok(())
 }
@@ -552,9 +569,10 @@ impl Store {
             tx.execute(
                 "UPDATE messages SET snippet = ?2, body_state = 'full',
                         -- BODYSTRUCTURE's answer, where there was one, is the one the list has shown all along.
-                        has_attachments = CASE WHEN parts IS NULL THEN ?3 ELSE has_attachments END
+                        has_attachments = CASE WHEN parts IS NULL THEN ?3 ELSE has_attachments END,
+                        parts = COALESCE(parts, ?4)
                  WHERE id = ?1",
-                params![id, m.snippet, m.has_attachments],
+                params![id, m.snippet, m.has_attachments, m.parts.as_ref().map(serde_json::to_string).transpose()?],
             )?;
             tx.execute(
                 "INSERT OR REPLACE INTO bodies (message_id, text, html) VALUES (?1, ?2, ?3)",
@@ -827,7 +845,7 @@ impl Store {
     pub fn thread(&self, id: i64) -> Result<Vec<ThreadMessage>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(&format!(
-            "SELECT {ROW}, m.message_id, m.to_addrs, b.text, b.html, m.body_state = 'full'
+            "SELECT {ROW}, m.message_id, m.to_addrs, b.text, b.html, m.body_state = 'full', m.parts
              FROM messages m LEFT JOIN bodies b ON b.message_id = m.id
              WHERE m.account_id = (SELECT account_id FROM messages WHERE id = ?1)
                AND m.thread_id = (SELECT thread_id FROM messages WHERE id = ?1)
@@ -843,6 +861,7 @@ impl Store {
                     body_text: r.get(14)?,
                     body_html: r.get(15)?,
                     body_loaded: r.get(16)?,
+                    attachments: attachments_of(r.get::<_, Option<String>>(17)?.as_deref()),
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1319,6 +1338,16 @@ fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
     Ok(())
 }
 
+/// The attachments listed in a row's `parts`. A row whose parts do not parse shows none rather than failing.
+fn attachments_of(parts: Option<&str>) -> Vec<Attachment> {
+    let parts: Vec<Part> = parts.and_then(|p| serde_json::from_str(p).ok()).unwrap_or_default();
+    parts
+        .into_iter()
+        .filter(|p| p.attachment)
+        .map(|p| Attachment { name: p.name.unwrap_or_else(|| "Untitled".into()), mime: p.mime, size: p.size })
+        .collect()
+}
+
 /// A few words on what queued work does, for the problems list.
 fn describe(op: &OutboxOp) -> String {
     let count = |n: usize| if n == 1 { "1 message".to_string() } else { format!("{n} messages") };
@@ -1734,6 +1763,36 @@ mod tests {
     }
 
     #[test]
+    fn migration_10_cleans_stored_html() {
+        let store = Store::open_in_memory().unwrap();
+        let account = store.add_account(&config()).unwrap().id;
+        let inbox = store.upsert_folder(account, "INBOX", "inbox").unwrap();
+        store.insert_messages(account, inbox, &[message(1, "a", 1)]).unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        conn.execute("UPDATE bodies SET html = '<p onclick=\"x()\">hi</p><script>bad()</script>'", [])
+            .unwrap();
+        wind_back(&conn, 9);
+        let store = Store::init(conn).unwrap();
+        let html: String = store.conn().query_row("SELECT html FROM bodies", [], |r| r.get(0)).unwrap();
+        assert_eq!(html, "<p>hi</p>");
+    }
+
+    #[test]
+    fn a_conversation_lists_its_attachments() {
+        let (store, account, inbox, _) = setup();
+        let raw = b"From: a@x.com\r\nSubject: report\r\nMessage-ID: <r@x.com>\r\nMIME-Version: 1.0\r\n\
+Content-Type: multipart/mixed; boundary=\"b\"\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\nSee attached.\r\n\
+--b\r\nContent-Type: application/pdf; name=\"q3.pdf\"\r\nContent-Disposition: attachment; filename=\"q3.pdf\"\r\n\
+Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
+        let m = crate::mime::parse(1, raw, false, false).unwrap();
+        store.insert_messages(account, inbox, &[m]).unwrap();
+        let id = store.list(&ListTarget::Folder(inbox), None, 1).unwrap()[0].id;
+        let files = &store.thread(id).unwrap()[0].attachments;
+        assert_eq!(files.len(), 1);
+        assert_eq!((files[0].name.as_str(), files[0].mime.as_str()), ("q3.pdf", "application/pdf"));
+    }
+
+    #[test]
     fn settings_keep_their_json() {
         let store = Store::open_in_memory().unwrap();
         store.set_setting("theme", &serde_json::json!("dark")).unwrap();
@@ -1890,6 +1949,8 @@ mod tests {
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                // Step 9 only changed data.
+                9 => "",
                 8 => "DROP TABLE settings;",
                 7 => "DROP INDEX messages_subject; ALTER TABLE messages DROP COLUMN subject_norm;",
                 6 => {
@@ -1897,7 +1958,6 @@ mod tests {
                      ALTER TABLE messages DROP COLUMN parts;"
                 }
                 5 => "ALTER TABLE outbox DROP COLUMN maybe_sent;",
-                // Step 4 only changed data.
                 4 => "",
                 _ => panic!("no undo for schema step {from}"),
             };
