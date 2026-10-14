@@ -179,6 +179,35 @@ button.primary kbd {
   font-variant-numeric: tabular-nums;
 }
 
+.splits {
+  display: flex;
+  gap: var(--s-4);
+  flex: 1;
+  height: 100%;
+}
+.splits button {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0 2px;
+  color: var(--fg-1);
+  font-size: var(--t-md);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.splits button.active {
+  color: var(--fg-0);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+.splits .count {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  font-weight: 400;
+}
+
 /* MARK: Conversation rows (§4.1) */
 
 .crow {
@@ -312,6 +341,13 @@ button.primary kbd {
   color: var(--danger);
   text-decoration: underline;
   font-size: inherit;
+}
+.status .hints {
+  display: flex;
+  gap: var(--s-3);
+}
+.status .hints kbd {
+  margin-left: 0;
 }
 .status .toast {
   display: flex;
@@ -567,6 +603,72 @@ button.primary kbd {
 }
 .command-bar li.active {
   background: var(--accent-soft);
+}
+.command-bar li.group {
+  height: 24px;
+  padding-top: var(--s-2);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-2);
+}
+.command-bar li.none {
+  color: var(--fg-2);
+}
+.command-bar mark {
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sheet {
+  width: min(640px, 92vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.sheet input {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  padding: 14px var(--s-4);
+  font-size: var(--t-lg);
+}
+.sheet-body {
+  overflow-y: auto;
+  padding: var(--s-2) var(--s-4) var(--s-4);
+  columns: 2 260px;
+  column-gap: var(--s-5);
+}
+.sheet section {
+  break-inside: avoid;
+}
+.sheet h3 {
+  font-size: var(--t-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-2);
+  margin: var(--s-3) 0 var(--s-1);
+}
+.shortcut {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 28px;
+  font-size: var(--t-md);
+}
+.command-bar .then,
+.shortcut .then {
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+  margin-left: 6px;
 }
 
 .compose,
