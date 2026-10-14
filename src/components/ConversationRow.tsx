@@ -1,0 +1,73 @@
+import { Show } from "solid-js";
+import type { ThreadRow } from "../api";
+
+const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
+const dayMonth = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
+
+/** A list date: the time today, the weekday within the last six days, day and month this year, else the year. */
+export function when(seconds: number): string {
+  const d = new Date(seconds * 1000);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return time.format(d);
+  const days = (now.getTime() - d.getTime()) / 86_400_000;
+  if (days < 6) return weekday.format(d);
+  if (d.getFullYear() === now.getFullYear()) return dayMonth.format(d);
+  return String(d.getFullYear());
+}
+
+/** "Ana Rossi" alone, or first names when several wrote: "Ana, Tom, me". */
+export function participants(row: ThreadRow): string {
+  const names = row.participants.length ? row.participants : [row.fromName || row.fromAddr];
+  if (names.length === 1) return names[0];
+  return names.map((n) => (n.includes("@") ? n.split("@")[0] : n.split(" ")[0])).join(", ");
+}
+
+/** One conversation on one line (docs/design/ui.md §4.1). */
+export function ConversationRow(props: {
+  row: ThreadRow;
+  focused: boolean;
+  selected: boolean;
+  /** The list is beside an open conversation: no room for the snippet. */
+  narrow: boolean;
+  onClick: (e: MouseEvent) => void;
+  onOpen: () => void;
+}) {
+  return (
+    <div
+      class="crow"
+      role="row"
+      aria-selected={props.selected}
+      classList={{ focused: props.focused, selected: props.selected, unread: props.row.unread > 0 }}
+      onMouseDown={props.onClick}
+      onDblClick={props.onOpen}
+    >
+      <span class="mark">{props.selected ? "✓" : ""}</span>
+      <span class="who">
+        <span class="names">{participants(props.row)}</span>
+        <Show when={props.row.count > 1}>
+          <span class="count">{props.row.count}</span>
+        </Show>
+      </span>
+      <span class="what">
+        <span class="subject">{props.row.subject || "(no subject)"}</span>
+        <Show when={!props.narrow && props.row.snippet}>
+          <span class="snippet">{props.row.snippet}</span>
+        </Show>
+      </span>
+      <span class="glyphs">
+        <Show when={props.row.hasAttachments}>
+          <span class="clip" title="Has attachments" aria-label="Has attachments">
+            ⌁
+          </span>
+        </Show>
+        <Show when={props.row.flagged}>
+          <span class="star" title="Starred" aria-label="Starred">
+            ★
+          </span>
+        </Show>
+      </span>
+      <span class="date">{when(props.row.date)}</span>
+    </div>
+  );
+}

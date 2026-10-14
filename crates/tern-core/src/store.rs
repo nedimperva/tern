@@ -705,7 +705,9 @@ impl Store {
              FROM messages WHERE account_id = ?1 AND thread_id = ?2",
         )?;
         let mut senders = conn.prepare_cached(
-            "SELECT from_name, from_addr FROM messages WHERE account_id = ?1 AND thread_id = ?2 ORDER BY date, id",
+            "SELECT m.from_name, m.from_addr, lower(m.from_addr) = lower(a.email)
+             FROM messages m JOIN accounts a ON a.id = m.account_id
+             WHERE m.account_id = ?1 AND m.thread_id = ?2 ORDER BY m.date, m.id",
         )?;
         let mut seen = HashSet::new();
         let mut out = Vec::new();
@@ -730,15 +732,60 @@ impl Store {
                 })?;
             let mut participants: Vec<String> = Vec::new();
             for who in senders.query_map(params![latest.account_id, latest.thread_id], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, bool>(2)?))
             })? {
-                let (name, addr) = who?;
-                let who = if name.is_empty() { addr } else { name };
+                let (name, addr, mine) = who?;
+                let who = if mine {
+                    "me".to_string()
+                } else if name.is_empty() {
+                    addr
+                } else {
+                    name
+                };
                 if participants.len() < 4 && !participants.contains(&who) {
                     participants.push(who);
                 }
             }
             out.push(ThreadRow { latest, count, unread, flagged, participants });
+        }
+        Ok(out)
+    }
+
+    /// What an action on whole conversations touches. Each id is a message standing for its conversation (the
+    /// newest one in a list row). Archive and Trash take the conversation's messages in `target`, the folder the
+    /// person is looking at; read and unread take the whole conversation wherever it is; a star goes on that one
+    /// message, and unstarring clears every star in the conversation.
+    pub fn conversation_ids(&self, ids: &[i64], action: Action, target: &ListTarget) -> Result<Vec<i64>> {
+        if action == Action::Star {
+            return Ok(ids.to_vec());
+        }
+        let same_conversation = "SELECT m.id FROM messages m, messages o
+             WHERE o.id = ?1 AND m.account_id = o.account_id AND m.thread_id = o.thread_id";
+        let (sql, key) = match (action, target) {
+            (Action::Archive | Action::Trash, ListTarget::Folder(id)) => {
+                (format!("{same_conversation} AND m.folder_id = ?2"), Some(Value::Integer(*id)))
+            }
+            (Action::Archive | Action::Trash, ListTarget::Role(role)) => (
+                format!("{same_conversation} AND m.folder_id IN (SELECT id FROM folders WHERE role = ?2)"),
+                Some(Value::Text(role.clone())),
+            ),
+            (Action::Unstar, _) => (format!("{same_conversation} AND m.flagged"), None),
+            _ => (same_conversation.to_string(), None),
+        };
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(&sql)?;
+        let mut out = Vec::new();
+        for id in ids {
+            let found = match &key {
+                Some(key) => stmt.query_map(params![id, key], |r| r.get::<_, i64>(0))?.collect::<Vec<_>>(),
+                None => stmt.query_map(params![id], |r| r.get::<_, i64>(0))?.collect::<Vec<_>>(),
+            };
+            for found in found {
+                let found = found?;
+                if !out.contains(&found) {
+                    out.push(found);
+                }
+            }
         }
         Ok(out)
     }
@@ -1624,6 +1671,32 @@ mod tests {
             .list_threads(&ListTarget::Folder(inbox), Some(Cursor { date: 25, id: next[0].latest.id }), 2)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn actions_on_a_conversation_reach_the_right_messages() {
+        let (store, account, inbox, archive) = setup();
+        let reply = |uid: u32, date: i64, flagged: bool| NewMessage {
+            in_reply_to: Some("1@example.com".into()),
+            flagged,
+            ..message(uid, "re a", date)
+        };
+        store
+            .insert_messages(account, inbox, &[message(1, "a", 10), reply(2, 20, true), message(3, "b", 5)])
+            .unwrap();
+        store.insert_messages(account, archive, &[reply(4, 15, true)]).unwrap();
+        let rows = store.list_threads(&ListTarget::Folder(inbox), None, 10).unwrap();
+        let newest = rows[0].latest.id;
+        let ids = |action| {
+            let mut ids = store.conversation_ids(&[newest], action, &ListTarget::Folder(inbox)).unwrap();
+            ids.sort();
+            ids
+        };
+        assert_eq!(ids(Action::Archive), [1, 2], "only what is in the inbox");
+        assert_eq!(ids(Action::MarkRead), [1, 2, 4], "the whole conversation");
+        assert_eq!(ids(Action::Unstar), [2, 4], "every star in it");
+        assert_eq!(ids(Action::Star), [newest]);
+        assert_eq!(rows[0].participants, ["Ada"]);
     }
 
     #[test]

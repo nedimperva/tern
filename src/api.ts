@@ -41,6 +41,14 @@ export type ThreadMessage = MessageRow & {
   /** False while only the headers are here; opening the message asks for the body, and "mail-changed" follows. */
   bodyLoaded: boolean;
 };
+/** One conversation in a list: its newest message in the listed folder(s), and the whole conversation's totals. */
+export type ThreadRow = MessageRow & {
+  count: number;
+  unread: number;
+  flagged: boolean;
+  /** Who wrote in it, first to last, each once; "me" for the account itself. At most four. */
+  participants: string[];
+};
 /** Where an account's sync stands. */
 export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed";
 export type Action = "archive" | "trash" | "markRead" | "markUnread" | "star" | "unstar";
@@ -75,6 +83,10 @@ export interface Api {
   preset(email: string): Promise<Preset | null>;
   addAccount(config: AccountConfig, password: string): Promise<Account>;
   list(target: Target, before: Cursor | null, limit: number): Promise<MessageRow[]>;
+  /** Conversations with a message in `target`, newest first; `before` is the last row's (date, id). */
+  listThreads(target: Target, before: Cursor | null, limit: number): Promise<ThreadRow[]>;
+  /** An action on whole conversations, each named by its row's message id. */
+  applyConversations(ids: number[], action: Action, target: Target): Promise<Applied>;
   thread(id: number): Promise<ThreadMessage[]>;
   search(query: string, limit: number): Promise<MessageRow[]>;
   apply(ids: number[], action: Action): Promise<Applied>;
@@ -99,6 +111,8 @@ const tauri: Api = {
   preset: (email) => invoke("preset", { email }),
   addAccount: (config, password) => invoke("add_account", { config, password }),
   list: (target, before, limit) => invoke("list_messages", { target, before, limit }),
+  listThreads: (target, before, limit) => invoke("list_threads", { target, before, limit }),
+  applyConversations: (ids, action, target) => invoke("apply_conversations", { ids, action, target }),
   thread: (id) => invoke("thread", { id }),
   search: (query, limit) => invoke("search", { query, limit }),
   apply: (ids, action) => invoke("apply", { ids, action }),
@@ -147,7 +161,8 @@ function fake(): Api {
       id: i + 1,
       accountId: 1,
       folderId: i % 9 === 0 ? 2 : 1,
-      threadId: `t${i}`,
+      // Every fifth message starts a conversation that the next two answer.
+      threadId: i % 5 < 3 ? `t${i - (i % 5)}` : `t${i}`,
       subject,
       fromName: name,
       fromAddr: name.toLowerCase().replace(/\s/g, ".") + "@example.com",
@@ -211,7 +226,38 @@ function fake(): Api {
         .sort((a, b) => b.date - a.date || b.id - a.id)
         .slice(0, limit)
         .map(row),
-    thread: async (id) => messages.filter((m) => m.id === id),
+    thread: async (id) => {
+      const t = messages.find((m) => m.id === id)?.threadId;
+      return messages.filter((m) => m.threadId === t).sort((a, b) => a.date - b.date);
+    },
+    listThreads: async (target, before, limit) => {
+      const newer = (m: ThreadMessage) => !!before && (m.date > before.date || (m.date === before.date && m.id >= before.id));
+      const shown = new Set(messages.filter((m) => inTarget(m, target) && newer(m)).map((m) => m.threadId));
+      const out: ThreadRow[] = [];
+      for (const m of messages.filter((m) => inTarget(m, target) && !newer(m)).sort((a, b) => b.date - a.date || b.id - a.id)) {
+        if (out.length >= limit) break;
+        if (shown.has(m.threadId)) continue;
+        shown.add(m.threadId);
+        const all = messages.filter((o) => o.threadId === m.threadId).sort((a, b) => a.date - b.date);
+        const participants = [...new Set(all.map((o) => o.fromName))].slice(0, 4);
+        out.push({ ...row(m), count: all.length, unread: all.filter((o) => !o.seen).length, flagged: all.some((o) => o.flagged), participants });
+      }
+      return out;
+    },
+    applyConversations: async (ids, action, target) => {
+      const threads = new Set(messages.filter((m) => ids.includes(m.id)).map((m) => m.threadId));
+      const members = (keep: (m: ThreadMessage) => boolean) =>
+        messages.filter((m) => threads.has(m.threadId) && keep(m)).map((m) => m.id);
+      const chosen =
+        action === "archive" || action === "trash"
+          ? members((m) => inTarget(m, target))
+          : action === "unstar"
+            ? members((m) => m.flagged)
+            : action === "star"
+              ? ids
+              : members(() => true);
+      return api.apply(chosen, action);
+    },
     search: async (query, limit) => {
       const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
       return messages
