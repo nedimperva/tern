@@ -7,6 +7,8 @@ description = "Local-first mail engine: SQLite store, IMAP sync, SMTP send, outb
 
 [dependencies]
 anyhow = "1"
+# Jitter for reconnect waits.
+fastrand = "2"
 # Exact pin: io-imap is young (0.7) and sits on a pre-release parser (imap-codec 2.0 alpha). See
 # docs/research/stack.md, "IMAP library probe". Only src/imap.rs uses it.
 io-imap = { version = "=0.7.1", default-features = false, features = ["client"] }

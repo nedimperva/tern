@@ -1,6 +1,6 @@
 import { batch, createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import { api, type Account, type Action, type Folder, type MessageRow as Row, type OutboxProblem, type Target, type ThreadMessage } from "./api";
+import { api, type Account, type Action, type Folder, type MessageRow as Row, type OutboxProblem, type SyncState, type Target, type ThreadMessage } from "./api";
 import { AccountSetup } from "./components/AccountSetup";
 import { ProblemsDialog, ProblemsStrip } from "./components/Problems";
 import { CommandBar, type Command } from "./components/CommandBar";
@@ -25,8 +25,16 @@ const ROLE_NAMES: Record<string, string> = {
   trash: "Trash",
 };
 
+/** Said next to the account only when it is not simply working: up to date or syncing shows nothing. */
+const SYNC_LABELS: Partial<Record<SyncState, string>> = {
+  connecting: "Connecting…",
+  offline: "Offline",
+  "auth-failed": "Sign-in failed",
+};
+
 export default function App() {
   const [accounts, setAccounts] = createSignal<Account[]>([]);
+  const [syncStates, setSyncStates] = createSignal<Record<number, SyncState>>({});
   const [folders, setFolders] = createSignal<Folder[]>([]);
   const [target, setTarget] = createSignal<Target>({ role: "inbox" });
   const [rows, setRows] = createSignal<Row[]>([]);
@@ -101,6 +109,8 @@ export default function App() {
   };
 
   onMount(() => {
+    api.onSyncState((id, state) => setSyncStates({ ...syncStates(), [id]: state }));
+    void api.syncStates().then((s) => setSyncStates({ ...s, ...syncStates() }));
     api.onChange(onChange);
     void refresh();
   });
@@ -290,7 +300,12 @@ export default function App() {
         <For each={accounts()}>
           {(account) => (
             <section>
-              <h3>{account.email}</h3>
+              <h3>
+                <span>{account.email}</span>
+                <Show when={SYNC_LABELS[syncStates()[account.id]]}>
+                  {(label) => <span class={`sync-state ${syncStates()[account.id]}`}>{label()}</span>}
+                </Show>
+              </h3>
               <For each={folders().filter((f) => f.accountId === account.id)}>
                 {(f) => (
                   <a classList={{ active: isTarget({ folder: f.id }) }} onClick={() => go({ folder: f.id })}>
