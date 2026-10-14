@@ -153,6 +153,10 @@ pub struct Draft {
     pub body: String,
     #[serde(default)]
     pub in_reply_to: Option<String>,
+    /// Set when the send is queued and kept, so a second try after an uncertain one is the same message to the
+    /// recipient (and to Tern, matching the copy in Sent).
+    #[serde(default)]
+    pub message_id: Option<String>,
 }
 
 /// Work waiting to go to the server. Each carries what it takes to put the local store back if it is undone.

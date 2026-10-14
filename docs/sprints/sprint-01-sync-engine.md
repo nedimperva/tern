@@ -61,7 +61,9 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 - [x] `ENABLE CONDSTORE QRESYNC` when advertised. Store `highest_modseq` per folder (column exists).
 - [ ] Folder check = `SELECT (QRESYNC ...)` → apply `VANISHED` + changed flags from the response; fall back to
       `UID SEARCH MODSEQ n` on CONDSTORE-only servers; fall back to `UID FETCH 1:* (FLAGS)` in batches of 5,000 on plain servers.
-- [ ] `UIDVALIDITY` change: drop the folder's rows (respecting `pending_uids`) and resync.
+- [x] `UIDVALIDITY` change: drop the folder's rows (respecting `pending_uids`) and resync.
+      Done in the reliability gate (#17): rows queued work points at stay with their uid cleared; sync claims
+      them back by Message-ID.
 - [ ] Interval for non-inbox folders: 5 minutes, or on demand when the user opens the folder.
 
 ### Headers first, bodies later
@@ -86,8 +88,11 @@ items, prefer the one with QRESYNC support built in. Record the decision and pro
 
 ### Outbox
 - [x] `MOVE` (RFC 6851) when advertised, else `COPY` + `STORE \Deleted` + targeted `UID EXPUNGE` when supported. Without UIDPLUS, choose a conservative fallback; never globally EXPUNGE unrelated deleted mail.
-- [ ] Validate mailbox identity/UIDVALIDITY before queued mutations; reconcile stale IDs. Preserve dependencies for actions on messages with pending moves.
-- [ ] Persist send identity/MIME and distinguish confirmed, failed and unknown outcomes; stable Message-ID alone does not make SMTP exactly-once.
+- [x] Validate mailbox identity/UIDVALIDITY before queued mutations; reconcile stale IDs. Preserve dependencies for actions on messages with pending moves.
+      Done in #17: ops carry UIDVALIDITY and `waiting` rows; Message-ID lookup and COPYUID fill them in.
+- [x] Persist send identity/MIME and distinguish confirmed, failed and unknown outcomes; stable Message-ID alone does not make SMTP exactly-once.
+      Done in #17: the Message-ID is fixed when queued and kept across tries (the MIME is rebuilt from the stored
+      draft, so only its Date changes); unknown outcomes become "may have been sent" problems.
 - [ ] `APPEND` sent mail to the Sent folder when the server does not copy it (detect via the preset / a one-time check).
 - [x] Retry policy: 5 attempts with backoff, then surface in a "Sync problems" list in the UI; never drop silently.
 

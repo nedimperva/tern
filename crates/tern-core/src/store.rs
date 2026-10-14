@@ -721,8 +721,15 @@ impl Store {
         Ok(Applied { token, accounts: accounts.into_iter().collect() })
     }
 
-    pub fn queue_send(&self, account_id: i64, draft: Draft, delay: i64) -> Result<i64> {
-        enqueue(&self.conn(), account_id, &OutboxOp::Send(draft), delay)
+    pub fn queue_send(&self, account_id: i64, mut draft: Draft, delay: i64) -> Result<i64> {
+        let conn = self.conn();
+        if draft.message_id.is_none() {
+            let email: String =
+                conn.query_row("SELECT email FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
+            let domain = email.rsplit_once('@').map_or("localhost", |(_, d)| d);
+            draft.message_id = Some(crate::smtp::new_message_id(domain)?);
+        }
+        enqueue(&conn, account_id, &OutboxOp::Send(draft), delay)
     }
 
     /// Takes back what `apply` or `queue_send` did, if it has not gone to the server yet.
@@ -1304,6 +1311,7 @@ mod tests {
             subject: "Lunch?".into(),
             body: "".into(),
             in_reply_to: None,
+            message_id: None,
         }
     }
 
@@ -1316,8 +1324,18 @@ mod tests {
         assert_eq!(store.next_due(account).unwrap(), None, "not sent again on its own");
         let problems = store.outbox_problems().unwrap();
         assert!(problems[0].maybe_sent);
+        let id_before = match store.outbox_op(work).unwrap() {
+            Some(OutboxOp::Send(d)) => d.message_id.expect("queued sends get a Message-ID"),
+            other => panic!("{other:?}"),
+        };
+        assert!(id_before.ends_with("@example.com>"), "{id_before}");
         store.retry_outbox(work).unwrap();
-        assert_eq!(store.claim_due(account).unwrap()[0].0, work, "the person can send it again");
+        let again = store.claim_due(account).unwrap().remove(0);
+        assert_eq!(again.0, work, "the person can send it again");
+        assert!(
+            matches!(again.1, OutboxOp::Send(d) if d.message_id == Some(id_before)),
+            "as the same message"
+        );
     }
 
     /// Tern stopped (closed, crashed, power cut) in the middle of a pass, then starts again on the same file.
