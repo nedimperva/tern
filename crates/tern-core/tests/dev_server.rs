@@ -98,6 +98,7 @@ fn account(smtp_port: u16, smtp_security: Security) -> AccountConfig {
 async fn send_and_find(config: &AccountConfig) {
     let subject = format!("smtp check {} {:?}", std::process::id(), config.smtp_security);
     let draft = Draft {
+        html: None,
         to: vec!["test@localhost".into()],
         cc: vec![],
         subject: subject.clone(),
@@ -146,6 +147,7 @@ async fn sends_over_smtp_starttls() {
 #[ignore = "needs scripts/dev-mail-server.sh start"]
 async fn unknown_recipient_is_a_permanent_failure() {
     let draft = Draft {
+        html: None,
         to: vec!["nobody-here@localhost".into()],
         cc: vec![],
         subject: "to nobody".into(),
@@ -171,6 +173,7 @@ async fn idle_wakes_on_new_mail() {
     let deliver = tokio::spawn(async {
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         let draft = Draft {
+            html: None,
             to: vec!["test@localhost".into()],
             cc: vec![],
             subject: "idle check".into(),

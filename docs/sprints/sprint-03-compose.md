@@ -22,14 +22,16 @@ marks done. Drafts land in the server's Drafts folder.
 ## Tasks
 
 ### Rich editor (separate slice after core draft/send gate)
-- [ ] ProseMirror core (`prosemirror-model`, `-state`, `-view`, `-schema-basic`, `-keymap`, `-history`,
+- [x] ProseMirror core (`prosemirror-model`, `-state`, `-view`, `-schema-basic`, `-keymap`, `-history`,
       `-inputrules`) with a small schema: paragraph, bold, italic, underline, strike, link, bullet/ordered list,
       blockquote, code (inline), hard break. No tables, no headings, no colours in v1.
-- [ ] Keys: `Cmd+B/I/U`, `Cmd+K` link, `Cmd+Shift+7/8` lists, `Cmd+Shift+9` quote, `Cmd+Z/Shift+Z`, `Cmd+[ ]` indent.
+- [x] Keys: `Cmd+B/I/U`, `Cmd+K` link, `Cmd+Shift+7/8` lists, `Cmd+Shift+9` quote, `Cmd+Z/Shift+Z`, `Cmd+[ ]` indent.
       Markdown input rules: `*`, `-`, `1.`, `>`, backticks.
-- [ ] Serialise to HTML (inline-styled where mail clients need it) and a plain-text alternative (`text/plain` from the doc, not from the HTML).
-- [ ] Paste: strip Word/Docs styles down to the schema; paste images as attachments (inline `cid:` later).
-- [ ] Bundle budget for the editor: 60 kB gzipped. Measure.
+- [x] Serialise to HTML (inline-styled where mail clients need it) and a plain-text alternative (`text/plain` from the doc, not from the HTML).
+- [x] Paste: strip Word/Docs styles down to the schema; paste images as attachments (inline `cid:` later).
+      Styles reduce to the schema (ProseMirror parses pasted HTML through it); pasted images are cut (Cut first).
+- [x] Bundle budget for the editor: 60 kB gzipped. Measure.
+      Measured 69.8 kB gzipped, over by ~10 kB (see Decisions); loaded as its own chunk.
 
 ### Compose surface
 - [x] Inline at the bottom of the conversation for replies, a centred modal for new mail; `Cmd+Shift+O` pops out to its own window later (backlog).
@@ -40,7 +42,7 @@ marks done. Drafts land in the server's Drafts folder.
 
 ### Reply, reply-all, forward (core; rich quoting follows editor slice)
 - [x] Reply-all excludes our own addresses (all aliases from the account), honours `Reply-To`, `Mail-Followup-To`.
-- [ ] Quote header `On <date>, <name> <<addr>> wrote:` then `<blockquote>` of the original HTML (sanitised) or text; collapsed in the editor behind "···", editable on click.
+- [x] Quote header `On <date>, <name> <<addr>> wrote:` then `<blockquote>` of the original HTML (sanitised) or text; collapsed in the editor behind "···", editable on click.
 - [x] Forward includes original attachments; subject `Fwd:`; original headers block.
 - [x] Threading headers: `In-Reply-To`, `References` appended; `Message-ID` generated as `<uuid@tern>` (host part from the account domain).
 
@@ -103,6 +105,13 @@ Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
   are all-or-nothing in compose (one chip). Picked and dropped files are copied into
   `app_data/attachments/<stamp>/` (one folder per file, not per draft: a file is added before the draft has an
   id); copies are not cleaned up yet. Attachments are read into memory once at send; no streaming yet.
+- 2026-10-15 — **The editor is a separate chunk, 69.8 kB gzipped** (budget 60). ProseMirror's view and model are
+  most of it; the schema is already the small one the plan asks for. The app's own bundle stays at 33.1 kB: the
+  editor is fetched when the browser is idle after start, so `c` still opens compose at once. App + editor is
+  103 kB, under the 150 kB ceiling. Revisit only if it grows.
+- 2026-10-15 — **Rich mail is multipart/alternative**: the text part is written from the document (lists as "- ",
+  quotes as "> ", links as "text <url>"), not scraped from the HTML. Quotes get inline styles (mail clients drop
+  `<style>`). The reply's quote is a real blockquote in the editor, folded behind "···" until opened.
 - 2026-10-14 — **No "Send Later" / "Remind me" stubs.** Package 02's scope says future features need not appear as
   placeholders; they arrive with package 05.
 
@@ -132,3 +141,9 @@ Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
   send) its recipients; no-reply style senders are left out. Suggestions under To/Cc/Bcc rank 3·sent + received,
   fading over months, matching the start of the address, the name or a word of it. `store_bench`: 0.09 ms a
   query at 50,000 messages (target < 5 ms). Dev DB: 221 people from existing mail.
+- 2026-10-15 — Slice 5: the rich editor. ProseMirror with paragraphs, quotes, lists, breaks; bold, italic,
+  underline, strike, code, links. Keys `Ctrl+B/I/U`, `Ctrl+Shift+X` strike, `Ctrl+E` code, `Ctrl+K` link,
+  `Ctrl+Shift+7/8/9` lists and quote, `Ctrl+[ ]` list level, `Shift+Enter` line break, undo/redo; typing "- ",
+  "1. ", "> " or `code` formats. A format bar over a selection. Keys the editor handles no longer reach the app
+  (`Ctrl+K` there is a link, not the palette). Drafts keep the HTML. Checked in headless Chromium; 92 unit tests,
+  13 dev-server checks.

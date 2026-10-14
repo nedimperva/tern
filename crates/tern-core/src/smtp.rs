@@ -105,10 +105,21 @@ fn build(config: &AccountConfig, draft: &Draft, extra: &[FileBytes]) -> Result<M
         }
         builder = builder.references(chain.join(" "));
     }
+    // Rich text goes as text/plain and text/html alternatives: every client reads one of them.
+    let text = || match &draft.html {
+        Some(html) => MultiPart::alternative_plain_html(draft.body.clone(), html.clone()),
+        None => MultiPart::mixed().singlepart(SinglePart::plain(draft.body.clone())),
+    };
     if draft.attachments.is_empty() && extra.is_empty() {
-        return Ok(builder.header(ContentType::TEXT_PLAIN).body(draft.body.clone())?);
+        return Ok(match &draft.html {
+            Some(_) => builder.multipart(text())?,
+            None => builder.header(ContentType::TEXT_PLAIN).body(draft.body.clone())?,
+        });
     }
-    let mut parts = MultiPart::mixed().singlepart(SinglePart::plain(draft.body.clone()));
+    let mut parts = match &draft.html {
+        Some(_) => MultiPart::mixed().multipart(text()),
+        None => MultiPart::mixed().singlepart(SinglePart::plain(draft.body.clone())),
+    };
     for file in &draft.attachments {
         let bytes = std::fs::read(&file.path)
             .with_context(|| format!("Could not read the attachment {}", file.name))?;
@@ -300,6 +311,7 @@ mod tests {
             smtp_security: Security::Tls,
         };
         let draft = Draft {
+            html: None,
             to: vec!["b@example.com".into()],
             cc: vec![],
             subject: "x".into(),
@@ -335,6 +347,7 @@ mod tests {
             smtp_security: Security::Tls,
         };
         let draft = Draft {
+            html: None,
             to: vec!["b@example.com".into()],
             cc: vec![],
             bcc: vec!["secret@example.com".into()],
@@ -373,6 +386,7 @@ mod tests {
             smtp_security: Security::Tls,
         };
         let draft = Draft {
+            html: None,
             to: vec!["b@example.com".into()],
             cc: vec![],
             bcc: vec![],
@@ -399,6 +413,45 @@ mod tests {
         let parsed = crate::mime::parse(1, &raw, false, false).unwrap();
         assert_eq!(parsed.body_text.as_deref().map(str::trim), Some("Two files."));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn rich_text_goes_as_plain_and_html() {
+        let config = AccountConfig {
+            email: "ada@example.com".into(),
+            display_name: String::new(),
+            username: "ada".into(),
+            imap_host: String::new(),
+            imap_port: 993,
+            imap_security: Security::Tls,
+            smtp_host: String::new(),
+            smtp_port: 465,
+            smtp_security: Security::Tls,
+        };
+        let draft = Draft {
+            html: Some("<p>Hello <strong>there</strong></p>".into()),
+            to: vec!["b@example.com".into()],
+            cc: vec![],
+            bcc: vec![],
+            subject: "rich".into(),
+            body: "Hello there".into(),
+            in_reply_to: None,
+            references: vec![],
+            attachments: vec![],
+            forward_of: None,
+            message_id: None,
+        };
+        let raw = build(&config, &draft, &[]).unwrap().formatted();
+        let text = String::from_utf8_lossy(&raw);
+        assert!(text.contains("multipart/alternative"), "{text}");
+        let parsed = crate::mime::parse(1, &raw, false, false).unwrap();
+        assert_eq!(parsed.body_text.as_deref().map(str::trim), Some("Hello there"));
+        assert!(parsed.body_html.unwrap().contains("<strong>there</strong>"));
+        // With a file: mixed, holding the alternative and the file.
+        let extra = vec![("a.txt".to_string(), "text/plain".to_string(), b"x".to_vec())];
+        let raw = build(&config, &draft, &extra).unwrap().formatted();
+        assert_eq!(crate::mime::attachment_files(&raw).len(), 1);
+        assert!(crate::mime::parse(1, &raw, false, false).unwrap().body_html.unwrap().contains("<strong>"));
     }
 
     #[tokio::test]
@@ -445,6 +498,7 @@ mod tests {
             smtp_security: Security::Tls,
         };
         let draft = Draft {
+            html: None,
             to: vec!["b@example.com".into()],
             cc: vec![],
             subject: "x".into(),

@@ -1115,6 +1115,7 @@ mod tests {
 
         fn draft() -> crate::models::Draft {
             crate::models::Draft {
+                html: None,
                 to: vec!["b@example.com".into()],
                 cc: vec![],
                 subject: "hi".into(),
@@ -1418,6 +1419,7 @@ mod tests {
         while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap() {
         }
         let draft = Draft {
+            html: None,
             to: vec!["test@localhost".into()],
             cc: vec![],
             subject: format!("sent copy check {}", std::process::id()),
@@ -1463,6 +1465,7 @@ mod tests {
         }
         let subject = format!("draft check {}", std::process::id());
         let draft = |body: &str| Draft {
+            html: None,
             to: vec!["test@localhost".into()],
             cc: vec![],
             bcc: vec![],
@@ -1545,6 +1548,7 @@ mod tests {
         };
         let subject = format!("attachments check {}", std::process::id());
         let draft = |subject: String, attachments, forward_of| Draft {
+            html: None,
             to: vec!["test@localhost".into()],
             cc: vec![],
             bcc: vec![],
@@ -1729,6 +1733,7 @@ mod tests {
         // Its own message, so the other checks running against the same inbox cannot move it meanwhile.
         let subject = format!("star after archive {}", std::process::id());
         let draft = crate::models::Draft {
+            html: None,
             to: vec!["test@localhost".into()],
             cc: vec![],
             subject: subject.clone(),

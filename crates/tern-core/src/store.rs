@@ -1951,9 +1951,11 @@ fn mirror_draft(tx: &Connection, account_id: i64, draft: &Draft) -> Result<()> {
             tx.last_insert_rowid()
         }
     };
+    // The editor's HTML is Tern's own, but it can hold pasted markup: cleaned like any mail before it is shown.
+    let html = draft.html.as_deref().map(crate::mime::sanitize_html);
     tx.execute(
-        "INSERT OR REPLACE INTO bodies (message_id, text, html) VALUES (?1, ?2, NULL)",
-        params![id, draft.body],
+        "INSERT OR REPLACE INTO bodies (message_id, text, html) VALUES (?1, ?2, ?3)",
+        params![id, draft.body, html],
     )?;
     Ok(())
 }
@@ -2597,6 +2599,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
 
     fn draft_to(subject: &str) -> Draft {
         Draft {
+            html: None,
             to: vec!["b@x".into()],
             cc: vec![],
             bcc: vec![],
@@ -2780,6 +2783,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
 
     fn draft() -> Draft {
         Draft {
+            html: None,
             to: vec!["b@x".into()],
             cc: vec![],
             subject: "Lunch?".into(),
