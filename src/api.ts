@@ -18,6 +18,10 @@ export type AccountConfig = {
   smtpSecurity: Security;
 };
 export type Account = AccountConfig & { id: number };
+/** What a `mailto:` link fills in. */
+export type Mailto = { to: string[]; cc: string[]; bcc: string[]; subject: string; body: string };
+/** Mail a notification was about. */
+export type NewMail = { id: number; accountId: number; threadId: string; subject: string };
 export type Folder = { id: number; accountId: number; name: string; role: string; unread: number };
 export type MessageRow = {
   id: number;
@@ -181,8 +185,25 @@ export interface Api {
   inlineImages(id: number): Promise<Record<string, string>>;
   /** Files dropped on the window from the file manager; returns the way to stop listening. */
   onFilesDropped(f: (paths: string[]) => void): () => void;
-  /** Runs `f` (and waits for it) before the window closes; returns the way to stop. */
+  /** Runs `f` (and waits for it) before the window closes or Tern quits; returns the way to stop. */
   onCloseRequested(f: () => Promise<void>): () => void;
+  /** Closing the window hides it while this says so: Tern keeps running in the tray. */
+  keepRunningWhen(f: () => boolean): void;
+  /** Saves what is being written, then quits Tern for good. */
+  quit(): Promise<void>;
+  /** The tray and the system: Compose from the tray menu, a `mailto:` link, a clicked notification, Quit. */
+  onDesktop(handlers: {
+    compose: () => void;
+    mailto: (m: Mailto) => void;
+    openMail: (m: NewMail) => void;
+  }): void;
+  /** The `mailto:` link Tern was started with, if any (once). */
+  takeMailto(): Promise<Mailto | null>;
+  autostart(): Promise<boolean>;
+  setAutostart(on: boolean): Promise<void>;
+  /** Whether `mailto:` links open in Tern. */
+  defaultMailApp(): Promise<boolean>;
+  makeDefaultMailApp(): Promise<void>;
   replyInit(id: number, kind: ReplyKind): Promise<ReplyInit>;
   problems(): Promise<OutboxProblem[]>;
   retryProblem(id: number): Promise<void>;
@@ -206,6 +227,27 @@ export interface Api {
   checkFolder(id: number): Promise<void>;
   onSyncState(f: (accountId: number, state: SyncState) => void): void;
   openUrl(url: string): void;
+}
+
+// Everything that must be saved before the window goes (an open compose), and whether closing only hides it. One
+// close listener for all of them: each Tauri listener would close the window by itself once its own part was done.
+const flushers = new Set<() => Promise<void>>();
+let keepRunning = () => false;
+let closeInstalled = false;
+const flush = () => Promise.all([...flushers].map((f) => f().catch(() => {})));
+function installClose() {
+  if (closeInstalled) return;
+  closeInstalled = true;
+  void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+    getCurrentWindow().onCloseRequested(async (event) => {
+      // A failed save must not keep the window open.
+      await flush();
+      if (keepRunning()) {
+        event.preventDefault();
+        await getCurrentWindow().hide();
+      }
+    }),
+  );
 }
 
 const tauri: Api = {
@@ -262,16 +304,29 @@ const tauri: Api = {
     return () => ((stopped = true), stop?.());
   },
   onCloseRequested: (f) => {
-    let stop: (() => void) | undefined;
-    let stopped = false;
-    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-      getCurrentWindow()
-        // The window closes once this resolves; a failed save must not keep it open.
-        .onCloseRequested(() => f().catch(() => {}))
-        .then((unlisten) => (stopped ? unlisten() : (stop = unlisten))),
-    );
-    return () => ((stopped = true), stop?.());
+    flushers.add(f);
+    installClose();
+    return () => void flushers.delete(f);
   },
+  keepRunningWhen: (f) => {
+    keepRunning = f;
+    installClose();
+  },
+  quit: async () => {
+    await flush();
+    await invoke("quit");
+  },
+  onDesktop: (h) => {
+    void listen("compose", () => h.compose());
+    void listen<Mailto>("mailto", (e) => h.mailto(e.payload));
+    void listen<NewMail>("open-mail", (e) => h.openMail(e.payload));
+    void listen("quit", () => void tauri.quit());
+  },
+  takeMailto: () => invoke("take_mailto"),
+  autostart: () => invoke("autostart"),
+  setAutostart: (on) => invoke("set_autostart", { on }),
+  defaultMailApp: () => invoke("default_mail_app"),
+  makeDefaultMailApp: () => invoke("make_default_mail_app"),
   replyInit: (id, kind) => invoke("reply_init", { id, kind }),
   onChange: (f) => void listen("mail-changed", f),
   syncStates: () => invoke("sync_states"),
@@ -573,6 +628,14 @@ function fake(): Api {
     },
     openAttachment: async () => {},
     onCloseRequested: () => () => {},
+    keepRunningWhen: () => {},
+    quit: async () => {},
+    onDesktop: () => {},
+    takeMailto: async () => null,
+    autostart: async () => false,
+    setAutostart: async () => {},
+    defaultMailApp: async () => false,
+    makeDefaultMailApp: async () => {},
     inlineImages: async () => ({}),
     saveAttachment: async () => true,
     openUrl: (url) => void window.open(url, "_blank", "noopener"),

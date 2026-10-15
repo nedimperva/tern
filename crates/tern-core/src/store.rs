@@ -991,6 +991,55 @@ impl Store {
         )?)
     }
 
+    /// Mail worth a notification: unread, in an inbox, newer than `after` (a message id) and dated from `since` on
+    /// (older mail arriving during a first sync or a backfill is not news). Mail from the account's own address
+    /// and muted conversations are left out. Also returns the newest message id, for the next `after`.
+    pub fn new_mail(&self, after: i64, since: i64) -> Result<(i64, Vec<NewMail>)> {
+        let conn = self.conn();
+        let newest: i64 = conn.query_row("SELECT COALESCE(max(id), 0) FROM messages", [], |r| r.get(0))?;
+        let mut stmt = conn.prepare_cached(
+            "SELECT m.id, m.account_id, m.thread_id, m.from_name, m.from_addr, m.subject, m.snippet
+             FROM messages m JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id
+             WHERE m.id > ?1 AND m.id <= ?3 AND m.date >= ?2 AND f.role = 'inbox' AND NOT m.seen
+               AND lower(m.from_addr) <> lower(a.email)
+               AND NOT EXISTS (SELECT 1 FROM muted u WHERE u.account_id = m.account_id AND u.thread_id = m.thread_id)
+             ORDER BY m.id",
+        )?;
+        let mail = stmt
+            .query_map(params![after, since, newest], |r| {
+                Ok(NewMail {
+                    id: r.get(0)?,
+                    account_id: r.get(1)?,
+                    thread_id: r.get(2)?,
+                    from_name: r.get(3)?,
+                    from_addr: r.get(4)?,
+                    subject: r.get(5)?,
+                    snippet: r.get(6)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok((newest, mail))
+    }
+
+    /// Accounts that have any mail here.
+    pub fn accounts_with_mail(&self) -> Result<Vec<i64>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id FROM accounts a WHERE EXISTS (SELECT 1 FROM messages WHERE account_id = a.id)",
+        )?;
+        let ids = stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+        Ok(ids)
+    }
+
+    /// Unread messages across every inbox, for the tray.
+    pub fn inbox_unread(&self) -> Result<i64> {
+        Ok(self.conn().query_row(
+            "SELECT count(*) FROM messages m JOIN folders f ON f.id = m.folder_id WHERE f.role = 'inbox' AND NOT m.seen",
+            [],
+            |r| r.get(0),
+        )?)
+    }
+
     /// Archives messages in an inbox folder whose conversation is muted (new replies to it). Returns whether any
     /// were; the move goes to the server through the outbox like any archive.
     pub fn archive_muted(&self, folder_id: i64) -> Result<bool> {
@@ -2737,6 +2786,25 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         assert_eq!(store.list(&ListTarget::Folder(archive), None, 9).unwrap().len(), 2);
         store.mute(&[id], false).unwrap();
         assert!(!store.muted(id).unwrap());
+    }
+
+    #[test]
+    fn new_mail_is_unread_recent_inbox_mail_from_others() {
+        let (store, account, inbox, archive) = setup();
+        store.insert_messages(account, inbox, &[message(1, "old", 100)]).unwrap();
+        let (mark, none) = store.new_mail(0, 1_000).unwrap();
+        assert!(none.is_empty(), "too old to be news");
+        let mine = NewMessage { from_addr: "Me@Example.com".into(), ..message(2, "mine", 2_000) };
+        let read = NewMessage { seen: true, ..message(3, "read", 2_000) };
+        store.insert_messages(account, inbox, &[message(4, "news", 2_000), mine, read]).unwrap();
+        store.insert_messages(account, archive, &[message(5, "elsewhere", 2_000)]).unwrap();
+        let (next, mail) = store.new_mail(mark, 1_000).unwrap();
+        assert_eq!(mail.iter().map(|m| m.subject.as_str()).collect::<Vec<_>>(), ["news"]);
+        assert!(store.new_mail(next, 1_000).unwrap().1.is_empty(), "each message is news once");
+        assert_eq!(store.inbox_unread().unwrap(), 3);
+        assert_eq!(store.accounts_with_mail().unwrap(), [account]);
+        store.mute(&[mail[0].id], true).unwrap();
+        assert!(store.new_mail(mark, 1_000).unwrap().1.is_empty(), "muted");
     }
 
     fn mail_to_me(uid: u32, from: &str, to: &str, cc: &str) -> NewMessage {

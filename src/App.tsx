@@ -16,6 +16,8 @@ import {
   type Draft,
   type ReplyKind,
   type DraftRecord,
+  type Mailto,
+  type NewMail,
 } from "./api";
 import { AccountSetup } from "./components/AccountSetup";
 import { CommandBar, type Command } from "./components/CommandBar";
@@ -217,6 +219,10 @@ export default function App() {
     onCleanup(() => (window.removeEventListener("online", onOnline), window.removeEventListener("offline", onOffline)));
     void loadSettings();
     void refresh();
+    // The tray, the system's links and notifications. Closing the window leaves Tern in the tray unless turned off.
+    api.keepRunningWhen(() => settings.background);
+    api.onDesktop({ compose: newMessage, mailto: fromLink, openMail: (m) => void openMail(m) });
+    void api.takeMailto().then((m) => m && fromLink(m));
     // Fetch the compose editor while the person reads, so the first "c" opens at once.
     const warm = () => void import("./components/Editor");
     if ("requestIdleCallback" in window) requestIdleCallback(warm);
@@ -514,6 +520,31 @@ export default function App() {
     go(SPLITS[(at + by + SPLITS.length) % SPLITS.length].target);
   };
 
+  const newMessage = () => setCompose({ body: signature() ? `\n\n${signature()}` : "" });
+
+  /** A `mailto:` link: compose, filled in from it. */
+  function fromLink(m: Mailto) {
+    const sig = signature();
+    setCompose({
+      to: m.to,
+      cc: m.cc,
+      bcc: m.bcc,
+      subject: m.subject,
+      body: sig ? `${m.body}\n\n${sig}` : m.body,
+      focus: m.to.length ? "body" : "to",
+    });
+  }
+
+  /** A clicked notification: the inbox, with that conversation open. */
+  async function openMail(m: NewMail) {
+    batch(() => (close(), setQuery(""), setTarget({ role: "inbox" })));
+    await load();
+    const i = rows().findIndex((r) => r.accountId === m.accountId && r.threadId === m.threadId);
+    if (i < 0) return;
+    setFocus(i);
+    void open(rows()[i]);
+  }
+
   const go = (t: Target) => {
     batch(() => (setQuery(""), setTarget(t)));
     if ("folder" in t) void api.checkFolder(t.folder);
@@ -591,7 +622,7 @@ export default function App() {
     { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
     { keys: "r", name: "Reply (or continue the draft)", context: "conversation", run: reply },
     { keys: "z", name: "Undo", run: undo },
-    { keys: "c", name: "Compose", run: () => setCompose({ body: signature() ? `\n\n${signature()}` : "" }) },
+    { keys: "c", name: "Compose", run: newMessage },
     { keys: "/", name: "Search", run: () => searchInput.focus() },
     { keys: "Tab", name: "Next split", context: "list", run: () => nextSplit(1) },
     { keys: "Shift+Tab", name: "Previous split", context: "list", run: () => nextSplit(-1) },
@@ -611,6 +642,7 @@ export default function App() {
     })),
     { keys: "?", name: "Keyboard shortcuts", run: () => setSheet(true) },
     { keys: "Ctrl+,", name: "Settings", run: () => setSettingsOpen(true) },
+    { keys: "Ctrl+q", name: "Quit Tern", run: () => void api.quit() },
     { keys: "Ctrl+P", name: "Performance overlay", run: () => setPerf(!perf()) },
     { keys: "Ctrl+\\", name: "Accounts and folders", run: () => setRail(!rail()) },
     { keys: "Ctrl+k", name: "Command palette", run: () => setPalette(!palette()), hidden: true },

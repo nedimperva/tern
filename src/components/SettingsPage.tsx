@@ -1,5 +1,5 @@
-import { createSignal, For, onCleanup, onMount, type JSX } from "solid-js";
-import type { Account } from "../api";
+import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js";
+import { api, type Account } from "../api";
 import { setSetting, settings, type Settings } from "../settings";
 
 type Choice<K extends keyof Settings> = { label: string; value: Settings[K] };
@@ -99,6 +99,87 @@ const SECTIONS: { name: string; body: () => JSX.Element }[] = [
   },
 ];
 
+/** Running in the background, notifications, login start and mailto: links. The last two live with the system, so
+ * they are asked for and set there rather than kept in Tern's settings. */
+function DesktopSettings() {
+  const [login, setLogin] = createSignal(false);
+  const [isDefault, setIsDefault] = createSignal(false);
+  const [error, setError] = createSignal("");
+  onMount(() => {
+    void api.autostart().then(setLogin, () => {});
+    void api.defaultMailApp().then(setIsDefault, () => {});
+  });
+  const attempt = async (f: () => Promise<void>) => {
+    setError("");
+    try {
+      await f();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  return (
+    <>
+      <Select
+        name="background"
+        title="When the window closes"
+        help="In the background, Tern keeps syncing and notifying from the tray. Ctrl+Q or the tray's Quit ends it."
+        choices={[
+          { label: "Keep running in the background", value: true },
+          { label: "Quit Tern", value: false },
+        ]}
+      />
+      <Select
+        name="notify"
+        title="New mail"
+        help="A notification when mail from someone else reaches the inbox. Muted conversations stay quiet."
+        choices={[
+          { label: "Notify me", value: true },
+          { label: "Don't notify me", value: false },
+        ]}
+      />
+      <label class="setting">
+        <span class="title">Start at login</span>
+        <select
+          value={String(login())}
+          onChange={(e) => {
+            const on = e.currentTarget.value === "true";
+            void attempt(async () => {
+              await api.setAutostart(on);
+              setLogin(on);
+            });
+          }}
+        >
+          <option value="true">Start Tern in the tray</option>
+          <option value="false">Don't start Tern</option>
+        </select>
+        <span class="help">Tern starts without a window and fetches mail in the background.</span>
+      </label>
+      <div class="setting">
+        <span class="title">Email links</span>
+        <Show
+          when={!isDefault()}
+          fallback={<span class="help">Email links (mailto:) open in Tern.</span>}
+        >
+          <button
+            onClick={() =>
+              void attempt(async () => {
+                await api.makeDefaultMailApp();
+                setIsDefault(await api.defaultMailApp());
+              })
+            }
+          >
+            Open email links in Tern
+          </button>
+          <span class="help">Clicking an email address on a web page or in another app starts a message here.</span>
+        </Show>
+      </div>
+      <Show when={error()}>
+        <p class="setting-error">{error()}</p>
+      </Show>
+    </>
+  );
+}
+
 /** Ctrl+, : settings over the list (docs/design/ui.md §4.8). Changes apply and are saved at once. */
 /** Accounts: each one's signature, and where it goes in replies. */
 function AccountSettings(props: { accounts: Account[] }) {
@@ -133,7 +214,11 @@ function AccountSettings(props: { accounts: Account[] }) {
 
 export function SettingsPage(props: { accounts: Account[]; onClose: () => void }) {
   const [section, setSection] = createSignal(0);
-  const sections = () => [...SECTIONS, { name: "Accounts", body: () => <AccountSettings accounts={props.accounts} /> }];
+  const sections = () => [
+    ...SECTIONS,
+    { name: "Desktop", body: () => <DesktopSettings /> },
+    { name: "Accounts", body: () => <AccountSettings accounts={props.accounts} /> },
+  ];
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape") return;
     e.preventDefault();

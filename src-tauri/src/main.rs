@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod desktop;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -59,6 +60,7 @@ pub fn start_account(app: &AppHandle, state: &AppState, account: Account) {
     let handle = app.clone();
     let on_change: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
         let _ = handle.emit("mail-changed", ());
+        desktop::mail_changed(&handle);
     });
     let (handle, states, account_id) = (app.clone(), state.states.clone(), account.id);
     let on_state: Arc<dyn Fn(SyncState) + Send + Sync> = Arc::new(move |s| {
@@ -87,9 +89,31 @@ fn main() {
     // Errors from the sync workers go to stderr; RUST_LOG=tern_core=debug shows each fetch as well.
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     tauri::Builder::default()
+        // First, so a second start hands over its link (or just brings the window back) and exits.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| desktop::show(app)))
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![desktop::HIDDEN]),
+        ))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(desktop::Desktop::new())
         .setup(|app| {
+            use tauri_plugin_deep_link::DeepLinkExt;
+            let links = app.deep_link().get_current().ok().flatten().unwrap_or_default();
+            desktop::started_with(app.handle(), &links.iter().map(|u| u.to_string()).collect::<Vec<_>>());
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                desktop::open_links(&handle, &event.urls().iter().map(|u| u.to_string()).collect::<Vec<_>>())
+            });
+            // The window starts hidden (tauri.conf.json) so a login start can stay in the tray.
+            if !std::env::args().any(|a| a == desktop::HIDDEN) {
+                desktop::show(app.handle());
+            }
+            if let Err(e) = desktop::tray(app.handle()) {
+                log::warn!("no tray: {e}");
+            }
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let state = AppState {
@@ -101,6 +125,8 @@ fn main() {
                 start_account(app.handle(), &state, account);
             }
             app.manage(state);
+            // Sets the mark that later mail is measured against.
+            desktop::mail_changed(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -145,6 +171,12 @@ fn main() {
             commands::save_attachment,
             commands::contacts,
             commands::muted,
+            commands::take_mailto,
+            commands::quit,
+            commands::autostart,
+            commands::set_autostart,
+            commands::default_mail_app,
+            commands::make_default_mail_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tern");

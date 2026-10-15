@@ -22,6 +22,10 @@ export type Settings = {
   sendDelay: number;
   /** Senders whose remote images always load ("Always for this sender"), lowercase. */
   imagesFrom: string[];
+  /** Closing the window leaves Tern running in the tray, syncing and notifying. */
+  background: boolean;
+  /** A notification when new mail reaches the inbox (read by the engine too). */
+  notify: boolean;
 };
 
 export const DEFAULTS: Settings = {
@@ -34,6 +38,8 @@ export const DEFAULTS: Settings = {
   sendDelay: 5,
   signatures: {},
   signatureBelow: false,
+  background: true,
+  notify: true,
 };
 
 export const ROW_HEIGHTS: Record<Settings["density"], number> = { dense: 36, comfortable: 44, spacious: 52 };

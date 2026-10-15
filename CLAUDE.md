@@ -13,7 +13,8 @@ decisions that aren't visible from the code.
 - Built and tested against the dev server: sync (IDLE, QRESYNC, headers first), conversations and the keyboard
   shell (package 02), compose with drafts, attachments, signatures and autocomplete (package 03), received
   attachments open/save, and the status strip's "changes waiting" / problems lists (package 08's M1 slice).
-  Search filters (package 06). Owner acceptance is tracked in `docs/acceptance/m1-alpha.md`; the owner ticks it.
+  Search filters (package 06). Package 08's M2 slice: tray, background running, notifications, single instance,
+  login start and `mailto:`. Owner acceptance is tracked in `docs/acceptance/m1-alpha.md`; the owner ticks it.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items, so Gmail goes through the Gmail API (also provisional), not IMAP.
@@ -26,6 +27,7 @@ decisions that aren't visible from the code.
   greeting itself; its `auth_login` is SASL `AUTHENTICATE LOGIN`, the IMAP `LOGIN` command is `login`. It drops a
   response it cannot parse without an error (an X-GM-* item, a malformed literal): compare what came back with what
   was asked for.
+  `rust-ini` is held at 0.21.1 in Cargo.lock: 0.21.3 added struct fields that break `tauri-plugin-deep-link` 2.6.2.
   Every write to the IMAP stream is flushed: rustls can keep the end of a long write (an APPEND) buffered, and
   then server and client wait on each other until the command times out.
 - The user is moving to Linux first: **Omarchy** (Arch + Hyprland, Wayland). Linux is now the primary target;
