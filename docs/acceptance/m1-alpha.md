@@ -15,9 +15,9 @@ fine for the checks it can show, and the account used goes in the tick.
 - [x] (owner 2026-10-15, work account) Send yourself a message from another client: it appears in the list in under 2 s without touching anything.
 - [x] (owner 2026-10-15, work account) Star or read a message in the provider's web mail: Tern shows it within a few seconds (inbox) or 5 min (other folders).
 - [x] (owner 2026-10-15, work account) Conversations: a thread with replies shows as one row with a count; opening it shows every message, oldest first.
-- [ ] HTML mail renders; remote images stay blocked until "Load images"; "Always for this sender" remembers.
+- [x] (owner 2026-10-15, work account) HTML mail renders; remote images stay blocked until "Load images"; "Always for this sender" remembers.
   Owner 2026-10-15: a picture pasted into a mail showed only as an attachment, not in the text, and there was no
-  "Load images" button (it is not a remote image). Fixed after this test: `cid:` images are now drawn in place.
+  "Load images" button (it is not a remote image). Fixed after this test: `cid:` images are now drawn in place; rechecked and passed the same day.
 - [x] (owner 2026-10-15, work account) Triage 50 conversations with keys only (`j k e s # ! Enter Esc`); nothing needs the mouse.
 - [x] (owner 2026-10-15, work account) Archive, star, mark read: instant here; `z` within 5 s takes it back; after 5 s the web mail shows it.
 
@@ -27,11 +27,11 @@ fine for the checks it can show, and the account used goes in the tick.
 - [x] (owner 2026-10-15, work account) Reply-all leaves your own address out; forward carries the original's attachments.
 - [x] (owner 2026-10-15, work account) Close Tern mid-draft and open it again: the draft is there; the server's Drafts has one copy, not several.
   Owner 2026-10-15: Esc always kept the draft; closing the app within 2 s of typing lost it. Fixed after this test:
-  drafts save after 0.8 s and again when the window closes.
+  drafts save after 0.8 s and again when the window closes; rechecked and passed the same day.
 - [x] (owner 2026-10-15, work account) Send with two attachments; they arrive intact in another client; a copy is in Sent.
 - [x] (owner 2026-10-15, work account) Undo send within the window: the message comes back as a draft and never leaves.
   Owner 2026-10-15: undo worked, but Esc straight after it dropped the message when it had never been saved as a
-  draft. Fixed after this test: a message brought back by undo is kept on Esc.
+  draft. Fixed after this test: a message brought back by undo is kept on Esc; rechecked and passed the same day.
 - [x] (owner 2026-10-15, work account) Signature appears above the quote; recipient autocomplete suggests people you write to.
 
 ## Attachments (package 07)
