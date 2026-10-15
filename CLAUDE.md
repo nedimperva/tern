@@ -22,6 +22,8 @@ decisions that aren't visible from the code.
   greeting itself; its `auth_login` is SASL `AUTHENTICATE LOGIN`, the IMAP `LOGIN` command is `login`. It drops a
   response it cannot parse without an error (an X-GM-* item, a malformed literal): compare what came back with what
   was asked for.
+  Every write to the IMAP stream is flushed: rustls can keep the end of a long write (an APPEND) buffered, and
+  then server and client wait on each other until the command times out.
 - The user is moving to Linux first: **Omarchy** (Arch + Hyprland, Wayland). Linux is now the primary target;
   Windows comes later.
 
@@ -50,7 +52,8 @@ policy review. No implementation or real-provider acceptance was completed by th
 - **Local-first.** The UI only ever reads SQLite. The network never sits between a keypress and the screen.
 - **Outbox with undo.** Every change is applied locally, then queued in `outbox` with `not_before = now + 5s` and
   the data needed to revert it. `Store::undo(token)` reverts and deletes the queued rows. The sync worker sends due
-  rows. Don't add code paths that talk to the server directly from a UI command (except `check_login`).
+  rows. Don't add code paths that talk to the server directly from a UI command (except `check_login`, and
+  `sync::download` for the first open of a received attachment: a read, on its own connection).
   Failed work retries with backoff and stops after 5 tries, or at once on a permanent refusal (SMTP 5xx); it then
   waits in `outbox_problems` for retry or discard (discard reverts like undo). It is never dropped on its own, and a
   failure never stops the rest of the pass; only a lost connection does.
@@ -63,6 +66,9 @@ policy review. No implementation or real-provider acceptance was completed by th
   FETCH of every Message-ID in the folder: Stalwart cannot search that header). A move's COPYUID fills in waiting
   work at once. Undo refuses a move that later queued work depends on. Tests for these run against
   `scripted::signed_in` (a scripted IMAP server) in `sync::tests::outbox`.
+- **Folders follow the server.** Each connect (and any pass where a folder is refused) re-reads LIST; folders it no
+  longer lists are dropped with their messages unless queued work or a draft still names them. A role the server
+  marks with SPECIAL-USE belongs to that folder alone; name matches only fill roles nobody marked.
 - **Moves and UIDs.** A moved message gets a new UID in the destination folder. Locally the row moves at once with
   `uid = NULL`; when the destination folder syncs, `insert_messages` claims that row by `Message-ID` instead of
   inserting a duplicate. Sync must never delete or overwrite rows with pending outbox ops (`pending_uids`).

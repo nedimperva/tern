@@ -629,6 +629,34 @@ button.fold {
 .attachments .size {
   color: var(--fg-2);
 }
+.attachments .file button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.attachments .file .save {
+  padding-left: var(--s-1);
+  color: var(--fg-2);
+}
+.attachments .file button:hover .name,
+.attachments .file .save:hover {
+  color: var(--accent);
+}
+.attachments .file.busy {
+  opacity: 0.7;
+}
+.attachment-problem {
+  margin: var(--s-2) 0 0;
+  font-size: var(--t-sm);
+  color: var(--danger);
+}
 .remote-bar button + button {
   margin-left: var(--s-1);
 }
