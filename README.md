@@ -125,7 +125,6 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 The roadmap controls delivery order; these are engine/UI work items, not a fixed weekly schedule.
 Choose the initial Gmail transport through the early [decision gate](docs/research/gmail-backend-decision.md).
 
-- Search filters (`from:`, `is:unread`, `in:`, dates) and a note when results only cover downloaded bodies
 - Real-provider acceptance (Fastmail or another test account) for sync, compose, drafts and attachments
 - Gmail through the chosen backend, with OAuth; Microsoft later (it no longer accepts passwords)
 - Snippets, snooze and basic splits for the beta

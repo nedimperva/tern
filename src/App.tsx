@@ -125,6 +125,8 @@ export default function App() {
   const dialog = () =>
     reviewing() || palette() || sheet() || settingsOpen() || compose() !== null || setup() || rail();
   const searching = () => query().trim() !== "";
+  // Some mail has headers only, so words in its body were not searched.
+  const [partial, setPartial] = createSignal(false);
 
   // MARK: Loading
 
@@ -132,10 +134,12 @@ export default function App() {
   async function load() {
     const ticket = ++generation;
     const q = query().trim();
-    const page = q
-      ? (await api.search(q, 500)).map(asRow)
+    const found = q ? await api.search(q, 500) : null;
+    const page = found
+      ? found.rows.map(asRow)
       : await timeQuery(() => api.listThreads(target(), null, Math.max(PAGE, rows().length)));
     if (ticket !== generation) return;
+    setPartial(found?.partial ?? false);
     exhausted = q !== "" || page.length < PAGE;
     // Focus stays on the same conversation if it is still there, else on the same place in the list.
     const focusedKey = current() && keyOf(current()!);
@@ -792,10 +796,28 @@ export default function App() {
             <kbd>Ctrl K</kbd>
           </button>
         </header>
+        <Show when={searching() && partial()}>
+          <div class="search-note">Older mail without its text downloaded was searched by sender and subject only.</div>
+        </Show>
         <Show
           when={rows().length}
           fallback={
-            <Show when={inboxZero()} fallback={<div class="empty">{ready() ? "Nothing here." : ""}</div>}>
+            <Show
+              when={inboxZero()}
+              fallback={
+                <Show when={searching()} fallback={<div class="empty">{ready() ? "Nothing here." : ""}</div>}>
+                  <div class="empty search-help">
+                    <p>Nothing found.</p>
+                    <p>
+                      Search also takes filters: <code>from:</code> <code>to:</code> <code>subject:</code> <code>is:unread</code>{" "}
+                      <code>is:starred</code> <code>has:attachment</code> <code>in:sent</code>{" "}
+                      <code>before:2026-01-31</code> <code>newer_than:7d</code> <code>larger:5m</code>. Quote a
+                      phrase, put <code>-</code> before what to leave out, <code>OR</code> between words for either.
+                    </p>
+                  </div>
+                </Show>
+              }
+            >
               <div class="zero" style={{ "--zero-hue": String(zeroHue()) }}>
                 <div class="zero-time">{new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</div>
                 <div>You're done.</div>

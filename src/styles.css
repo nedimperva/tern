@@ -167,6 +167,27 @@ button.primary kbd {
   color: var(--fg-2);
 }
 
+.search-help {
+  align-content: center;
+  padding: 0 var(--s-5);
+  text-align: center;
+  font-size: var(--t-sm);
+}
+.search-help p {
+  margin: 0 0 var(--s-2);
+  max-width: 60ch;
+}
+.search-help code {
+  font-family: var(--mono);
+  color: var(--fg-0);
+}
+.search-note {
+  padding: var(--s-1) var(--s-3);
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+  border-bottom: 1px solid var(--line);
+}
+
 /* Inbox Zero gets the best screen in the app (§4.7); solid colour until the artwork exists. */
 .zero {
   --zero-hue: 240;

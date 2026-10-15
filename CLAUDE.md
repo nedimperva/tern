@@ -13,7 +13,7 @@ decisions that aren't visible from the code.
 - Built and tested against the dev server: sync (IDLE, QRESYNC, headers first), conversations and the keyboard
   shell (package 02), compose with drafts, attachments, signatures and autocomplete (package 03), received
   attachments open/save, and the status strip's "changes waiting" / problems lists (package 08's M1 slice).
-  Owner acceptance on a real provider is still open for all of it. Next M1 item: search filters (package 06).
+  Search filters (package 06). Owner acceptance is tracked in `docs/acceptance/m1-alpha.md`; the owner ticks it.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items, so Gmail goes through the Gmail API (also provisional), not IMAP.

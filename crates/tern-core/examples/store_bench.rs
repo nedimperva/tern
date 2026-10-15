@@ -91,6 +91,9 @@ fn main() -> anyhow::Result<()> {
     report("search two prefixes", 100, || {
         store.search("inv bud", 100).unwrap();
     });
+    report("search with filters", 100, || {
+        store.search("inv is:unread in:inbox newer_than:1y", 100).unwrap();
+    });
     report("conversation page (50)", 200, || {
         store.list_threads(&target, None, 50).unwrap();
     });
