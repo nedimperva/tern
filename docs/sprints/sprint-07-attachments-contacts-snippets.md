@@ -71,3 +71,8 @@ Google Contacts via CardDAV (keep Fastmail), attachments browser, drag out.
 - 2026-10-15 — Received attachments open and save (see Decisions). Engine checks: `mime` tests for matching and
   safe names; the dev-server attachment test also downloads and matches each listed file. UI tried in
   `npm run dev` against the fake mailbox only (no window here).
+- 2026-10-15 — Owner: a conversation did not say which messages have files, and some messages showed none. Collapsed
+  cards now carry a paperclip (and a count above one). Mail downloaded whole before schema v6 had its attachment
+  flag but no `parts`, so its files were never listed; schema v15 fetches those bodies again (the stored body
+  still shows meanwhile). Still open: images sent inline (`cid:`) are neither drawn nor listed (viewer task).
+

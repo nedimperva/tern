@@ -206,6 +206,15 @@ export function ConversationView(props: {
                   <span class="to">to {m.toAddrs}</span>
                 </Show>
               </span>
+              <Show when={m.attachments.length || m.hasAttachments}>
+                <span
+                  class="clip"
+                  title={m.attachments.length === 1 ? "1 attachment" : m.attachments.length ? `${m.attachments.length} attachments` : "Attachments"}
+                >
+                  <Icon name="paperclip" size={13} />
+                  <Show when={m.attachments.length > 1}>{m.attachments.length}</Show>
+                </span>
+              </Show>
               <time>{when(m.date)}</time>
             </header>
             <Show when={props.expanded(m.id)}>

@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 14;
+const SCHEMA_VERSION: i64 = 15;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -225,6 +225,12 @@ fn migrate(conn: &Connection) -> Result<()> {
                  ALTER TABLE messages ADD COLUMN reply_to TEXT NOT NULL DEFAULT '';
                  ALTER TABLE messages ADD COLUMN followup_to TEXT NOT NULL DEFAULT '';
                  ALTER TABLE messages ADD COLUMN refs TEXT NOT NULL DEFAULT '';"
+            }
+            // Mail downloaded whole before step 6 kept its attachment flag but has no `parts`, so the conversation
+            // listed none of its files and none could be opened. Fetching the body again fills `parts` in.
+            14 => {
+                "UPDATE messages SET body_state = 'wanted'
+                 WHERE body_state = 'full' AND parts IS NULL AND has_attachments = 1 AND uid IS NOT NULL;"
             }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
@@ -1478,7 +1484,9 @@ impl Store {
     pub fn thread(&self, id: i64) -> Result<Vec<ThreadMessage>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(&format!(
-            "SELECT {ROW}, m.message_id, m.to_addrs, b.text, b.html, m.body_state = 'full', m.parts,
+            "SELECT {ROW}, m.message_id, m.to_addrs, b.text, b.html,
+                    -- A row fetched again for its parts (migration 15) still has the body it had.
+                    m.body_state = 'full' OR b.message_id IS NOT NULL, m.parts,
                     (SELECT d.id FROM drafts d WHERE d.account_id = m.account_id AND d.message_id = m.message_id
                        AND d.discarded_at IS NULL AND d.sent_at IS NULL)
              FROM messages m LEFT JOIN bodies b ON b.message_id = m.id
@@ -3039,6 +3047,8 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                // Step 14 only changed data.
+                14 => "",
                 13 => "DROP TABLE contacts;",
                 12 => "DROP TABLE drafts;",
                 11 => {
@@ -3074,6 +3084,29 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         )
         .unwrap();
         conn
+    }
+
+    #[test]
+    fn migration_15_fetches_again_mail_whose_files_were_never_listed() {
+        let (store, account, inbox, _) = setup();
+        let mut with_file = message(1, "a", 1);
+        with_file.has_attachments = true;
+        store.insert_messages(account, inbox, &[with_file, message(2, "b", 2)]).unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        // As stored before step 6: the flag from the parsed body, no parts.
+        conn.execute_batch("UPDATE messages SET parts = NULL, body_state = 'full';").unwrap();
+        wind_back(&conn, 14);
+        let store = Store::init(conn).unwrap();
+        let states: Vec<(u32, String)> = store
+            .conn()
+            .prepare("SELECT uid, body_state FROM messages ORDER BY uid")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(states, [(1, "wanted".to_string()), (2, "full".to_string())]);
+        assert_eq!(store.bodies_needed(inbox, i64::MAX, 10).unwrap(), [(1, None)]);
     }
 
     #[test]
