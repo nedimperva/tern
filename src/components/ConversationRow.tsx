@@ -17,6 +17,17 @@ export function when(seconds: number): string {
   return String(d.getFullYear());
 }
 
+const dayTime = new Intl.DateTimeFormat(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
+const dateTime = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+
+/** When a snoozed conversation comes back: the time today, weekday and time this week, else the date and time. */
+export function until(seconds: number): string {
+  const d = new Date(seconds * 1000);
+  const days = (d.getTime() - Date.now()) / 86_400_000;
+  if (d.toDateString() === new Date().toDateString()) return time.format(d);
+  return days < 6 ? dayTime.format(d) : dateTime.format(d);
+}
+
 /** "Ana Rossi" alone, or first names when several wrote: "Ana, Tom, me". */
 export function participants(row: ThreadRow): string {
   const names = row.participants.length ? row.participants : [row.fromName || row.fromAddr];
@@ -68,7 +79,14 @@ export function ConversationRow(props: {
           </span>
         </Show>
       </span>
-      <span class="date">{when(props.row.date)}</span>
+      <Show when={props.row.snoozedUntil} fallback={<span class="date">{when(props.row.date)}</span>}>
+        {(due) => (
+          <span class="date snoozed" title="Snoozed until then">
+            <Icon name="clock" size={12} />
+            {until(due())}
+          </span>
+        )}
+      </Show>
     </div>
   );
 }

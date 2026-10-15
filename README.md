@@ -111,11 +111,14 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 | `s` | star |
 | `Shift I` / `Shift U` | mark read / unread |
 | `z` | undo |
+| `h` / `Shift H` | snooze / back from snooze now |
+| `Tab` | next split (Important, Other, Starred) |
 | `c` | compose |
 | `r` | reply |
 | `Ctrl Enter` | send |
 | `/` | search |
-| `g i` | All Inboxes |
+| `g i` | Inbox (Important) |
+| `g h` | Snoozed |
 | `Ctrl Q` | quit (closing the window keeps Tern in the tray) |
 
 ## Speed targets

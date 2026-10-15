@@ -340,6 +340,13 @@ button.primary kbd {
 .crow .clip {
   color: var(--fg-2);
 }
+.crow .date.snoozed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  color: var(--accent);
+}
 .crow .date {
   flex: none;
   min-width: 44px;
@@ -764,6 +771,17 @@ button.fold {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  color: var(--fg-2);
+}
+.command-bar .when {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.snooze-note {
+  margin: 0;
+  padding: var(--s-2) var(--s-4) var(--s-3);
+  font-size: var(--t-sm);
   color: var(--fg-2);
 }
 .command-bar li.none {

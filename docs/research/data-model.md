@@ -107,6 +107,21 @@ UPDATE messages SET body_state = 'wanted'
 WHERE body_state = 'full' AND parts IS NULL AND has_attachments = 1 AND uid IS NOT NULL;
 ```
 
+## v16 — package 05, inbox splits and snooze (implemented 2026-10-15)
+`bulk` is set at insert from `List-Id`, `List-Unsubscribe`, `Precedence: bulk|list|junk` or a noreply-style sender
+(`triage::is_bulk`), and filled in for mail already stored (without Precedence, which was not kept). A sender the
+person moved wins over it. Snoozing is local: the conversation stays in the server's inbox and leaves Tern's lists
+while a `reminders` row exists; the row goes when due, when someone replies, or on "back now".
+```sql
+ALTER TABLE messages ADD COLUMN bulk INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE sender_splits (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                            addr TEXT NOT NULL, other INTEGER NOT NULL, PRIMARY KEY (account_id, addr));
+CREATE TABLE reminders (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                        thread_id TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'snooze',
+                        due INTEGER NOT NULL, created INTEGER NOT NULL,
+                        PRIMARY KEY (account_id, thread_id, kind));
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'

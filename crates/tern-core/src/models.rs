@@ -93,6 +93,8 @@ pub struct ThreadRow {
     pub flagged: bool,
     /// Who wrote in it, first to last, each once (names where known), at most four.
     pub participants: Vec<String>,
+    /// When a snoozed conversation comes back (Unix seconds).
+    pub snoozed_until: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -146,6 +148,8 @@ pub struct NewMessage {
     /// List-Id and List-Unsubscribe, raw, for mailing-list handling later.
     pub list_id: Option<String>,
     pub list_unsubscribe: Option<String>,
+    /// `Precedence: bulk` (or list, junk): sent to many at once.
+    pub precedence_bulk: bool,
     /// Addresses only, comma-separated, as `to_addrs`. Kept for reply-all.
     pub cc_addrs: String,
     pub reply_to: String,

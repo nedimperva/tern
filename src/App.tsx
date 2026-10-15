@@ -28,6 +28,8 @@ import { ProblemsDialog } from "./components/Problems";
 import { Rail, ROLE_NAMES } from "./components/Rail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { SettingsPage } from "./components/SettingsPage";
+import { SnoozePicker } from "./components/SnoozePicker";
+import { until } from "./components/ConversationRow";
 import { PerfOverlay } from "./components/PerfOverlay";
 import { timeKey, timeQuery } from "./perf";
 import { loadSettings, ROW_HEIGHTS, setSetting, settings } from "./settings";
@@ -48,6 +50,7 @@ const keyOf = (r: MessageRow) => `${r.accountId}:${r.threadId}`;
 /** A search hit shown like a conversation row. */
 const asRow = (m: MessageRow): ThreadRow => ({
   ...m,
+  snoozedUntil: null,
   count: 1,
   unread: m.seen ? 0 : 1,
   participants: [m.fromName || m.fromAddr],
@@ -68,7 +71,9 @@ export default function App() {
   const [accounts, setAccounts] = createSignal<Account[]>([]);
   const [syncStates, setSyncStates] = createSignal<Record<number, SyncState>>({});
   const [folders, setFolders] = createSignal<Folder[]>([]);
-  const [target, setTarget] = createSignal<Target>({ role: "inbox" });
+  // Where Tern opens and `g i` goes: the Important split, or the whole inbox with splits off.
+  const home = (): Target => ({ role: settings.splitInbox ? "important" : "inbox" });
+  const [target, setTarget] = createSignal<Target>(home());
   const [query, setQuery] = createSignal("");
   const [rows, setRows] = createSignal<ThreadRow[]>([]);
   const [focus, setFocus] = createSignal(0);
@@ -115,6 +120,9 @@ export default function App() {
   const [reviewing, setReviewing] = createSignal(false);
   const [sheet, setSheet] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
+  /** The conversations the snooze picker is choosing a time for. */
+  const [snoozing, setSnoozing] = createSignal<ThreadRow[] | null>(null);
+  const [splitUnread, setSplitUnread] = createSignal<[number, number]>([0, 0]);
   const [perf, setPerf] = createSignal(false);
   // A few useful keys in the status strip once the keyboard has been still for a moment.
   const [idle, setIdle] = createSignal(false);
@@ -125,7 +133,7 @@ export default function App() {
   const current = () => rows()[focus()];
   const context = (): Context => (openRow() ? "conversation" : "list");
   const dialog = () =>
-    reviewing() || palette() || sheet() || settingsOpen() || compose() !== null || setup() || rail();
+    reviewing() || palette() || sheet() || settingsOpen() || compose() !== null || setup() || rail() || snoozing() !== null;
   const searching = () => query().trim() !== "";
   // Some mail has headers only, so words in its body were not searched.
   const [partial, setPartial] = createSignal(false);
@@ -166,10 +174,17 @@ export default function App() {
   }
 
   async function refresh() {
-    const [a, f, p, w] = await Promise.all([api.accounts(), api.folders(), api.problems(), api.waiting()]);
+    const [a, f, p, w, s] = await Promise.all([
+      api.accounts(),
+      api.folders(),
+      api.problems(),
+      api.waiting(),
+      api.splitUnread(),
+    ]);
     batch(() => {
       setAccounts(a);
       setFolders(f);
+      setSplitUnread(s);
       setProblems(p);
       setWaiting(w);
       setReady(true);
@@ -292,23 +307,76 @@ export default function App() {
     return one ? [one] : [];
   }
 
+  /** Takes conversations off the list at once (they moved away); focus goes to the row that takes their place. */
+  function dropRows(hit: ThreadRow[]) {
+    const keys = new Set(hit.map(keyOf));
+    const first = rows().findIndex((r) => keys.has(keyOf(r)));
+    const left = rows().filter((r) => !keys.has(keyOf(r)));
+    const wasOpen = openRow() && keys.has(keyOf(openRow()!));
+    const next = Math.min(first < 0 ? focus() : first, Math.max(0, left.length - 1));
+    batch(() => {
+      setRows(left);
+      setFocus(next);
+      setSelection(new Set<string>());
+    });
+    if (wasOpen) void open(left[next]);
+  }
+
+  /** Snoozes the conversations the picker was opened for. Snoozing is Tern's alone, so Undo is immediate. */
+  async function snoozeUntil(due: number) {
+    const hit = snoozing() ?? [];
+    setSnoozing(null);
+    if (!hit.length) return;
+    const ids = hit.map((r) => r.id);
+    const snoozedView = "role" in target() && (target() as { role: string }).role === "snoozed";
+    if (!snoozedView) dropRows(hit);
+    try {
+      await api.snooze(ids, due);
+    } catch (e) {
+      showToast(String(e), []);
+    }
+    if (snoozedView) void load();
+    const what = hit.length === 1 ? "Snoozed" : `Snoozed ${hit.length} conversations`;
+    showToast(`${what} until ${until(due)}`, [], undefined, async () => {
+      await api.unsnooze(ids);
+      void load();
+    });
+  }
+
+  /** Brings snoozed conversations back now (Shift+H). */
+  async function wake() {
+    const hit = targets().filter((r) => r.snoozedUntil != null);
+    if (!hit.length) return;
+    if ("role" in target() && (target() as { role: string }).role === "snoozed") dropRows(hit);
+    await api.unsnooze(hit.map((r) => r.id));
+    showToast(hit.length === 1 ? "Back in the inbox" : `${hit.length} conversations back in the inbox`, []);
+    void load();
+  }
+
+  /** Moves the senders of the target conversations to Other (or Important); their later mail follows. */
+  async function moveToSplit(other: boolean) {
+    const hit = targets();
+    if (!hit.length) return;
+    const ids = hit.map((r) => r.id);
+    const t = target();
+    const shown = "role" in t ? t.role : "";
+    if ((other && shown === "important") || (!other && shown === "bulk")) dropRows(hit);
+    await api.setSplit(ids, other);
+    const senders = [...new Set(hit.map((r) => r.fromName || r.fromAddr))];
+    const who = senders.length === 1 ? senders[0] : `${senders.length} senders`;
+    showToast(`${who}: ${other ? "Other" : "Important"} from now on`, [], undefined, async () => {
+      await api.setSplit(ids, !other);
+      void load();
+    });
+  }
+
   /** Shows the change at once, then tells the engine. Every action can be undone for five seconds. */
   /** Returns the undo token, empty if nothing was done. */
   async function act(action: Action, hit = targets(), announce = true): Promise<number[]> {
     if (!hit.length) return [];
     const keys = new Set(hit.map(keyOf));
     if (moves(action)) {
-      // Focus moves to the next row, which takes the place of the first one removed.
-      const first = rows().findIndex((r) => keys.has(keyOf(r)));
-      const left = rows().filter((r) => !keys.has(keyOf(r)));
-      const wasOpen = openRow() && keys.has(keyOf(openRow()!));
-      const next = Math.min(first < 0 ? focus() : first, Math.max(0, left.length - 1));
-      batch(() => {
-        setRows(left);
-        setFocus(next);
-        setSelection(new Set<string>());
-      });
-      if (wasOpen) void open(left[next]);
+      dropRows(hit);
     } else {
       const patch = (r: ThreadRow): ThreadRow =>
         action === "markRead"
@@ -509,16 +577,35 @@ export default function App() {
   };
 
   /** The inbox splits, shown as tabs over the unified inbox. */
-  const SPLITS: { name: string; target: Target }[] = [
-    { name: "Inbox", target: { role: "inbox" } },
-    { name: "Starred", target: { role: "starred" } },
-  ];
-  const splitIndex = () => SPLITS.findIndex((s) => JSON.stringify(s.target) === JSON.stringify(target()));
+  const SPLITS = (): { name: string; target: Target }[] =>
+    settings.splitInbox
+      ? [
+          { name: "Important", target: { role: "important" } },
+          { name: "Other", target: { role: "bulk" } },
+          { name: "Starred", target: { role: "starred" } },
+        ]
+      : [
+          { name: "Inbox", target: { role: "inbox" } },
+          { name: "Starred", target: { role: "starred" } },
+        ];
+  const splitIndex = () => SPLITS().findIndex((s) => JSON.stringify(s.target) === JSON.stringify(target()));
   const nextSplit = (by: number) => {
+    const all = SPLITS();
     const at = splitIndex();
-    if (at < 0) return go(SPLITS[0].target);
-    go(SPLITS[(at + by + SPLITS.length) % SPLITS.length].target);
+    if (at < 0) return go(all[0].target);
+    go(all[(at + by + all.length) % all.length].target);
   };
+  // Turning the splits on or off moves the list to where `g i` now goes.
+  createEffect(
+    on(
+      () => settings.splitInbox,
+      () => {
+        const t = target();
+        if ("role" in t && ["inbox", "important", "bulk"].includes(t.role)) go(home());
+      },
+      { defer: true },
+    ),
+  );
 
   const newMessage = () => setCompose({ body: signature() ? `\n\n${signature()}` : "" });
 
@@ -537,7 +624,7 @@ export default function App() {
 
   /** A clicked notification: the inbox, with that conversation open. */
   async function openMail(m: NewMail) {
-    batch(() => (close(), setQuery(""), setTarget({ role: "inbox" })));
+    batch(() => (close(), setQuery(""), setTarget(home())));
     await load();
     const i = rows().findIndex((r) => r.accountId === m.accountId && r.threadId === m.threadId);
     if (i < 0) return;
@@ -622,11 +709,14 @@ export default function App() {
     { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
     { keys: "r", name: "Reply (or continue the draft)", context: "conversation", run: reply },
     { keys: "z", name: "Undo", run: undo },
+    { keys: "h", name: "Snooze", run: () => targets().length > 0 && setSnoozing(targets()) },
+    { keys: "H", name: "Back from snooze now", run: () => void wake() },
     { keys: "c", name: "Compose", run: newMessage },
     { keys: "/", name: "Search", run: () => searchInput.focus() },
     { keys: "Tab", name: "Next split", context: "list", run: () => nextSplit(1) },
     { keys: "Shift+Tab", name: "Previous split", context: "list", run: () => nextSplit(-1) },
-    { keys: "g i", name: "Go to Inbox", run: () => go({ role: "inbox" }) },
+    { keys: "g i", name: "Go to Inbox", run: () => go(home()) },
+    { keys: "g h", name: "Go to Snoozed", run: () => go({ role: "snoozed" }) },
     { keys: "g s", name: "Go to Starred", run: () => go({ role: "starred" }) },
     { keys: "g e", name: "Go to Done (Archive)", run: () => go({ role: "archive" }) },
     { keys: "g t", name: "Go to Sent", run: () => go({ role: "sent" }) },
@@ -657,6 +747,12 @@ export default function App() {
         group: b.keys.startsWith("g ") ? "Go to" : "Actions",
         run: () => void b.run(),
       })),
+    ...(settings.splitInbox
+      ? [
+          { name: "Move sender to Other", group: "Actions", run: () => void moveToSplit(true) },
+          { name: "Move sender to Important", group: "Actions", run: () => void moveToSplit(false) },
+        ]
+      : []),
     {
       name: "Move to …",
       group: "Actions",
@@ -760,6 +856,11 @@ export default function App() {
       : width() >= (settings.openMode === "split" ? MIN_SPLIT_WIDTH : SPLIT_WIDTH);
   const split = () => openRow() !== null && roomForSplit();
   const inboxUnread = () => folders().filter((f) => f.role === "inbox").reduce((n, f) => n + f.unread, 0);
+  /** The unread count a split's tab shows; Starred shows none. */
+  const tabUnread = (t: Target) => {
+    const role = "role" in t ? t.role : "";
+    return role === "important" ? splitUnread()[0] : role === "bulk" ? splitUnread()[1] : role === "inbox" ? inboxUnread() : 0;
+  };
   /** Inbox Zero's colour changes with the day, so it stays a small reward. */
   const zeroHue = () => {
     const now = new Date();
@@ -804,12 +905,12 @@ export default function App() {
           </button>
           <Show when={splitIndex() >= 0 && !searching()} fallback={<h2>{title()}</h2>}>
             <nav class="splits" role="tablist">
-              <For each={SPLITS}>
+              <For each={SPLITS()}>
                 {(s, i) => (
                   <button role="tab" aria-selected={i() === splitIndex()} classList={{ active: i() === splitIndex() }} onClick={() => go(s.target)}>
                     {s.name}
-                    <Show when={i() === 0 && inboxUnread()}>
-                      <span class="count">{inboxUnread()}</span>
+                    <Show when={tabUnread(s.target)}>
+                      <span class="count">{tabUnread(s.target)}</span>
                     </Show>
                   </button>
                 )}
@@ -977,6 +1078,9 @@ export default function App() {
       </Show>
       <Show when={sheet()}>
         <ShortcutSheet bindings={bindings()} onClose={() => setSheet(false)} />
+      </Show>
+      <Show when={snoozing()}>
+        {(hit) => <SnoozePicker count={hit().length} onPick={(due) => void snoozeUntil(due)} onClose={() => setSnoozing(null)} />}
       </Show>
       <Show when={palette()}>
         <CommandBar

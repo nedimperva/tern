@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 15;
+const SCHEMA_VERSION: i64 = 16;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -232,6 +232,18 @@ fn migrate(conn: &Connection) -> Result<()> {
                 "UPDATE messages SET body_state = 'wanted'
                  WHERE body_state = 'full' AND parts IS NULL AND has_attachments = 1 AND uid IS NOT NULL;"
             }
+            // Triage: which split a message lands in (filled in below for mail already here), the senders the
+            // person moved to the other split, and snoozed conversations until they are due.
+            15 => {
+                "ALTER TABLE messages ADD COLUMN bulk INTEGER NOT NULL DEFAULT 0;
+                 CREATE TABLE sender_splits (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                             addr TEXT NOT NULL, other INTEGER NOT NULL,
+                                             PRIMARY KEY (account_id, addr));
+                 CREATE TABLE reminders (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                         thread_id TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'snooze',
+                                         due INTEGER NOT NULL, created INTEGER NOT NULL,
+                                         PRIMARY KEY (account_id, thread_id, kind));"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -246,7 +258,36 @@ fn migrate(conn: &Connection) -> Result<()> {
         if from == 13 {
             fill_contacts(conn)?;
         }
+        if from == 15 {
+            fill_bulk(conn)?;
+        }
         conn.execute_batch(&format!("PRAGMA user_version = {}; COMMIT;", from + 1))?;
+    }
+    Ok(())
+}
+
+/// Marks the mail already stored that goes to Other, as `insert_messages` does from now on. Precedence was not
+/// kept, so this goes by the list headers and the sender.
+fn fill_bulk(conn: &Connection) -> Result<()> {
+    let rows: Vec<(i64, NewMessage)> = conn
+        .prepare("SELECT id, from_addr, list_id, list_unsubscribe FROM messages")?
+        .query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                NewMessage {
+                    from_addr: r.get(1)?,
+                    list_id: r.get(2)?,
+                    list_unsubscribe: r.get(3)?,
+                    ..Default::default()
+                },
+            ))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut mark = conn.prepare("UPDATE messages SET bulk = 1 WHERE id = ?1")?;
+    for (id, m) in rows {
+        if crate::triage::is_bulk(&m) {
+            mark.execute([id])?;
+        }
     }
     Ok(())
 }
@@ -362,17 +403,34 @@ pub fn subject_norm(subject: &str) -> Option<String> {
 pub const STARRED: &str = "starred";
 
 /// SQL keeping the messages `m` that are in `target`, and the value for its parameter, numbered `n`.
+pub const IMPORTANT: &str = "important";
+/// The Other split. Not "other": that is the role of every folder without a special one.
+pub const OTHER: &str = "bulk";
+pub const SNOOZED: &str = "snoozed";
+
+/// The message goes to Other: its sender was moved there, or (with no choice made) it is bulk mail.
+const IS_OTHER: &str = "COALESCE((SELECT s.other FROM sender_splits s
+                                  WHERE s.account_id = m.account_id AND s.addr = lower(m.from_addr)), m.bulk)";
+/// Its conversation is snoozed.
+const IS_SNOOZED: &str = "EXISTS (SELECT 1 FROM reminders r
+                                 WHERE r.account_id = m.account_id AND r.thread_id = m.thread_id AND r.kind = 'snooze')";
+
 fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
-    match target {
-        ListTarget::Folder(id) => (format!("m.folder_id = ?{n}"), Value::Integer(*id)),
-        ListTarget::Role(role) if role == STARRED => (
-            format!("m.flagged AND m.folder_id IN (SELECT id FROM folders WHERE role = ?{n})"),
-            Value::Text("inbox".into()),
-        ),
-        ListTarget::Role(role) => {
-            (format!("m.folder_id IN (SELECT id FROM folders WHERE role = ?{n})"), Value::Text(role.clone()))
-        }
-    }
+    let inbox = format!("m.folder_id IN (SELECT id FROM folders WHERE role = ?{n})");
+    let role = match target {
+        ListTarget::Folder(id) => return (format!("m.folder_id = ?{n}"), Value::Integer(*id)),
+        ListTarget::Role(role) => role.as_str(),
+    };
+    // Snoozed conversations stay in the inbox folder (snoozing is Tern's alone) but out of its lists.
+    let filter = match role {
+        "inbox" => format!("{inbox} AND NOT {IS_SNOOZED}"),
+        STARRED => format!("m.flagged AND {inbox} AND NOT {IS_SNOOZED}"),
+        IMPORTANT => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_OTHER}"),
+        OTHER => format!("{inbox} AND NOT {IS_SNOOZED} AND {IS_OTHER}"),
+        SNOOZED => format!("{inbox} AND {IS_SNOOZED}"),
+        _ => return (inbox, Value::Text(role.into())),
+    };
+    (filter, Value::Text("inbox".into()))
 }
 
 pub struct Store {
@@ -684,14 +742,14 @@ impl Store {
                 "INSERT OR IGNORE INTO messages (account_id, folder_id, uid, message_id, thread_id, subject, from_name,
                                                  from_addr, to_addrs, date, snippet, seen, flagged, has_attachments,
                                                  size, body_state, list_id, list_unsubscribe, parts, subject_norm,
-                                                 cc_addrs, reply_to, followup_to, refs)
+                                                 cc_addrs, reply_to, followup_to, refs, bulk)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-                         ?21, ?22, ?23, ?24)",
+                         ?21, ?22, ?23, ?24, ?25)",
                 params![
                     account_id, folder_id, m.uid, m.message_id, thread_id, m.subject, m.from_name, m.from_addr,
                     m.to_addrs, m.date, m.snippet, m.seen, m.flagged, m.has_attachments, m.size, body_state,
                     m.list_id, m.list_unsubscribe, parts, subject_norm(&m.subject), m.cc_addrs, m.reply_to,
-                    m.followup_to, m.references.join(" ")
+                    m.followup_to, m.references.join(" "), crate::triage::is_bulk(m)
                 ],
             )?;
             if inserted == 0 {
@@ -909,7 +967,7 @@ impl Store {
         let conn = self.conn();
         let mut scan = conn.prepare_cached(&format!(
             "SELECT {ROW} FROM messages m WHERE {filter} AND (m.date, m.id) < (?2, ?3)
-             ORDER BY m.date DESC, m.id DESC"
+             ORDER BY m.date DESC, m.id DESC LIMIT ?4"
         ))?;
         // A conversation already shown on an earlier page has a newer message here than the cursor.
         let mut shown = conn.prepare_cached(&format!(
@@ -925,12 +983,31 @@ impl Store {
              FROM messages m JOIN accounts a ON a.id = m.account_id
              WHERE m.account_id = ?1 AND m.thread_id = ?2 ORDER BY m.date, m.id",
         )?;
+        let mut snoozed = conn.prepare_cached(
+            "SELECT due FROM reminders WHERE account_id = ?1 AND thread_id = ?2 AND kind = 'snooze'",
+        )?;
         let mut seen = HashSet::new();
         let mut out = Vec::new();
-        let mut rows = scan.query(params![key, cursor.date, cursor.id])?;
+        // The scan goes in pages with a LIMIT: across several folders (a role) SQLite sorts what it finds, and
+        // without a limit it would sort the whole inbox before the first row.
+        let chunk = (limit * 4).max(100);
+        let mut at = cursor;
+        let mut page: Vec<MessageRow> = Vec::new();
+        let mut exhausted = false;
         while out.len() < limit {
-            let Some(r) = rows.next()? else { break };
-            let latest = row(r)?;
+            if page.is_empty() {
+                if exhausted {
+                    break;
+                }
+                page = scan
+                    .query_map(params![key, at.date, at.id, chunk as i64], row)?
+                    .collect::<rusqlite::Result<_>>()?;
+                exhausted = page.len() < chunk;
+                page.reverse();
+                continue;
+            }
+            let latest = page.pop().expect("a row");
+            at = Cursor { date: latest.date, id: latest.id };
             if !seen.insert((latest.account_id, latest.thread_id.clone())) {
                 continue;
             }
@@ -962,7 +1039,9 @@ impl Store {
                     participants.push(who);
                 }
             }
-            out.push(ThreadRow { latest, count, unread, flagged, participants });
+            let snoozed_until =
+                snoozed.query_row(params![latest.account_id, latest.thread_id], |r| r.get(0)).optional()?;
+            out.push(ThreadRow { latest, count, unread, flagged, participants, snoozed_until });
         }
         Ok(out)
     }
@@ -991,20 +1070,21 @@ impl Store {
         )?)
     }
 
-    /// Mail worth a notification: unread, in an inbox, newer than `after` (a message id) and dated from `since` on
+    /// Mail worth a notification: unread, in an inbox's Important split, newer than `after` (a message id) and dated from `since` on
     /// (older mail arriving during a first sync or a backfill is not news). Mail from the account's own address
     /// and muted conversations are left out. Also returns the newest message id, for the next `after`.
     pub fn new_mail(&self, after: i64, since: i64) -> Result<(i64, Vec<NewMail>)> {
         let conn = self.conn();
         let newest: i64 = conn.query_row("SELECT COALESCE(max(id), 0) FROM messages", [], |r| r.get(0))?;
-        let mut stmt = conn.prepare_cached(
+        let mut stmt = conn.prepare_cached(&format!(
             "SELECT m.id, m.account_id, m.thread_id, m.from_name, m.from_addr, m.subject, m.snippet
              FROM messages m JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id
              WHERE m.id > ?1 AND m.id <= ?3 AND m.date >= ?2 AND f.role = 'inbox' AND NOT m.seen
                AND lower(m.from_addr) <> lower(a.email)
                AND NOT EXISTS (SELECT 1 FROM muted u WHERE u.account_id = m.account_id AND u.thread_id = m.thread_id)
-             ORDER BY m.id",
-        )?;
+               AND NOT {IS_OTHER} AND NOT {IS_SNOOZED}
+             ORDER BY m.id"
+        ))?;
         let mail = stmt
             .query_map(params![after, since, newest], |r| {
                 Ok(NewMail {
@@ -1021,6 +1101,95 @@ impl Store {
         Ok((newest, mail))
     }
 
+    /// Moves the senders of these messages to Other (or to Important): their mail, past and future, lands there.
+    pub fn set_split(&self, ids: &[i64], other: bool) -> Result<()> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "INSERT INTO sender_splits (account_id, addr, other)
+             SELECT account_id, lower(from_addr), ?2 FROM messages WHERE id = ?1 AND from_addr <> ''
+             ON CONFLICT (account_id, addr) DO UPDATE SET other = excluded.other",
+        )?;
+        for id in ids {
+            stmt.execute(params![id, other])?;
+        }
+        Ok(())
+    }
+
+    /// Snoozes the conversations of these messages until `due`: they leave the inbox's lists (not its folder,
+    /// so other mail apps still show them there) and come back unread when due, or when someone replies.
+    pub fn snooze(&self, ids: &[i64], due: i64, now: i64) -> Result<()> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "INSERT INTO reminders (account_id, thread_id, kind, due, created)
+             SELECT account_id, thread_id, 'snooze', ?2, ?3 FROM messages WHERE id = ?1
+             ON CONFLICT (account_id, thread_id, kind) DO UPDATE SET due = excluded.due, created = excluded.created",
+        )?;
+        for id in ids {
+            stmt.execute(params![id, due, now])?;
+        }
+        Ok(())
+    }
+
+    /// Brings snoozed conversations back now.
+    pub fn unsnooze(&self, ids: &[i64]) -> Result<()> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "DELETE FROM reminders WHERE kind = 'snooze'
+               AND (account_id, thread_id) = (SELECT account_id, thread_id FROM messages WHERE id = ?1)",
+        )?;
+        for id in ids {
+            stmt.execute([id])?;
+        }
+        Ok(())
+    }
+
+    /// Ends the snoozes that are due, or that someone replied to since, and returns the newest inbox message of
+    /// each conversation that came back (to mark unread and announce). A conversation archived meanwhile has none
+    /// and just stops being snoozed.
+    pub fn wake_snoozed(&self, now: i64) -> Result<Vec<NewMail>> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let due: Vec<(i64, String)> = tx
+            .prepare(
+                "SELECT r.account_id, r.thread_id FROM reminders r JOIN accounts a ON a.id = r.account_id
+                 WHERE r.kind = 'snooze' AND (r.due <= ?1 OR EXISTS (
+                     SELECT 1 FROM messages m WHERE m.account_id = r.account_id AND m.thread_id = r.thread_id
+                       AND m.date > r.created AND lower(m.from_addr) <> lower(a.email)))",
+            )?
+            .query_map([now], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        let mut out = Vec::new();
+        for (account_id, thread_id) in due {
+            tx.execute(
+                "DELETE FROM reminders WHERE account_id = ?1 AND thread_id = ?2 AND kind = 'snooze'",
+                params![account_id, thread_id],
+            )?;
+            let latest = tx
+                .query_row(
+                    "SELECT m.id, m.from_name, m.from_addr, m.subject, m.snippet
+                     FROM messages m JOIN folders f ON f.id = m.folder_id
+                     WHERE m.account_id = ?1 AND m.thread_id = ?2 AND f.role = 'inbox'
+                     ORDER BY m.date DESC, m.id DESC LIMIT 1",
+                    params![account_id, thread_id],
+                    |r| {
+                        Ok(NewMail {
+                            id: r.get(0)?,
+                            account_id,
+                            thread_id: thread_id.clone(),
+                            from_name: r.get(1)?,
+                            from_addr: r.get(2)?,
+                            subject: r.get(3)?,
+                            snippet: r.get(4)?,
+                        })
+                    },
+                )
+                .optional()?;
+            out.extend(latest);
+        }
+        tx.commit()?;
+        Ok(out)
+    }
+
     /// Accounts that have any mail here.
     pub fn accounts_with_mail(&self) -> Result<Vec<i64>> {
         let conn = self.conn();
@@ -1029,6 +1198,19 @@ impl Store {
         )?;
         let ids = stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
         Ok(ids)
+    }
+
+    /// Unread messages in the Important and Other splits of every inbox (snoozed ones left out), for their tabs.
+    pub fn split_unread(&self) -> Result<(i64, i64)> {
+        Ok(self.conn().query_row(
+            &format!(
+                "SELECT count(*) FILTER (WHERE NOT {IS_OTHER}), count(*) FILTER (WHERE {IS_OTHER})
+                 FROM messages m JOIN folders f ON f.id = m.folder_id
+                 WHERE f.role = 'inbox' AND NOT m.seen AND NOT {IS_SNOOZED}"
+            ),
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?)
     }
 
     /// Unread messages across every inbox, for the tray.
@@ -1072,11 +1254,18 @@ impl Store {
              WHERE o.id = ?1 AND m.account_id = o.account_id AND m.thread_id = o.thread_id";
         let (sql, key) = match (action, target) {
             (action, _) if action.moves() => {
-                // Done from the Starred split takes the conversation out of the inbox, starred or not.
-                let inbox = ListTarget::Role("inbox".into());
-                let place =
-                    if matches!(target, ListTarget::Role(r) if r == STARRED) { &inbox } else { target };
-                let (filter, key) = target_filter(place, 2);
+                // Done from an inbox split (or the inbox) takes the whole conversation out of the inbox, whichever
+                // split each of its messages is in, starred, snoozed or not.
+                let in_inbox = matches!(target, ListTarget::Role(r)
+                    if ["inbox", STARRED, IMPORTANT, OTHER, SNOOZED].contains(&r.as_str()));
+                let (filter, key) = if in_inbox {
+                    (
+                        "m.folder_id IN (SELECT id FROM folders WHERE role = ?2)".to_string(),
+                        Value::Text("inbox".into()),
+                    )
+                } else {
+                    target_filter(target, 2)
+                };
                 (format!("{same_conversation} AND {filter}"), Some(key))
             }
             (Action::Unstar, _) => (format!("{same_conversation} AND m.flagged"), None),
@@ -3166,6 +3355,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                15 => "ALTER TABLE messages DROP COLUMN bulk; DROP TABLE sender_splits; DROP TABLE reminders;",
                 // Step 14 only changed data.
                 14 => "",
                 13 => "DROP TABLE contacts;",
@@ -3226,6 +3416,90 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
             .unwrap();
         assert_eq!(states, [(1, "wanted".to_string()), (2, "full".to_string())]);
         assert_eq!(store.bodies_needed(inbox, i64::MAX, 10).unwrap(), [(1, None)]);
+    }
+
+    #[test]
+    fn migration_16_sorts_mail_already_here_into_splits() {
+        let (store, account, inbox, _) = setup();
+        let news = NewMessage { list_id: Some("<news.example.com>".into()), ..message(2, "news", 2) };
+        let robot = NewMessage { from_addr: "noreply@example.com".into(), ..message(3, "robot", 3) };
+        store.insert_messages(account, inbox, &[message(1, "person", 1), news, robot]).unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 15);
+        let store = Store::init(conn).unwrap();
+        assert_eq!(subjects(&store, IMPORTANT), ["person"]);
+        assert_eq!(subjects(&store, OTHER), ["robot", "news"]);
+    }
+
+    fn subjects(store: &Store, role: &str) -> Vec<String> {
+        let rows = store.list_threads(&ListTarget::Role(role.into()), None, 20).unwrap();
+        rows.into_iter().map(|r| r.latest.subject).collect()
+    }
+
+    #[test]
+    fn moving_a_sender_changes_its_split() {
+        let (store, account, inbox, archive) = setup();
+        let news = NewMessage {
+            message_id: Some("n@x".into()),
+            precedence_bulk: true,
+            from_addr: "News@Shop.example".into(),
+            ..message(1, "sale", 1)
+        };
+        store.insert_messages(account, inbox, &[news, message(2, "hello", 2)]).unwrap();
+        assert_eq!(subjects(&store, OTHER), ["sale"]);
+        assert_eq!(store.split_unread().unwrap(), (1, 1));
+        let sale = store.list_threads(&ListTarget::Role(OTHER.into()), None, 1).unwrap()[0].latest.id;
+        store.set_split(&[sale], false).unwrap();
+        assert_eq!(subjects(&store, IMPORTANT), ["hello", "sale"]);
+        let later = NewMessage {
+            from_addr: "news@shop.example".into(),
+            precedence_bulk: true,
+            ..message(3, "sale 2", 3)
+        };
+        store.insert_messages(account, inbox, &[later]).unwrap();
+        assert!(subjects(&store, OTHER).is_empty(), "the sender's later mail follows");
+        store.set_split(&[sale], true).unwrap();
+        assert_eq!(subjects(&store, IMPORTANT), ["hello"]);
+        // Archiving from Other takes the conversation out of the inbox.
+        store
+            .apply(
+                &store.conversation_ids(&[sale], Action::Archive, &ListTarget::Role(OTHER.into())).unwrap(),
+                Action::Archive,
+                0,
+            )
+            .unwrap();
+        assert_eq!(subjects(&store, OTHER), ["sale 2"]);
+        assert_eq!(store.list(&ListTarget::Folder(archive), None, 9).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn snoozed_conversations_leave_the_inbox_until_due_or_answered() {
+        let (store, account, inbox, _) = setup();
+        store.insert_messages(account, inbox, &[message(1, "later", 100), message(2, "now", 200)]).unwrap();
+        let later = store.list_threads(&ListTarget::Role("inbox".into()), None, 9).unwrap()[1].latest.id;
+        store.snooze(&[later], 5_000, 1_000).unwrap();
+        assert_eq!(subjects(&store, "inbox"), ["now"]);
+        assert_eq!(subjects(&store, IMPORTANT), ["now"]);
+        let snoozed = store.list_threads(&ListTarget::Role(SNOOZED.into()), None, 9).unwrap();
+        assert_eq!((snoozed[0].latest.subject.as_str(), snoozed[0].snoozed_until), ("later", Some(5_000)));
+        assert!(store.wake_snoozed(4_999).unwrap().is_empty());
+        assert!(
+            store.new_mail(0, 0).unwrap().1.iter().all(|m| m.subject == "now"),
+            "no notice while snoozed"
+        );
+        let woke = store.wake_snoozed(5_000).unwrap();
+        assert_eq!(woke.iter().map(|m| m.id).collect::<Vec<_>>(), [later]);
+        assert_eq!(subjects(&store, "inbox"), ["now", "later"]);
+
+        // A reply brings it back early.
+        store.snooze(&[later], 9_000, 1_000).unwrap();
+        let reply =
+            NewMessage { in_reply_to: Some("1@example.com".into()), ..message(3, "Re: later", 2_000) };
+        store.insert_messages(account, inbox, &[reply]).unwrap();
+        assert_eq!(store.wake_snoozed(1_500).unwrap().len(), 1);
+        store.snooze(&[later], 9_000, 3_000).unwrap();
+        store.unsnooze(&[later]).unwrap();
+        assert!(subjects(&store, SNOOZED).is_empty());
     }
 
     #[test]

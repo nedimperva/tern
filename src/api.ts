@@ -55,6 +55,8 @@ export type ThreadRow = MessageRow & {
   flagged: boolean;
   /** Who wrote in it, first to last, each once; "me" for the account itself. At most four. */
   participants: string[];
+  /** When a snoozed conversation comes back (Unix seconds). */
+  snoozedUntil: number | null;
 };
 /** Where an account's sync stands. */
 export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed";
@@ -187,6 +189,15 @@ export interface Api {
   onFilesDropped(f: (paths: string[]) => void): () => void;
   /** Runs `f` (and waits for it) before the window closes or Tern quits; returns the way to stop. */
   onCloseRequested(f: () => Promise<void>): () => void;
+  /** Moves the senders of these messages to the inbox's Other split, or back to Important. */
+  setSplit(ids: number[], other: boolean): Promise<void>;
+  /** Unread messages in [Important, Other]. */
+  splitUnread(): Promise<[number, number]>;
+  /** Snoozes these conversations until `due` (Unix seconds); they come back unread. */
+  snooze(ids: number[], due: number): Promise<void>;
+  unsnooze(ids: number[]): Promise<void>;
+  /** What a typed snooze time means ("tomorrow 9am", "3h", "mon"), in Unix seconds; null if unreadable or past. */
+  parseWhen(text: string): Promise<number | null>;
   /** Closing the window hides it while this says so: Tern keeps running in the tray. */
   keepRunningWhen(f: () => boolean): void;
   /** Saves what is being written, then quits Tern for good. */
@@ -323,6 +334,11 @@ const tauri: Api = {
     void listen("quit", () => void tauri.quit());
   },
   takeMailto: () => invoke("take_mailto"),
+  setSplit: (ids, other) => invoke("set_split", { ids, other }),
+  splitUnread: () => invoke("split_unread"),
+  snooze: (ids, due) => invoke("snooze", { ids, due }),
+  unsnooze: (ids) => invoke("unsnooze", { ids }),
+  parseWhen: (text) => invoke("parse_when", { text, offset: -new Date().getTimezoneOffset() }),
   autostart: () => invoke("autostart"),
   setAutostart: (on) => invoke("set_autostart", { on }),
   defaultMailApp: () => invoke("default_mail_app"),
@@ -439,12 +455,29 @@ function fake(): Api {
   const pending = new Map<number, () => void>();
   let nextToken = 1;
   const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, draftId, ...r }: ThreadMessage): MessageRow => r;
-  const inTarget = (m: ThreadMessage, t: Target): boolean =>
-    "folder" in t
-      ? m.folderId === t.folder
-      : t.role === "starred"
-        ? m.flagged && inTarget(m, { role: "inbox" })
-        : folders.find((f) => f.id === m.folderId)?.role === t.role;
+  // Every seventh conversation is a newsletter, for the Other split.
+  const otherSenders = new Map<string, boolean>();
+  const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
+  const snoozed = new Map<string, number>();
+  const inInbox = (m: ThreadMessage) => folders.find((f) => f.id === m.folderId)?.role === "inbox";
+  const inTarget = (m: ThreadMessage, t: Target): boolean => {
+    if ("folder" in t) return m.folderId === t.folder;
+    const asleep = snoozed.has(m.threadId);
+    switch (t.role) {
+      case "inbox":
+        return inInbox(m) && !asleep;
+      case "starred":
+        return m.flagged && inInbox(m) && !asleep;
+      case "important":
+        return inInbox(m) && !asleep && !isOther(m);
+      case "bulk":
+        return inInbox(m) && !asleep && isOther(m);
+      case "snoozed":
+        return inInbox(m) && asleep;
+      default:
+        return folders.find((f) => f.id === m.folderId)?.role === t.role;
+    }
+  };
 
   return {
     accounts: async () => [account],
@@ -480,7 +513,14 @@ function fake(): Api {
         shown.add(m.threadId);
         const all = messages.filter((o) => o.threadId === m.threadId).sort((a, b) => a.date - b.date);
         const participants = [...new Set(all.map((o) => o.fromName))].slice(0, 4);
-        out.push({ ...row(m), count: all.length, unread: all.filter((o) => !o.seen).length, flagged: all.some((o) => o.flagged), participants });
+        out.push({
+          ...row(m),
+          count: all.length,
+          unread: all.filter((o) => !o.seen).length,
+          flagged: all.some((o) => o.flagged),
+          participants,
+          snoozedUntil: snoozed.get(m.threadId) ?? null,
+        });
       }
       return out;
     },
@@ -632,6 +672,31 @@ function fake(): Api {
     quit: async () => {},
     onDesktop: () => {},
     takeMailto: async () => null,
+    setSplit: async (ids, other) => {
+      for (const m of messages.filter((m) => ids.includes(m.id))) otherSenders.set(m.fromAddr, other);
+    },
+    splitUnread: async () => {
+      const unread = messages.filter((m) => !m.seen && inInbox(m) && !snoozed.has(m.threadId));
+      const other = unread.filter(isOther).length;
+      return [unread.length - other, other];
+    },
+    snooze: async (ids, due) => {
+      for (const m of messages.filter((m) => ids.includes(m.id))) snoozed.set(m.threadId, due);
+    },
+    unsnooze: async (ids) => {
+      for (const m of messages.filter((m) => ids.includes(m.id))) snoozed.delete(m.threadId);
+    },
+    // Enough to try the picker: a number of hours, or tomorrow at 8.
+    parseWhen: async (text) => {
+      const t = text.trim();
+      if (!t) return null;
+      const h = /^(\d+)\s*h/.exec(t);
+      if (h) return Math.floor(Date.now() / 1000) + Number(h[1]) * 3600;
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      d.setHours(8, 0, 0, 0);
+      return Math.floor(d.getTime() / 1000);
+    },
     autostart: async () => false,
     setAutostart: async () => {},
     defaultMailApp: async () => false,

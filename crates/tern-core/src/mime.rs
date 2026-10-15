@@ -45,6 +45,8 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
         headers_only: false,
         list_id: raw_header(&msg, "List-Id"),
         list_unsubscribe: raw_header(&msg, "List-Unsubscribe"),
+        precedence_bulk: raw_header(&msg, "Precedence")
+            .is_some_and(|p| ["bulk", "list", "junk"].contains(&p.to_ascii_lowercase().as_str())),
         cc_addrs: addrs(msg.cc()),
         reply_to: addrs(msg.reply_to()),
         followup_to: msg.header_raw("Mail-Followup-To").map(raw_addresses).unwrap_or_default(),

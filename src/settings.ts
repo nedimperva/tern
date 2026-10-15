@@ -26,6 +26,8 @@ export type Settings = {
   background: boolean;
   /** A notification when new mail reaches the inbox (read by the engine too). */
   notify: boolean;
+  /** The inbox in two splits, Important and Other, rather than one list. */
+  splitInbox: boolean;
 };
 
 export const DEFAULTS: Settings = {
@@ -40,6 +42,7 @@ export const DEFAULTS: Settings = {
   signatureBelow: false,
   background: true,
   notify: true,
+  splitInbox: true,
 };
 
 export const ROW_HEIGHTS: Record<Settings["density"], number> = { dense: 36, comfortable: 44, spacious: 52 };
