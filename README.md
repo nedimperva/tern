@@ -116,9 +116,11 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 | `c` | compose |
 | `r` | reply |
 | `Ctrl Enter` | send |
+| `;` | insert a snippet while writing (`;shortcut` then `Space`) |
 | `/` | search |
 | `g i` | Inbox (Important) |
 | `g h` | Snoozed |
+| `g ;` | edit snippets |
 | `Ctrl Q` | quit (closing the window keeps Tern in the tray) |
 
 ## Speed targets
@@ -127,7 +129,7 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 |---|---|
 | Moving down the list, per key | < 5 ms |
 | One page of a list from the store | < 1 ms |
-| Search across 50,000 messages | < 5 ms |
+| Search across 50,000 messages | < 10 ms |
 | Opening a thread | < 50 ms |
 | Archiving 50 messages | < 20 ms |
 

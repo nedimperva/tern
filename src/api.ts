@@ -21,6 +21,9 @@ export type Account = AccountConfig & { id: number };
 /** What a `mailto:` link fills in. */
 export type Mailto = { to: string[]; cc: string[]; bcc: string[]; subject: string; body: string };
 /** Mail a notification was about. */
+/** Saved text that compose inserts after `;shortcut`; `{first_name}` and the like are filled in there. */
+export type Snippet = { id: number; shortcut: string; name: string; body: string };
+
 export type NewMail = { id: number; accountId: number; threadId: string; subject: string };
 export type Folder = { id: number; accountId: number; name: string; role: string; unread: number };
 export type MessageRow = {
@@ -198,6 +201,13 @@ export interface Api {
   unsnooze(ids: number[]): Promise<void>;
   /** What a typed snooze time means ("tomorrow 9am", "3h", "mon"), in Unix seconds; null if unreadable or past. */
   parseWhen(text: string): Promise<number | null>;
+  /** Saved snippets, the most used first. */
+  snippets(): Promise<Snippet[]>;
+  /** Adds (id 0) or changes a snippet; returns its id. Fails when the shortcut is taken or not one word. */
+  saveSnippet(snippet: Snippet): Promise<number>;
+  deleteSnippet(id: number): Promise<void>;
+  /** Counts a use, so the most used come first. */
+  snippetUsed(id: number): Promise<void>;
   /** Closing the window hides it while this says so: Tern keeps running in the tray. */
   keepRunningWhen(f: () => boolean): void;
   /** Saves what is being written, then quits Tern for good. */
@@ -339,6 +349,10 @@ const tauri: Api = {
   snooze: (ids, due) => invoke("snooze", { ids, due }),
   unsnooze: (ids) => invoke("unsnooze", { ids }),
   parseWhen: (text) => invoke("parse_when", { text, offset: -new Date().getTimezoneOffset() }),
+  snippets: () => invoke("snippets"),
+  saveSnippet: (snippet) => invoke("save_snippet", { snippet }),
+  deleteSnippet: (id) => invoke("delete_snippet", { id }),
+  snippetUsed: (id) => invoke("snippet_used", { id }),
   autostart: () => invoke("autostart"),
   setAutostart: (on) => invoke("set_autostart", { on }),
   defaultMailApp: () => invoke("default_mail_app"),
@@ -374,6 +388,11 @@ function fake(): Api {
     smtpPort: 465,
     smtpSecurity: "tls",
   };
+  let snippets: Snippet[] = [
+    { id: 1, shortcut: "thanks", name: "Thanks", body: "Thanks {first_name}!\n\n{cursor}" },
+    { id: 2, shortcut: "call", name: "Call me", body: "Hi {first_name},\n\nCould we talk about {subject} on a call this week?{cursor}" },
+  ];
+  const used = new Map<number, number>();
   const folders: Folder[] = [
     { id: 1, accountId: 1, name: "INBOX", role: "inbox", unread: 0 },
     { id: 2, accountId: 1, name: "Archive", role: "archive", unread: 0 },
@@ -697,6 +716,18 @@ function fake(): Api {
       d.setHours(8, 0, 0, 0);
       return Math.floor(d.getTime() / 1000);
     },
+    snippets: async () => [...snippets].sort((a, b) => (used.get(b.id) ?? 0) - (used.get(a.id) ?? 0)),
+    saveSnippet: async (snippet) => {
+      const shortcut = snippet.shortcut.trim().replace(/^;/, "");
+      if (!shortcut || /\s/.test(shortcut)) throw "A shortcut is one word, such as thanks.";
+      if (snippets.some((s) => s.id !== snippet.id && s.shortcut.toLowerCase() === shortcut.toLowerCase()))
+        throw `Another snippet already uses ;${shortcut}.`;
+      const id = snippet.id || Math.max(0, ...snippets.map((s) => s.id)) + 1;
+      snippets = [...snippets.filter((s) => s.id !== id), { ...snippet, id, shortcut }];
+      return id;
+    },
+    deleteSnippet: async (id) => void (snippets = snippets.filter((s) => s.id !== id)),
+    snippetUsed: async (id) => void used.set(id, (used.get(id) ?? 0) + 1),
     autostart: async () => false,
     setAutostart: async () => {},
     defaultMailApp: async () => false,

@@ -1,5 +1,6 @@
 import { createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
-import { api, type Account, type Draft, type ForwardOf, type OutgoingAttachment } from "../api";
+import { api, type Account, type Draft, type ForwardOf, type OutgoingAttachment, type Snippet } from "../api";
+import type { SnippetSource } from "./Editor";
 import { Icon } from "./Icon";
 // The editor is a chunk of its own (ProseMirror is most of its weight); App loads it once the list is up.
 const Editor = lazy(() => import("./Editor").then((m) => ({ default: m.Editor })));
@@ -30,6 +31,30 @@ export type ComposeInit = {
   /** Names and sizes of those, to show. */
   forwardFiles?: { name: string; size: number }[];
 };
+
+/** A snippet's text with its places filled: `{first_name}`, `{name}` and `{email}` of the first person it goes to,
+ * `{subject}`, `{my_name}` and `{date}`. `{cursor}` stays for the editor; unknown places stay as typed. */
+export function fillSnippet(
+  body: string,
+  to: { email: string; name: string } | null,
+  subject: string,
+  myName: string,
+  now = new Date(),
+): string {
+  const name = to?.name.trim() ?? "";
+  // Without a name, a local part such as "ada" or "ada.lovelace" still gives a first name.
+  const local = to?.email.split("@")[0].split(/[._-]/)[0] ?? "";
+  const first = name.split(/\s+/)[0] || (/^\p{L}+$/u.test(local) ? local[0].toUpperCase() + local.slice(1) : "");
+  const values: Record<string, string> = {
+    first_name: first,
+    name: name || to?.email || "",
+    email: to?.email ?? "",
+    subject: subject.replace(/^((re|fwd?|aw|sv):\s*)+/i, ""),
+    my_name: myName,
+    date: now.toLocaleDateString(undefined, { dateStyle: "long" }),
+  };
+  return body.replace(/\{(\w+)\}/g, (place, key: string) => values[key] ?? place);
+}
 
 /** Above this a message may bounce: many servers take 25 MB at most. */
 const LARGE_BYTES = 25_000_000;
@@ -131,6 +156,19 @@ export function Compose(props: {
   let ccInput: HTMLInputElement | undefined;
   let bccInput: HTMLInputElement | undefined;
 
+  const [snippetList, setSnippetList] = createSignal<Snippet[]>([]);
+  onMount(() => void api.snippets().then(setSnippetList, () => {}));
+  const snippets: SnippetSource = {
+    list: snippetList,
+    fill: async (s) => {
+      const email = to()[0];
+      const known = email ? (await api.contacts(email).catch(() => [])).find((c) => c.email.toLowerCase() === email.toLowerCase()) : undefined;
+      const account = props.accounts.find((a) => a.id === from());
+      return fillSnippet(s.body, email ? { email, name: known?.name ?? "" } : null, subject(), account?.displayName ?? "");
+    },
+    used: (s) => void api.snippetUsed(s.id).catch(() => {}),
+  };
+
   const bodyFirst = (props.init.focus ?? (props.init.to?.length ? "body" : "to")) === "body";
   onMount(() => {
     if (!bodyFirst) toInput.focus();
@@ -197,6 +235,7 @@ export function Compose(props: {
         text={body()}
         html={props.init.html}
         autofocus={bodyFirst ? "start" : false}
+        snippets={snippets}
         onChange={(text, rich) => (setBody(text), setHtml(rich), changed())}
       />
       </Suspense>

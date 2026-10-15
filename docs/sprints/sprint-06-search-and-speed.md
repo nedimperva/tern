@@ -63,7 +63,14 @@ Trigram index, warm-cache startup (keep if it is under a day).
 
 ## Decisions
 
-_None yet._
+- 2026-10-15 — **Common words read the newest mail first.** A word in most of the mailbox matched about 48,000 of
+  50,000 messages, and joining and sorting them all by date took 73 ms; reading the matching ids alone took 8.
+  Schema v17 adds a date index (`messages_date`). Search takes the newest messages that pass the filters (200
+  first), asks FTS5 only for matches in their id range (`rowid BETWEEN`, which skips the rest of the index),
+  and stops when it has enough; the window grows by the hit rate it saw. Mail arrives in batches, so the newest
+  messages sit in a narrow id range; when they do not, it is as slow as before, not wrong. Below one hit in eight
+  it falls back to sorting the matches, which are few then. A test compares the results with the old query on
+  mail whose dates are scrambled against arrival.
 
 ## Log
 
@@ -74,3 +81,8 @@ _None yet._
   Not done: `is:snoozed` (no snooze yet), suggestions, highlighting, server search. `store_bench` at 50,000:
   "search with filters" 10.8 ms median; plain-word search is still about 73 ms, as recorded in package 00
   (the M2 speed work). UI tried in `npm run dev` against the fake mailbox (words only there).
+- 2026-10-15 — Plain-word search (see Decisions). `store_bench` at 50,000, before → after: one word 73 → 2.5 ms,
+  two prefixes about 80 → 5.3 ms, a rare word 0.07 ms, words with filters 1.4 → 2.9 ms (the filter line now
+  finds mail; it searched an empty date range before). Most of what is left is FTS5 reading a prefix term's
+  whole list; a `prefix=` index could cut it but means rebuilding the index, so it waits for a measured need.
+  Not measured at 100,000 yet (the generator task).

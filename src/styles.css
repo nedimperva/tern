@@ -1225,6 +1225,36 @@ button.fold {
   color: var(--fg-2);
 }
 
+.settings-body > .help {
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  line-height: 1.6;
+}
+.setting.snippet {
+  grid-template-columns: 1fr;
+}
+.snippet-head {
+  display: flex;
+  gap: var(--s-2);
+  align-items: stretch;
+}
+.snippet-head .snippet-key {
+  width: 140px;
+  font-family: var(--mono);
+}
+.snippet-head input:not(.snippet-key) {
+  flex: 1;
+}
+.snippet-head input {
+  font-size: var(--t-rd);
+}
+.setting.snippet textarea {
+  width: 100%;
+  resize: vertical;
+  font: var(--t-rd) / 1.5 var(--font);
+}
+
 .setting-error {
   margin: var(--s-3) 0 0;
   font-size: var(--t-sm);
@@ -1245,4 +1275,18 @@ button.fold {
   font: var(--t-sm) / 1.5 var(--mono);
   pointer-events: none;
   opacity: 0.9;
+}
+/* `;` in compose: the snippets that match, under the typed shortcut. */
+.suggestions.snippet-picker {
+  min-width: 280px;
+  max-width: 480px;
+}
+.snippet-picker .snippet-key {
+  color: var(--accent);
+  font-weight: 600;
+}
+.snippet-picker .addr {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }

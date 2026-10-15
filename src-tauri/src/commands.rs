@@ -537,3 +537,25 @@ pub async fn unsnooze(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>)
 pub fn parse_when(text: String, offset: i64) -> Option<i64> {
     tern_core::triage::when(&text, crate::desktop::now(), offset)
 }
+
+/// Saved snippets, the most used first.
+#[tauri::command]
+pub async fn snippets(state: State<'_, AppState>) -> Reply<Vec<tern_core::Snippet>> {
+    state.store.snippets().map_err(text)
+}
+
+/// Adds or changes a snippet; its id comes back.
+#[tauri::command]
+pub async fn save_snippet(state: State<'_, AppState>, snippet: tern_core::Snippet) -> Reply<i64> {
+    state.store.save_snippet(&snippet).map_err(text)
+}
+
+#[tauri::command]
+pub async fn delete_snippet(state: State<'_, AppState>, id: i64) -> Reply<()> {
+    state.store.delete_snippet(id).map_err(text)
+}
+
+#[tauri::command]
+pub async fn snippet_used(state: State<'_, AppState>, id: i64) -> Reply<()> {
+    state.store.snippet_used(id).map_err(text)
+}

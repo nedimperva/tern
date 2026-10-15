@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 16;
+const SCHEMA_VERSION: i64 = 17;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -243,6 +243,14 @@ fn migrate(conn: &Connection) -> Result<()> {
                                          thread_id TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'snooze',
                                          due INTEGER NOT NULL, created INTEGER NOT NULL,
                                          PRIMARY KEY (account_id, thread_id, kind));"
+            }
+            // Search walks this newest first when a word matches much of the mailbox, instead of sorting every
+            // match. Snippets are saved replies, typed after `;` in compose.
+            16 => {
+                "CREATE INDEX messages_date ON messages (date DESC, id DESC);
+                 CREATE TABLE snippets (id INTEGER PRIMARY KEY, shortcut TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                                        name TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '',
+                                        used INTEGER NOT NULL DEFAULT 0);"
             }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
@@ -1311,6 +1319,64 @@ impl Store {
         Ok(found)
     }
 
+    // MARK: Snippets
+
+    /// Every snippet, the most used first.
+    pub fn snippets(&self) -> Result<Vec<Snippet>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare_cached("SELECT id, shortcut, name, body FROM snippets ORDER BY used DESC, shortcut")?;
+        let all = stmt
+            .query_map([], |r| {
+                Ok(Snippet { id: r.get(0)?, shortcut: r.get(1)?, name: r.get(2)?, body: r.get(3)? })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(all)
+    }
+
+    /// Adds the snippet (id 0) or changes it. Shortcuts are one word, unique whatever their case.
+    pub fn save_snippet(&self, snippet: &Snippet) -> Result<i64> {
+        let shortcut = snippet.shortcut.trim().trim_start_matches(';');
+        if shortcut.is_empty() || shortcut.chars().any(char::is_whitespace) {
+            bail!("A shortcut is one word, such as thanks.");
+        }
+        let conn = self.conn();
+        let taken: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM snippets WHERE shortcut = ?1 AND id != ?2",
+                params![shortcut, snippet.id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if taken.is_some() {
+            bail!("Another snippet already uses ;{shortcut}.");
+        }
+        if snippet.id == 0 {
+            conn.execute(
+                "INSERT INTO snippets (shortcut, name, body) VALUES (?1, ?2, ?3)",
+                params![shortcut, snippet.name.trim(), snippet.body],
+            )?;
+            Ok(conn.last_insert_rowid())
+        } else {
+            conn.execute(
+                "UPDATE snippets SET shortcut = ?1, name = ?2, body = ?3 WHERE id = ?4",
+                params![shortcut, snippet.name.trim(), snippet.body, snippet.id],
+            )?;
+            Ok(snippet.id)
+        }
+    }
+
+    pub fn delete_snippet(&self, id: i64) -> Result<()> {
+        self.conn().execute("DELETE FROM snippets WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Counts a use, so the snippets used most come first in the picker.
+    pub fn snippet_used(&self, id: i64) -> Result<()> {
+        self.conn().execute("UPDATE snippets SET used = used + 1 WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
     // MARK: Drafts
 
     /// Saves what compose holds. The first save gives the draft its Message-ID, kept for every later version, its
@@ -1757,14 +1823,9 @@ impl Store {
         if q.is_empty() {
             return Ok(SearchResult::default());
         }
-        let mut sql = format!("SELECT {ROW} FROM messages m");
+        let conn = self.conn();
         let mut conditions = Vec::new();
         let mut values: Vec<Value> = Vec::new();
-        if !q.fts.is_empty() {
-            sql.push_str(" JOIN messages_fts ON messages_fts.rowid = m.id");
-            conditions.push("messages_fts MATCH ?".to_string());
-            values.push(Value::Text(q.fts.clone()));
-        }
         if !q.fts_not.is_empty() {
             conditions
                 .push("m.id NOT IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)".to_string());
@@ -1772,12 +1833,31 @@ impl Store {
         }
         conditions.extend(q.conditions);
         values.extend(q.params);
-        sql.push_str(&format!(" WHERE {} ORDER BY m.date DESC, m.id DESC LIMIT ?", conditions.join(" AND ")));
-        values.push(Value::Integer(limit));
-        let conn = self.conn();
-        let mut stmt = conn.prepare_cached(&sql)?;
-        let rows =
-            stmt.query_map(rusqlite::params_from_iter(values), row)?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut rows = None;
+        if !q.fts.is_empty() {
+            rows = self.newest_matches(&conn, &q.fts, &conditions, &values, limit)?;
+            conditions.insert(0, "messages_fts MATCH ?".to_string());
+            values.insert(0, Value::Text(q.fts.clone()));
+        }
+        let rows = match rows {
+            Some(rows) => rows,
+            None => {
+                let mut sql = format!("SELECT {ROW} FROM messages m");
+                if !q.fts.is_empty() {
+                    sql.push_str(" JOIN messages_fts ON messages_fts.rowid = m.id");
+                }
+                sql.push_str(&format!(
+                    " WHERE {} ORDER BY m.date DESC, m.id DESC LIMIT ?",
+                    conditions.join(" AND ")
+                ));
+                values.push(Value::Integer(limit));
+                let mut stmt = conn.prepare_cached(&sql)?;
+                let rows = stmt
+                    .query_map(rusqlite::params_from_iter(values), row)?
+                    .collect::<rusqlite::Result<_>>()?;
+                rows
+            }
+        };
         // Words are only found in bodies that are here; mail older than the download window has headers alone.
         let words = !q.fts.is_empty() || !q.fts_not.is_empty();
         let partial = words
@@ -1787,6 +1867,58 @@ impl Store {
                 |r| r.get(0),
             )?;
         Ok(SearchResult { rows, partial })
+    }
+
+    /// Search words found in much of the mailbox. Joining every match and sorting them by date took 70 ms when a
+    /// word was in most messages. Instead this takes the newest `window` messages that pass the filters (the date
+    /// index), and the word's matches in their id range (the FTS index, without reading the rest). Mail arrives
+    /// in batches, so the newest messages sit in a narrow id range. With `limit` hits the window holds the answer,
+    /// since everything newer is in it; otherwise it grows. `None` when the word is rare: then sorting its few
+    /// matches is quicker.
+    fn newest_matches(
+        &self,
+        conn: &Connection,
+        fts: &str,
+        conditions: &[String],
+        values: &[Value],
+        limit: i64,
+    ) -> Result<Option<Vec<MessageRow>>> {
+        let mut sql = "SELECT m.id FROM messages m INDEXED BY messages_date".to_string();
+        if !conditions.is_empty() {
+            sql.push_str(&format!(" WHERE {}", conditions.join(" AND ")));
+        }
+        sql.push_str(" ORDER BY m.date DESC, m.id DESC LIMIT ?");
+        let mut walk = conn.prepare_cached(&sql)?;
+        let mut matching = conn.prepare_cached(
+            "SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?1 AND rowid BETWEEN ?2 AND ?3",
+        )?;
+        let mut window = (limit * 2).max(200);
+        let ids = loop {
+            let mut walked = values.to_vec();
+            walked.push(Value::Integer(window));
+            let newest: Vec<i64> = walk
+                .query_map(rusqlite::params_from_iter(walked), |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?;
+            let (Some(lo), Some(hi)) = (newest.iter().min(), newest.iter().max()) else {
+                return Ok(Some(Vec::new()));
+            };
+            let found: HashSet<i64> =
+                matching.query_map(params![fts, lo, hi], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+            let hits: Vec<i64> =
+                newest.iter().copied().filter(|id| found.contains(id)).take(limit as usize).collect();
+            let got = hits.len() as i64;
+            if got >= limit || (newest.len() as i64) < window {
+                break hits;
+            }
+            // Under one in eight: few enough matches to sort them all.
+            if got * 8 < limit {
+                return Ok(None);
+            }
+            window = (window * limit / got * 5 / 4).max(window * 2);
+        };
+        let mut one = conn.prepare_cached(&format!("SELECT {ROW} FROM messages m WHERE m.id = ?"))?;
+        let rows = ids.iter().map(|id| one.query_row([id], row)).collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(Some(rows))
     }
 
     // MARK: Changes and the outbox
@@ -2614,6 +2746,84 @@ mod tests {
     }
 
     #[test]
+    fn search_finds_the_newest_matches_whatever_order_mail_arrived_in() {
+        let (store, account, inbox, archive) = setup();
+        // Dates scrambled against arrival order, so ids say nothing about age.
+        let mail: Vec<NewMessage> = (1..=1200u32)
+            .map(|uid| {
+                let mut words = vec!["every"];
+                for (n, word) in [(2, "half"), (10, "tenth"), (400, "rare")] {
+                    if uid % n == 0 {
+                        words.push(word);
+                    }
+                }
+                NewMessage {
+                    body_text: Some(words.join(" ")),
+                    ..message(uid, "s", (uid as i64 * 7919) % 1000)
+                }
+            })
+            .collect();
+        let (first, second) = mail.split_at(700);
+        store.insert_messages(account, inbox, first).unwrap();
+        store.insert_messages(account, archive, second).unwrap();
+        for query in
+            ["every", "half", "tenth", "rare", "ever", "half in:inbox", "every -half", "every is:unread"]
+        {
+            let q = crate::query::parse(query, now());
+            let mut conditions = vec!["messages_fts MATCH ?".to_string()];
+            let mut values = vec![Value::Text(q.fts.clone())];
+            if !q.fts_not.is_empty() {
+                conditions
+                    .push("m.id NOT IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)".into());
+                values.push(Value::Text(q.fts_not.clone()));
+            }
+            conditions.extend(q.conditions);
+            values.extend(q.params);
+            // Every match, sorted: what search used to do.
+            let sql = format!(
+                "SELECT m.id FROM messages m JOIN messages_fts ON messages_fts.rowid = m.id WHERE {}
+                 ORDER BY m.date DESC, m.id DESC LIMIT 50",
+                conditions.join(" AND ")
+            );
+            let conn = store.conn();
+            let want: Vec<i64> = conn
+                .prepare(&sql)
+                .unwrap()
+                .query_map(rusqlite::params_from_iter(values), |r| r.get(0))
+                .unwrap()
+                .collect::<rusqlite::Result<_>>()
+                .unwrap();
+            drop(conn);
+            let got: Vec<i64> = store.search(query, 50).unwrap().rows.iter().map(|r| r.id).collect();
+            assert!(!want.is_empty(), "{query}");
+            assert_eq!(got, want, "{query}");
+        }
+    }
+
+    #[test]
+    fn snippets_keep_one_word_shortcuts_and_the_most_used_first() {
+        let (store, ..) = setup();
+        let thanks = Snippet {
+            shortcut: ";thanks".into(),
+            name: "Thanks".into(),
+            body: "Thanks {first_name}!".into(),
+            ..Default::default()
+        };
+        let id = store.save_snippet(&thanks).unwrap();
+        let later = store.save_snippet(&Snippet { shortcut: "later".into(), ..Default::default() }).unwrap();
+        assert_eq!(store.snippets().unwrap()[0].shortcut, "later", "unused, by shortcut");
+        assert!(store.save_snippet(&Snippet { shortcut: "THANKS".into(), ..Default::default() }).is_err());
+        assert!(store.save_snippet(&Snippet { shortcut: "two words".into(), ..Default::default() }).is_err());
+        store.snippet_used(id).unwrap();
+        let all = store.snippets().unwrap();
+        assert_eq!(all[0], Snippet { id, shortcut: "thanks".into(), ..thanks });
+        store.save_snippet(&Snippet { id: later, shortcut: "soon".into(), ..Default::default() }).unwrap();
+        store.delete_snippet(id).unwrap();
+        let left: Vec<String> = store.snippets().unwrap().into_iter().map(|s| s.shortcut).collect();
+        assert_eq!(left, ["soon"]);
+    }
+
+    #[test]
     fn search_says_when_bodies_were_not_all_searched() {
         let (store, account, inbox, _) = setup();
         let headers = NewMessage { headers_only: true, body_text: None, ..message(1, "Plans", 1) };
@@ -3355,6 +3565,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                16 => "DROP INDEX messages_date; DROP TABLE snippets;",
                 15 => "ALTER TABLE messages DROP COLUMN bulk; DROP TABLE sender_splits; DROP TABLE reminders;",
                 // Step 14 only changed data.
                 14 => "",
@@ -3429,6 +3640,17 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         let store = Store::init(conn).unwrap();
         assert_eq!(subjects(&store, IMPORTANT), ["person"]);
         assert_eq!(subjects(&store, OTHER), ["robot", "news"]);
+    }
+
+    #[test]
+    fn migration_17_adds_the_date_index_and_snippets() {
+        let (store, account, inbox, _) = setup();
+        store.insert_messages(account, inbox, &[message(1, "kept", 1)]).unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 16);
+        let store = Store::init(conn).unwrap();
+        assert_eq!(store.search("kept", 10).unwrap().rows.len(), 1);
+        assert!(store.snippets().unwrap().is_empty());
     }
 
     fn subjects(store: &Store, role: &str) -> Vec<String> {

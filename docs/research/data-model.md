@@ -122,6 +122,16 @@ CREATE TABLE reminders (account_id INTEGER NOT NULL REFERENCES accounts(id) ON D
                         PRIMARY KEY (account_id, thread_id, kind));
 ```
 
+## v17 — packages 06 and 07, search speed and snippets (implemented 2026-10-15)
+`messages_date` lets a search for a common word walk the newest mail first instead of sorting every match (see
+`Store::search`). Snippets are plain text with `{first_name}`-style places, filled in by compose; `used` orders the
+picker. The planned columns for a subject, recipients and attachments wait until someone needs them.
+```sql
+CREATE INDEX messages_date ON messages (date DESC, id DESC);
+CREATE TABLE snippets (id INTEGER PRIMARY KEY, shortcut TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                       name TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', used INTEGER NOT NULL DEFAULT 0);
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'
