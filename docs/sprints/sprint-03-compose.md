@@ -148,3 +148,8 @@ Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
   "1. ", "> " or `code` formats. A format bar over a selection. Keys the editor handles no longer reach the app
   (`Ctrl+K` there is a link, not the palette). Drafts keep the HTML. Checked in headless Chromium; 92 unit tests,
   13 dev-server checks.
+- 2026-10-15 — Owner acceptance fixes. Closing the app within 2 s of typing lost the draft: drafts now save locally
+  after 0.8 s (the server copy keeps its own debounce) and once more when the window closes (Tauri
+  `onCloseRequested`, which needs `core:window:allow-destroy`). Esc straight after undo-send dropped a message
+  that had never been saved as a draft: compose reopened by undo starts as unsaved, so Esc keeps it.
+
