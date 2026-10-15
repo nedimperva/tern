@@ -86,6 +86,15 @@ const SECTIONS: { name: string; body: () => JSX.Element }[] = [
           ]}
         />
         <Select
+          name="splitInbox"
+          title="Inbox"
+          help="Other holds mail sent to many: newsletters, notifications, receipts. Move a sender with Ctrl+K → Move sender."
+          choices={[
+            { label: "Important and Other", value: true },
+            { label: "One list", value: false },
+          ]}
+        />
+        <Select
           name="loadImages"
           title="Remote images"
           help="Images from the web can tell the sender when you read their mail."

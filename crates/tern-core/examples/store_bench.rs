@@ -85,6 +85,18 @@ fn main() -> anyhow::Result<()> {
     report("unified inbox page", 200, || {
         store.list(&ListTarget::Role("inbox".into()), None, 100).unwrap();
     });
+    report("unified inbox, conversations (50)", 200, || {
+        store.list_threads(&ListTarget::Role("inbox".into()), None, 50).unwrap();
+    });
+    report("Important split, conversations (50)", 200, || {
+        store.list_threads(&ListTarget::Role("important".into()), None, 50).unwrap();
+    });
+    report("Other split, conversations (50)", 200, || {
+        store.list_threads(&ListTarget::Role("bulk".into()), None, 50).unwrap();
+    });
+    report("split unread counts", 100, || {
+        store.split_unread().unwrap();
+    });
     report("search one word", 100, || {
         store.search("invoice", 100).unwrap();
     });

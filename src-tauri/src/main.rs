@@ -127,6 +127,7 @@ fn main() {
             app.manage(state);
             // Sets the mark that later mail is measured against.
             desktop::mail_changed(app.handle());
+            desktop::watch_snoozes(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -177,6 +178,11 @@ fn main() {
             commands::set_autostart,
             commands::default_mail_app,
             commands::make_default_mail_app,
+            commands::set_split,
+            commands::split_unread,
+            commands::snooze,
+            commands::unsnooze,
+            commands::parse_when,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tern");

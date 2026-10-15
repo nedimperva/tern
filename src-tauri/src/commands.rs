@@ -502,3 +502,38 @@ pub fn make_default_mail_app(app: AppHandle) -> Reply<()> {
     }
     Ok(())
 }
+
+/// Moves the senders of these messages to the inbox's Other split (or back to Important).
+#[tauri::command]
+pub async fn set_split(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>, other: bool) -> Reply<()> {
+    state.store.set_split(&ids, other).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
+/// Unread messages in the Important and Other splits.
+#[tauri::command]
+pub async fn split_unread(state: State<'_, AppState>) -> Reply<(i64, i64)> {
+    state.store.split_unread().map_err(text)
+}
+
+/// Snoozes these conversations until `due` (Unix seconds). Tern brings them back while it runs.
+#[tauri::command]
+pub async fn snooze(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>, due: i64) -> Reply<()> {
+    state.store.snooze(&ids, due, crate::desktop::now()).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn unsnooze(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>) -> Reply<()> {
+    state.store.unsnooze(&ids).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
+/// What a typed snooze time means, in Unix seconds; `offset` is the local time's minutes east of UTC.
+#[tauri::command]
+pub fn parse_when(text: String, offset: i64) -> Option<i64> {
+    tern_core::triage::when(&text, crate::desktop::now(), offset)
+}

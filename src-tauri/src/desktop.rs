@@ -124,8 +124,44 @@ pub fn take_pending(app: &AppHandle) -> Option<Mailto> {
     app.state::<Desktop>().pending.lock().unwrap().take()
 }
 
-fn now() -> i64 {
+pub fn now() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+/// Brings snoozed conversations back when due (or answered): unread again, and announced. Only while Tern runs;
+/// one due while it was closed comes back at the next start.
+pub fn watch_snoozes(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let app = app.clone();
+            let _ = tauri::async_runtime::spawn_blocking(move || {
+                if let Err(e) = wake_snoozed(&app) {
+                    log::warn!("snoozed mail: {e:#}");
+                }
+            })
+            .await;
+            tokio::time::sleep(Duration::from_secs(20)).await;
+        }
+    });
+}
+
+fn wake_snoozed(app: &AppHandle) -> anyhow::Result<()> {
+    let Some(state) = app.try_state::<AppState>() else { return Ok(()) };
+    let back = state.store.wake_snoozed(now())?;
+    if back.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<i64> = back.iter().map(|m| m.id).collect();
+    let applied = state.store.apply(&ids, tern_core::Action::MarkUnread, 0)?;
+    for account in &applied.accounts {
+        state.wake(*account);
+    }
+    let _ = app.emit("mail-changed", ());
+    if state.store.settings()?.get("notify").and_then(|v| v.as_bool()).unwrap_or(true) {
+        notify(app, &back, true);
+    }
+    Ok(())
 }
 
 /// After sync changed something: notify about mail that just arrived, and update the tray's unread count. Runs
@@ -171,13 +207,14 @@ fn look(app: &AppHandle) -> anyhow::Result<()> {
     drop(news);
     let on = store.settings()?.get("notify").and_then(|v| v.as_bool()).unwrap_or(true);
     if on && !mail.is_empty() {
-        notify(app, &mail);
+        notify(app, &mail, false);
     }
     Ok(())
 }
 
-/// One notification for what arrived together: the message itself when it is one conversation, a count otherwise.
-fn notify(app: &AppHandle, mail: &[NewMail]) {
+/// One notification for what arrived together (or came back from snooze): the message itself when it is one
+/// conversation, a count otherwise.
+fn notify(app: &AppHandle, mail: &[NewMail], snoozed: bool) {
     let latest = mail.last().expect("some mail").clone();
     let one = mail.iter().all(|m| (m.account_id, &m.thread_id) == (latest.account_id, &latest.thread_id));
     let who = |m: &NewMail| if m.from_name.is_empty() { m.from_addr.clone() } else { m.from_name.clone() };
@@ -195,11 +232,10 @@ fn notify(app: &AppHandle, mail: &[NewMail]) {
         let more = names.len().saturating_sub(3);
         names.truncate(3);
         let list = names.join(", ");
-        (
-            format!("{} new messages", mail.len()),
-            if more > 0 { format!("{list} and {more} more") } else { list },
-        )
+        let what = if snoozed { "conversations are back from snooze" } else { "new messages" };
+        (format!("{} {what}", mail.len()), if more > 0 { format!("{list} and {more} more") } else { list })
     };
+    let summary = if snoozed && one { format!("Back from snooze: {summary}") } else { summary };
     let mut note = notify_rust::Notification::new();
     note.summary(&summary).body(&body).appname("Tern");
     #[cfg(target_os = "linux")]
