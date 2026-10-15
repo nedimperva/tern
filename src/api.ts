@@ -157,6 +157,10 @@ export interface Api {
   pickFiles(): Promise<string[]>;
   /** Copies files into Tern's attachment folder, for a draft. */
   addAttachments(paths: string[]): Promise<OutgoingAttachment[]>;
+  /** Opens a received attachment with the system's program for it (it comes from the server the first time). */
+  openAttachment(id: number, index: number): Promise<void>;
+  /** Asks where to save a received attachment and saves it there; false if the person cancelled. */
+  saveAttachment(id: number, index: number, name: string): Promise<boolean>;
   /** Files dropped on the window from the file manager; returns the way to stop listening. */
   onFilesDropped(f: (paths: string[]) => void): () => void;
   replyInit(id: number, kind: ReplyKind): Promise<ReplyInit>;
@@ -207,6 +211,14 @@ const tauri: Api = {
     return chosen == null ? [] : Array.isArray(chosen) ? chosen : [chosen];
   },
   addAttachments: (paths) => invoke("add_attachments", { paths }),
+  openAttachment: (id, index) => invoke("open_attachment", { id, index }),
+  saveAttachment: async (id, index, name) => {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const path = await save({ title: "Save attachment", defaultPath: name });
+    if (path == null) return false;
+    await invoke("save_attachment", { id, index, path });
+    return true;
+  },
   contacts: (query) => invoke("contacts", { query }),
   onFilesDropped: (f) => {
     let stop: (() => void) | undefined;
@@ -501,6 +513,8 @@ function fake(): Api {
         // No storage: the change lasts until the page reloads.
       }
     },
+    openAttachment: async () => {},
+    saveAttachment: async () => true,
     openUrl: (url) => void window.open(url, "_blank", "noopener"),
   };
 }

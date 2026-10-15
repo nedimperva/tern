@@ -1,5 +1,5 @@
 // The few icons Tern draws, inlined (docs/design/ui.md: Lucide, tree-shaken, inline SVG). Path data is copied
-// from Lucide (https://lucide.dev), ISC license, © Lucide Icons and Contributors; importing lucide-solid for three
+// from Lucide (https://lucide.dev), ISC license, © Lucide Icons and Contributors; importing lucide-solid for a few
 // icons added 4.7 kB to the gzipped bundle.
 
 const PATHS = {
@@ -10,6 +10,7 @@ const PATHS = {
   paperclip: [
     "m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551",
   ],
+  download: ["M12 15V3", "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "m7 10 5 5 5-5"],
 } as const;
 
 /** An icon in the current text colour. Decorative: label the control it sits in. */

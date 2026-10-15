@@ -1,10 +1,11 @@
-//! What the UI can ask for. Reads answer from the store and never touch the network.
+//! What the UI can ask for. Reads answer from the store and never touch the network, except signing in to a new
+//! account and the first open of a received attachment.
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
-    secrets, sync, Account, AccountConfig, Action, Applied, Contact, Cursor, Draft, DraftRecord, Folder,
-    ListTarget, MessageRow, OutboxProblem, OutgoingAttachment, ReplyInit, ReplyKind, ThreadMessage,
+    mime, secrets, sync, Account, AccountConfig, Action, Applied, Contact, Cursor, Draft, DraftRecord,
+    Folder, ListTarget, MessageRow, OutboxProblem, OutgoingAttachment, ReplyInit, ReplyKind, ThreadMessage,
     ThreadRow,
 };
 
@@ -317,4 +318,80 @@ fn mime_for(name: &str) -> &'static str {
 #[tauri::command]
 pub async fn contacts(state: State<'_, AppState>, query: String) -> Reply<Vec<Contact>> {
     state.store.contacts(&query, 5).map_err(text)
+}
+
+/// The `index`-th attachment of a message as a file on disk. The first time, the message comes down from the server
+/// on a connection of its own (the one read the UI waits on the network for: Tern keeps no attachment bytes in the
+/// store); its attachments are then kept in the cache folder, so opening one again is instant and works offline.
+async fn received_file(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    id: i64,
+    index: usize,
+) -> Reply<std::path::PathBuf> {
+    let (account_id, at, listed) = state
+        .store
+        .attachment_source(id)
+        .map_err(text)?
+        .ok_or("This message is not on the server yet; try again once it has synced")?;
+    let name = listed.get(index).ok_or("That attachment is not in this message")?;
+    let base = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("received").join(id.to_string());
+    let place = |i: usize| base.join(i.to_string()).join(mime::safe_file_name(&listed[i]));
+    if place(index).is_file() {
+        return Ok(place(index));
+    }
+    let account = state
+        .store
+        .accounts()
+        .map_err(text)?
+        .into_iter()
+        .find(|a| a.id == account_id)
+        .ok_or("The account of this message is gone")?;
+    let password = secrets::password(&account.config.email).map_err(text)?;
+    let raw = sync::download(&account.config, &password, &at).await.map_err(text)?;
+    let files = mime::attachment_files(&raw);
+    for i in 0..listed.len() {
+        let Some(found) = mime::pick_attachment(&files, &listed, i) else { continue };
+        let path = place(i);
+        let folder = path.parent().expect("a file in a folder");
+        std::fs::create_dir_all(folder).map_err(|e| format!("{name}: {e}"))?;
+        // Written whole, then renamed: a half-written file must never pass for the cached one.
+        let partial = folder.join(".partial");
+        std::fs::write(&partial, &files[found].2).map_err(|e| format!("{name}: {e}"))?;
+        std::fs::rename(&partial, &path).map_err(|e| format!("{name}: {e}"))?;
+    }
+    if place(index).is_file() {
+        Ok(place(index))
+    } else {
+        Err(format!("{name} was not found in the message on the server"))
+    }
+}
+
+/// Opens an attachment in the program the system uses for its type. Programs and disk images are not opened
+/// (the UI offers Save for them instead).
+#[tauri::command]
+pub async fn open_attachment(app: AppHandle, state: State<'_, AppState>, id: i64, index: usize) -> Reply<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = received_file(&app, &state, id, index).await?;
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if mime::runs_as_program(&name) {
+        return Err(format!(
+            "{name} could run as a program, so Tern does not open it. Save it if you trust it."
+        ));
+    }
+    app.opener().open_path(path.display().to_string(), None::<&str>).map_err(|e| format!("{name}: {e}"))
+}
+
+/// Saves an attachment where the person chose in the save dialog.
+#[tauri::command]
+pub async fn save_attachment(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    index: usize,
+    path: String,
+) -> Reply<()> {
+    let file = received_file(&app, &state, id, index).await?;
+    std::fs::copy(&file, &path).map_err(|e| format!("{path}: {e}"))?;
+    Ok(())
 }

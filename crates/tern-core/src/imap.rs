@@ -719,6 +719,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> ImapClientAsync for Conn<S> {
                     }
                     ImapCoroutineState::Yielded(ImapYield::WantsWrite(bytes)) => {
                         self.stream.write_all(&bytes).await?;
+                        // TLS may keep the tail of a long write (an APPEND literal) in its own buffer when the
+                        // socket is full; unflushed, the server waits for the rest and we wait for its answer.
+                        self.stream.flush().await?;
                     }
                 }
             }
@@ -739,6 +742,24 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let tcp = open_tcp("127.0.0.1", port).await.unwrap();
         assert!(tcp.nodelay().unwrap());
+    }
+
+    /// A stream that holds writes until flushed, as TLS can with the end of a long write. Commands must still
+    /// reach the server.
+    #[tokio::test]
+    async fn every_command_is_flushed() {
+        let (stream, sent) = signed_in(
+            "{tag} OK [CAPABILITY IMAP4rev1 UIDPLUS] in\r\n",
+            vec![("APPEND Sent (\\Seen) {5}", "+ go\r\n"), ("", "{tag} OK [APPENDUID 3 7] done\r\n")],
+        );
+        let held = tokio::io::BufWriter::with_capacity(1 << 20, stream);
+        let open = Imap::open(held, "ada", "x");
+        let mut imap =
+            tokio::time::timeout(Duration::from_secs(5), open).await.expect("sign-in went out").unwrap();
+        let append = imap.append("Sent", b"hello", false);
+        let appended = tokio::time::timeout(Duration::from_secs(5), append).await.expect("APPEND went out");
+        assert_eq!(appended.unwrap(), Some((3, 7)));
+        assert_eq!(sent.lock().unwrap().len(), 4);
     }
 
     #[tokio::test]
