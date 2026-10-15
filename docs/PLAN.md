@@ -60,6 +60,13 @@ Optional AI remains an intended follow-on feature, not a rejected idea. Order ot
 - **Security/reliability:** unsafe deletion, ambiguous-send handling, draft persistence, migration safety,
   and visible failed work are release blockers, never “cut first” to meet a date.
 
+### Version numbers
+
+The version follows the milestones: **0.1** foundation (M0), **0.2** Linux private alpha (M1, current),
+**0.3** focused Linux beta (M2), **1.0** the Windows release (M3). A patch number (0.2.1, …) marks a build
+handed to the owner or testers within a milestone. Bump `package.json`, `src-tauri/tauri.conf.json` and both
+`Cargo.toml` files together.
+
 ## Gmail: decide early, implement once
 
 Use [the decision checklist](research/gmail-backend-decision.md) during M0. Compare IMAP + Gmail extensions
