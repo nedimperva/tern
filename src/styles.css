@@ -547,6 +547,14 @@ button.primary kbd {
   text-overflow: ellipsis;
   font-size: var(--t-sm);
 }
+.card .clip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
 .card time {
   flex: none;
   color: var(--fg-2);

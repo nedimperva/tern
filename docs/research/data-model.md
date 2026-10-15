@@ -99,6 +99,14 @@ CREATE TABLE contacts (email TEXT PRIMARY KEY COLLATE NOCASE, name TEXT NOT NULL
 CREATE INDEX contacts_name ON contacts (name COLLATE NOCASE);
 ```
 
+## v15 — package 07, attachment list repair (implemented 2026-10-15)
+Data only. Rows downloaded whole before v6 kept `has_attachments` but have no `parts`, so their files were never
+listed. They go back to `body_state = 'wanted'` and are fetched again; the stored body shows until then.
+```sql
+UPDATE messages SET body_state = 'wanted'
+WHERE body_state = 'full' AND parts IS NULL AND has_attachments = 1 AND uid IS NOT NULL;
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'
