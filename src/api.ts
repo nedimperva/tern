@@ -125,6 +125,21 @@ export type OutboxProblem = {
   /** A send that broke off after the server got the message: it may have gone out already. */
   maybeSent: boolean;
 };
+/** Work on its way to the server: in the undo window, waiting for the connection, or between tries. */
+export type OutboxWaiting = {
+  id: number;
+  accountId: number;
+  what: string;
+  /** Unix seconds of the next try. */
+  notBefore: number;
+  attempts: number;
+  /** Why the last try failed; empty if none did. */
+  lastError: string;
+  /** The sync worker has it in hand right now. */
+  sending: boolean;
+  /** False while it is being sent, or when later changes depend on it. */
+  canDiscard: boolean;
+};
 
 export interface Api {
   accounts(): Promise<Account[]>;
@@ -137,7 +152,8 @@ export interface Api {
   /** An action on whole conversations, each named by its row's message id. */
   applyConversations(ids: number[], action: Action, target: Target): Promise<Applied>;
   thread(id: number): Promise<ThreadMessage[]>;
-  search(query: string, limit: number): Promise<MessageRow[]>;
+  /** Search with filters (see crates/tern-core/src/query.rs). `partial`: words were not looked for in mail without its text. */
+  search(query: string, limit: number): Promise<{ rows: MessageRow[]; partial: boolean }>;
   apply(ids: number[], action: Action): Promise<Applied>;
   undo(token: number[]): Promise<boolean>;
   /** Queues a send; `delay` is the undo window in seconds; `draftId` when it was a saved draft. */
@@ -161,13 +177,22 @@ export interface Api {
   openAttachment(id: number, index: number): Promise<void>;
   /** Asks where to save a received attachment and saves it there; false if the person cancelled. */
   saveAttachment(id: number, index: number, name: string): Promise<boolean>;
+  /** Images the message's HTML shows from its own parts, by Content-ID, as data: URIs (fetched the first time). */
+  inlineImages(id: number): Promise<Record<string, string>>;
   /** Files dropped on the window from the file manager; returns the way to stop listening. */
   onFilesDropped(f: (paths: string[]) => void): () => void;
+  /** Runs `f` (and waits for it) before the window closes; returns the way to stop. */
+  onCloseRequested(f: () => Promise<void>): () => void;
   replyInit(id: number, kind: ReplyKind): Promise<ReplyInit>;
   problems(): Promise<OutboxProblem[]>;
   retryProblem(id: number): Promise<void>;
   /** Drops the work and puts the mailbox back as it was before it, as undo would. */
   discardProblem(id: number): Promise<void>;
+  waiting(): Promise<OutboxWaiting[]>;
+  /** Takes waiting work back, as undo would; false if it was sent meanwhile or later work depends on it. */
+  discardWaiting(id: number): Promise<boolean>;
+  /** The system says the network is back: reconnect now instead of after the retry wait. */
+  networkBack(): void;
   onChange(f: () => void): void;
   /** Mutes (or unmutes) the conversations of these messages: later replies skip the inbox. */
   mute(ids: number[], mute: boolean): Promise<void>;
@@ -197,6 +222,9 @@ const tauri: Api = {
   problems: () => invoke("problems"),
   retryProblem: (id) => invoke("retry_problem", { id }),
   discardProblem: (id) => invoke("discard_problem", { id }),
+  waiting: () => invoke("waiting"),
+  discardWaiting: (id) => invoke("discard_waiting", { id }),
+  networkBack: () => void invoke("network_back"),
   undo: (token) => invoke("undo", { token }),
   send: (accountId, draft, delay, draftId) => invoke("send", { accountId, draft, delay, draftId }),
   saveDraft: (id, accountId, draft, uploadNow) => invoke("save_draft", { id, accountId, draft, uploadNow }),
@@ -212,6 +240,7 @@ const tauri: Api = {
   },
   addAttachments: (paths) => invoke("add_attachments", { paths }),
   openAttachment: (id, index) => invoke("open_attachment", { id, index }),
+  inlineImages: (id) => invoke("inline_images", { id }),
   saveAttachment: async (id, index, name) => {
     const { save } = await import("@tauri-apps/plugin-dialog");
     const path = await save({ title: "Save attachment", defaultPath: name });
@@ -228,6 +257,17 @@ const tauri: Api = {
         .onDragDropEvent((e) => {
           if (e.payload.type === "drop") f(e.payload.paths);
         })
+        .then((unlisten) => (stopped ? unlisten() : (stop = unlisten))),
+    );
+    return () => ((stopped = true), stop?.());
+  },
+  onCloseRequested: (f) => {
+    let stop: (() => void) | undefined;
+    let stopped = false;
+    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+      getCurrentWindow()
+        // The window closes once this resolves; a failed save must not keep it open.
+        .onCloseRequested(() => f().catch(() => {}))
         .then((unlisten) => (stopped ? unlisten() : (stop = unlisten))),
     );
     return () => ((stopped = true), stop?.());
@@ -312,6 +352,14 @@ function fake(): Api {
     };
   });
   const listeners: (() => void)[] = [];
+  let waiting: OutboxWaiting[] =
+    location.hash === "#offline"
+      ? [
+          { id: 3, accountId: 1, what: "Move 2 messages to Archive", notBefore: now - 60, attempts: 0, lastError: "", sending: false, canDiscard: false },
+          { id: 4, accountId: 1, what: "Star 2 messages", notBefore: now - 50, attempts: 0, lastError: "", sending: false, canDiscard: true },
+          { id: 5, accountId: 1, what: "Send “Notes from today”", notBefore: now + 40, attempts: 2, lastError: "Could not connect to smtp.example.com: timed out", sending: false, canDiscard: true },
+        ]
+      : [];
   let problems: OutboxProblem[] = [
     {
       id: 1,
@@ -396,11 +444,13 @@ function fake(): Api {
       return api.apply(chosen, action);
     },
     search: async (query, limit) => {
+      // Words only; the filters live in the engine. Shown as partial so the note can be worked on here.
       const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-      return messages
+      const rows = messages
         .filter((m) => terms.every((t) => `${m.subject} ${m.fromName} ${m.bodyText}`.toLowerCase().includes(t)))
         .slice(0, limit)
         .map(row);
+      return { rows, partial: terms.length > 0 };
     },
     apply: async (ids, action) => {
       const before = messages.map((m) => ({ ...m }));
@@ -485,6 +535,14 @@ function fake(): Api {
       problems = problems.filter((p) => p.id !== id);
       changed();
     },
+    // Open the page with #offline to see changes waiting for the connection.
+    waiting: async () => waiting,
+    discardWaiting: async (id) => {
+      waiting = waiting.filter((w) => w.id !== id);
+      changed();
+      return true;
+    },
+    networkBack: () => {},
     onChange: (f) => void listeners.push(f),
     // Open the page with #offline to see how a lost connection looks.
     syncStates: async () => ({ 1: location.hash === "#offline" ? "offline" : "idle" }),
@@ -514,6 +572,8 @@ function fake(): Api {
       }
     },
     openAttachment: async () => {},
+    onCloseRequested: () => () => {},
+    inlineImages: async () => ({}),
     saveAttachment: async () => true,
     openUrl: (url) => void window.open(url, "_blank", "noopener"),
   };

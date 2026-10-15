@@ -167,6 +167,27 @@ button.primary kbd {
   color: var(--fg-2);
 }
 
+.search-help {
+  align-content: center;
+  padding: 0 var(--s-5);
+  text-align: center;
+  font-size: var(--t-sm);
+}
+.search-help p {
+  margin: 0 0 var(--s-2);
+  max-width: 60ch;
+}
+.search-help code {
+  font-family: var(--mono);
+  color: var(--fg-0);
+}
+.search-note {
+  padding: var(--s-1) var(--s-3);
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+  border-bottom: 1px solid var(--line);
+}
+
 /* Inbox Zero gets the best screen in the app (§4.7); solid colour until the artwork exists. */
 .zero {
   --zero-hue: 240;
@@ -370,6 +391,11 @@ button.primary kbd {
   text-decoration: underline;
   font-size: inherit;
 }
+.status .waiting-link {
+  color: var(--fg-2);
+  text-decoration: underline;
+  font-size: inherit;
+}
 .status .hints {
   display: flex;
   gap: var(--s-3);
@@ -540,6 +566,14 @@ button.primary kbd {
   color: var(--fg-2);
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: var(--t-sm);
+}
+.card .clip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--fg-2);
   font-size: var(--t-sm);
 }
 .card time {
@@ -1060,6 +1094,8 @@ button.fold {
 
 .problems {
   width: min(560px, 92vw);
+  max-height: 76vh;
+  overflow-y: auto;
   background: var(--bg-1);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow);
@@ -1071,6 +1107,9 @@ button.fold {
 .problems h2 {
   margin: 0;
   font-size: var(--t-lg);
+}
+.problems .problem + h2 {
+  margin-top: var(--s-3);
 }
 .problem {
   display: flex;

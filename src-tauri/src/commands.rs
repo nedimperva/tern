@@ -5,8 +5,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
     mime, secrets, sync, Account, AccountConfig, Action, Applied, Contact, Cursor, Draft, DraftRecord,
-    Folder, ListTarget, MessageRow, OutboxProblem, OutgoingAttachment, ReplyInit, ReplyKind, ThreadMessage,
-    ThreadRow,
+    Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting, OutgoingAttachment, ReplyInit, ReplyKind,
+    SearchResult, ThreadMessage, ThreadRow,
 };
 
 use std::collections::HashMap;
@@ -75,7 +75,7 @@ pub async fn thread(state: State<'_, AppState>, id: i64) -> Reply<Vec<ThreadMess
 }
 
 #[tauri::command]
-pub async fn search(state: State<'_, AppState>, query: String, limit: i64) -> Reply<Vec<MessageRow>> {
+pub async fn search(state: State<'_, AppState>, query: String, limit: i64) -> Reply<SearchResult> {
     state.store.search(&query, limit).map_err(text)
 }
 
@@ -148,6 +148,27 @@ pub async fn retry_problem(app: AppHandle, state: State<'_, AppState>, id: i64) 
 pub async fn discard_problem(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<()> {
     state.store.discard_outbox(id).map_err(text)?;
     let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
+/// Work still on its way to the server, for the "changes waiting" list.
+#[tauri::command]
+pub async fn waiting(state: State<'_, AppState>) -> Reply<Vec<OutboxWaiting>> {
+    state.store.outbox_waiting().map_err(text)
+}
+
+/// Takes back waiting work, as undo would. False when it was being sent meanwhile, or later work depends on it.
+#[tauri::command]
+pub async fn discard_waiting(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<bool> {
+    let done = state.store.discard_waiting(id).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(done)
+}
+
+/// The window saw the network come back: reconnect every account now instead of after its backoff.
+#[tauri::command]
+pub async fn network_back() -> Reply<()> {
+    sync::network_back();
     Ok(())
 }
 
@@ -365,6 +386,46 @@ async fn received_file(
     } else {
         Err(format!("{name} was not found in the message on the server"))
     }
+}
+
+/// Most an inline-image cache holds for one message.
+const INLINE_LIMIT: usize = 20_000_000;
+
+/// The images a message's HTML shows from its own parts (`cid:`), as Content-ID → data: URI. Like an attachment,
+/// the first look downloads the message on a connection of its own; the result is cached for later opens.
+#[tauri::command]
+pub async fn inline_images(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+) -> Reply<HashMap<String, String>> {
+    let cache = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("received").join(id.to_string());
+    let file = cache.join("inline.json");
+    if let Ok(saved) = std::fs::read(&file) {
+        if let Ok(images) = serde_json::from_slice(&saved) {
+            return Ok(images);
+        }
+    }
+    let Some((account_id, at, _)) = state.store.attachment_source(id).map_err(text)? else {
+        return Ok(HashMap::new());
+    };
+    let account = state
+        .store
+        .accounts()
+        .map_err(text)?
+        .into_iter()
+        .find(|a| a.id == account_id)
+        .ok_or("The account of this message is gone")?;
+    let password = secrets::password(&account.config.email).map_err(text)?;
+    let raw = sync::download(&account.config, &password, &at).await.map_err(text)?;
+    let images: HashMap<String, String> = mime::inline_images(&raw, INLINE_LIMIT).into_iter().collect();
+    // Cached whole or not at all, as attachments are.
+    std::fs::create_dir_all(&cache).map_err(|e| e.to_string())?;
+    let partial = cache.join(".inline.partial");
+    std::fs::write(&partial, serde_json::to_vec(&images).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    std::fs::rename(&partial, &file).map_err(|e| e.to_string())?;
+    Ok(images)
 }
 
 /// Opens an attachment in the program the system uses for its type. Programs and disk images are not opened

@@ -22,8 +22,10 @@ block a milestone. Do not automatically implement every checkbox in numeric orde
 
 ## Current evidence
 
-- The engine has not been compiled in a verified agent run. The frontend production build passed during
-  the plan review; the real Tauri bridge and provider behavior still need acceptance testing.
+- As of 2026-10-15 the workspace builds and tests on Linux and Windows CI, the app runs on Hyprland, and the
+  owner ran it on Windows. Packages 01–03 are built and tested against the local Stalwart server and scripted
+  IMAP/SMTP. The owner passed the M1 checklist on Linux and Windows with their work IMAP/SMTP account;
+  Fastmail and Gmail acceptance are still open. Package logs hold the details.
 - Fastmail is the first available test account. Acquire a Gmail test account and Cloud project during the
   foundation phase, not just before Gmail implementation. Outlook testing is expansion work.
 - Local-first reads, the outbox, keyset paging, FTS5, sandboxed HTML, and OS-keyring credentials remain the
@@ -33,8 +35,8 @@ block a milestone. Do not automatically implement every checkbox in numeric orde
 
 | Milestone | Required scope | Exit evidence | Status |
 |---|---|---|---|
-| M0 — Safe foundation | Compile engine/shell; Linux + Windows CI; Linux boot and early Windows WebView2/keyring smoke test; safe outbox and UID handling; migration/restart/offline tests; early Gmail comparison and verification preparation | Tests/builds pass on both OSes; Fastmail round-trips safely; failure/recovery checks recorded; Gmail decision evidence reviewed by owner | todo |
-| M1 — Linux private alpha | Fastmail first; conversations; keyboard triage; safe HTML; basic compose/reply/forward; durable local and server drafts; send/undo; attachments saved/opened through system; signatures; header-derived autocomplete; local search; visible sync/outbox failures | Owner uses a test mailbox and then daily mail with a backup client; restart retains drafts; attachments round-trip; offline actions reconcile; common tasks work without mouse | todo |
+| M0 — Safe foundation | Compile engine/shell; Linux + Windows CI; Linux boot and early Windows WebView2/keyring smoke test; safe outbox and UID handling; migration/restart/offline tests; early Gmail comparison and verification preparation | Tests/builds pass on both OSes; Fastmail round-trips safely; failure/recovery checks recorded; Gmail decision evidence reviewed by owner | in progress: CI, Windows smoke and reliability gate done; real-provider round-trip and Gmail comparison open |
+| M1 — Linux private alpha | Fastmail first; conversations; keyboard triage; safe HTML; basic compose/reply/forward; durable local and server drafts; send/undo; attachments saved/opened through system; signatures; header-derived autocomplete; local search; visible sync/outbox failures | Owner uses a test mailbox and then daily mail with a backup client; restart retains drafts; attachments round-trip; offline actions reconcile; common tasks work without mouse | in progress: conversations, compose, drafts, attachments and failure visibility built; search filters built; owner checklist passed 2026-10-15 on the work IMAP account ([checklist](acceptance/m1-alpha.md)); a Fastmail run and daily use with a backup client are still open |
 | M2 — Focused Linux beta | One chosen Gmail backend + OAuth; native label/thread semantics; unified inbox; notifications/background mode; mailto; basic snippets, splits, snooze/reminders; Linux packages/update path; accurate partial-search/sync progress; small external tester group | Real Fastmail + Gmail checks pass; testers use the app for several weeks; no known mail-loss/unsafe retry blockers; installation/recovery documented; OAuth distribution is appropriate for the audience | todo |
 | M3 — Windows release | Installer and update flow; WebView2 rendering/compose; Credential Manager; notifications/tray/mailto; scaling; sleep/resume; regression test the same supported providers | Clean Windows installation passes the mail-core acceptance suite; existing Linux behavior remains green | todo |
 | M4 — Expansion | Optional AI first slice; calendar; Outlook/Graph; advanced contacts/previews; additional provider support; second Gmail backend only if justified | Separate owner-approved scope and acceptance per feature; no dependency back into M1–M3 | deferred |
@@ -58,6 +60,13 @@ Optional AI remains an intended follow-on feature, not a rejected idea. Order ot
   for snooze/reminders as well as send-later. Do not imply cross-device synchronization of local timers.
 - **Security/reliability:** unsafe deletion, ambiguous-send handling, draft persistence, migration safety,
   and visible failed work are release blockers, never “cut first” to meet a date.
+
+### Version numbers
+
+The version follows the milestones: **0.1** foundation (M0), **0.2** Linux private alpha (M1, current),
+**0.3** focused Linux beta (M2), **1.0** the Windows release (M3). A patch number (0.2.1, …) marks a build
+handed to the owner or testers within a milestone. Bump `package.json`, `src-tauri/tauri.conf.json` and both
+`Cargo.toml` files together.
 
 ## Gmail: decide early, implement once
 
