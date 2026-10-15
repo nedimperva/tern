@@ -141,6 +141,7 @@ fn main() {
             commands::problem_to_draft,
             commands::add_attachments,
             commands::open_attachment,
+            commands::inline_images,
             commands::save_attachment,
             commands::contacts,
             commands::muted,

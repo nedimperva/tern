@@ -449,7 +449,7 @@ export default function App() {
       const doneToken = done && answering ? await act("archive", [answering], false) : [];
       const text = settings.sendDelay > 0 ? "Sending…" : "Sent";
       // Undo brings the message back into compose, as it was.
-      const reopen = () => setCompose({ ...sending, accountId, ...draft, draftId, focus: "body" });
+      const reopen = () => setCompose({ ...sending, accountId, ...draft, draftId, focus: "body", unsaved: true });
       showToast(done && answering ? `${text} and marked done` : text, [...token, ...doneToken], reopen);
     } catch (e) {
       showToast(String(e), []);

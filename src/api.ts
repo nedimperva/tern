@@ -177,8 +177,12 @@ export interface Api {
   openAttachment(id: number, index: number): Promise<void>;
   /** Asks where to save a received attachment and saves it there; false if the person cancelled. */
   saveAttachment(id: number, index: number, name: string): Promise<boolean>;
+  /** Images the message's HTML shows from its own parts, by Content-ID, as data: URIs (fetched the first time). */
+  inlineImages(id: number): Promise<Record<string, string>>;
   /** Files dropped on the window from the file manager; returns the way to stop listening. */
   onFilesDropped(f: (paths: string[]) => void): () => void;
+  /** Runs `f` (and waits for it) before the window closes; returns the way to stop. */
+  onCloseRequested(f: () => Promise<void>): () => void;
   replyInit(id: number, kind: ReplyKind): Promise<ReplyInit>;
   problems(): Promise<OutboxProblem[]>;
   retryProblem(id: number): Promise<void>;
@@ -236,6 +240,7 @@ const tauri: Api = {
   },
   addAttachments: (paths) => invoke("add_attachments", { paths }),
   openAttachment: (id, index) => invoke("open_attachment", { id, index }),
+  inlineImages: (id) => invoke("inline_images", { id }),
   saveAttachment: async (id, index, name) => {
     const { save } = await import("@tauri-apps/plugin-dialog");
     const path = await save({ title: "Save attachment", defaultPath: name });
@@ -252,6 +257,17 @@ const tauri: Api = {
         .onDragDropEvent((e) => {
           if (e.payload.type === "drop") f(e.payload.paths);
         })
+        .then((unlisten) => (stopped ? unlisten() : (stop = unlisten))),
+    );
+    return () => ((stopped = true), stop?.());
+  },
+  onCloseRequested: (f) => {
+    let stop: (() => void) | undefined;
+    let stopped = false;
+    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+      getCurrentWindow()
+        // The window closes once this resolves; a failed save must not keep it open.
+        .onCloseRequested(() => f().catch(() => {}))
         .then((unlisten) => (stopped ? unlisten() : (stop = unlisten))),
     );
     return () => ((stopped = true), stop?.());
@@ -556,6 +572,8 @@ function fake(): Api {
       }
     },
     openAttachment: async () => {},
+    onCloseRequested: () => () => {},
+    inlineImages: async () => ({}),
     saveAttachment: async () => true,
     openUrl: (url) => void window.open(url, "_blank", "noopener"),
   };

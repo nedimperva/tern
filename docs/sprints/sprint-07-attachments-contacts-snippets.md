@@ -25,7 +25,7 @@ CardDAV; snippets expand with `;`; Instant Intro does the reply-all-and-bcc danc
 - [ ] Viewer overlay (`Cmd+O` on a message cycles attachments, `Enter` on a chip): images (zoom/pan), PDF (WebKitGTK renders PDF natively in an iframe; on Windows WebView2 does too), text/code, audio/video via `<video>`; everything else shows an "Open with system" button (`opener`).
 - [ ] Drag out: `startDrag` from Tauri (`tauri-plugin-drag` or the core `start_drag` API) with the cached file path.
 - [ ] Drag in: already from Sprint 3 for compose; add drop onto a conversation to start a reply with the file attached.
-- [ ] Inline images (`cid:`) resolved to cached files via a `tern-att://` custom protocol handler in the iframe; blocked remote images untouched.
+- [x] Inline images (`cid:`) resolved to cached files via a `tern-att://` custom protocol handler in the iframe; blocked remote images untouched.
 - [ ] Attachments browser: palette "Attachments in this conversation", `g` + `Shift+A` for all attachments in the account (list view with filters).
 
 ### Contacts (header autocomplete is core; import/merging deferred)
@@ -75,4 +75,9 @@ Google Contacts via CardDAV (keep Fastmail), attachments browser, drag out.
   cards now carry a paperclip (and a count above one). Mail downloaded whole before schema v6 had its attachment
   flag but no `parts`, so its files were never listed; schema v15 fetches those bodies again (the stored body
   still shows meanwhile). Still open: images sent inline (`cid:`) are neither drawn nor listed (viewer task).
+- 2026-10-15 — Owner acceptance: a pasted picture showed only as an attachment. `cid:` images are now drawn in place:
+  the first open of such a message downloads it (as for attachments), `mime::inline_images` turns its image parts
+  into data: URIs (20 MB at most per message), cached in `received/<id>/inline.json`. Planned was a `tern-att://`
+  protocol; data: URIs needed no new scheme or CSP change (the frame already allowed `data:`). Remote images stay
+  blocked as before. Checked with a `mime` test; not yet in the Tauri window.
 
