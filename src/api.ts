@@ -188,6 +188,8 @@ export interface Api {
   saveAttachment(id: number, index: number, name: string): Promise<boolean>;
   /** Images the message's HTML shows from its own parts, by Content-ID, as data: URIs (fetched the first time). */
   inlineImages(id: number): Promise<Record<string, string>>;
+  /** A picture attachment as a data: URI for its card, if it is already on this computer; never downloads. */
+  attachmentPreview(id: number, index: number): Promise<string | null>;
   /** Files dropped on the window from the file manager; returns the way to stop listening. */
   onFilesDropped(f: (paths: string[]) => void): () => void;
   /** Runs `f` (and waits for it) before the window closes or Tern quits; returns the way to stop. */
@@ -304,6 +306,7 @@ const tauri: Api = {
   addAttachments: (paths) => invoke("add_attachments", { paths }),
   openAttachment: (id, index) => invoke("open_attachment", { id, index }),
   inlineImages: (id) => invoke("inline_images", { id }),
+  attachmentPreview: (id, index) => invoke("attachment_preview", { id, index }),
   saveAttachment: async (id, index, name) => {
     const { save } = await import("@tauri-apps/plugin-dialog");
     const path = await save({ title: "Save attachment", defaultPath: name });
@@ -372,6 +375,20 @@ const tauri: Api = {
 
 // MARK: A fake mailbox for the browser
 
+/** A sender-designed newsletter for the fake mailbox: layout tables, its own colours, a wide picture. */
+function newsletter(subject: string): string {
+  return `<table width="100%" bgcolor="#eeeae2" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 0">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;font-family:Georgia,serif;color:#222">
+<tr><td style="background:#0f4c3a;color:#f4efe2;padding:22px 28px"><div style="font:bold 12px Arial;letter-spacing:2px">THE FIELD NOTES</div>
+<h1 style="font-size:24px;margin:10px 0 0">${subject}</h1></td></tr>
+<tr><td><img width="600" alt="Mountains" src="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="160"><defs><linearGradient id="g" x2="1"><stop offset="0" stop-color="#d7b58a"/><stop offset=".6" stop-color="#a8c3a0"/><stop offset="1" stop-color="#6f9c8a"/></linearGradient></defs><rect width="600" height="160" fill="url(#g)"/></svg>')}"></td></tr>
+<tr><td style="padding:20px 28px;font-size:16px;line-height:1.6"><p>This week we walked the old railway line from Mostar toward Konjic, now a gravel trail along the Neretva.</p>
+<p>Below: three day trips, where to sleep, and what the <b>October weather</b> really does up there.</p>
+<p><a href="https://example.com/guide" style="display:inline-block;background:#0f4c3a;color:#ffffff;padding:10px 18px;text-decoration:none;font-family:Arial">Read the full guide</a></p></td></tr>
+<tr><td style="background:#f2efe7;color:#777777;font:12px Arial;padding:14px 28px">You get this because you signed up at fieldnotes.example. <a href="https://example.com/u" style="color:#777777">Unsubscribe</a></td></tr>
+</table></td></tr></table>`;
+}
+
 function fake(): Api {
   const words = "invoice meeting lunch release budget travel report design review contract launch offer update".split(" ");
   const names = ["Ada Lovelace", "Alan Turing", "Grace Hopper", "Linus Torvalds", "Margaret Hamilton", "GitHub", "Stripe"];
@@ -431,14 +448,23 @@ function fake(): Api {
       toAddrs: account.email,
       bodyText: body,
       bodyHtml:
-        i % 3 === 0
+        i % 7 === 1
+          ? newsletter(subject)
+          : i % 3 === 0
           ? `<div style="font-family:sans-serif"><h2>${subject}</h2><p>${body.split("\n-- ")[0].replace(/\n/g, "<br>")}</p>` +
             (quote ? `<div class="gmail_quote">On Mon, someone wrote:<blockquote>Earlier message about ${subject}.</blockquote></div>` : "") +
             `</div>`
           : null,
       bodyLoaded: true,
       draftId: null,
-      attachments: i % 11 === 0 ? [{ name: `${words[i % words.length]}-notes.pdf`, mime: "application/pdf", size: 48_213 + i }] : [],
+      attachments:
+        i % 11 === 0
+          ? [
+              { name: `${words[i % words.length]}-notes.pdf`, mime: "application/pdf", size: 48_213 + i },
+              { name: `${words[(i + 1) % words.length]}-figures.xlsx`, mime: "application/vnd.ms-excel", size: 21_400 },
+              { name: "photo.jpg", mime: "image/jpeg", size: 1_204_000 },
+            ]
+          : [],
     };
   });
   const listeners: (() => void)[] = [];
@@ -733,6 +759,13 @@ function fake(): Api {
     defaultMailApp: async () => false,
     makeDefaultMailApp: async () => {},
     inlineImages: async () => ({}),
+    attachmentPreview: async (id, index) =>
+      messages.find((m) => m.id === id)?.attachments[index]?.mime.startsWith("image/")
+        ? "data:image/svg+xml," +
+          encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"><defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="#7aa6c2"/><stop offset=".55" stop-color="#b9d4a8"/><stop offset="1" stop-color="#e7cf8a"/></linearGradient></defs><rect width="80" height="60" fill="url(#g)"/></svg>`,
+          )
+        : null,
     saveAttachment: async () => true,
     openUrl: (url) => void window.open(url, "_blank", "noopener"),
   };

@@ -388,6 +388,44 @@ async fn received_file(
     }
 }
 
+/// Most a picture attachment may weigh to be shown on its card.
+const PREVIEW_LIMIT: u64 = 8_000_000;
+
+/// A picture attachment as a data: URI for its card, when it was already downloaded (opened or saved before). It
+/// never downloads: expanding a message must not fetch every file it carries.
+#[tauri::command]
+pub async fn attachment_preview(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    index: usize,
+) -> Reply<Option<String>> {
+    let Some((_, _, listed)) = state.store.attachment_source(id).map_err(text)? else { return Ok(None) };
+    let Some(name) = listed.get(index) else { return Ok(None) };
+    let mime = match name.rsplit('.').next().map(str::to_ascii_lowercase).as_deref() {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        _ => return Ok(None),
+    };
+    let path = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("received")
+        .join(id.to_string())
+        .join(index.to_string())
+        .join(mime::safe_file_name(name));
+    match std::fs::metadata(&path) {
+        Ok(meta) if meta.is_file() && meta.len() <= PREVIEW_LIMIT => {
+            let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+            Ok(Some(format!("data:{mime};base64,{}", mime::base64(&bytes))))
+        }
+        _ => Ok(None),
+    }
+}
+
 /// Most an inline-image cache holds for one message.
 const INLINE_LIMIT: usize = 20_000_000;
 

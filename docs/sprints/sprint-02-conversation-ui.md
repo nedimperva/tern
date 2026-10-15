@@ -112,6 +112,16 @@ Label chips on rows, then the empty-state artwork (use a solid colour), then `Cm
   archived as they land (`muted` table, schema v11, checked after each header fetch). Undo unmutes too.
   Unmute from the palette while the conversation is open. No Muted view (`g m`) yet.
 
+- 2026-10-15 — **Messages look like Tern, unless the sender designed them.** The owner picked this from a mock-up
+  (light and dark, a reply and a newsletter). Before, every body sat in a white box in a system font, also in dark
+  mode. Now `mailview.ts` sorts mail into text and designed: three or more coloured backgrounds, or a layout table
+  with colour or a wide picture, make it designed (Outlook and Gmail replies, with white backgrounds and a
+  signature table, stay text). Text mail drops the sender's fonts and colours for Tern's, so it follows dark mode;
+  links and sizes stay. Designed mail keeps its look on a well, darkened in dark mode by turning light backgrounds
+  dark and dark text light with the same hue (Settings can keep its colours); it stays hidden until darkened, so
+  it never flashes white. "Reading view" rebuilds a designed mail as paragraphs, headings, links and large
+  pictures. Files became cards with a type badge, or a preview for a picture that was already downloaded.
+
 ## Log
 
 - 2026-10-14 — Slice 1: conversation list and pane. Tokens (`src/styles/tokens.css`, old names aliased), one
@@ -154,3 +164,8 @@ Label chips on rows, then the empty-state artwork (use a solid colour), then `Cm
   argument mode: "Move to …", "Go to folder …" (`g l` opens straight into it), "Switch account …"
   (`Ctrl+1…9`), "Theme …"; `Esc` steps back out of a choice first. `g !` goes to Spam. Inbox Zero background.
   Checked in headless Chromium; 81 unit tests, 11 dev-server checks. Bundle 26.3 kB gzipped (budget 120).
+- 2026-10-15 — New message view (see Decisions). Tried in `npm run dev` with headless Chromium against the fake
+  mailbox (which gained a designed newsletter and picture/spreadsheet attachments), light and dark: text HTML,
+  plain text with its quote and signature unfolded, the newsletter framed and darkened, reading view, file cards.
+  The classifier was checked on an Outlook reply, a Gmail reply, a GitHub notification (text) and a Stripe-style
+  receipt (designed). Not yet tried in the Tauri window or on real mail.
