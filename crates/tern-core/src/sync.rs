@@ -40,7 +40,7 @@ const FLAG_BATCH: usize = 5_000;
 const FETCH_CHUNK: usize = 50;
 /// Most bytes per FETCH, so one batch of big attachments doesn't become a single long wait.
 const FETCH_BYTES: u64 = 4_000_000;
-/// The slowest download we still wait for when fetching mail bodies.
+/// The slowest line we still wait for when fetching mail bodies or uploading a copy.
 const MIN_BYTES_PER_SECOND: u64 = 100_000;
 /// New messages per folder per pass; the rest come on later passes, newest first. Headers only, so this is cheap.
 const PER_PASS: usize = 2_000;
@@ -336,6 +336,7 @@ async fn pass(
     // starts at once and carries on, after the outbox and inbox have had their turn.
     let deadline = Instant::now() + BACKFILL_BUDGET;
     let mut more = false;
+    let mut refused = false;
     for (folder_id, name) in store.folders_to_sync(account.id)? {
         if !schedule.due(folder_id, &name) {
             continue;
@@ -344,12 +345,26 @@ async fn pass(
             on_change();
         }
         let (changed, unfinished) =
-            sync_folder(s, store, account.id, folder_id, &name, deadline, on_change).await?;
+            match sync_folder(s, store, account.id, folder_id, &name, deadline, on_change).await {
+                Ok(done) => done,
+                Err(e) if connection_broke(&e) => return Err(e),
+                // The server refused this folder (most often: deleted elsewhere). The others still get checked,
+                // and the folder list is read again after them.
+                Err(e) => {
+                    log::warn!("{}: {e:#}", account.config.email);
+                    refused = true;
+                    (false, false)
+                }
+            };
         schedule.done(folder_id, unfinished);
         if changed {
             on_change();
         }
         more |= unfinished;
+    }
+    if refused {
+        discover_folders(s, store, account.id).await?;
+        on_change();
     }
     Ok(more)
 }
@@ -373,15 +388,45 @@ async fn open(
     Ok(fresh)
 }
 
-async fn discover_folders(s: &mut Session, store: &Store, account_id: i64) -> Result<()> {
+/// Brings the stored folder list in line with the server's: new folders are added, deleted or renamed ones go.
+async fn discover_folders<S: Stream>(s: &mut Imap<S>, store: &Store, account_id: i64) -> Result<()> {
     let folders = within(s.folders()).await.context("Could not list folders")?;
-    for folder in &folders {
-        if folder.attributes.iter().any(|a| a == "noselect" || a == "nonexistent") {
-            continue;
+    let selectable: Vec<_> = folders
+        .iter()
+        .filter(|f| !f.attributes.iter().any(|a| a == "noselect" || a == "nonexistent"))
+        .collect();
+    // A role the server marks (SPECIAL-USE) belongs to that folder alone. Without this, a leftover "Sent Messages"
+    // next to the server's \Sent "Sent Items" could get the sent copies.
+    let marked: HashSet<&str> =
+        selectable.iter().flat_map(|f| f.attributes.iter()).filter_map(|a| special_use(a)).collect();
+    for folder in &selectable {
+        let mut role = role(&folder.name, &folder.attributes);
+        if marked.contains(role) && !folder.attributes.iter().any(|a| special_use(a) == Some(role)) {
+            role = "other";
         }
-        store.upsert_folder(account_id, &folder.name, role(&folder.name, &folder.attributes))?;
+        store.upsert_folder(account_id, &folder.name, role)?;
+    }
+    // An empty answer (or one without the inbox) is more likely a server hiccup than every folder gone.
+    if selectable.iter().any(|f| f.name.eq_ignore_ascii_case("INBOX")) {
+        let listed = selectable.iter().map(|f| f.name.clone()).collect();
+        for name in store.forget_folders(account_id, &listed)? {
+            log::info!("{name} is no longer on the server; removed it here");
+        }
     }
     Ok(())
+}
+
+/// The role a SPECIAL-USE attribute stands for.
+fn special_use(attr: &str) -> Option<&'static str> {
+    Some(match attr {
+        "all" => "all",
+        "sent" => "sent",
+        "drafts" => "drafts",
+        "junk" => "junk",
+        "trash" => "trash",
+        "archive" => "archive",
+        _ => return None,
+    })
 }
 
 /// The folder's role from its SPECIAL-USE attribute (RFC 6154), or else from its name.
@@ -714,8 +759,7 @@ async fn drain_outbox<S: Stream>(
             store.outbox_done(id)?;
             continue;
         };
-        let sent_folders: Vec<_> =
-            store.folders()?.into_iter().filter(|f| f.account_id == account.id && f.role == "sent").collect();
+        let sent_folders = sent_folders(store, account.id)?;
         let copy = match (sent_folders.first(), presets::server_files_sent(&account.config.imap_host)) {
             (Some(folder), false) => Some(OutboxOp::Append {
                 folder: folder.name.clone(),
@@ -731,6 +775,11 @@ async fn drain_outbox<S: Stream>(
         }
     }
     Ok(any)
+}
+
+/// The account's Sent folders as the store has them; after `discover_folders` there is at most one.
+fn sent_folders(store: &Store, account_id: i64) -> Result<Vec<crate::models::Folder>> {
+    Ok(store.folders()?.into_iter().filter(|f| f.account_id == account_id && f.role == "sent").collect())
 }
 
 /// Keeps the server's Drafts folder in step with drafts written in Tern: each draft has one copy there, replaced
@@ -777,7 +826,7 @@ async fn upload_draft<S: Stream>(
     previous: Option<(u32, u32)>,
 ) -> Result<()> {
     let raw = smtp::draft_bytes(&account.config, draft)?;
-    let mut copy = within(s.append(folder, &raw, true)).await?;
+    let mut copy = within_for(upload_limit(raw.len()), s.append(folder, &raw, true)).await?;
     if copy.is_none() {
         // No APPENDUID: find the copy just added by its Message-ID, so the next version can replace it.
         let selected = within(s.select(folder)).await?;
@@ -893,7 +942,10 @@ async fn run_op<S: Stream>(
             return smtp::send(&account.config, password, draft, &extra).await;
         }
         OutboxOp::Append { folder, message, .. } => {
-            within(s.append(folder, message.as_bytes(), false)).await?;
+            // Sent may have changed since the copy was queued (a duplicate removed, a folder renamed).
+            let sent = sent_folders(store, account.id)?;
+            let folder = sent.first().map_or(folder.as_str(), |f| f.name.as_str());
+            within_for(upload_limit(message.len()), s.append(folder, message.as_bytes(), false)).await?;
         }
     }
     Ok(Vec::new())
@@ -982,6 +1034,11 @@ async fn within_for<T>(limit: Duration, command: impl Future<Output = Result<T>>
     tokio::time::timeout(limit, command).await.context("The server stopped answering")?
 }
 
+/// How long an APPEND of `bytes` may take: big attachments go up slowly on a slow line.
+fn upload_limit(bytes: usize) -> Duration {
+    COMMAND_TIMEOUT + Duration::from_secs(bytes as u64 / MIN_BYTES_PER_SECOND)
+}
+
 /// Splits UIDs into batches of at most FETCH_CHUNK messages and FETCH_BYTES bytes; a message bigger than that
 /// goes alone.
 fn by_size<'a>(uids: &'a [u32], sizes: &HashMap<u32, u32>) -> Vec<&'a [u32]> {
@@ -1050,7 +1107,7 @@ mod tests {
 
     /// Queued work run against a scripted server: the cases a real server rarely produces on demand.
     mod outbox {
-        use super::super::drain_outbox;
+        use super::super::{discover_folders, drain_outbox};
         use crate::imap::Imap;
         use crate::models::{
             Account, AccountConfig, Action, DraftSync, FolderState, ListTarget, NewMessage, Security,
@@ -1273,6 +1330,55 @@ mod tests {
             result.unwrap();
             assert_eq!(sent.len(), 2, "{sent:?}");
             assert!(queue_empty(&m));
+        }
+
+        #[tokio::test]
+        async fn a_sent_copy_goes_to_the_sent_folder_of_now() {
+            let m = mailbox();
+            m.store.upsert_folder(m.account.id, "Sent Items", "sent").unwrap();
+            let copy = crate::models::OutboxOp::Append {
+                folder: "Sent Messages".into(),
+                subject: "hi".into(),
+                message: "hello".into(),
+            };
+            m.store.outbox_sent(m.store.queue_send(m.account.id, draft(), 0).unwrap(), Some(copy)).unwrap();
+            let (result, sent) = drain(
+                &m,
+                vec![("APPEND \"Sent Items\" (\\Seen) {5}", "+ go\r\n"), ("", "{tag} OK done\r\n")],
+            )
+            .await;
+            result.unwrap();
+            assert!(queue_empty(&m), "{sent:?}");
+        }
+
+        #[tokio::test]
+        async fn the_folder_list_follows_the_server() {
+            let m = mailbox();
+            m.store.upsert_folder(m.account.id, "Sent Items", "sent").unwrap();
+            m.store.upsert_folder(m.account.id, "Sent Messages", "sent").unwrap();
+            // Queued work moving the message to Archive keeps that folder until the work is done.
+            m.store.apply(&[m.message], Action::Archive, 60).unwrap();
+            let (stream, _) = signed_in(
+                SIGNED_IN,
+                vec![(
+                    "LIST",
+                    "* LIST (\\HasNoChildren) \"/\" INBOX\r\n\
+                     * LIST (\\Sent \\HasNoChildren) \"/\" \"Sent Items\"\r\n\
+                     * LIST (\\HasNoChildren) \"/\" \"Sent Messages\"\r\n{tag} OK done\r\n",
+                )],
+            );
+            let mut s = Imap::open(stream, "ada", "x").await.unwrap();
+            discover_folders(&mut s, &m.store, m.account.id).await.unwrap();
+            let folders: std::collections::HashMap<String, String> =
+                m.store.folders().unwrap().into_iter().map(|f| (f.name, f.role)).collect();
+            assert_eq!(folders.get("Sent Items").map(String::as_str), Some("sent"));
+            assert_eq!(
+                folders.get("Sent Messages").map(String::as_str),
+                Some("other"),
+                "the server's \\Sent wins"
+            );
+            assert!(!folders.contains_key("Trash"), "deleted on the server: {folders:?}");
+            assert!(folders.contains_key("Archive"), "queued work still goes there: {folders:?}");
         }
 
         #[tokio::test]
