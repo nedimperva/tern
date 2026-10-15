@@ -497,6 +497,54 @@ impl Store {
         )?)
     }
 
+    /// Drops the account's folders that are not in `listed` (the server's LIST), with their messages: the folder
+    /// was deleted or renamed elsewhere. A folder queued work (other than a sent copy) or a draft still names is
+    /// kept, as is one holding a
+    /// message not yet on the server (uid NULL); they go once that work is done. Returns the names dropped.
+    pub fn forget_folders(&self, account_id: i64, listed: &HashSet<String>) -> Result<Vec<String>> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let mut named: HashSet<String> = HashSet::new();
+        {
+            let mut stmt = tx.prepare("SELECT payload FROM outbox WHERE account_id = ?1")?;
+            for payload in stmt.query_map([account_id], |r| r.get::<_, String>(0))? {
+                match serde_json::from_str::<OutboxOp>(&payload?)? {
+                    OutboxOp::Flags { folder, .. } => {
+                        named.insert(folder);
+                    }
+                    // A sent copy goes to whichever folder is Sent when it goes out (see sync::run_op).
+                    OutboxOp::Append { .. } => {}
+                    OutboxOp::Move { folder, dest, .. } => named.extend([folder, dest]),
+                    OutboxOp::Send(draft) => named.extend(draft.forward_of.map(|f| f.folder)),
+                }
+            }
+            let mut stmt = tx.prepare(
+                "SELECT server_folder FROM drafts WHERE account_id = ?1 AND server_folder IS NOT NULL",
+            )?;
+            for folder in stmt.query_map([account_id], |r| r.get::<_, String>(0))? {
+                named.insert(folder?);
+            }
+        }
+        let stale: Vec<(i64, String)> = {
+            let mut stmt = tx.prepare(
+                "SELECT id, name FROM folders f WHERE account_id = ?1
+                   AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.folder_id = f.id AND m.uid IS NULL)",
+            )?;
+            let rows = stmt.query_map([account_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect::<rusqlite::Result<Vec<(i64, String)>>>()?
+                .into_iter()
+                .filter(|(_, name)| !listed.contains(name) && !named.contains(name))
+                .collect()
+        };
+        for (id, _) in &stale {
+            // Messages first, so the search index's delete trigger runs for each.
+            tx.execute("DELETE FROM messages WHERE folder_id = ?1", [id])?;
+            tx.execute("DELETE FROM folders WHERE id = ?1", [id])?;
+        }
+        tx.commit()?;
+        Ok(stale.into_iter().map(|(_, name)| name).collect())
+    }
+
     pub fn folders(&self) -> Result<Vec<Folder>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
