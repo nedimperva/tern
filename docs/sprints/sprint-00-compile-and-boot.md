@@ -52,9 +52,9 @@ archive / star / mark-read / send reach the server after the 5-second undo windo
 - [ ] Kill the network mid-sync; app stays responsive; reconnects when back.
 
 ### Early Windows validation (before feature expansion)
-- [ ] Add Linux and Windows CI for engine/workspace checks, tests and frontend build; document required system dependencies.
-- [ ] On Windows, boot the existing Tauri shell and smoke-test WebView2 mail rendering, basic compose/keyboard handling, and Credential Manager.
-- [ ] Record actual results; a cross-compile alone is not a Windows runtime smoke test.
+- [x] Add Linux and Windows CI for engine/workspace checks, tests and frontend build; document required system dependencies.
+- [x] (owner 2026-10-14) On Windows, boot the existing Tauri shell and smoke-test WebView2 mail rendering, basic compose/keyboard handling, and Credential Manager.
+- [x] Record actual results; a cross-compile alone is not a Windows runtime smoke test.
 
 #### Windows smoke test steps (owner)
 

@@ -43,9 +43,9 @@ when it is offline.
 - [ ] Settings → "Make Tern the default mail app" (`xdg-settings set default-url-scheme-handler mailto app.tern.mail.desktop`).
 
 ### Offline and errors
-- [ ] Sync state in the status strip with a plain sentence: "Offline — changes will sync when you're back", "Signed out of Gmail — Sign in again", "Fastmail: can't reach imap.fastmail.com".
-- [ ] Outbox badge: "3 changes waiting". Clicking lists them with retry/discard.
-- [ ] Network change detection: on Linux `org.freedesktop.NetworkManager` state over D-Bus (`zbus`) → immediate reconnect; fallback to the backoff timer.
+- [x] Sync state in the status strip with a plain sentence: "Offline — changes will sync when you're back", "Signed out of Gmail — Sign in again", "Fastmail: can't reach imap.fastmail.com".
+- [x] Outbox badge: "3 changes waiting". Clicking lists them with retry/discard.
+- [x] Network change detection: on Linux `org.freedesktop.NetworkManager` state over D-Bus (`zbus`) → immediate reconnect; fallback to the backoff timer.
 
 ### Linux polish
 - [ ] `.desktop` file with actions (Compose), icon sizes, `StartupWMClass` matching the Wayland app id.
@@ -64,10 +64,22 @@ Notification actions, NetworkManager D-Bus (keep backoff), quiet hours.
 
 ## Decisions
 
-_None yet._
+- 2026-10-15 — **Network back comes from the window, not NetworkManager.** Planned: listen to NetworkManager over
+  D-Bus. Built: the webview's `online` event (WebKitGTK takes it from GLib's network monitor, which asks
+  NetworkManager where it runs; WebView2 from Windows) calls `network_back`, and every account drops its
+  connections and reconnects at once, as after sleep. One path for both systems and no D-Bus code. The sentence
+  never says "Offline" from the event alone unless the engine also cannot reach the server.
 
 ## Log
 
 - 2026-10-14 — From package 01's retry policy: work Tern gave up on shows in a strip under the list and a review
   dialog with Retry and Discard. Toward "Outbox badge": changes still waiting (not failed) are not counted yet, and
   the strip is not yet the full status strip with the sync-state sentence.
+- 2026-10-15 — M1 visibility slice. "N changes waiting" in the status strip counts work past its undo window that
+  has not reached the server (waiting for the connection, between retries, or going out now); it opens the same
+  dialog as the problems, with a "Waiting to go out" section: what, why the last try failed, when the next try
+  is, and Discard (reverts like undo, even after failed tries; refused while it is being sent or a later change
+  depends on it). Sentences name the server that cannot be reached, or the account whose password was refused,
+  when only some accounts are affected. Network back reconnects every account at once (see Decisions). Engine
+  tests for listing, discarding and the dependency case, and for the reconnect signal. UI tried in `npm run dev`
+  against the fake mailbox (`#offline` shows the waiting list), light and dark; not yet in the Tauri window.

@@ -1,6 +1,6 @@
 # Sprint 7 — Attachments, contacts, snippets
 
-**Status:** todo
+**Status:** in progress · started 2026-10-15
 
 ## Delivery scope
 

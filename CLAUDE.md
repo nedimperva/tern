@@ -4,12 +4,16 @@ Tern is a local-first desktop mail client for any IMAP account. It has a Rust en
 shell (`src-tauri`) and a SolidJS UI (`src`). The README covers layout, setup and keys; this file covers state and
 decisions that aren't visible from the code.
 
-## Where things stand (2026-10-13, evening)
+## Where things stand (2026-10-15)
 
 - The workspace compiles and runs on Linux (Omarchy/Hyprland); CI checks Linux and Windows on every PR. The app
   syncs real mail: the owner's SmarterMail account worked before it was paused, and the local dev server
   (`scripts/dev-mail-server.sh`, Stalwart) is what development uses now. No real-provider account is in use
   until the reliability gate passes (package 00).
+- Built and tested against the dev server: sync (IDLE, QRESYNC, headers first), conversations and the keyboard
+  shell (package 02), compose with drafts, attachments, signatures and autocomplete (package 03), received
+  attachments open/save, and the status strip's "changes waiting" / problems lists (package 08's M1 slice).
+  Owner acceptance on a real provider is still open for all of it. Next M1 item: search filters (package 06).
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items, so Gmail goes through the Gmail API (also provisional), not IMAP.

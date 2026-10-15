@@ -125,6 +125,21 @@ export type OutboxProblem = {
   /** A send that broke off after the server got the message: it may have gone out already. */
   maybeSent: boolean;
 };
+/** Work on its way to the server: in the undo window, waiting for the connection, or between tries. */
+export type OutboxWaiting = {
+  id: number;
+  accountId: number;
+  what: string;
+  /** Unix seconds of the next try. */
+  notBefore: number;
+  attempts: number;
+  /** Why the last try failed; empty if none did. */
+  lastError: string;
+  /** The sync worker has it in hand right now. */
+  sending: boolean;
+  /** False while it is being sent, or when later changes depend on it. */
+  canDiscard: boolean;
+};
 
 export interface Api {
   accounts(): Promise<Account[]>;
@@ -168,6 +183,11 @@ export interface Api {
   retryProblem(id: number): Promise<void>;
   /** Drops the work and puts the mailbox back as it was before it, as undo would. */
   discardProblem(id: number): Promise<void>;
+  waiting(): Promise<OutboxWaiting[]>;
+  /** Takes waiting work back, as undo would; false if it was sent meanwhile or later work depends on it. */
+  discardWaiting(id: number): Promise<boolean>;
+  /** The system says the network is back: reconnect now instead of after the retry wait. */
+  networkBack(): void;
   onChange(f: () => void): void;
   /** Mutes (or unmutes) the conversations of these messages: later replies skip the inbox. */
   mute(ids: number[], mute: boolean): Promise<void>;
@@ -197,6 +217,9 @@ const tauri: Api = {
   problems: () => invoke("problems"),
   retryProblem: (id) => invoke("retry_problem", { id }),
   discardProblem: (id) => invoke("discard_problem", { id }),
+  waiting: () => invoke("waiting"),
+  discardWaiting: (id) => invoke("discard_waiting", { id }),
+  networkBack: () => void invoke("network_back"),
   undo: (token) => invoke("undo", { token }),
   send: (accountId, draft, delay, draftId) => invoke("send", { accountId, draft, delay, draftId }),
   saveDraft: (id, accountId, draft, uploadNow) => invoke("save_draft", { id, accountId, draft, uploadNow }),
@@ -312,6 +335,14 @@ function fake(): Api {
     };
   });
   const listeners: (() => void)[] = [];
+  let waiting: OutboxWaiting[] =
+    location.hash === "#offline"
+      ? [
+          { id: 3, accountId: 1, what: "Move 2 messages to Archive", notBefore: now - 60, attempts: 0, lastError: "", sending: false, canDiscard: false },
+          { id: 4, accountId: 1, what: "Star 2 messages", notBefore: now - 50, attempts: 0, lastError: "", sending: false, canDiscard: true },
+          { id: 5, accountId: 1, what: "Send “Notes from today”", notBefore: now + 40, attempts: 2, lastError: "Could not connect to smtp.example.com: timed out", sending: false, canDiscard: true },
+        ]
+      : [];
   let problems: OutboxProblem[] = [
     {
       id: 1,
@@ -485,6 +516,14 @@ function fake(): Api {
       problems = problems.filter((p) => p.id !== id);
       changed();
     },
+    // Open the page with #offline to see changes waiting for the connection.
+    waiting: async () => waiting,
+    discardWaiting: async (id) => {
+      waiting = waiting.filter((w) => w.id !== id);
+      changed();
+      return true;
+    },
+    networkBack: () => {},
     onChange: (f) => void listeners.push(f),
     // Open the page with #offline to see how a lost connection looks.
     syncStates: async () => ({ 1: location.hash === "#offline" ? "offline" : "idle" }),

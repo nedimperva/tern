@@ -8,6 +8,7 @@ import {
   type Folder,
   type MessageRow,
   type OutboxProblem,
+  type OutboxWaiting,
   type SyncState,
   type Target,
   type ThreadMessage,
@@ -96,6 +97,19 @@ export default function App() {
   const [setup, setSetup] = createSignal(false);
   const [ready, setReady] = createSignal(false);
   const [problems, setProblems] = createSignal<OutboxProblem[]>([]);
+  const [waiting, setWaiting] = createSignal<OutboxWaiting[]>([]);
+  // Seconds, ticking only while work waits, so items leave their undo window without an event.
+  const [clock, setClock] = createSignal(Date.now() / 1000);
+  const [online, setOnline] = createSignal(navigator.onLine);
+  createEffect(() => {
+    if (!waiting().length) return;
+    const timer = setInterval(() => setClock(Date.now() / 1000), 1000);
+    onCleanup(() => clearInterval(timer));
+  });
+  /** Waiting work worth mentioning: past its undo window by a moment, tried before, or going out now. A change
+   * still in its undo window is the toast's business. */
+  const late = () => waiting().filter((w) => w.sending || w.attempts > 0 || w.notBefore + 2 <= clock());
+
   const [reviewing, setReviewing] = createSignal(false);
   const [sheet, setSheet] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
@@ -146,11 +160,12 @@ export default function App() {
   }
 
   async function refresh() {
-    const [a, f, p] = await Promise.all([api.accounts(), api.folders(), api.problems()]);
+    const [a, f, p, w] = await Promise.all([api.accounts(), api.folders(), api.problems(), api.waiting()]);
     batch(() => {
       setAccounts(a);
       setFolders(f);
       setProblems(p);
+      setWaiting(w);
       setReady(true);
     });
     await load();
@@ -180,12 +195,22 @@ export default function App() {
   };
 
   onMount(() => {
-    api.onSyncState((id, state) => setSyncStates({ ...syncStates(), [id]: state }));
+    api.onSyncState((id, state) => {
+      setSyncStates({ ...syncStates(), [id]: state });
+      // A lost connection can put work back in the queue without a mail change.
+      void api.waiting().then(setWaiting);
+    });
     void api.syncStates().then((s) => setSyncStates({ ...s, ...syncStates() }));
     api.onChange(onChange);
     const onResize = () => setWidth(window.innerWidth);
     window.addEventListener("resize", onResize);
     onCleanup(() => window.removeEventListener("resize", onResize));
+    // The system knows before a dead connection times out; reconnect now rather than after the retry wait.
+    const onOnline = () => (setOnline(true), api.networkBack());
+    const onOffline = () => setOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    onCleanup(() => (window.removeEventListener("online", onOnline), window.removeEventListener("offline", onOffline)));
     void loadSettings();
     void refresh();
     // Fetch the compose editor while the person reads, so the first "c" opens at once.
@@ -640,7 +665,9 @@ export default function App() {
     { name: "Settings", keys: keyLabel("Ctrl+,"), group: "Settings", run: () => setSettingsOpen(true) },
     ...(openRow() && openMuted() ? [{ name: "Unmute conversation", group: "Actions", run: () => void unmute() }] : []),
     { name: "Add account", group: "Accounts", run: () => setSetup(true) },
-    ...(problems().length ? [{ name: "Review changes that didn't go through", run: () => setReviewing(true) }] : []),
+    ...(problems().length || late().length
+      ? [{ name: problems().length ? "Review changes that didn't go through" : "Review changes waiting to go out", run: () => setReviewing(true) }]
+      : []),
     ...folders().map((f) => ({
       group: "Go to",
       name: `Go to ${ROLE_NAMES[f.role] ?? f.name} — ${accounts().find((a) => a.id === f.accountId)?.email ?? ""}`,
@@ -705,13 +732,26 @@ export default function App() {
   };
   const inboxZero = () => ready() && !searching() && rows().length === 0 && "role" in target() && (target() as { role: string }).role === "inbox";
 
-  /** One sentence for every account together; the rail names the account in trouble. */
+  /** One sentence for every account together, naming the account when only some are in trouble. */
   const syncSentence = () => {
-    const states = Object.values(syncStates());
-    if (states.includes("auth-failed")) return { text: "Sign-in failed. Open accounts with Ctrl+\\.", tone: "danger" };
-    if (states.includes("offline")) return { text: "Offline. Changes wait and go out when back.", tone: "warn" };
-    if (states.includes("connecting")) return { text: "Connecting…", tone: "warn" };
-    return { text: states.length ? "Up to date" : "", tone: "ok" };
+    const entries = Object.entries(syncStates());
+    const several = entries.length > 1;
+    const inState = (s: SyncState) =>
+      entries.filter(([, state]) => state === s).map(([id]) => accounts().find((a) => a.id === Number(id)));
+    const refused = inState("auth-failed");
+    if (refused.length) {
+      const who = several && refused.length === 1 && refused[0] ? refused[0].email : "The server";
+      return { text: `${who} refused the password. Open accounts with Ctrl+\\.`, tone: "danger" };
+    }
+    const unreachable = inState("offline");
+    if (unreachable.length) {
+      if (!online() || (several && unreachable.length === entries.length))
+        return { text: "Offline. Changes are kept and go out when you're back.", tone: "warn" };
+      const host = unreachable.length === 1 && unreachable[0] ? unreachable[0].imapHost : "the mail server";
+      return { text: `Can't reach ${host}. Trying again.`, tone: "warn" };
+    }
+    if (entries.some(([, s]) => s === "connecting")) return { text: "Connecting…", tone: "warn" };
+    return { text: entries.length ? "Up to date" : "", tone: "ok" };
   };
 
   return (
@@ -785,6 +825,11 @@ export default function App() {
             <span class="dot" />
             {syncSentence().text}
           </span>
+          <Show when={late().length}>
+            <button class="link waiting-link" onClick={() => setReviewing(true)}>
+              {late().length === 1 ? "1 change waiting" : `${late().length} changes waiting`}
+            </button>
+          </Show>
           <Show when={problems().length}>
             <button class="link problems-link" onClick={() => setReviewing(true)}>
               {problems().length === 1 ? "1 change didn't go through" : `${problems().length} changes didn't go through`}
@@ -855,6 +900,15 @@ export default function App() {
       <Show when={reviewing()}>
         <ProblemsDialog
           problems={problems()}
+          waiting={late()}
+          offline={!online() || Object.values(syncStates()).includes("offline")}
+          now={clock()}
+          onDiscardWaiting={(id) =>
+            void api.discardWaiting(id).then((done) => {
+              if (!done) showToast("It went out, or later changes depend on it, so it stays.", []);
+              void refresh();
+            })
+          }
           onRetry={(id) => void api.retryProblem(id).then(refresh)}
           onDiscard={(id) => void api.discardProblem(id).then(refresh)}
           onEdit={(id) => void api.problemToDraft(id).then((record) => (setReviewing(false), resume(record), refresh()))}

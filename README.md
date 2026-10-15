@@ -125,8 +125,8 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 The roadmap controls delivery order; these are engine/UI work items, not a fixed weekly schedule.
 Choose the initial Gmail transport through the early [decision gate](docs/research/gmail-backend-decision.md).
 
-- Fetch headers and a short preview first, then whole bodies, so a new account fills its inbox faster
-- OAuth for Gmail (Gmail API) and Microsoft, since Microsoft no longer accepts passwords
-- A conversation list (one row per thread) in place of the current one row per message
-- Saving drafts to the server, attachments in compose, and copying sent mail to Sent where the server doesn't
-- Notifications, a tray icon, starting at login, and auto-update on Windows
+- Search filters (`from:`, `is:unread`, `in:`, dates) and a note when results only cover downloaded bodies
+- Real-provider acceptance (Fastmail or another test account) for sync, compose, drafts and attachments
+- Gmail through the chosen backend, with OAuth; Microsoft later (it no longer accepts passwords)
+- Snippets, snooze and basic splits for the beta
+- Notifications, a tray icon, `mailto:`, starting at login, and Linux packages

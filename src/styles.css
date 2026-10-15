@@ -370,6 +370,11 @@ button.primary kbd {
   text-decoration: underline;
   font-size: inherit;
 }
+.status .waiting-link {
+  color: var(--fg-2);
+  text-decoration: underline;
+  font-size: inherit;
+}
 .status .hints {
   display: flex;
   gap: var(--s-3);
@@ -1060,6 +1065,8 @@ button.fold {
 
 .problems {
   width: min(560px, 92vw);
+  max-height: 76vh;
+  overflow-y: auto;
   background: var(--bg-1);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow);
@@ -1071,6 +1078,9 @@ button.fold {
 .problems h2 {
   margin: 0;
   font-size: var(--t-lg);
+}
+.problems .problem + h2 {
+  margin-top: var(--s-3);
 }
 .problem {
   display: flex;

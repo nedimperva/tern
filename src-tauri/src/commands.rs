@@ -5,8 +5,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
     mime, secrets, sync, Account, AccountConfig, Action, Applied, Contact, Cursor, Draft, DraftRecord,
-    Folder, ListTarget, MessageRow, OutboxProblem, OutgoingAttachment, ReplyInit, ReplyKind, ThreadMessage,
-    ThreadRow,
+    Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting, OutgoingAttachment, ReplyInit, ReplyKind,
+    ThreadMessage, ThreadRow,
 };
 
 use std::collections::HashMap;
@@ -148,6 +148,27 @@ pub async fn retry_problem(app: AppHandle, state: State<'_, AppState>, id: i64) 
 pub async fn discard_problem(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<()> {
     state.store.discard_outbox(id).map_err(text)?;
     let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
+/// Work still on its way to the server, for the "changes waiting" list.
+#[tauri::command]
+pub async fn waiting(state: State<'_, AppState>) -> Reply<Vec<OutboxWaiting>> {
+    state.store.outbox_waiting().map_err(text)
+}
+
+/// Takes back waiting work, as undo would. False when it was being sent meanwhile, or later work depends on it.
+#[tauri::command]
+pub async fn discard_waiting(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<bool> {
+    let done = state.store.discard_waiting(id).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(done)
+}
+
+/// The window saw the network come back: reconnect every account now instead of after its backoff.
+#[tauri::command]
+pub async fn network_back() -> Reply<()> {
+    sync::network_back();
     Ok(())
 }
 

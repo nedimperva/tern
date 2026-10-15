@@ -1682,38 +1682,52 @@ impl Store {
         let tx = conn.transaction()?;
         let mut undone = false;
         for id in token {
-            let payload: Option<String> = tx
-                .query_row(
-                    "SELECT payload FROM outbox WHERE id = ?1 AND claimed = 0 AND attempts = 0",
-                    [id],
-                    |r| r.get(0),
-                )
-                .optional()?;
-            let Some(payload) = payload else { continue };
-            let op: OutboxOp = serde_json::from_str(&payload)?;
-            // Later work on the same messages counts on this move happening; taking it back would strand that.
-            if waited_on(&tx, *id, &op)? {
-                continue;
-            }
-            revert(&tx, &op)?;
-            // An unsent message that was a draft is a draft again, back in Drafts.
-            if let OutboxOp::Send(draft) = &op {
-                let account_id: i64 =
-                    tx.query_row("SELECT account_id FROM outbox WHERE id = ?1", [id], |r| r.get(0))?;
-                let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
-                let restored = tx.execute(
-                    "UPDATE drafts SET sent_at = NULL WHERE account_id = ?1 AND message_id = ?2 AND sent_at IS NOT NULL",
-                    params![account_id, bare],
-                )?;
-                if restored > 0 {
-                    mirror_draft(&tx, account_id, draft)?;
-                }
-            }
-            tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
-            undone = true;
+            undone |= take_back(&tx, *id, false)?;
         }
         tx.commit()?;
         Ok(undone)
+    }
+
+    /// Work still waiting to go out (in the undo window, waiting for the connection, or between retries), oldest
+    /// first. Given-up work is in `outbox_problems` instead.
+    pub fn outbox_waiting(&self) -> Result<Vec<OutboxWaiting>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, account_id, payload, not_before, attempts, COALESCE(last_error, ''), claimed
+             FROM outbox WHERE gave_up_at IS NULL ORDER BY id",
+        )?;
+        type Row = (i64, i64, String, i64, i64, String, i64);
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?))
+            })?
+            .collect::<rusqlite::Result<Vec<Row>>>()?;
+        rows.into_iter()
+            .map(|(id, account_id, payload, not_before, attempts, last_error, claimed)| {
+                let op = serde_json::from_str(&payload)?;
+                let can_discard = claimed == 0 && !waited_on(&conn, id, &op)?;
+                Ok(OutboxWaiting {
+                    id,
+                    account_id,
+                    what: describe(&op),
+                    not_before,
+                    attempts,
+                    last_error,
+                    sending: claimed != 0,
+                    can_discard,
+                })
+            })
+            .collect()
+    }
+
+    /// Drops waiting work and puts the mailbox back as it was, as undo would, even after failed tries. False when
+    /// it is already being sent, gone, or later work depends on it.
+    pub fn discard_waiting(&self, id: i64) -> Result<bool> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let done = take_back(&tx, id, true)?;
+        tx.commit()?;
+        Ok(done)
     }
 
     /// Takes the account's work that is due, in the order it was made. Each must end in `outbox_done` or
@@ -2075,6 +2089,42 @@ fn waited_on(conn: &Connection, id: i64, op: &OutboxOp) -> Result<bool> {
     Ok(false)
 }
 
+/// Reverts queued work that has not reached the server and drops it. `tried`: also work that failed a try (the
+/// failure was definite: an uncertain send is a problem, not waiting work). Work being sent now, or that later work
+/// depends on, stays.
+fn take_back(tx: &Connection, id: i64, tried: bool) -> Result<bool> {
+    let payload: Option<String> = tx
+        .query_row(
+            "SELECT payload FROM outbox
+             WHERE id = ?1 AND claimed = 0 AND gave_up_at IS NULL AND (attempts = 0 OR ?2)",
+            params![id, tried],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(payload) = payload else { return Ok(false) };
+    let op: OutboxOp = serde_json::from_str(&payload)?;
+    // Later work on the same messages counts on this move happening; taking it back would strand that.
+    if waited_on(tx, id, &op)? {
+        return Ok(false);
+    }
+    revert(tx, &op)?;
+    // An unsent message that was a draft is a draft again, back in Drafts.
+    if let OutboxOp::Send(draft) = &op {
+        let account_id: i64 =
+            tx.query_row("SELECT account_id FROM outbox WHERE id = ?1", [id], |r| r.get(0))?;
+        let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
+        let restored = tx.execute(
+            "UPDATE drafts SET sent_at = NULL WHERE account_id = ?1 AND message_id = ?2 AND sent_at IS NOT NULL",
+            params![account_id, bare],
+        )?;
+        if restored > 0 {
+            mirror_draft(tx, account_id, draft)?;
+        }
+    }
+    tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
+    Ok(true)
+}
+
 fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
     match op {
         OutboxOp::Flags { revert, .. } => {
@@ -2403,6 +2453,48 @@ mod tests {
         assert!(store.outbox_problems().unwrap().is_empty());
         assert!(!store.list(&ListTarget::Folder(inbox), None, 10).unwrap()[0].seen, "back to unread");
         assert!(store.pending_uids(account, "INBOX").unwrap().is_empty(), "sync may update it again");
+    }
+
+    #[test]
+    fn waiting_work_is_listed_until_it_goes_or_is_given_up() {
+        let (store, account, inbox, _) = setup();
+        let work = queued_mark_read(&store, account, inbox);
+        let waiting = store.outbox_waiting().unwrap();
+        assert_eq!((waiting[0].id, waiting[0].what.as_str()), (work, "Mark read 1 message"));
+        assert!(waiting[0].sending && !waiting[0].can_discard, "claimed: in hand, so not discardable");
+        store.outbox_failed(work, "timed out", Failure::Retry).unwrap();
+        let waiting = store.outbox_waiting().unwrap();
+        assert_eq!((waiting[0].attempts, waiting[0].last_error.as_str()), (1, "timed out"));
+        assert!(!waiting[0].sending && waiting[0].can_discard);
+        assert!(waiting[0].not_before > now(), "waits before the next try");
+        store.outbox_failed(work, "550", Failure::Permanent).unwrap();
+        assert!(store.outbox_waiting().unwrap().is_empty(), "a problem now, not waiting");
+    }
+
+    #[test]
+    fn discarding_waiting_work_reverts_it_even_after_a_failed_try() {
+        let (store, account, inbox, _) = setup();
+        let work = queued_mark_read(&store, account, inbox);
+        assert!(!store.discard_waiting(work).unwrap(), "not while it is being sent");
+        store.outbox_failed(work, "timed out", Failure::Retry).unwrap();
+        assert!(!store.undo(&[work]).unwrap(), "undo is for the undo window only");
+        assert!(store.discard_waiting(work).unwrap());
+        assert!(store.outbox_waiting().unwrap().is_empty());
+        assert!(!store.list(&ListTarget::Folder(inbox), None, 10).unwrap()[0].seen, "back to unread");
+    }
+
+    #[test]
+    fn waiting_work_that_later_work_depends_on_cannot_be_discarded() {
+        let (store, account, inbox, _) = setup();
+        store.insert_messages(account, inbox, &[message(1, "a", 1)]).unwrap();
+        let id = store.list(&ListTarget::Folder(inbox), None, 1).unwrap()[0].id;
+        let archived = store.apply(&[id], Action::Archive, 5).unwrap().token;
+        store.apply(&[id], Action::Star, 5).unwrap();
+        let waiting = store.outbox_waiting().unwrap();
+        assert_eq!(waiting.len(), 2);
+        assert!(!waiting[0].can_discard && waiting[1].can_discard, "the star waits for the move");
+        assert!(!store.discard_waiting(archived[0]).unwrap());
+        assert_eq!(store.outbox_waiting().unwrap().len(), 2);
     }
 
     #[test]

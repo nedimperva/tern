@@ -391,6 +391,25 @@ pub struct OutboxProblem {
     pub maybe_sent: bool,
 }
 
+/// Queued work not yet on the server and not given up, for the "changes waiting" list.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutboxWaiting {
+    pub id: i64,
+    pub account_id: i64,
+    /// As in `OutboxProblem::what`.
+    pub what: String,
+    /// Unix seconds when it is next tried: the end of the undo window, or of the wait after a failed try.
+    pub not_before: i64,
+    pub attempts: i64,
+    /// Why the last try failed; empty if none did.
+    pub last_error: String,
+    /// The sync worker has it in hand right now.
+    pub sending: bool,
+    /// Whether discarding it would leave nothing stranded: not in hand, and no later work depends on it.
+    pub can_discard: bool,
+}
+
 /// How a try at queued work went wrong, which decides what happens to it next.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Failure {
