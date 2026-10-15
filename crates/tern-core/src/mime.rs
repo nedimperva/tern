@@ -1,6 +1,7 @@
 use mail_parser::{HeaderValue, MessageParser, MimeHeaders, PartType};
 
 use crate::models::{NewMessage, Part};
+use crate::smtp::FileBytes;
 
 /// Parses one raw RFC 5322 message. None when it is not mail at all.
 pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessage> {
@@ -51,8 +52,8 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
     })
 }
 
-/// The attached files of a raw message: (name, type, contents). For forwarding them.
-pub fn attachment_files(raw: &[u8]) -> Vec<(String, String, Vec<u8>)> {
+/// The attached files of a raw message: (name, type, contents). For forwarding and opening them.
+pub fn attachment_files(raw: &[u8]) -> Vec<FileBytes> {
     let Some(msg) = MessageParser::default().parse(raw) else { return Vec::new() };
     msg.attachments()
         .map(|a| {
@@ -63,6 +64,109 @@ pub fn attachment_files(raw: &[u8]) -> Vec<(String, String, Vec<u8>)> {
             (a.attachment_name().unwrap_or("Untitled").to_string(), mime, a.contents().to_vec())
         })
         .collect()
+}
+
+/// Which of `files` (from `attachment_files`) is the `index`-th of the attachments a message's row lists. The list
+/// can come from BODYSTRUCTURE, which may count parts a little differently from the parser, so files are matched by
+/// name (the n-th file of that name for the n-th listed one) and by position only when no name matches.
+pub fn pick_attachment(files: &[FileBytes], listed: &[String], index: usize) -> Option<usize> {
+    let name = listed.get(index)?;
+    let nth = listed[..index].iter().filter(|n| *n == name).count();
+    let by_name = files.iter().enumerate().filter(|(_, f)| f.0 == *name).map(|(i, _)| i).nth(nth);
+    by_name.or_else(|| (index < files.len() && !files.iter().any(|f| f.0 == *name)).then_some(index))
+}
+
+/// A name that is safe to create on any system Tern runs on: no folders, no characters Windows refuses, none of
+/// its reserved device names, not hidden, not too long. Attachment names come from strangers.
+pub fn safe_file_name(name: &str) -> String {
+    let mut clean: String =
+        name.chars().map(|c| if c.is_control() || r#"/\:*?"<>|"#.contains(c) { '_' } else { c }).collect();
+    clean = clean.trim().trim_matches('.').trim().to_string();
+    if clean.chars().count() > 150 {
+        let (stem, ext) = match clean.rsplit_once('.') {
+            Some((stem, ext)) if ext.len() <= 10 => (stem.to_string(), format!(".{ext}")),
+            _ => (clean.clone(), String::new()),
+        };
+        clean = stem.chars().take(150 - ext.chars().count()).collect::<String>() + &ext;
+    }
+    let stem = clean.split('.').next().unwrap_or("").trim().to_ascii_uppercase();
+    let reserved = ["CON", "PRN", "AUX", "NUL"].contains(&stem.as_str())
+        || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.len() == 4
+            && stem.as_bytes()[3].is_ascii_digit());
+    if clean.is_empty() {
+        "attachment".into()
+    } else if reserved {
+        format!("_{clean}")
+    } else {
+        clean
+    }
+}
+
+/// Files a double-click would run as a program, or mount as a drive, rather than show. Tern saves these but does
+/// not open them: a mail attachment is the oldest way in.
+pub fn runs_as_program(name: &str) -> bool {
+    const RISKY: &[&str] = &[
+        "exe",
+        "msi",
+        "msp",
+        "msix",
+        "appx",
+        "appxbundle",
+        "bat",
+        "cmd",
+        "com",
+        "scr",
+        "pif",
+        "cpl",
+        "msc",
+        "vb",
+        "vbs",
+        "vbe",
+        "js",
+        "jse",
+        "ws",
+        "wsf",
+        "wsh",
+        "wsc",
+        "ps1",
+        "psm1",
+        "lnk",
+        "url",
+        "scf",
+        "hta",
+        "jar",
+        "reg",
+        "inf",
+        "dll",
+        "sys",
+        "application",
+        "gadget",
+        "settingcontent-ms",
+        "library-ms",
+        "iso",
+        "img",
+        "vhd",
+        "vhdx",
+        "appimage",
+        "sh",
+        "bash",
+        "run",
+        "bin",
+        "desktop",
+        "deb",
+        "rpm",
+        "py",
+        "pyw",
+        "pl",
+        "rb",
+        "command",
+        "app",
+        "pkg",
+        "dmg",
+    ];
+    let lower = name.trim_end_matches(['.', ' ']).to_ascii_lowercase();
+    lower.rsplit_once('.').is_some_and(|(_, ext)| RISKY.contains(&ext))
 }
 
 /// The attachments of a parsed message, as parts. They have no IMAP section number (the body is already here).
@@ -259,6 +363,37 @@ Date: Mon, 12 Oct 2026 10:00:00 +0000\r\n\r\n";
         assert_eq!((m.size, m.headers_only, m.flagged), (Some(4321), true, true));
         assert!(m.body_text.is_none() && m.snippet.is_empty());
         assert!(m.date > 0);
+    }
+
+    #[test]
+    fn listed_attachments_are_found_by_name_then_place() {
+        let file = |n: &str| (n.to_string(), "application/pdf".to_string(), n.as_bytes().to_vec());
+        let files = [file("a.pdf"), file("logo.png"), file("a.pdf")];
+        let listed = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // BODYSTRUCTURE did not count the inline logo; the second "a.pdf" is still the second file of that name.
+        assert_eq!(pick_attachment(&files, &listed(&["a.pdf", "a.pdf"]), 1), Some(2));
+        assert_eq!(pick_attachment(&files, &listed(&["a.pdf", "logo.png"]), 1), Some(1));
+        // A name the parser does not know: by position.
+        assert_eq!(pick_attachment(&files, &listed(&["Untitled", "x", "y"]), 1), Some(1));
+        assert_eq!(pick_attachment(&files, &listed(&["a.pdf"]), 3), None);
+    }
+
+    #[test]
+    fn attachment_names_are_made_safe() {
+        assert_eq!(safe_file_name("../../etc/passwd"), "_.._etc_passwd");
+        assert_eq!(safe_file_name("C:\\Windows\\x.dll"), "C__Windows_x.dll");
+        assert_eq!(safe_file_name("con.txt"), "_con.txt");
+        assert_eq!(safe_file_name("COM1"), "_COM1");
+        assert_eq!(safe_file_name("..."), "attachment");
+        assert_eq!(safe_file_name("report.pdf"), "report.pdf");
+        let long = format!("{}.pdf", "x".repeat(300));
+        assert!(safe_file_name(&long).ends_with("x.pdf") && safe_file_name(&long).chars().count() == 150);
+        assert!(
+            runs_as_program("invoice.pdf.exe") && runs_as_program("Setup.MSI") && runs_as_program("x.lnk. ")
+        );
+        assert!(
+            !runs_as_program("invoice.pdf") && !runs_as_program("route.gpx") && !runs_as_program("README")
+        );
     }
 
     fn part(mime: &str, encoding: &str, charset: &str) -> Part {

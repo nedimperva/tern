@@ -137,6 +137,8 @@ fn main() {
             commands::undo_discard,
             commands::problem_to_draft,
             commands::add_attachments,
+            commands::open_attachment,
+            commands::save_attachment,
             commands::contacts,
             commands::muted,
         ])

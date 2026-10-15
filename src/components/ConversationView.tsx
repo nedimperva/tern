@@ -105,6 +105,53 @@ function size(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
+/** The files of a received message: a chip opens one with the system's program, the arrow beside it saves it. */
+function Attachments(props: { message: ThreadMessage }) {
+  const [busy, setBusy] = createSignal<number | null>(null);
+  const [problem, setProblem] = createSignal("");
+  const run = async (index: number, work: () => Promise<unknown>) => {
+    if (busy() !== null) return;
+    setBusy(index);
+    setProblem("");
+    try {
+      await work();
+    } catch (e) {
+      setProblem(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <>
+      <div class="attachments" aria-label="Attachments">
+        <For each={props.message.attachments}>
+          {(a, i) => (
+            <span class="file" classList={{ busy: busy() === i() }} title={a.mime}>
+              <button type="button" class="open" onClick={() => void run(i(), () => api.openAttachment(props.message.id, i()))} title={`Open ${a.name}`}>
+                <Icon name="paperclip" size={13} />
+                <span class="name">{a.name}</span>
+                <span class="size">{busy() === i() ? "Getting it…" : size(a.size)}</span>
+              </button>
+              <button
+                type="button"
+                class="save"
+                onClick={() => void run(i(), () => api.saveAttachment(props.message.id, i(), a.name))}
+                aria-label={`Save ${a.name}`}
+                title="Save"
+              >
+                <Icon name="download" size={13} />
+              </button>
+            </span>
+          )}
+        </For>
+      </div>
+      <Show when={problem()}>
+        <p class="attachment-problem">{problem()}</p>
+      </Show>
+    </>
+  );
+}
+
 const PALETTE = ["#5b5bd6", "#2f9e6e", "#d0453f", "#c98a1b", "#0e9bb5", "#b24fb0", "#7a7f8a", "#e07a30"];
 
 /** A colour per sender, the same every time (docs/design/ui.md §4.2). */
@@ -169,17 +216,7 @@ export function ConversationView(props: {
                   </Show>
                 </Show>
                 <Show when={m.attachments.length}>
-                  <div class="attachments" aria-label="Attachments">
-                    <For each={m.attachments}>
-                      {(a) => (
-                        <span class="file" title={a.mime}>
-                          <Icon name="paperclip" size={13} />
-                          <span class="name">{a.name}</span>
-                          <span class="size">{size(a.size)}</span>
-                        </span>
-                      )}
-                    </For>
-                  </div>
+                  <Attachments message={m} />
                 </Show>
               </div>
             </Show>

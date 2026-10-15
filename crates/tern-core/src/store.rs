@@ -1450,6 +1450,31 @@ impl Store {
         })
     }
 
+    /// Where a message is on the server (account, place) and the names of the attachments its row lists, for
+    /// downloading one. None while the message has no uid there yet.
+    pub fn attachment_source(&self, id: i64) -> Result<Option<(i64, ForwardOf, Vec<String>)>> {
+        let found = self
+            .conn()
+            .query_row(
+                "SELECT m.account_id, f.name, m.uid, f.uid_validity, m.message_id, m.parts FROM messages m
+                 JOIN folders f ON f.id = m.folder_id WHERE m.id = ?1 AND m.uid IS NOT NULL",
+                [id],
+                |r| {
+                    let at = ForwardOf {
+                        folder: r.get(1)?,
+                        uid: r.get(2)?,
+                        validity: r.get(3)?,
+                        message_id: r.get(4)?,
+                    };
+                    Ok((r.get(0)?, at, r.get::<_, Option<String>>(5)?))
+                },
+            )
+            .optional()?;
+        Ok(found.map(|(account, at, parts)| {
+            (account, at, attachments_of(parts.as_deref()).into_iter().map(|a| a.name).collect())
+        }))
+    }
+
     pub fn thread(&self, id: i64) -> Result<Vec<ThreadMessage>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(&format!(

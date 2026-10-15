@@ -56,6 +56,8 @@ const BODY_ROUND: i64 = 200;
 /// Longest one IMAP command may take. Without a limit, a reply the parser never finishes leaves the worker waiting
 /// forever, and with it new mail and the outbox.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
+/// Longest one whole-message fetch may take when its size is not known first (forwarding, opening attachments).
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 pub async fn connect(config: &AccountConfig, password: &str) -> Result<Session> {
     imap::connect(&config.imap_host, config.imap_port, config.imap_security, &config.username, password).await
@@ -951,30 +953,65 @@ async fn run_op<S: Stream>(
     Ok(Vec::new())
 }
 
-/// The attachments of a forwarded message, fetched from the server: by its uid while the folder keeps its
-/// numbering, else by Message-ID. Gone from the server: the forward waits for the person rather than going out
-/// without them.
+/// The attachments of a forwarded message, fetched from the server. Gone from the server: the forward waits for the
+/// person rather than going out without them.
 async fn forwarded_files<S: Stream>(
     s: &mut Imap<S>,
     original: &crate::models::ForwardOf,
 ) -> Result<Vec<smtp::FileBytes>> {
-    let gone = || {
-        Unworkable(
+    let raw = message_source(s, original).await.map_err(|e| match e.downcast::<Gone>() {
+        Ok(_) => Unworkable(
             "The forwarded message is no longer on the server, so its attachments cannot go along".into(),
         )
-    };
-    let selected = within(s.select(&original.folder)).await?;
-    let uid = if original.validity.is_none() || selected.uid_validity == original.validity {
-        Some(original.uid)
-    } else if let Some(id) = &original.message_id {
+        .into(),
+        Err(e) => e,
+    })?;
+    Ok(mime::attachment_files(&raw))
+}
+
+/// A message is no longer where the store last saw it, nor anywhere in that folder.
+#[derive(Debug)]
+pub struct Gone;
+
+impl std::fmt::Display for Gone {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("The message is no longer on the server")
+    }
+}
+
+impl std::error::Error for Gone {}
+
+/// A message's whole source: by its uid while the folder keeps its numbering, else by Message-ID.
+async fn message_source<S: Stream>(s: &mut Imap<S>, at: &crate::models::ForwardOf) -> Result<Vec<u8>> {
+    let selected = within(s.select(&at.folder)).await?;
+    let uid = if at.validity.is_none() || selected.uid_validity == at.validity {
+        Some(at.uid)
+    } else if let Some(id) = &at.message_id {
         within(s.find_message_id(id)).await?.into_iter().max()
     } else {
         None
     };
-    let uid = uid.ok_or_else(gone)?;
-    let raw =
-        within(s.bodies(&uid.to_string())).await?.into_iter().next().and_then(|f| f.body).ok_or_else(gone)?;
-    Ok(mime::attachment_files(&raw))
+    let uid = uid.ok_or(Gone)?;
+    // The size is not known before the fetch; allow for a big message on a slow line.
+    let raw = within_for(DOWNLOAD_TIMEOUT, s.bodies(&uid.to_string()))
+        .await?
+        .into_iter()
+        .next()
+        .and_then(|f| f.body);
+    Ok(raw.ok_or(Gone)?)
+}
+
+/// Fetches a message's source on a connection of its own, so opening an attachment neither waits behind the sync
+/// worker nor holds it up. The one read the UI starts on the network: the bytes are not kept in the store.
+pub async fn download(
+    config: &AccountConfig,
+    password: &str,
+    at: &crate::models::ForwardOf,
+) -> Result<Vec<u8>> {
+    let mut s = within(connect(config, password)).await?;
+    let raw = message_source(&mut s, at).await;
+    let _ = within(s.logout()).await;
+    raw
 }
 
 /// Opens `folder` and works out which uids queued work should act on, as uid → message id (when known).
@@ -1715,6 +1752,17 @@ mod tests {
         assert_eq!(files.len(), 2);
         assert_eq!(files[0].2, binary, "binary intact");
         assert_eq!(files[1].2, "Plain notes, ünïcode.".as_bytes(), "text intact");
+
+        // Opening one from the conversation: the row says where the message is and what it lists, and the
+        // download on a connection of its own finds each listed file.
+        let (_, at, listed) = store.attachment_source(row.id).unwrap().unwrap();
+        assert_eq!(listed, ["data.bin", "notes.txt"]);
+        let raw = super::download(&config, &password, &at).await.unwrap();
+        let downloaded = crate::mime::attachment_files(&raw);
+        for (i, want) in [&binary[..], "Plain notes, ünïcode.".as_bytes()].into_iter().enumerate() {
+            let found = crate::mime::pick_attachment(&downloaded, &listed, i).unwrap();
+            assert_eq!(downloaded[found].2, want);
+        }
 
         // Forward it: the attachments come from the server copy of the original.
         let init = store.reply_init(row.id, ReplyKind::Forward).unwrap();
