@@ -19,10 +19,24 @@ function frameHtml(html: string, remote: boolean): string {
 </style></head><body>${html}</body></html>`;
 }
 
-function HtmlBody(props: { html: string; sender: string }) {
+/** Images the HTML shows from the message's own parts. */
+const CID = /(["'])cid:([^"']+)\1/gi;
+
+function HtmlBody(props: { html: string; sender: string; messageId: number }) {
   const trusted = () => settings.loadImages === "always" || settings.imagesFrom.includes(props.sender.toLowerCase());
   const [asked, setAsked] = createSignal(false);
   const remote = () => trusted() || asked();
+  // Pictures pasted into the mail come with it as parts; fetched (once, then cached) and drawn in place.
+  const [inline, setInline] = createSignal<Record<string, string>>({});
+  if (/["']cid:/i.test(props.html)) {
+    void api.inlineImages(props.messageId).then(setInline, () => {});
+  }
+  const html = () => {
+    const found = inline();
+    return props.html.replace(CID, (whole, quote: string, cid: string) =>
+      found[cid] ? `${quote}${found[cid]}${quote}` : whole,
+    );
+  };
   const hasRemote = /<img[^>]+src=["']?https?:/i.test(props.html) || /url\(["']?https?:/i.test(props.html);
   // Quoted replies and signatures start folded; the pill below the frame opens them.
   const [foldable, setFoldable] = createSignal(false);
@@ -60,7 +74,7 @@ function HtmlBody(props: { html: string; sender: string }) {
           </button>
         </div>
       </Show>
-      <iframe class="html-body" sandbox="allow-same-origin" srcdoc={frameHtml(props.html, remote())} onLoad={onLoad} />
+      <iframe class="html-body" sandbox="allow-same-origin" srcdoc={frameHtml(html(), remote())} onLoad={onLoad} />
       <Show when={foldable()}>
         <button
           class="fold"
@@ -206,13 +220,22 @@ export function ConversationView(props: {
                   <span class="to">to {m.toAddrs}</span>
                 </Show>
               </span>
+              <Show when={m.attachments.length || m.hasAttachments}>
+                <span
+                  class="clip"
+                  title={m.attachments.length === 1 ? "1 attachment" : m.attachments.length ? `${m.attachments.length} attachments` : "Attachments"}
+                >
+                  <Icon name="paperclip" size={13} />
+                  <Show when={m.attachments.length > 1}>{m.attachments.length}</Show>
+                </span>
+              </Show>
               <time>{when(m.date)}</time>
             </header>
             <Show when={props.expanded(m.id)}>
               <div class="body">
                 <Show when={m.bodyLoaded} fallback={<p class="loading">Loading message…</p>}>
                   <Show when={m.bodyHtml} fallback={<PlainBody text={m.bodyText ?? ""} />}>
-                    <HtmlBody html={m.bodyHtml!} sender={m.fromAddr} />
+                    <HtmlBody html={m.bodyHtml!} sender={m.fromAddr} messageId={m.id} />
                   </Show>
                 </Show>
                 <Show when={m.attachments.length}>

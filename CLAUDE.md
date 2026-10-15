@@ -4,12 +4,16 @@ Tern is a local-first desktop mail client for any IMAP account. It has a Rust en
 shell (`src-tauri`) and a SolidJS UI (`src`). The README covers layout, setup and keys; this file covers state and
 decisions that aren't visible from the code.
 
-## Where things stand (2026-10-13, evening)
+## Where things stand (2026-10-15)
 
 - The workspace compiles and runs on Linux (Omarchy/Hyprland); CI checks Linux and Windows on every PR. The app
   syncs real mail: the owner's SmarterMail account worked before it was paused, and the local dev server
   (`scripts/dev-mail-server.sh`, Stalwart) is what development uses now. No real-provider account is in use
   until the reliability gate passes (package 00).
+- Built and tested against the dev server: sync (IDLE, QRESYNC, headers first), conversations and the keyboard
+  shell (package 02), compose with drafts, attachments, signatures and autocomplete (package 03), received
+  attachments open/save, and the status strip's "changes waiting" / problems lists (package 08's M1 slice).
+  Search filters (package 06). Owner acceptance is tracked in `docs/acceptance/m1-alpha.md`; the owner ticks it.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items, so Gmail goes through the Gmail API (also provisional), not IMAP.
@@ -53,7 +57,8 @@ policy review. No implementation or real-provider acceptance was completed by th
 - **Outbox with undo.** Every change is applied locally, then queued in `outbox` with `not_before = now + 5s` and
   the data needed to revert it. `Store::undo(token)` reverts and deletes the queued rows. The sync worker sends due
   rows. Don't add code paths that talk to the server directly from a UI command (except `check_login`, and
-  `sync::download` for the first open of a received attachment: a read, on its own connection).
+  `sync::download` for the first open of a received attachment or of a message's inline `cid:` images: a read, on
+  its own connection).
   Failed work retries with backoff and stops after 5 tries, or at once on a permanent refusal (SMTP 5xx); it then
   waits in `outbox_problems` for retry or discard (discard reverts like undo). It is never dropped on its own, and a
   failure never stops the rest of the pass; only a lost connection does.

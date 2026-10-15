@@ -18,6 +18,8 @@ export type ComposeInit = {
   references?: string[];
   /** Where the cursor starts: To for new mail and forwards, the body for replies. */
   focus?: "to" | "body";
+  /** What it opens with is not saved anywhere yet (a send taken back before its draft was saved). */
+  unsaved?: boolean;
   /** Shown at the bottom of the open conversation rather than as a dialog. */
   inline?: boolean;
   /** Continues this saved draft. */
@@ -38,8 +40,8 @@ function size(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
-/** How long typing has to pause before the draft is saved. */
-const SAVE_AFTER_MS = 2000;
+/** How long typing has to pause before the draft is saved here (the server copy waits longer, see save_draft). */
+const SAVE_AFTER_MS = 800;
 
 /** New mail, reply or forward (docs/design/ui.md §4.4). Ctrl+Enter sends, Ctrl+Shift+Enter sends and marks the
  * conversation done; Ctrl+Shift+C / B add Cc / Bcc; Esc closes. */
@@ -81,7 +83,8 @@ export function Compose(props: {
   onMount(() => onCleanup(api.onFilesDropped((paths) => void attach(paths))));
   // The draft this compose saves to, once there is one, and whether anything changed since it opened.
   let draftId: number | null = props.init.draftId ?? null;
-  let dirty = false;
+  // Reopened after undo-send, what is here may never have been saved.
+  let dirty = props.init.unsaved ?? false;
   let saveTimer: number | undefined;
   const draft = (): Draft => ({
     to: to(),
@@ -111,6 +114,8 @@ export function Compose(props: {
   onCleanup(() => {
     if (saveTimer !== undefined && dirty) void save(true);
   });
+  // Nor when the window closes while typing: the save finishes before the window goes.
+  onMount(() => onCleanup(api.onCloseRequested(() => (dirty ? save(true) : Promise.resolve()))));
   const close = async () => {
     await save(true);
     dirty = false;

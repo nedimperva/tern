@@ -66,6 +66,51 @@ pub fn attachment_files(raw: &[u8]) -> Vec<FileBytes> {
         .collect()
 }
 
+/// Images a message's HTML shows from its own parts (`<img src="cid:…">`), as (Content-ID without brackets, data:
+/// URI). Only images, and none over `limit` bytes in all, so a message cannot fill the reader's memory.
+pub fn inline_images(raw: &[u8], limit: usize) -> Vec<(String, String)> {
+    let Some(msg) = MessageParser::default().parse(raw) else { return Vec::new() };
+    let mut total = 0;
+    let mut out = Vec::new();
+    for part in &msg.parts {
+        let Some(cid) = part.content_id() else { continue };
+        let Some(kind) = part.content_type() else { continue };
+        if !kind.ctype().eq_ignore_ascii_case("image") {
+            continue;
+        }
+        let bytes = part.contents();
+        total += bytes.len();
+        if total > limit {
+            break;
+        }
+        // The type is the sender's word; only plain image subtypes go into the URI.
+        let subtype = kind.subtype().unwrap_or("png").to_ascii_lowercase();
+        if !subtype.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c)) {
+            continue;
+        }
+        let cid = cid.trim().trim_start_matches('<').trim_end_matches('>').to_string();
+        out.push((cid, format!("data:image/{subtype};base64,{}", base64(bytes))));
+    }
+    out
+}
+
+/// Standard base64 with padding.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = chunk.iter().enumerate().fold(0u32, |n, (i, b)| n | (*b as u32) << (16 - 8 * i));
+        for i in 0..4 {
+            out.push(if i <= chunk.len() {
+                ALPHABET[(n >> (18 - 6 * i)) as usize & 63] as char
+            } else {
+                '='
+            });
+        }
+    }
+    out
+}
+
 /// Which of `files` (from `attachment_files`) is the `index`-th of the attachments a message's row lists. The list
 /// can come from BODYSTRUCTURE, which may count parts a little differently from the parser, so files are matched by
 /// name (the n-th file of that name for the n-th listed one) and by position only when no name matches.
@@ -317,6 +362,22 @@ pub fn snippet(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inline_images_come_out_as_data_uris() {
+        let raw = b"From: a@x\r\nSubject: s\r\nContent-Type: multipart/related; boundary=b\r\n\r\n\
+--b\r\nContent-Type: text/html\r\n\r\n<img src=\"cid:logo@x\">\r\n\
+--b\r\nContent-Type: image/png\r\nContent-ID: <logo@x>\r\nContent-Transfer-Encoding: base64\r\n\r\n\
+TWFu\r\n--b\r\nContent-Type: application/pdf\r\nContent-ID: <doc@x>\r\n\r\nxyz\r\n--b--\r\n";
+        assert_eq!(
+            inline_images(raw, 1_000),
+            [("logo@x".to_string(), "data:image/png;base64,TWFu".to_string())]
+        );
+        assert!(inline_images(raw, 2).is_empty(), "over the limit");
+        assert_eq!(base64(b"Ma"), "TWE=");
+        assert_eq!(base64(b"M"), "TQ==");
+        assert_eq!(base64(b""), "");
+    }
 
     #[test]
     fn parses_headers_and_body() {

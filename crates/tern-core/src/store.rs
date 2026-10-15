@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 14;
+const SCHEMA_VERSION: i64 = 15;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -225,6 +225,12 @@ fn migrate(conn: &Connection) -> Result<()> {
                  ALTER TABLE messages ADD COLUMN reply_to TEXT NOT NULL DEFAULT '';
                  ALTER TABLE messages ADD COLUMN followup_to TEXT NOT NULL DEFAULT '';
                  ALTER TABLE messages ADD COLUMN refs TEXT NOT NULL DEFAULT '';"
+            }
+            // Mail downloaded whole before step 6 kept its attachment flag but has no `parts`, so the conversation
+            // listed none of its files and none could be opened. Fetching the body again fills `parts` in.
+            14 => {
+                "UPDATE messages SET body_state = 'wanted'
+                 WHERE body_state = 'full' AND parts IS NULL AND has_attachments = 1 AND uid IS NOT NULL;"
             }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
@@ -1478,7 +1484,9 @@ impl Store {
     pub fn thread(&self, id: i64) -> Result<Vec<ThreadMessage>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(&format!(
-            "SELECT {ROW}, m.message_id, m.to_addrs, b.text, b.html, m.body_state = 'full', m.parts,
+            "SELECT {ROW}, m.message_id, m.to_addrs, b.text, b.html,
+                    -- A row fetched again for its parts (migration 15) still has the body it had.
+                    m.body_state = 'full' OR b.message_id IS NOT NULL, m.parts,
                     (SELECT d.id FROM drafts d WHERE d.account_id = m.account_id AND d.message_id = m.message_id
                        AND d.discarded_at IS NULL AND d.sent_at IS NULL)
              FROM messages m LEFT JOIN bodies b ON b.message_id = m.id
@@ -1504,19 +1512,43 @@ impl Store {
         Ok(messages)
     }
 
-    /// Full-text search over subject, sender and body. Every word is a prefix: "inv acme" finds "Invoice from ACME".
-    pub fn search(&self, query: &str, limit: i64) -> Result<Vec<MessageRow>> {
-        let fts = fts_query(query);
-        if fts.is_empty() {
-            return Ok(Vec::new());
+    /// Search with the search box's language (`query::parse`): words over subject, sender and body as prefixes,
+    /// plus filters. Newest first.
+    pub fn search(&self, input: &str, limit: i64) -> Result<SearchResult> {
+        let q = crate::query::parse(input, now());
+        if q.is_empty() {
+            return Ok(SearchResult::default());
         }
+        let mut sql = format!("SELECT {ROW} FROM messages m");
+        let mut conditions = Vec::new();
+        let mut values: Vec<Value> = Vec::new();
+        if !q.fts.is_empty() {
+            sql.push_str(" JOIN messages_fts ON messages_fts.rowid = m.id");
+            conditions.push("messages_fts MATCH ?".to_string());
+            values.push(Value::Text(q.fts.clone()));
+        }
+        if !q.fts_not.is_empty() {
+            conditions
+                .push("m.id NOT IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)".to_string());
+            values.push(Value::Text(q.fts_not.clone()));
+        }
+        conditions.extend(q.conditions);
+        values.extend(q.params);
+        sql.push_str(&format!(" WHERE {} ORDER BY m.date DESC, m.id DESC LIMIT ?", conditions.join(" AND ")));
+        values.push(Value::Integer(limit));
         let conn = self.conn();
-        let mut stmt = conn.prepare_cached(&format!(
-            "SELECT {ROW} FROM messages_fts JOIN messages m ON m.id = messages_fts.rowid
-             WHERE messages_fts MATCH ?1 ORDER BY m.date DESC LIMIT ?2"
-        ))?;
-        let rows = stmt.query_map(params![fts, limit], row)?.collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(rows)
+        let mut stmt = conn.prepare_cached(&sql)?;
+        let rows =
+            stmt.query_map(rusqlite::params_from_iter(values), row)?.collect::<rusqlite::Result<Vec<_>>>()?;
+        // Words are only found in bodies that are here; mail older than the download window has headers alone.
+        let words = !q.fts.is_empty() || !q.fts_not.is_empty();
+        let partial = words
+            && conn.query_row(
+                "SELECT EXISTS (SELECT 1 FROM messages WHERE body_state != 'full')",
+                [],
+                |r| r.get(0),
+            )?;
+        Ok(SearchResult { rows, partial })
     }
 
     // MARK: Changes and the outbox
@@ -1682,38 +1714,52 @@ impl Store {
         let tx = conn.transaction()?;
         let mut undone = false;
         for id in token {
-            let payload: Option<String> = tx
-                .query_row(
-                    "SELECT payload FROM outbox WHERE id = ?1 AND claimed = 0 AND attempts = 0",
-                    [id],
-                    |r| r.get(0),
-                )
-                .optional()?;
-            let Some(payload) = payload else { continue };
-            let op: OutboxOp = serde_json::from_str(&payload)?;
-            // Later work on the same messages counts on this move happening; taking it back would strand that.
-            if waited_on(&tx, *id, &op)? {
-                continue;
-            }
-            revert(&tx, &op)?;
-            // An unsent message that was a draft is a draft again, back in Drafts.
-            if let OutboxOp::Send(draft) = &op {
-                let account_id: i64 =
-                    tx.query_row("SELECT account_id FROM outbox WHERE id = ?1", [id], |r| r.get(0))?;
-                let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
-                let restored = tx.execute(
-                    "UPDATE drafts SET sent_at = NULL WHERE account_id = ?1 AND message_id = ?2 AND sent_at IS NOT NULL",
-                    params![account_id, bare],
-                )?;
-                if restored > 0 {
-                    mirror_draft(&tx, account_id, draft)?;
-                }
-            }
-            tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
-            undone = true;
+            undone |= take_back(&tx, *id, false)?;
         }
         tx.commit()?;
         Ok(undone)
+    }
+
+    /// Work still waiting to go out (in the undo window, waiting for the connection, or between retries), oldest
+    /// first. Given-up work is in `outbox_problems` instead.
+    pub fn outbox_waiting(&self) -> Result<Vec<OutboxWaiting>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, account_id, payload, not_before, attempts, COALESCE(last_error, ''), claimed
+             FROM outbox WHERE gave_up_at IS NULL ORDER BY id",
+        )?;
+        type Row = (i64, i64, String, i64, i64, String, i64);
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?))
+            })?
+            .collect::<rusqlite::Result<Vec<Row>>>()?;
+        rows.into_iter()
+            .map(|(id, account_id, payload, not_before, attempts, last_error, claimed)| {
+                let op = serde_json::from_str(&payload)?;
+                let can_discard = claimed == 0 && !waited_on(&conn, id, &op)?;
+                Ok(OutboxWaiting {
+                    id,
+                    account_id,
+                    what: describe(&op),
+                    not_before,
+                    attempts,
+                    last_error,
+                    sending: claimed != 0,
+                    can_discard,
+                })
+            })
+            .collect()
+    }
+
+    /// Drops waiting work and puts the mailbox back as it was, as undo would, even after failed tries. False when
+    /// it is already being sent, gone, or later work depends on it.
+    pub fn discard_waiting(&self, id: i64) -> Result<bool> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let done = take_back(&tx, id, true)?;
+        tx.commit()?;
+        Ok(done)
     }
 
     /// Takes the account's work that is due, in the order it was made. Each must end in `outbox_done` or
@@ -2075,6 +2121,42 @@ fn waited_on(conn: &Connection, id: i64, op: &OutboxOp) -> Result<bool> {
     Ok(false)
 }
 
+/// Reverts queued work that has not reached the server and drops it. `tried`: also work that failed a try (the
+/// failure was definite: an uncertain send is a problem, not waiting work). Work being sent now, or that later work
+/// depends on, stays.
+fn take_back(tx: &Connection, id: i64, tried: bool) -> Result<bool> {
+    let payload: Option<String> = tx
+        .query_row(
+            "SELECT payload FROM outbox
+             WHERE id = ?1 AND claimed = 0 AND gave_up_at IS NULL AND (attempts = 0 OR ?2)",
+            params![id, tried],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(payload) = payload else { return Ok(false) };
+    let op: OutboxOp = serde_json::from_str(&payload)?;
+    // Later work on the same messages counts on this move happening; taking it back would strand that.
+    if waited_on(tx, id, &op)? {
+        return Ok(false);
+    }
+    revert(tx, &op)?;
+    // An unsent message that was a draft is a draft again, back in Drafts.
+    if let OutboxOp::Send(draft) = &op {
+        let account_id: i64 =
+            tx.query_row("SELECT account_id FROM outbox WHERE id = ?1", [id], |r| r.get(0))?;
+        let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
+        let restored = tx.execute(
+            "UPDATE drafts SET sent_at = NULL WHERE account_id = ?1 AND message_id = ?2 AND sent_at IS NOT NULL",
+            params![account_id, bare],
+        )?;
+        if restored > 0 {
+            mirror_draft(tx, account_id, draft)?;
+        }
+    }
+    tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
+    Ok(true)
+}
+
 fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
     match op {
         OutboxOp::Flags { revert, .. } => {
@@ -2201,14 +2283,6 @@ fn thread_by_subject(conn: &Connection, account_id: i64, m: &NewMessage) -> Resu
     Ok(candidates.into_iter().find(|(_, from, to)| !people(from, to).is_disjoint(&ours)).map(|(t, _, _)| t))
 }
 
-fn fts_query(input: &str) -> String {
-    input
-        .split_whitespace()
-        .map(|word| format!("\"{}\"*", word.replace('"', "\"\"")))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2269,10 +2343,45 @@ mod tests {
         store
             .insert_messages(account, inbox, &[message(1, "Invoice from ACME", 1), message(2, "Lunch", 2)])
             .unwrap();
-        let hits = store.search("inv acme", 10).unwrap();
+        let hits = store.search("inv acme", 10).unwrap().rows;
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].subject, "Invoice from ACME");
-        assert!(store.search("\"", 10).unwrap().is_empty());
+        assert!(store.search("\"", 10).unwrap().rows.is_empty());
+    }
+
+    #[test]
+    fn search_filters_narrow_by_field_folder_and_state() {
+        let (store, account, inbox, archive) = setup();
+        let mut from_grace = message(1, "Budget", 100);
+        from_grace.from_addr = "grace@navy.mil".into();
+        from_grace.has_attachments = true;
+        let mut to_me = message(2, "Budget follow-up", 200);
+        to_me.to_addrs = "Me <ME@example.com>".into();
+        to_me.seen = true;
+        store.insert_messages(account, inbox, &[from_grace, to_me]).unwrap();
+        store.insert_messages(account, archive, &[message(3, "Old budget", 50)]).unwrap();
+        let subjects = |q: &str| -> Vec<String> {
+            store.search(q, 10).unwrap().rows.into_iter().map(|r| r.subject).collect()
+        };
+        assert_eq!(subjects("budget"), ["Budget follow-up", "Budget", "Old budget"]);
+        assert_eq!(subjects("budget from:grace"), ["Budget"]);
+        assert_eq!(subjects("to:me"), ["Budget follow-up"]);
+        assert_eq!(subjects("has:attachment"), ["Budget"]);
+        assert_eq!(subjects("in:archive"), ["Old budget"]);
+        assert_eq!(subjects("budget -in:archive is:unread"), ["Budget"]);
+        assert_eq!(subjects("budget -follow"), ["Budget", "Old budget"]);
+        assert_eq!(subjects("before:1970-01-01"), Vec::<String>::new());
+        assert_eq!(subjects("after:1970-01-01 is:read"), ["Budget follow-up"]);
+        assert!(!store.search("budget", 10).unwrap().partial, "every body is here");
+    }
+
+    #[test]
+    fn search_says_when_bodies_were_not_all_searched() {
+        let (store, account, inbox, _) = setup();
+        let headers = NewMessage { headers_only: true, body_text: None, ..message(1, "Plans", 1) };
+        store.insert_messages(account, inbox, &[headers]).unwrap();
+        assert!(store.search("plans", 10).unwrap().partial);
+        assert!(!store.search("is:unread", 10).unwrap().partial, "no words, nothing missed");
     }
 
     #[test]
@@ -2403,6 +2512,48 @@ mod tests {
         assert!(store.outbox_problems().unwrap().is_empty());
         assert!(!store.list(&ListTarget::Folder(inbox), None, 10).unwrap()[0].seen, "back to unread");
         assert!(store.pending_uids(account, "INBOX").unwrap().is_empty(), "sync may update it again");
+    }
+
+    #[test]
+    fn waiting_work_is_listed_until_it_goes_or_is_given_up() {
+        let (store, account, inbox, _) = setup();
+        let work = queued_mark_read(&store, account, inbox);
+        let waiting = store.outbox_waiting().unwrap();
+        assert_eq!((waiting[0].id, waiting[0].what.as_str()), (work, "Mark read 1 message"));
+        assert!(waiting[0].sending && !waiting[0].can_discard, "claimed: in hand, so not discardable");
+        store.outbox_failed(work, "timed out", Failure::Retry).unwrap();
+        let waiting = store.outbox_waiting().unwrap();
+        assert_eq!((waiting[0].attempts, waiting[0].last_error.as_str()), (1, "timed out"));
+        assert!(!waiting[0].sending && waiting[0].can_discard);
+        assert!(waiting[0].not_before > now(), "waits before the next try");
+        store.outbox_failed(work, "550", Failure::Permanent).unwrap();
+        assert!(store.outbox_waiting().unwrap().is_empty(), "a problem now, not waiting");
+    }
+
+    #[test]
+    fn discarding_waiting_work_reverts_it_even_after_a_failed_try() {
+        let (store, account, inbox, _) = setup();
+        let work = queued_mark_read(&store, account, inbox);
+        assert!(!store.discard_waiting(work).unwrap(), "not while it is being sent");
+        store.outbox_failed(work, "timed out", Failure::Retry).unwrap();
+        assert!(!store.undo(&[work]).unwrap(), "undo is for the undo window only");
+        assert!(store.discard_waiting(work).unwrap());
+        assert!(store.outbox_waiting().unwrap().is_empty());
+        assert!(!store.list(&ListTarget::Folder(inbox), None, 10).unwrap()[0].seen, "back to unread");
+    }
+
+    #[test]
+    fn waiting_work_that_later_work_depends_on_cannot_be_discarded() {
+        let (store, account, inbox, _) = setup();
+        store.insert_messages(account, inbox, &[message(1, "a", 1)]).unwrap();
+        let id = store.list(&ListTarget::Folder(inbox), None, 1).unwrap()[0].id;
+        let archived = store.apply(&[id], Action::Archive, 5).unwrap().token;
+        store.apply(&[id], Action::Star, 5).unwrap();
+        let waiting = store.outbox_waiting().unwrap();
+        assert_eq!(waiting.len(), 2);
+        assert!(!waiting[0].can_discard && waiting[1].can_discard, "the star waits for the move");
+        assert!(!store.discard_waiting(archived[0]).unwrap());
+        assert_eq!(store.outbox_waiting().unwrap().len(), 2);
     }
 
     #[test]
@@ -2947,6 +3098,8 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                // Step 14 only changed data.
+                14 => "",
                 13 => "DROP TABLE contacts;",
                 12 => "DROP TABLE drafts;",
                 11 => {
@@ -2982,6 +3135,29 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         )
         .unwrap();
         conn
+    }
+
+    #[test]
+    fn migration_15_fetches_again_mail_whose_files_were_never_listed() {
+        let (store, account, inbox, _) = setup();
+        let mut with_file = message(1, "a", 1);
+        with_file.has_attachments = true;
+        store.insert_messages(account, inbox, &[with_file, message(2, "b", 2)]).unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        // As stored before step 6: the flag from the parsed body, no parts.
+        conn.execute_batch("UPDATE messages SET parts = NULL, body_state = 'full';").unwrap();
+        wind_back(&conn, 14);
+        let store = Store::init(conn).unwrap();
+        let states: Vec<(u32, String)> = store
+            .conn()
+            .prepare("SELECT uid, body_state FROM messages ORDER BY uid")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(states, [(1, "wanted".to_string()), (2, "full".to_string())]);
+        assert_eq!(store.bodies_needed(inbox, i64::MAX, 10).unwrap(), [(1, None)]);
     }
 
     #[test]
@@ -3095,7 +3271,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         let rows = store.list(&ListTarget::Folder(inbox), None, 10).unwrap();
         assert_eq!((rows[0].subject.as_str(), rows[0].snippet.as_str()), ("Lunch?", ""));
         assert!(!store.thread(rows[0].id).unwrap()[0].body_loaded);
-        assert_eq!(store.search("lunch", 10).unwrap().len(), 1, "headers are searchable at once");
+        assert_eq!(store.search("lunch", 10).unwrap().rows.len(), 1, "headers are searchable at once");
     }
 
     #[test]
@@ -3119,8 +3295,8 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         let thread = store.thread(row.id).unwrap();
         assert!(thread[0].body_loaded);
         assert_eq!(thread[0].body_text.as_deref(), Some("Shall we try the new place on Friday"));
-        assert_eq!(store.search("friday", 10).unwrap().len(), 1, "the body is in the index now");
-        assert_eq!(store.search("lunch", 10).unwrap().len(), 1, "and the headers still are");
+        assert_eq!(store.search("friday", 10).unwrap().rows.len(), 1, "the body is in the index now");
+        assert_eq!(store.search("lunch", 10).unwrap().rows.len(), 1, "and the headers still are");
     }
 
     #[test]

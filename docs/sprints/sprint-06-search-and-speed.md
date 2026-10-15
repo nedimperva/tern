@@ -1,6 +1,6 @@
 # Sprint 6 — Search and speed
 
-**Status:** todo
+**Status:** in progress · started 2026-10-15
 
 ## Delivery scope
 
@@ -25,7 +25,7 @@ limits; no universal 100k-message/60-second full-sync guarantee. Cached interact
 - [ ] `store_bench` prints a table and exits non-zero if any target is missed (so it can run in CI later).
 
 ### Search
-- [ ] Query language → FTS5 + SQL: free text (FTS, prefix on the last token), `from:`, `to:`, `cc:`, `subject:`, `has:attachment`, `is:unread|starred|snoozed`, `in:inbox|archive|sent|drafts|trash|spam|<label>`, `label:`, `before:`/`after:`/`newer_than:7d`, `larger:`/`smaller:`, quoted phrases, `-` negation, `OR`.
+- [x] Query language → FTS5 + SQL: free text (FTS, prefix on the last token), `from:`, `to:`, `cc:`, `subject:`, `has:attachment`, `is:unread|starred|snoozed`, `in:inbox|archive|sent|drafts|trash|spam|<label>`, `label:`, `before:`/`after:`/`newer_than:7d`, `larger:`/`smaller:`, quoted phrases, `-` negation, `OR`.
 - [ ] Results as you type; `↓` enters the results; `Enter` opens; `Esc` back to the query. Search is a split-like view, so `e`/`s`/`#` work on results.
 - [ ] Highlight matches using stored source text and a tested strategy; contentless FTS cannot reconstruct body snippets by itself. Use external-content FTS or stored text/offsets if needed; measure before changing the index.
 - [ ] Suggestions row: contacts matching the token, labels matching, "Search Gmail for …" when the account is Gmail.
@@ -67,4 +67,10 @@ _None yet._
 
 ## Log
 
-_No sessions yet._
+- 2026-10-15 — M1 search slice. `query.rs` parses the box: words as FTS5 prefixes, `"phrases"`, `OR`, `-` to
+  leave out, and the filters `from: to: cc: subject:` (`me` = the account), `is: has:attachment in:/label:
+  before: after: newer_than: older_than: larger: smaller:`; anything else is searched as text. Results say when
+  mail without its text was searched by headers only (shown under the box). Empty results list the filters.
+  Not done: `is:snoozed` (no snooze yet), suggestions, highlighting, server search. `store_bench` at 50,000:
+  "search with filters" 10.8 ms median; plain-word search is still about 73 ms, as recorded in package 00
+  (the M2 speed work). UI tried in `npm run dev` against the fake mailbox (words only there).
