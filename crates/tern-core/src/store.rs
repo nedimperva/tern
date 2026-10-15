@@ -1512,19 +1512,43 @@ impl Store {
         Ok(messages)
     }
 
-    /// Full-text search over subject, sender and body. Every word is a prefix: "inv acme" finds "Invoice from ACME".
-    pub fn search(&self, query: &str, limit: i64) -> Result<Vec<MessageRow>> {
-        let fts = fts_query(query);
-        if fts.is_empty() {
-            return Ok(Vec::new());
+    /// Search with the search box's language (`query::parse`): words over subject, sender and body as prefixes,
+    /// plus filters. Newest first.
+    pub fn search(&self, input: &str, limit: i64) -> Result<SearchResult> {
+        let q = crate::query::parse(input, now());
+        if q.is_empty() {
+            return Ok(SearchResult::default());
         }
+        let mut sql = format!("SELECT {ROW} FROM messages m");
+        let mut conditions = Vec::new();
+        let mut values: Vec<Value> = Vec::new();
+        if !q.fts.is_empty() {
+            sql.push_str(" JOIN messages_fts ON messages_fts.rowid = m.id");
+            conditions.push("messages_fts MATCH ?".to_string());
+            values.push(Value::Text(q.fts.clone()));
+        }
+        if !q.fts_not.is_empty() {
+            conditions
+                .push("m.id NOT IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)".to_string());
+            values.push(Value::Text(q.fts_not.clone()));
+        }
+        conditions.extend(q.conditions);
+        values.extend(q.params);
+        sql.push_str(&format!(" WHERE {} ORDER BY m.date DESC, m.id DESC LIMIT ?", conditions.join(" AND ")));
+        values.push(Value::Integer(limit));
         let conn = self.conn();
-        let mut stmt = conn.prepare_cached(&format!(
-            "SELECT {ROW} FROM messages_fts JOIN messages m ON m.id = messages_fts.rowid
-             WHERE messages_fts MATCH ?1 ORDER BY m.date DESC LIMIT ?2"
-        ))?;
-        let rows = stmt.query_map(params![fts, limit], row)?.collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(rows)
+        let mut stmt = conn.prepare_cached(&sql)?;
+        let rows =
+            stmt.query_map(rusqlite::params_from_iter(values), row)?.collect::<rusqlite::Result<Vec<_>>>()?;
+        // Words are only found in bodies that are here; mail older than the download window has headers alone.
+        let words = !q.fts.is_empty() || !q.fts_not.is_empty();
+        let partial = words
+            && conn.query_row(
+                "SELECT EXISTS (SELECT 1 FROM messages WHERE body_state != 'full')",
+                [],
+                |r| r.get(0),
+            )?;
+        Ok(SearchResult { rows, partial })
     }
 
     // MARK: Changes and the outbox
@@ -2259,14 +2283,6 @@ fn thread_by_subject(conn: &Connection, account_id: i64, m: &NewMessage) -> Resu
     Ok(candidates.into_iter().find(|(_, from, to)| !people(from, to).is_disjoint(&ours)).map(|(t, _, _)| t))
 }
 
-fn fts_query(input: &str) -> String {
-    input
-        .split_whitespace()
-        .map(|word| format!("\"{}\"*", word.replace('"', "\"\"")))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2327,10 +2343,45 @@ mod tests {
         store
             .insert_messages(account, inbox, &[message(1, "Invoice from ACME", 1), message(2, "Lunch", 2)])
             .unwrap();
-        let hits = store.search("inv acme", 10).unwrap();
+        let hits = store.search("inv acme", 10).unwrap().rows;
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].subject, "Invoice from ACME");
-        assert!(store.search("\"", 10).unwrap().is_empty());
+        assert!(store.search("\"", 10).unwrap().rows.is_empty());
+    }
+
+    #[test]
+    fn search_filters_narrow_by_field_folder_and_state() {
+        let (store, account, inbox, archive) = setup();
+        let mut from_grace = message(1, "Budget", 100);
+        from_grace.from_addr = "grace@navy.mil".into();
+        from_grace.has_attachments = true;
+        let mut to_me = message(2, "Budget follow-up", 200);
+        to_me.to_addrs = "Me <ME@example.com>".into();
+        to_me.seen = true;
+        store.insert_messages(account, inbox, &[from_grace, to_me]).unwrap();
+        store.insert_messages(account, archive, &[message(3, "Old budget", 50)]).unwrap();
+        let subjects = |q: &str| -> Vec<String> {
+            store.search(q, 10).unwrap().rows.into_iter().map(|r| r.subject).collect()
+        };
+        assert_eq!(subjects("budget"), ["Budget follow-up", "Budget", "Old budget"]);
+        assert_eq!(subjects("budget from:grace"), ["Budget"]);
+        assert_eq!(subjects("to:me"), ["Budget follow-up"]);
+        assert_eq!(subjects("has:attachment"), ["Budget"]);
+        assert_eq!(subjects("in:archive"), ["Old budget"]);
+        assert_eq!(subjects("budget -in:archive is:unread"), ["Budget"]);
+        assert_eq!(subjects("budget -follow"), ["Budget", "Old budget"]);
+        assert_eq!(subjects("before:1970-01-01"), Vec::<String>::new());
+        assert_eq!(subjects("after:1970-01-01 is:read"), ["Budget follow-up"]);
+        assert!(!store.search("budget", 10).unwrap().partial, "every body is here");
+    }
+
+    #[test]
+    fn search_says_when_bodies_were_not_all_searched() {
+        let (store, account, inbox, _) = setup();
+        let headers = NewMessage { headers_only: true, body_text: None, ..message(1, "Plans", 1) };
+        store.insert_messages(account, inbox, &[headers]).unwrap();
+        assert!(store.search("plans", 10).unwrap().partial);
+        assert!(!store.search("is:unread", 10).unwrap().partial, "no words, nothing missed");
     }
 
     #[test]
@@ -3220,7 +3271,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         let rows = store.list(&ListTarget::Folder(inbox), None, 10).unwrap();
         assert_eq!((rows[0].subject.as_str(), rows[0].snippet.as_str()), ("Lunch?", ""));
         assert!(!store.thread(rows[0].id).unwrap()[0].body_loaded);
-        assert_eq!(store.search("lunch", 10).unwrap().len(), 1, "headers are searchable at once");
+        assert_eq!(store.search("lunch", 10).unwrap().rows.len(), 1, "headers are searchable at once");
     }
 
     #[test]
@@ -3244,8 +3295,8 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         let thread = store.thread(row.id).unwrap();
         assert!(thread[0].body_loaded);
         assert_eq!(thread[0].body_text.as_deref(), Some("Shall we try the new place on Friday"));
-        assert_eq!(store.search("friday", 10).unwrap().len(), 1, "the body is in the index now");
-        assert_eq!(store.search("lunch", 10).unwrap().len(), 1, "and the headers still are");
+        assert_eq!(store.search("friday", 10).unwrap().rows.len(), 1, "the body is in the index now");
+        assert_eq!(store.search("lunch", 10).unwrap().rows.len(), 1, "and the headers still are");
     }
 
     #[test]

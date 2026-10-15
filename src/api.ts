@@ -152,7 +152,8 @@ export interface Api {
   /** An action on whole conversations, each named by its row's message id. */
   applyConversations(ids: number[], action: Action, target: Target): Promise<Applied>;
   thread(id: number): Promise<ThreadMessage[]>;
-  search(query: string, limit: number): Promise<MessageRow[]>;
+  /** Search with filters (see crates/tern-core/src/query.rs). `partial`: words were not looked for in mail without its text. */
+  search(query: string, limit: number): Promise<{ rows: MessageRow[]; partial: boolean }>;
   apply(ids: number[], action: Action): Promise<Applied>;
   undo(token: number[]): Promise<boolean>;
   /** Queues a send; `delay` is the undo window in seconds; `draftId` when it was a saved draft. */
@@ -427,11 +428,13 @@ function fake(): Api {
       return api.apply(chosen, action);
     },
     search: async (query, limit) => {
+      // Words only; the filters live in the engine. Shown as partial so the note can be worked on here.
       const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-      return messages
+      const rows = messages
         .filter((m) => terms.every((t) => `${m.subject} ${m.fromName} ${m.bodyText}`.toLowerCase().includes(t)))
         .slice(0, limit)
         .map(row);
+      return { rows, partial: terms.length > 0 };
     },
     apply: async (ids, action) => {
       const before = messages.map((m) => ({ ...m }));

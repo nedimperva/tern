@@ -391,6 +391,15 @@ pub struct OutboxProblem {
     pub maybe_sent: bool,
 }
 
+/// What a search found.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResult {
+    pub rows: Vec<MessageRow>,
+    /// The query has words, and some mail has no body here yet: words in those bodies were not searched.
+    pub partial: bool,
+}
+
 /// Queued work not yet on the server and not given up, for the "changes waiting" list.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

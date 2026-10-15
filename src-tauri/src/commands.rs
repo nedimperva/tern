@@ -6,7 +6,7 @@ use tern_core::presets::{self, Preset};
 use tern_core::{
     mime, secrets, sync, Account, AccountConfig, Action, Applied, Contact, Cursor, Draft, DraftRecord,
     Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting, OutgoingAttachment, ReplyInit, ReplyKind,
-    ThreadMessage, ThreadRow,
+    SearchResult, ThreadMessage, ThreadRow,
 };
 
 use std::collections::HashMap;
@@ -75,7 +75,7 @@ pub async fn thread(state: State<'_, AppState>, id: i64) -> Reply<Vec<ThreadMess
 }
 
 #[tauri::command]
-pub async fn search(state: State<'_, AppState>, query: String, limit: i64) -> Reply<Vec<MessageRow>> {
+pub async fn search(state: State<'_, AppState>, query: String, limit: i64) -> Reply<SearchResult> {
     state.store.search(&query, limit).map_err(text)
 }
 
