@@ -65,6 +65,8 @@ export function Editor(props: {
   autofocus?: "start" | false;
   /** Typing `;` offers these; `;shortcut` then Space puts one in at once. */
   snippets?: SnippetSource;
+  /** The quote starts open: a quick quote is short, and what the person picked to answer. */
+  quoteOpen?: boolean;
 }) {
   let host!: HTMLDivElement;
   let view!: EditorView;
@@ -75,7 +77,7 @@ export function Editor(props: {
   const [active, setActive] = createSignal<Record<string, boolean>>({});
   // The quote at the end of a reply starts folded behind "···".
   const [hasQuote, setHasQuote] = createSignal(false);
-  const [quoteOpen, setQuoteOpen] = createSignal(false);
+  const [quoteOpen, setQuoteOpen] = createSignal(props.quoteOpen ?? false);
   // The snippet picker: where its `;` is, what follows it, and which entry is pointed at.
   const [picker, setPicker] = createSignal<{ from: number; typed: string; left: number; top: number } | null>(null);
   const [pointed, setPointed] = createSignal(0);

@@ -1319,6 +1319,39 @@ impl Store {
         Ok(found)
     }
 
+    /// The card for `email`: their name and counts from `contacts`, and the latest `limit` conversations they wrote
+    /// or were written to in. Walks the date index newest first, so someone you hear from often costs little.
+    pub fn contact_card(&self, email: &str, limit: usize) -> Result<ContactCard> {
+        let email = email.trim();
+        let conn = self.conn();
+        let (name, sent, received) = conn
+            .query_row(
+                "SELECT name, sent_count, received_count FROM contacts WHERE email = ?1",
+                [email],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?
+            .unwrap_or_default();
+        let like = format!("%{}%", email.replace(['%', '_'], ""));
+        let mut stmt = conn.prepare_cached(&format!(
+            "SELECT {ROW} FROM messages m INDEXED BY messages_date
+             WHERE m.from_addr = ?1 COLLATE NOCASE OR m.to_addrs LIKE ?2
+             ORDER BY m.date DESC, m.id DESC LIMIT 200"
+        ))?;
+        let mut seen = HashSet::new();
+        let mut recent = Vec::new();
+        for found in stmt.query_map(params![email, like], row)? {
+            let found = found?;
+            if seen.insert((found.account_id, found.thread_id.clone())) {
+                recent.push(found);
+                if recent.len() == limit {
+                    break;
+                }
+            }
+        }
+        Ok(ContactCard { email: email.to_string(), name, sent, received, recent })
+    }
+
     // MARK: Snippets
 
     /// Every snippet, the most used first.
@@ -3401,6 +3434,35 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         assert_eq!(store.contacts("anna", 5).unwrap()[0].name, "Anna Bell");
         assert!(names("noreply").is_empty(), "automated senders are left out");
         assert!(names("").is_empty());
+    }
+
+    #[test]
+    fn a_contact_card_holds_their_latest_conversations_once_each() {
+        let (store, account, inbox, archive) = setup();
+        let me = "me@example.com";
+        store
+            .insert_messages(
+                account,
+                inbox,
+                &[
+                    mail(1, "Budget", 100, "anna@x.com", me),
+                    mail(2, "Re: Budget", 200, "anna@x.com", me),
+                    mail(3, "Lunch", 300, "bob@x.com", &format!("{me}, Anna@x.com")),
+                    mail(4, "Other", 400, "carl@x.com", me),
+                ],
+            )
+            .unwrap();
+        store.insert_messages(account, archive, &[mail(5, "Trip", 50, me, "anna@x.com")]).unwrap();
+        let card = store.contact_card("ANNA@x.com", 5).unwrap();
+        let subjects: Vec<_> = card.recent.iter().map(|m| m.subject.as_str()).collect();
+        assert_eq!(
+            subjects,
+            ["Lunch", "Re: Budget", "Trip"],
+            "newest first, one row a conversation, either way"
+        );
+        assert_eq!(card.received, 2);
+        assert_eq!(store.contact_card("anna@x.com", 1).unwrap().recent.len(), 1);
+        assert!(store.contact_card("nobody@x.com", 5).unwrap().recent.is_empty());
     }
 
     #[test]

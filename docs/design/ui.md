@@ -118,6 +118,13 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ### 4.2 Conversation pane
 
 - Header: subject (`--t-lg`), label chips, a "Done" primary button with the keycap `E` and an overflow (`…`) with every action and its key.
+  Built: the `…` menu lists the conversation's actions in the order people reach for them (reply first, Trash
+  last) with their keys; arrows or `j`/`k`, `Enter` and `Esc` work in it, and any other key closes it and does
+  what it always does.
+- A sender's name shows their card when the pointer rests on it (or on a click): name, address (click copies),
+  how many messages each way, the last five conversations (click opens one), "Write to them" and "All their mail"
+  (`from:` search). It only opens after a real pointer move, so a conversation opening under a still pointer does
+  not pop it.
 - Messages as cards separated by 1 px `--line` (no borders around them). Collapsed card = one line: avatar initials (28 px circle, account-palette colour from the sender hash), name, snippet, date. Expanded card = header (name, address on hover, to/cc on click, date full), body, attachments strip.
 - Body: sanitised HTML in an iframe sized to content; `Load images` pill when remote images were blocked, with "always for this sender".
   Mail that is mostly text takes Tern's type (`--t-read`, 15 px / 1.65) and colours and follows dark mode; quotes sit
@@ -173,6 +180,10 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ### 4.11 Attachment viewer
 
 - Full-window overlay, `rgba(0,0,0,.85)`, content centred, filename + size + `Open with system` + `Save` top-right, arrows for next/previous, `Esc` closes.
+- Built: `--viewer-scrim` (dark in both themes, blurred behind), filename with size and "n of m" top-left. `V` in a
+  conversation or a click on a file card opens it; `←`/`→` step through the message's files, `Ctrl S` saves.
+  Pictures fit and click to full size; PDFs show in the web view's own reader; text shows in mono and `.csv`/`.tsv`
+  as a table; sound and video play. Other kinds show "Open with system".
 
 ## 5. Interaction rules
 
@@ -182,7 +193,8 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - Destructive actions (trash, discard, mark all done) never confirm; they undo. Exception: emptying Trash/Spam.
 - Hover reveals, never moves: a hovered row shows star and the action strip (archive, snooze, star, more) over the date without shifting content.
 - Scroll keeps the focused row inside the middle 60 % of the viewport; `j`/`k` never cause a jump of more than one row.
-- Text selection inside a message does not trigger single-key shortcuts; typing in any input never does.
+- Text selection inside a message does not trigger single-key shortcuts, except `r`: with text selected, the reply
+  quotes just that (quick quote) and shows the quote unfolded. Typing in any input never triggers them.
 - Long operations (initial sync) show progress in the status strip, never a modal.
 
 ## 6. Accessibility

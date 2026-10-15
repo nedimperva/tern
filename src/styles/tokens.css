@@ -29,6 +29,12 @@
   --file-slides: #c4621d;
   --file-image: #0e8aa3;
   --file-other: #6b6b75;
+  /* The attachment viewer is dark in both themes, like a lightbox. */
+  --viewer-scrim: rgba(10, 10, 12, 0.94);
+  --viewer-fg: #f4f4f5;
+  --viewer-fg-dim: #a1a1aa;
+  --viewer-button: rgba(255, 255, 255, 0.1);
+  --viewer-button-hover: rgba(255, 255, 255, 0.2);
   color-scheme: light;
 
   --t-xs: 11px;

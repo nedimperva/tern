@@ -12,6 +12,9 @@ const PATHS = {
   ],
   clock: ["M12 6v6l4 2", "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0"],
   download: ["M12 15V3", "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "m7 10 5 5 5-5"],
+  "chevron-left": ["m15 18-6-6 6-6"],
+  "chevron-right": ["m9 18 6-6-6-6"],
+  more: ["M5 12h.01", "M12 12h.01", "M19 12h.01"],
 } as const;
 
 /** An icon in the current text colour. Decorative: label the control it sits in. */

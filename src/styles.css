@@ -1418,3 +1418,296 @@ button.fold {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* MARK: Attachment viewer (docs/design/ui.md §4.11): the file over everything, on a dark scrim in either theme. */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--viewer-scrim);
+  backdrop-filter: blur(8px);
+  color: var(--viewer-fg);
+}
+.viewer header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+}
+.viewer .title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-right: auto;
+}
+.viewer .title strong {
+  font-size: var(--t-lg);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.viewer .title span {
+  font-size: var(--t-sm);
+  color: var(--viewer-fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+.viewer header button {
+  background: var(--viewer-button);
+  color: var(--viewer-fg);
+  border: 0;
+}
+.viewer header button:hover {
+  background: var(--viewer-button-hover);
+}
+.viewer header kbd {
+  background: transparent;
+  color: var(--viewer-fg-dim);
+  border-color: var(--viewer-button-hover);
+}
+.viewer .stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 64px var(--s-5);
+  overflow: auto;
+}
+.viewer .stage img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  cursor: zoom-in;
+  border-radius: var(--r-sm);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.viewer .stage img.zoomed {
+  max-width: none;
+  max-height: none;
+  cursor: zoom-out;
+}
+.viewer .stage .pdf {
+  width: min(1000px, 100%);
+  height: 100%;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: #fff;
+}
+.viewer .stage video {
+  max-width: 100%;
+  max-height: 100%;
+}
+.viewer .stage .text,
+.viewer .stage .sheet-wrap {
+  width: min(1000px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  margin: 0;
+  padding: var(--s-4) var(--s-5);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: var(--t-md) / 1.6 var(--mono);
+  white-space: pre-wrap;
+  align-self: start;
+}
+.viewer .stage .sheet-wrap {
+  width: auto;
+  max-width: 100%;
+  padding: var(--s-2);
+}
+.viewer .table-view {
+  border-collapse: collapse;
+  font: var(--t-md) / 1.4 var(--font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.viewer .table-view th,
+.viewer .table-view td {
+  padding: 6px var(--s-3);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.viewer .table-view th {
+  position: sticky;
+  top: calc(-1 * var(--s-2));
+  background: var(--bg-1);
+  font-weight: 600;
+}
+.viewer-note {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-3);
+  color: var(--viewer-fg-dim);
+  text-align: center;
+}
+.viewer-note p {
+  margin: 0;
+}
+.viewer-problem {
+  margin: 0 var(--s-4) var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--danger);
+}
+.viewer .nav {
+  position: absolute;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--viewer-button);
+  color: var(--viewer-fg);
+}
+.viewer .nav:hover {
+  background: var(--viewer-button-hover);
+}
+.viewer .nav.prev {
+  left: var(--s-3);
+}
+.viewer .nav.next {
+  right: var(--s-3);
+}
+
+/* The conversation's … menu. */
+.action-menu {
+  position: relative;
+}
+.action-menu .more {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  color: var(--fg-1);
+}
+.action-menu .more:hover,
+.action-menu .more[aria-expanded="true"] {
+  background: var(--bg-hover);
+}
+.action-menu ul {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 6;
+  min-width: 260px;
+  margin: 0;
+  padding: var(--s-1);
+  list-style: none;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+.action-menu li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: 6px var(--s-2);
+  border-radius: var(--r-sm);
+  font-size: var(--t-md);
+  cursor: default;
+}
+.action-menu li.pointed {
+  background: var(--accent-soft);
+}
+
+/* A sender's card, on hover or click of their name. */
+.person {
+  cursor: pointer;
+}
+.person:hover > strong {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.person-card {
+  position: fixed;
+  z-index: 7;
+  width: 340px;
+  padding: var(--s-3);
+  white-space: normal;
+  cursor: default;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  font-size: var(--t-md);
+  color: var(--fg-0);
+}
+.person-head {
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+}
+.person-head > span:last-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.person-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--accent-fg);
+  display: grid;
+  place-items: center;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  flex: none;
+}
+.person-addr {
+  padding: 0;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.person-counts {
+  margin: var(--s-3) 0 var(--s-2);
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
+.person-recent {
+  margin: 0 calc(-1 * var(--s-2));
+  padding: 0;
+  list-style: none;
+}
+.person-recent button {
+  display: flex;
+  width: 100%;
+  gap: var(--s-3);
+  align-items: baseline;
+  padding: 5px var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-0);
+  font: inherit;
+  text-align: left;
+}
+.person-recent button:hover {
+  background: var(--bg-hover);
+}
+.person-recent .subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.person-recent time {
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+  flex: none;
+}
+.person-actions {
+  display: flex;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}

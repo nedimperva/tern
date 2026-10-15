@@ -19,6 +19,8 @@ export type ComposeInit = {
   references?: string[];
   /** Where the cursor starts: To for new mail and forwards, the body for replies. */
   focus?: "to" | "body";
+  /** The quote shows unfolded (a quick quote). */
+  quoteOpen?: boolean;
   /** What it opens with is not saved anywhere yet (a send taken back before its draft was saved). */
   unsaved?: boolean;
   /** Shown at the bottom of the open conversation rather than as a dialog. */
@@ -236,6 +238,7 @@ export function Compose(props: {
         html={props.init.html}
         autofocus={bodyFirst ? "start" : false}
         snippets={snippets}
+        quoteOpen={props.init.quoteOpen}
         onChange={(text, rich) => (setBody(text), setHtml(rich), changed())}
       />
       </Suspense>

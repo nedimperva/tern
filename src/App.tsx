@@ -23,12 +23,15 @@ import { AccountSetup } from "./components/AccountSetup";
 import { CommandBar, type Command } from "./components/CommandBar";
 import { Compose, type ComposeInit } from "./components/Compose";
 import { ConversationRow } from "./components/ConversationRow";
-import { ConversationView } from "./components/ConversationView";
+import type { MenuItem } from "./components/ActionMenu";
+import type { PersonActions } from "./components/PersonCard";
+import { ConversationView, takeQuote } from "./components/ConversationView";
 import { ProblemsDialog } from "./components/Problems";
 import { Rail, ROLE_NAMES } from "./components/Rail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { SettingsPage } from "./components/SettingsPage";
 import { SnoozePicker } from "./components/SnoozePicker";
+import { AttachmentViewer } from "./components/AttachmentViewer";
 import { until } from "./components/ConversationRow";
 import { PerfOverlay } from "./components/PerfOverlay";
 import { timeKey, timeQuery } from "./perf";
@@ -119,6 +122,8 @@ export default function App() {
 
   const [reviewing, setReviewing] = createSignal(false);
   const [sheet, setSheet] = createSignal(false);
+  // The file shown in the attachment viewer, if any.
+  const [viewing, setViewing] = createSignal<{ message: ThreadMessage; index: number } | null>(null);
   // Which settings section is open, if any.
   const [settingsOpen, setSettingsOpen] = createSignal<string | null>(null);
   /** The conversations the snooze picker is choosing a time for. */
@@ -134,7 +139,8 @@ export default function App() {
   const current = () => rows()[focus()];
   const context = (): Context => (openRow() ? "conversation" : "list");
   const dialog = () =>
-    reviewing() || palette() || sheet() || settingsOpen() !== null || compose() !== null || setup() || rail() || snoozing() !== null;
+    reviewing() || palette() || sheet() || settingsOpen() !== null || compose() !== null || setup() || rail() || snoozing() !== null ||
+    viewing() !== null;
   const searching = () => query().trim() !== "";
   // Some mail has headers only, so words in its body were not searched.
   const [partial, setPartial] = createSignal(false);
@@ -443,9 +449,11 @@ export default function App() {
 
   /** Opens a reply, reply-all or forward to `m`, set up by the engine from the message's headers. Replies sit
    * under the open conversation; a forward is a new message in its own dialog. */
-  async function respond(m: ThreadMessage | undefined, kind: ReplyKind) {
+  async function respond(m: ThreadMessage | undefined, kind: ReplyKind, only?: string) {
     if (!m) return;
     const init = await api.replyInit(m.id, kind);
+    // Quick quote: with text selected in the message, the reply quotes just that.
+    if (only) init.quoteText = only;
     const date = new Date(init.quoteDate * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
     const quote =
       kind === "forward"
@@ -477,6 +485,7 @@ export default function App() {
       inReplyTo: init.inReplyTo,
       references: init.references,
       focus: kind === "forward" ? "to" : "body",
+      quoteOpen: only !== undefined,
       inline: kind !== "forward" && openRow() !== null,
       forwardOf: init.forwardOf,
       forwardFiles: init.forwardOf ? m.attachments : undefined,
@@ -532,7 +541,17 @@ export default function App() {
   }
 
   /** r: continues this conversation's draft if it has one, else replies to the focused message. */
+  /** `v`: the focused message's files in the viewer, else the newest message's that has some. */
+  function viewFiles() {
+    const focused = messages[messageFocus()];
+    const m = focused?.attachments.length ? focused : [...messages].reverse().find((x) => x.attachments.length);
+    if (m) setViewing({ message: m, index: 0 });
+  }
+
   async function reply() {
+    const picked = takeQuote();
+    const from = picked && messages.find((m) => m.id === picked.id);
+    if (from) return void respond(from, "reply", picked!.text);
     const pending = messages.find((m) => m.draftId != null);
     const record = pending && (await api.draft(pending.draftId!));
     if (record) resume(record, true);
@@ -609,6 +628,13 @@ export default function App() {
   );
 
   const newMessage = () => setCompose({ body: signature() ? `\n\n${signature()}` : "" });
+
+  /** What a person's card in the conversation can do. */
+  const person: PersonActions = {
+    write: (email) => setCompose({ to: [email], body: signature() ? `\n\n${signature()}` : "", focus: "body" }),
+    search: (email) => batch(() => (close(), setQuery(`from:${email}`))),
+    open: (m) => void open(asRow(m)),
+  };
 
   /** A `mailto:` link: compose, filled in from it. */
   function fromLink(m: Mailto) {
@@ -709,6 +735,7 @@ export default function App() {
     { keys: "f", name: "Forward", context: "conversation", run: () => respond(messages[messageFocus()], "forward") },
     { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
     { keys: "r", name: "Reply (or continue the draft)", context: "conversation", run: reply },
+    { keys: "v", name: "View attachments", context: "conversation", run: viewFiles },
     { keys: "z", name: "Undo", run: undo },
     { keys: "h", name: "Snooze", run: () => targets().length > 0 && setSnoozing(targets()) },
     { keys: "H", name: "Back from snooze now", run: () => void wake() },
@@ -739,6 +766,19 @@ export default function App() {
     { keys: "Ctrl+\\", name: "Accounts and folders", run: () => setRail(!rail()) },
     { keys: "Ctrl+k", name: "Command palette", run: () => setPalette(!palette()), hidden: true },
   ]);
+
+  /** The conversation's `…` menu: its actions in the order people reach for them, each with its key. */
+  const MENU_KEYS = ["r", "Enter", "f", "v", "e", "h", "s", "u", "m", "!", "#", "O"];
+  const menu = () => {
+    const all = bindings();
+    const items: MenuItem[] = MENU_KEYS.flatMap((k) => {
+      const b = all.find((b) => b.keys === k && (!b.context || b.context === "conversation"));
+      if (!b || (k === "v" && !messages.some((m) => m.attachments.length))) return [];
+      return [{ name: b.name, keys: keyLabel(b.keys), run: () => void b.run() }];
+    });
+    items.splice(items.findIndex((i) => i.name === "Mark as spam"), 0, { name: "Move to …", run: () => void choose("Move to …") });
+    return items;
+  };
 
   const commands = createMemo<Command[]>(() => [
     ...bindings()
@@ -1030,8 +1070,11 @@ export default function App() {
             expanded={(id) => expanded().has(id)}
             onToggle={toggleMessage}
             onReply={(m) => respond(m, "reply")}
+            onView={(message, index) => setViewing({ message, index })}
             onDone={() => act("archive")}
             onClose={close}
+            menu={menu}
+            person={person}
           />
           <Show when={compose()?.inline ? compose() : null}>
             {(init) => (
@@ -1080,6 +1123,9 @@ export default function App() {
       </Show>
       <Show when={sheet()}>
         <ShortcutSheet bindings={bindings()} onClose={() => setSheet(false)} />
+      </Show>
+      <Show when={viewing()}>
+        {(v) => <AttachmentViewer message={v().message} index={v().index} onClose={() => setViewing(null)} />}
       </Show>
       <Show when={snoozing()}>
         {(hit) => <SnoozePicker count={hit().length} onPick={(due) => void snoozeUntil(due)} onClose={() => setSnoozing(null)} />}

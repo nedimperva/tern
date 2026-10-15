@@ -4,7 +4,9 @@ import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
 import { darken, designedFrame, frameTheme, isDesigned, readingFrame, readingView, textFrame } from "../mailview";
 import { isDark, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
+import { ActionMenu, type MenuItem } from "./ActionMenu";
 import { Icon } from "./Icon";
+import { PersonCard, type PersonActions } from "./PersonCard";
 
 /** Images the HTML shows from the message's own parts. */
 const CID = /(["'])cid:([^"']+)\1/gi;
@@ -59,6 +61,23 @@ function HtmlBody(props: { html: string; sender: string; messageId: number }) {
     const fit = () => (frame!.style.height = `${doc.documentElement.scrollHeight}px`);
     fit();
     new ResizeObserver(fit).observe(doc.body);
+    // Keys typed while the message has focus (after selecting text in it) still reach Tern's shortcuts.
+    doc.addEventListener("keydown", (ev) => {
+      // A form field in the mail keeps its typing.
+      const t = ev.target as HTMLElement;
+      if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      const copy = new KeyboardEvent("keydown", {
+        key: ev.key,
+        code: ev.code,
+        ctrlKey: ev.ctrlKey,
+        shiftKey: ev.shiftKey,
+        altKey: ev.altKey,
+        metaKey: ev.metaKey,
+        cancelable: true,
+      });
+      window.dispatchEvent(copy);
+      if (copy.defaultPrevented) ev.preventDefault();
+    });
     doc.addEventListener("click", (ev) => {
       const a = (ev.target as Element).closest("a");
       if (!a?.href) return;
@@ -173,7 +192,7 @@ function FileCard(props: { message: ThreadMessage; index: number; busy: boolean;
   const type = () => kind(file().name, file().mime);
   return (
     <span class="file-card" classList={{ busy: props.busy }} title={file().mime}>
-      <button type="button" class="open" onClick={props.onOpen} title={`Open ${file().name}`}>
+      <button type="button" class="open" onClick={props.onOpen} title={`View ${file().name} (V)`}>
         <Show when={preview()} fallback={<span class={`badge ${type().tone}`}>{type().label}</span>}>
           {(src) => <img class="thumb" src={src()} alt="" />}
         </Show>
@@ -189,8 +208,8 @@ function FileCard(props: { message: ThreadMessage; index: number; busy: boolean;
   );
 }
 
-/** The files of a received message: a card opens one with the system's program, the arrow beside it saves it. */
-function Attachments(props: { message: ThreadMessage }) {
+/** The files of a received message: a card opens one in the viewer, the arrow beside it saves it. */
+function Attachments(props: { message: ThreadMessage; onView: (index: number) => void }) {
   const [busy, setBusy] = createSignal<number | null>(null);
   const [problem, setProblem] = createSignal("");
   const run = async (index: number, work: () => Promise<unknown>) => {
@@ -214,7 +233,7 @@ function Attachments(props: { message: ThreadMessage }) {
               message={props.message}
               index={i()}
               busy={busy() === i()}
-              onOpen={() => void run(i(), () => api.openAttachment(props.message.id, i()))}
+              onOpen={() => props.onView(i())}
               onSave={() => void run(i(), () => api.saveAttachment(props.message.id, i(), a.name))}
             />
           )}
@@ -225,6 +244,30 @@ function Attachments(props: { message: ThreadMessage }) {
       </Show>
     </>
   );
+}
+
+/** Text selected in one of the open messages, for a reply that quotes only that (`r`). The selection is cleared,
+ * so a later reply is a whole one again. */
+export function takeQuote(): { id: number; text: string } | null {
+  const card = (node: Node | null | undefined) =>
+    (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>(".card[data-message]");
+  const sel = document.getSelection();
+  const here = sel && !sel.isCollapsed ? card(sel.anchorNode) : null;
+  if (here && sel!.toString().trim()) {
+    const text = sel!.toString().trim();
+    sel!.removeAllRanges();
+    return { id: Number(here.dataset.message), text };
+  }
+  // In mail HTML the selection lives in the message's frame.
+  for (const frame of document.querySelectorAll<HTMLIFrameElement>(".card[data-message] iframe")) {
+    const inner = frame.contentWindow?.getSelection();
+    const text = inner && !inner.isCollapsed ? inner.toString().trim() : "";
+    if (text) {
+      inner!.removeAllRanges();
+      return { id: Number(card(frame)!.dataset.message), text };
+    }
+  }
+  return null;
 }
 
 const PALETTE = ["#5b5bd6", "#2f9e6e", "#d0453f", "#c98a1b", "#0e9bb5", "#b24fb0", "#7a7f8a", "#e07a30"];
@@ -249,8 +292,11 @@ export function ConversationView(props: {
   expanded: (id: number) => boolean;
   onToggle: (index: number) => void;
   onReply: (m: ThreadMessage) => void;
+  onView: (m: ThreadMessage, index: number) => void;
   onDone: () => void;
   onClose: () => void;
+  menu: () => MenuItem[];
+  person: PersonActions;
 }) {
   const last = () => props.messages[props.messages.length - 1];
   return (
@@ -260,19 +306,22 @@ export function ConversationView(props: {
         <button class="primary" onClick={props.onDone}>
           Done <kbd>E</kbd>
         </button>
+        <ActionMenu items={props.menu} />
         <button class="link" onClick={props.onClose} aria-label="Close">
           <kbd>Esc</kbd>
         </button>
       </header>
       <For each={props.messages}>
         {(m, i) => (
-          <article class="card" classList={{ focused: i() === props.focused, open: props.expanded(m.id), unread: !m.seen }}>
+          <article class="card" data-message={m.id} classList={{ focused: i() === props.focused, open: props.expanded(m.id), unread: !m.seen }}>
             <header onClick={() => props.onToggle(i())}>
               <span class="avatar" style={{ background: colour(m.fromAddr) }}>
                 {initials(m)}
               </span>
               <span class="who">
-                <strong>{m.fromName || m.fromAddr}</strong>
+                <PersonCard name={m.fromName} email={m.fromAddr} colour={colour(m.fromAddr)} initials={initials(m)} actions={props.person}>
+                  <strong>{m.fromName || m.fromAddr}</strong>
+                </PersonCard>
                 <Show when={m.draftId != null}>
                   <span class="draft-label">Draft · R to continue</span>
                 </Show>
@@ -300,7 +349,7 @@ export function ConversationView(props: {
                   </Show>
                 </Show>
                 <Show when={m.attachments.length}>
-                  <Attachments message={m} />
+                  <Attachments message={m} onView={(index) => props.onView(m, index)} />
                 </Show>
               </div>
             </Show>
