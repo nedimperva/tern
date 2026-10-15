@@ -160,7 +160,7 @@ pub async fn run_account(
     loop {
         if resumed.has_changed().unwrap_or(false) {
             resumed.mark_unchanged();
-            log::info!("{}: the computer woke from sleep; reconnecting", account.config.email);
+            log::info!("{}: woke from sleep or the network came back; reconnecting", account.config.email);
             session = None;
             failures = 0;
         }
@@ -213,19 +213,37 @@ pub async fn run_account(
     }
 }
 
-/// Counts the times the computer woke from sleep, noticed as wall-clock time that passed while the process did
-/// not run. Works the same everywhere, without listening to each system's power events.
+/// Bumped when the system says the network is back (see `network_back`).
+static NETWORK: std::sync::LazyLock<tokio::sync::watch::Sender<u64>> =
+    std::sync::LazyLock::new(|| tokio::sync::watch::channel(0).0);
+
+/// The network came back (the window's `online` event). Connections opened before are likely dead without either
+/// side knowing, and a worker waiting out its backoff should not wait a minute more: every account reconnects now,
+/// as after sleep.
+pub fn network_back() {
+    NETWORK.send_modify(|n| *n += 1);
+}
+
+/// Counts the times connections should start over: the computer woke from sleep, noticed as wall-clock time that
+/// passed while the process did not run (the same everywhere, without each system's power events), or the
+/// network came back.
 fn watch_clock() -> tokio::sync::watch::Receiver<u64> {
     let (tx, rx) = tokio::sync::watch::channel(0);
+    let mut network = NETWORK.subscribe();
     tokio::spawn(async move {
         let mut before = std::time::SystemTime::now();
         while !tx.is_closed() {
-            tokio::time::sleep(CLOCK_TICK).await;
-            let after = std::time::SystemTime::now();
-            if after.duration_since(before).unwrap_or_default() > CLOCK_TICK + SLEPT {
-                tx.send_modify(|n| *n += 1);
+            tokio::select! {
+                _ = tokio::time::sleep(CLOCK_TICK) => {
+                    let after = std::time::SystemTime::now();
+                    if after.duration_since(before).unwrap_or_default() > CLOCK_TICK + SLEPT {
+                        tx.send_modify(|n| *n += 1);
+                    }
+                    before = after;
+                }
+                // The sender is a static, so this never ends in an error.
+                _ = network.changed() => tx.send_modify(|n| *n += 1),
             }
-            before = after;
         }
     });
     rx
@@ -1116,6 +1134,18 @@ mod tests {
         let sizes: HashMap<u32, u32> = [(1, 1_000), (2, big), (3, 1_000), (4, 1_000)].into();
         let batches = by_size(&[1, 2, 3, 4], &sizes);
         assert_eq!(batches, [&[1][..], &[2][..], &[3, 4][..]]);
+    }
+
+    #[tokio::test]
+    async fn the_network_coming_back_restarts_connections() {
+        let mut restart = super::watch_clock();
+        // Let the watcher subscribe and start waiting.
+        tokio::task::yield_now().await;
+        super::network_back();
+        tokio::time::timeout(std::time::Duration::from_secs(1), restart.changed())
+            .await
+            .expect("signalled at once, not on the next clock tick")
+            .unwrap();
     }
 
     #[test]
