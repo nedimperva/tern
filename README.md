@@ -92,6 +92,13 @@ CI (`.github/workflows/check.yml`) runs on every pull request, on Linux and Wind
 `cargo fmt --check` (Linux), `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`.
 Run the same before pushing. The Linux job installs the Debian/Ubuntu packages listed above.
 
+## Releases
+
+Bump the version (package.json, tauri.conf.json and both Cargo.toml files), merge, then push a tag such as `v0.2.1`.
+The `release` workflow builds the Windows installer (`-setup.exe` and `.msi`) and the Linux AppImage, `.deb` and
+`.rpm`, and attaches them to a draft pre-release. Publish the draft on GitHub to make it visible. The installers
+are not code-signed yet, so Windows SmartScreen warns on first run, and there is no auto-update.
+
 ## Keys
 
 These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
