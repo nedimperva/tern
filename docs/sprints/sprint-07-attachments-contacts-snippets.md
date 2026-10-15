@@ -57,8 +57,17 @@ Google Contacts via CardDAV (keep Fastmail), attachments browser, drag out.
 
 ## Decisions
 
-_None yet._
+- 2026-10-15 — **Open and save came early, without the table.** The owner could see attachments on received mail
+  but do nothing with them (Windows test, 2026-10-15). A chip now opens the file with the system's program and
+  the arrow beside it saves it. Planned: an `attachments` table and `BODY.PEEK[<part>]` per file. Built: the
+  whole message is fetched once on a connection of its own (`sync::download`), its listed files are written to
+  `app_cache/received/<message>/<n>/<name>`, and later opens read that copy. Rows parsed from a full body have no
+  section numbers, so one path that works for every row came first. Names are made safe for every system, and
+  programs or disk images (`.exe`, `.lnk`, `.iso`, …) are saved but never opened. Proposal: keep this until the
+  viewer task, then fetch single parts where BODYSTRUCTURE gave a section.
 
 ## Log
 
-_No sessions yet._
+- 2026-10-15 — Received attachments open and save (see Decisions). Engine checks: `mime` tests for matching and
+  safe names; the dev-server attachment test also downloads and matches each listed file. UI tried in
+  `npm run dev` against the fake mailbox only (no window here).
