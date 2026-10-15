@@ -456,3 +456,49 @@ pub async fn save_attachment(
     std::fs::copy(&file, &path).map_err(|e| format!("{path}: {e}"))?;
     Ok(())
 }
+
+/// The `mailto:` link Tern was started with, once; the window asks when it is ready.
+#[tauri::command]
+pub fn take_mailto(app: AppHandle) -> Option<tern_core::mailto::Mailto> {
+    crate::desktop::take_pending(&app)
+}
+
+/// Quits for good (the window has saved what was being written). Closing the window only hides it.
+#[tauri::command]
+pub fn quit(app: AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
+pub fn autostart(app: AppHandle) -> Reply<bool> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+/// Starts Tern at login, in the tray, or stops doing so.
+#[tauri::command]
+pub fn set_autostart(app: AppHandle, on: bool) -> Reply<()> {
+    use tauri_plugin_autostart::ManagerExt;
+    let launcher = app.autolaunch();
+    if on { launcher.enable() } else { launcher.disable() }.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn default_mail_app(app: AppHandle) -> bool {
+    use tauri_plugin_deep_link::DeepLinkExt;
+    app.deep_link().is_registered("mailto").unwrap_or(false)
+}
+
+/// Makes Tern open `mailto:` links. Only when asked: it takes over from whatever mail app did that before. Windows
+/// keeps the final say in its own settings, which this opens there.
+#[tauri::command]
+pub fn make_default_mail_app(app: AppHandle) -> Reply<()> {
+    use tauri_plugin_deep_link::DeepLinkExt;
+    app.deep_link().register("mailto").map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        let _ = app.opener().open_url("ms-settings:defaultapps", None::<&str>);
+    }
+    Ok(())
+}

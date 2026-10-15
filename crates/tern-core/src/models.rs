@@ -437,3 +437,16 @@ pub struct Applied {
     pub token: Vec<i64>,
     pub accounts: Vec<i64>,
 }
+
+/// A message that just arrived, for a notification.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewMail {
+    pub id: i64,
+    pub account_id: i64,
+    pub thread_id: String,
+    pub from_name: String,
+    pub from_addr: String,
+    pub subject: String,
+    pub snippet: String,
+}

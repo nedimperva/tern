@@ -1207,6 +1207,12 @@ button.fold {
   color: var(--fg-2);
 }
 
+.setting-error {
+  margin: var(--s-3) 0 0;
+  font-size: var(--t-sm);
+  color: var(--danger);
+}
+
 /* MARK: Performance overlay */
 
 .perf {

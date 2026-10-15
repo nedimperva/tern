@@ -1,6 +1,6 @@
 # Sprint 8 — Desktop integration
 
-**Status:** in progress · started 2026-10-14
+**Status:** in progress (M2 slice built, owner checks open) · started 2026-10-14
 
 ## Delivery scope
 
@@ -22,12 +22,12 @@ when it is offline.
 ## Tasks
 
 ### Plugins
-- [ ] `tauri-plugin-single-instance` (first in the builder), focusing the window and forwarding argv for `mailto:`.
+- [x] `tauri-plugin-single-instance` (first in the builder), focusing the window and forwarding argv for `mailto:`.
 - [ ] `tauri-plugin-notification`; on Linux this is `org.freedesktop.Notifications` — works on Hyprland with `mako`/`dunst`/`swaync`.
-- [ ] `tauri-plugin-autostart` (XDG autostart `.desktop` on Linux; registry on Windows later).
-- [ ] `tauri-plugin-deep-link` for `mailto:`; register the scheme in `tauri.conf.json` and the `.desktop` file (`MimeType=x-scheme-handler/mailto`).
+- [x] `tauri-plugin-autostart` (XDG autostart `.desktop` on Linux; registry on Windows later).
+- [x] `tauri-plugin-deep-link` for `mailto:`; register the scheme in `tauri.conf.json` and the `.desktop` file (`MimeType=x-scheme-handler/mailto`).
 - [ ] `tauri-plugin-dialog` already from Sprint 3; `tauri-plugin-clipboard-manager` for "Copy link / Copy address".
-- [ ] Review `capabilities/default.json` after each plugin; least privilege.
+- [x] Review `capabilities/default.json` after each plugin; least privilege.
 
 ### Notifications
 - [ ] Rules: notify for Important split only by default; per-split toggle; quiet hours; never for muted/snoozed/own sent.
@@ -36,11 +36,11 @@ when it is offline.
 
 ### Tray
 - [ ] Tray icon with an unread dot (two icon variants), menu: Open, Compose, Check now, Pause sync, Quit. `libappindicator`/StatusNotifier on Linux (works in Waybar).
-- [ ] Closing the window hides to the tray when "Keep running in background" is on (default on); `Cmd+Q` quits.
+- [x] Closing the window hides to the tray when "Keep running in background" is on (default on); `Cmd+Q` quits.
 
 ### `mailto:`
-- [ ] Parse `mailto:` (`to`, `cc`, `bcc`, `subject`, `body`); open compose pre-filled; support both cold start and running instance.
-- [ ] Settings → "Make Tern the default mail app" (`xdg-settings set default-url-scheme-handler mailto app.tern.mail.desktop`).
+- [x] Parse `mailto:` (`to`, `cc`, `bcc`, `subject`, `body`); open compose pre-filled; support both cold start and running instance.
+- [x] Settings → "Make Tern the default mail app" (`xdg-settings set default-url-scheme-handler mailto app.tern.mail.desktop`).
 
 ### Offline and errors
 - [x] Sync state in the status strip with a plain sentence: "Offline — changes will sync when you're back", "Signed out of Gmail — Sign in again", "Fastmail: can't reach imap.fastmail.com".
@@ -64,6 +64,18 @@ Notification actions, NetworkManager D-Bus (keep backoff), quiet hours.
 
 ## Decisions
 
+- 2026-10-15 — **Notifications come from the engine side, with notify-rust.** `tauri-plugin-notification` cannot
+  report a click on desktop. Tern asks the store after every sync change for unread inbox mail newer than the last
+  look (`Store::new_mail`): from someone else, not muted, dated within a day, and not from an account in its first
+  minute of mail (a first sync is not news). Several at once make one notification. On Linux a click opens that
+  conversation; Windows shows the toast but cannot report the click yet (M3). Until triage (package 05) builds
+  the Important split, "Important" means the inbox.
+- 2026-10-15 — **Tern becomes the mailto: handler only when asked.** The packages declare the scheme so Tern shows
+  up as a choice; Settings → Desktop → "Open email links in Tern" registers it. Nothing takes over on install.
+- 2026-10-15 — **One close listener.** Every Tauri close listener closes the window by itself once its handler is
+  done, so compose no longer registers its own: `api.onCloseRequested` collects what must be saved, and one
+  listener saves it, then hides the window (background on) or lets it close. Quit (Ctrl+Q, tray) saves the same way.
+
 - 2026-10-15 — **Network back comes from the window, not NetworkManager.** Planned: listen to NetworkManager over
   D-Bus. Built: the webview's `online` event (WebKitGTK takes it from GLib's network monitor, which asks
   NetworkManager where it runs; WebView2 from Windows) calls `network_back`, and every account drops its
@@ -83,3 +95,11 @@ Notification actions, NetworkManager D-Bus (keep backoff), quiet hours.
   when only some accounts are affected. Network back reconnects every account at once (see Decisions). Engine
   tests for listing, discarding and the dependency case, and for the reconnect signal. UI tried in `npm run dev`
   against the fake mailbox (`#offline` shows the waiting list), light and dark; not yet in the Tauri window.
+- 2026-10-15 — M2 slice. Single instance (a second start brings the window back and hands over its link); tray with
+  Open, Compose, Check for mail and Quit, and the unread count as its tooltip; closing hides the window by default
+  (Settings → Desktop); Ctrl+Q and the tray's Quit save drafts, then quit; start at login straight to the tray
+  (`--hidden`); `mailto:` parsed in the engine (`tern_core::mailto`, with tests) and opened in compose at cold start
+  or in the running instance; new-mail notifications as in Decisions. The deb depends on libayatana-appindicator.
+  Tried under Xvfb: a second start with a mailto: link exits and the first instance opens compose filled in. Tray,
+  notifications and hiding need a real desktop; not yet tried on Hyprland or Windows. Not built yet: notification
+  actions, quiet hours, tray unread dot, Pause sync, clipboard plugin, .desktop Compose action, Linux polish.

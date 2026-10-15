@@ -116,6 +116,7 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 | `Ctrl Enter` | send |
 | `/` | search |
 | `g i` | All Inboxes |
+| `Ctrl Q` | quit (closing the window keeps Tern in the tray) |
 
 ## Speed targets
 
