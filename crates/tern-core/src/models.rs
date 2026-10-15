@@ -454,3 +454,15 @@ pub struct NewMail {
     pub subject: String,
     pub snippet: String,
 }
+
+/// A saved piece of text that compose inserts when its shortcut is typed after `;`. The body is plain text with
+/// `{first_name}`-style places that compose fills in.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Snippet {
+    /// 0 for one not saved yet.
+    pub id: i64,
+    pub shortcut: String,
+    pub name: String,
+    pub body: String,
+}

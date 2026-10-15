@@ -119,7 +119,8 @@ export default function App() {
 
   const [reviewing, setReviewing] = createSignal(false);
   const [sheet, setSheet] = createSignal(false);
-  const [settingsOpen, setSettingsOpen] = createSignal(false);
+  // Which settings section is open, if any.
+  const [settingsOpen, setSettingsOpen] = createSignal<string | null>(null);
   /** The conversations the snooze picker is choosing a time for. */
   const [snoozing, setSnoozing] = createSignal<ThreadRow[] | null>(null);
   const [splitUnread, setSplitUnread] = createSignal<[number, number]>([0, 0]);
@@ -133,7 +134,7 @@ export default function App() {
   const current = () => rows()[focus()];
   const context = (): Context => (openRow() ? "conversation" : "list");
   const dialog = () =>
-    reviewing() || palette() || sheet() || settingsOpen() || compose() !== null || setup() || rail() || snoozing() !== null;
+    reviewing() || palette() || sheet() || settingsOpen() !== null || compose() !== null || setup() || rail() || snoozing() !== null;
   const searching = () => query().trim() !== "";
   // Some mail has headers only, so words in its body were not searched.
   const [partial, setPartial] = createSignal(false);
@@ -730,8 +731,9 @@ export default function App() {
       run: () => switchAccount(n - 1),
       hidden: true,
     })),
+    { keys: "g ;", name: "Edit snippets", run: () => setSettingsOpen("Snippets") },
     { keys: "?", name: "Keyboard shortcuts", run: () => setSheet(true) },
-    { keys: "Ctrl+,", name: "Settings", run: () => setSettingsOpen(true) },
+    { keys: "Ctrl+,", name: "Settings", run: () => setSettingsOpen("Appearance") },
     { keys: "Ctrl+q", name: "Quit Tern", run: () => void api.quit() },
     { keys: "Ctrl+P", name: "Performance overlay", run: () => setPerf(!perf()) },
     { keys: "Ctrl+\\", name: "Accounts and folders", run: () => setRail(!rail()) },
@@ -794,7 +796,7 @@ export default function App() {
           run: () => setSetting("theme", t),
         })),
     },
-    { name: "Settings", keys: keyLabel("Ctrl+,"), group: "Settings", run: () => setSettingsOpen(true) },
+    { name: "Settings", keys: keyLabel("Ctrl+,"), group: "Settings", run: () => setSettingsOpen("Appearance") },
     ...(openRow() && openMuted() ? [{ name: "Unmute conversation", group: "Actions", run: () => void unmute() }] : []),
     { name: "Add account", group: "Accounts", run: () => setSetup(true) },
     ...(problems().length || late().length
@@ -1071,7 +1073,7 @@ export default function App() {
         />
       </Show>
       <Show when={settingsOpen()}>
-        <SettingsPage accounts={accounts()} onClose={() => setSettingsOpen(false)} />
+        {(section) => <SettingsPage accounts={accounts()} section={section()} onClose={() => setSettingsOpen(null)} />}
       </Show>
       <Show when={perf()}>
         <PerfOverlay />

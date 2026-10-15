@@ -35,10 +35,12 @@ CardDAV; snippets expand with `;`; Instant Intro does the reply-all-and-bcc danc
 - [ ] Autocomplete shows the avatar initials chip; Gravatar/remote avatars are **not** fetched (privacy).
 
 ### Snippets
-- [ ] `snippets` table: `shortcut, name, body (ProseMirror doc), subject?, to?, cc?, bcc?, attachments?`.
-- [ ] `;` in compose opens a fuzzy snippet picker; `;shortcut` + `Space` expands inline; `Cmd+;` from anywhere opens the palette in snippet mode.
-- [ ] Variables: `{first_name}`, `{name}`, `{email}`, `{subject}`, `{my_name}`, `{date}` filled from the thread; `{cursor}` places the caret.
-- [ ] Snippet manager in Settings (`g ;`) with import/export JSON.
+- [x] `snippets` table: `shortcut, name, body (ProseMirror doc), subject?, to?, cc?, bcc?, attachments?`.
+      Built with a plain-text body and no subject, recipients or files (see Decisions).
+- [x] `;` in compose opens a fuzzy snippet picker; `;shortcut` + `Space` expands inline; `Cmd+;` from anywhere opens the palette in snippet mode.
+      The palette mode is not built.
+- [x] Variables: `{first_name}`, `{name}`, `{email}`, `{subject}`, `{my_name}`, `{date}` filled from the thread; `{cursor}` places the caret.
+- [x] Snippet manager in Settings (`g ;`) with import/export JSON. Import/export is not built.
 
 ### Instant Intro (`Cmd+Shift+I`)
 - [ ] Reply-all where the sender who introduced you moves to Bcc, with the first line "Thanks {first_name}, moving you to bcc." inserted. One key.
@@ -66,6 +68,13 @@ Google Contacts via CardDAV (keep Fastmail), attachments browser, drag out.
   programs or disk images (`.exe`, `.lnk`, `.iso`, …) are saved but never opened. Proposal: keep this until the
   viewer task, then fetch single parts where BODYSTRUCTURE gave a section.
 
+- 2026-10-15 — **Basic snippets are plain text.** The beta scope is "basic snippets", so a snippet is a shortcut,
+  a name and plain text (blank lines make paragraphs); its places are filled from the first To address, its
+  name in contacts (else the address's first word, so ada.lovelace@ gives Ada), the subject without Re:/Fwd:,
+  the account's display name and today's date. Formatting, a subject, recipients and files, the palette mode
+  and import/export wait for a need. `;` opens the picker only at the start of a word, so `a;b` and `:;` stay
+  text; Esc closes the picker, not compose.
+
 ## Log
 
 - 2026-10-15 — Received attachments open and save (see Decisions). Engine checks: `mime` tests for matching and
@@ -80,4 +89,8 @@ Google Contacts via CardDAV (keep Fastmail), attachments browser, drag out.
   into data: URIs (20 MB at most per message), cached in `received/<id>/inline.json`. Planned was a `tern-att://`
   protocol; data: URIs needed no new scheme or CSP change (the frame already allowed `data:`). Remote images stay
   blocked as before. Checked with a `mime` test; not yet in the Tauri window.
-
+- 2026-10-15 — Snippets (see Decisions): schema v17, `Store::snippets/save_snippet/delete_snippet/snippet_used`
+  with a test, the picker in the editor and a Snippets section in Settings (`g ;`). Tried in `npm run dev` with
+  headless Chromium against the fake mailbox: `;ca` + Enter, `;thanks` + Space with `{first_name}` filled,
+  `{cursor}` placing the caret, a taken shortcut refused, a new snippet saved and used. Not yet tried in the
+  Tauri window.

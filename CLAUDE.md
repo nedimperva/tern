@@ -14,7 +14,9 @@ decisions that aren't visible from the code.
   shell (package 02), compose with drafts, attachments, signatures and autocomplete (package 03), received
   attachments open/save, and the status strip's "changes waiting" / problems lists (package 08's M1 slice).
   Search filters (package 06). Package 08's M2 slice: tray, background running, notifications, single instance,
-  login start and `mailto:`. Package 05's basics: Important/Other splits and a local snooze (see its Decisions). Owner acceptance is tracked in `docs/acceptance/m1-alpha.md`; the owner ticks it.
+  login start and `mailto:`. Package 05's basics: Important/Other splits and a local snooze (see its Decisions).
+  Common-word search walks the date index (package 06 Decisions) and basic snippets (`;` in compose, package 07).
+  Owner acceptance is tracked in `docs/acceptance/m1-alpha.md`; the owner ticks it.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items, so Gmail goes through the Gmail API (also provisional), not IMAP.

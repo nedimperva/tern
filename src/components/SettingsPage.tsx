@@ -1,5 +1,5 @@
-import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js";
-import { api, type Account } from "../api";
+import { createSignal, For, Index, onCleanup, onMount, Show, type JSX } from "solid-js";
+import { api, type Account, type Snippet } from "../api";
 import { setSetting, settings, type Settings } from "../settings";
 
 type Choice<K extends keyof Settings> = { label: string; value: Settings[K] };
@@ -189,7 +189,99 @@ function DesktopSettings() {
   );
 }
 
-/** Ctrl+, : settings over the list (docs/design/ui.md §4.8). Changes apply and are saved at once. */
+/** Snippets: text typed after `;` in compose. Changes save as they are typed. */
+function SnippetSettings() {
+  // Rows carry a key of their own: a new snippet has no id until its first save.
+  type Row = Snippet & { key: number };
+  let keys = 0;
+  const [list, setList] = createSignal<Row[]>([]);
+  const [error, setError] = createSignal("");
+  onMount(() => void api.snippets().then((all) => setList(all.map((s) => ({ ...s, key: ++keys }))), (e) => setError(String(e))));
+  const change = (key: number, patch: Partial<Snippet>) => setList(list().map((s) => (s.key === key ? { ...s, ...patch } : s)));
+  // One save at a time, so a new snippet is not added twice.
+  let saving = Promise.resolve();
+  const save = (key: number) =>
+    (saving = saving.then(async () => {
+      const s = list().find((r) => r.key === key);
+      // A new one waits for its shortcut.
+      if (!s || (s.id === 0 && !s.shortcut.trim())) return;
+      try {
+        change(key, { id: await api.saveSnippet(s) });
+        setError("");
+      } catch (e) {
+        setError(String(e));
+      }
+    }));
+  // Typing saves after a pause, and closing settings saves what is left (a removed field gets no blur).
+  const waiting = new Map<number, number>();
+  const later = (key: number) => {
+    clearTimeout(waiting.get(key));
+    waiting.set(key, window.setTimeout(() => (waiting.delete(key), void save(key)), 600));
+  };
+  onCleanup(() => {
+    for (const [key, timer] of waiting) (clearTimeout(timer), void save(key));
+  });
+  const remove = (key: number) => {
+    clearTimeout(waiting.get(key));
+    waiting.delete(key);
+    saving = saving.then(async () => {
+      const s = list().find((r) => r.key === key);
+      if (s?.id) await api.deleteSnippet(s.id);
+      setList(list().filter((r) => r.key !== key));
+    });
+  };
+  const add = () => {
+    setList([...list(), { id: 0, shortcut: "", name: "", body: "", key: ++keys }]);
+    queueMicrotask(() => [...document.querySelectorAll<HTMLInputElement>(".setting.snippet .snippet-key")].pop()?.focus());
+  };
+  return (
+    <>
+      <p class="help">
+        Type <kbd>;</kbd> in a message to pick one, or its shortcut and <kbd>Space</kbd>. These fill themselves in:{" "}
+        {"{first_name}"}, {"{name}"}, {"{email}"}, {"{subject}"}, {"{my_name}"}, {"{date}"}, and {"{cursor}"} is where
+        typing goes on.
+      </p>
+      <Index each={list()}>
+        {(s) => (
+          <div class="setting snippet">
+            <div class="snippet-head">
+              <input
+                class="snippet-key"
+                value={s().shortcut}
+                placeholder="shortcut"
+                aria-label="Shortcut"
+                onInput={(e) => (change(s().key, { shortcut: e.currentTarget.value }), later(s().key))}
+              />
+              <input
+                value={s().name}
+                placeholder="Name"
+                aria-label="Name"
+                onInput={(e) => (change(s().key, { name: e.currentTarget.value }), later(s().key))}
+              />
+              <button class="link" onClick={() => remove(s().key)}>
+                Delete
+              </button>
+            </div>
+            <textarea
+              rows={4}
+              value={s().body}
+              placeholder={"Thanks {first_name}!\n\n{cursor}"}
+              aria-label="Text"
+              onInput={(e) => (change(s().key, { body: e.currentTarget.value }), later(s().key))}
+            />
+          </div>
+        )}
+      </Index>
+      <Show when={error()}>
+        <p class="setting-error">{error()}</p>
+      </Show>
+      <div>
+        <button onClick={add}>New snippet</button>
+      </div>
+    </>
+  );
+}
+
 /** Accounts: each one's signature, and where it goes in replies. */
 function AccountSettings(props: { accounts: Account[] }) {
   return (
@@ -221,13 +313,15 @@ function AccountSettings(props: { accounts: Account[] }) {
   );
 }
 
-export function SettingsPage(props: { accounts: Account[]; onClose: () => void }) {
-  const [section, setSection] = createSignal(0);
+/** Ctrl+, : settings over the list (docs/design/ui.md §4.8). Changes apply and are saved at once. */
+export function SettingsPage(props: { accounts: Account[]; onClose: () => void; section?: string }) {
   const sections = () => [
     ...SECTIONS,
+    { name: "Snippets", body: () => <SnippetSettings /> },
     { name: "Desktop", body: () => <DesktopSettings /> },
     { name: "Accounts", body: () => <AccountSettings accounts={props.accounts} /> },
   ];
+  const [section, setSection] = createSignal(Math.max(0, sections().findIndex((s) => s.name === props.section)));
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape") return;
     e.preventDefault();
