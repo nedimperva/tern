@@ -120,8 +120,13 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - Header: subject (`--t-lg`), label chips, a "Done" primary button with the keycap `E` and an overflow (`…`) with every action and its key.
 - Messages as cards separated by 1 px `--line` (no borders around them). Collapsed card = one line: avatar initials (28 px circle, account-palette colour from the sender hash), name, snippet, date. Expanded card = header (name, address on hover, to/cc on click, date full), body, attachments strip.
 - Body: sanitised HTML in an iframe sized to content; `Load images` pill when remote images were blocked, with "always for this sender".
+  Mail that is mostly text takes Tern's type (`--t-read`, 15 px / 1.65) and colours and follows dark mode; quotes sit
+  behind a 3 px `--line` bar. Mail its sender designed (layout tables with their own colours, wide pictures) keeps its
+  look, framed at up to 680 px on `--well`; in dark mode it is darkened (backgrounds dark, text light, pictures kept)
+  unless Settings → Reading says to keep its colours. "Reading view" shows a designed mail's words and pictures in
+  Tern's colours with a book face. `src/mailview.ts` decides and draws all three.
 - Quoted text and signatures collapse behind a `···` pill.
-- Attachments strip: file chips with icon, name, size; `Enter` opens the viewer.
+- Attachments strip: file cards with a type badge (PDF, XLSX…, coloured `--file-*`) or a picture preview once the file is on this computer, name, size and Save; clicking opens it.
 - Inline reply box at the bottom when replying (see Compose); `Esc` collapses it and keeps the draft.
 - AI summary (Sprint 10): one line under the subject, `--fg-1`, with a tiny `AI` keycap; click or key expands.
 

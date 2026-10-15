@@ -1,27 +1,15 @@
-import { createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, on, Show } from "solid-js";
 import { api, type ThreadMessage } from "../api";
-import { foldAt, HTML_FOLD_CSS, HTML_FOLD_SELECTOR } from "../fold";
-import { setSetting, settings } from "../settings";
+import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
+import { darken, designedFrame, frameTheme, isDesigned, readingFrame, readingView, textFrame } from "../mailview";
+import { isDark, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
 import { Icon } from "./Icon";
-
-// Mail is untrusted: no scripts, and no remote content (tracking pixels) until asked for.
-function frameHtml(html: string, remote: boolean): string {
-  const img = remote ? "data: cid: https: http:" : "data: cid:";
-  return `<!doctype html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${img}; style-src 'unsafe-inline'; font-src data:">
-<style>
-  html,body{margin:0;padding:0;background:#fff;color:#111;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
-  body{padding:4px 2px;word-wrap:break-word}
-  img{max-width:100%;height:auto}
-  pre{white-space:pre-wrap}
-  ${HTML_FOLD_CSS}
-</style></head><body>${html}</body></html>`;
-}
 
 /** Images the HTML shows from the message's own parts. */
 const CID = /(["'])cid:([^"']+)\1/gi;
 
+// Mail is untrusted: it renders in a frame with no scripts, and no remote content (tracking pixels) until asked for.
 function HtmlBody(props: { html: string; sender: string; messageId: number }) {
   const trusted = () => settings.loadImages === "always" || settings.imagesFrom.includes(props.sender.toLowerCase());
   const [asked, setAsked] = createSignal(false);
@@ -38,6 +26,22 @@ function HtmlBody(props: { html: string; sender: string; messageId: number }) {
     );
   };
   const hasRemote = /<img[^>]+src=["']?https?:/i.test(props.html) || /url\(["']?https?:/i.test(props.html);
+  // Text mail takes Tern's look; mail its sender designed keeps its own, framed (see mailview.ts).
+  const designed = createMemo(() => isDesigned(props.html));
+  const [reading, setReading] = createSignal(false);
+  // The frame's colours come from the theme's tokens, read again once the theme has changed.
+  const [theme, setTheme] = createSignal(frameTheme(isDark()));
+  createEffect(on(isDark, (dark) => setTheme(frameTheme(dark)), { defer: true }));
+  const darkened = () => designed() && !reading() && isDark() && settings.darkMail === "darken";
+  const srcdoc = () =>
+    reading()
+      ? readingFrame(readingView(html()), remote(), theme())
+      : designed()
+        ? designedFrame(html(), remote()) + (darkened() ? "<!-- dark -->" : "")
+        : textFrame(html(), remote(), theme());
+  // Darkened mail stays hidden until it is dark, so it never flashes white.
+  const [ready, setReady] = createSignal(false);
+  createEffect(on(srcdoc, () => setReady(false)));
   // Quoted replies and signatures start folded; the pill below the frame opens them.
   const [foldable, setFoldable] = createSignal(false);
   const [unfolded, setUnfolded] = createSignal(false);
@@ -48,7 +52,9 @@ function HtmlBody(props: { html: string; sender: string; messageId: number }) {
     frame = e.currentTarget as HTMLIFrameElement;
     const doc = frame.contentDocument;
     if (!doc) return;
-    setFoldable(doc.querySelector(HTML_FOLD_SELECTOR) !== null);
+    if (darkened()) darken(doc);
+    setReady(true);
+    setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
     doc.documentElement.classList.toggle("tern-fold", !unfolded());
     const fit = () => (frame!.style.height = `${doc.documentElement.scrollHeight}px`);
     fit();
@@ -61,20 +67,37 @@ function HtmlBody(props: { html: string; sender: string; messageId: number }) {
     });
   };
 
+  const body = (
+    <iframe
+      class="html-body"
+      classList={{ waiting: darkened() && !ready() }}
+      sandbox="allow-same-origin"
+      srcdoc={srcdoc()}
+      onLoad={onLoad}
+      title="Message"
+    />
+  );
   return (
     <>
-      <Show when={hasRemote && !remote()}>
-        <div class="remote-bar">
-          Remote images are blocked.
-          <button onClick={() => setAsked(true)}>Load images</button>
-          <button
-            onClick={() => setSetting("imagesFrom", [...settings.imagesFrom, props.sender.toLowerCase()])}
-          >
-            Always for this sender
-          </button>
+      <Show when={(hasRemote && !remote()) || designed()}>
+        <div class="body-tools">
+          <Show when={hasRemote && !remote()}>
+            <span>Remote images are blocked.</span>
+            <button onClick={() => setAsked(true)}>Load images</button>
+            <button onClick={() => setSetting("imagesFrom", [...settings.imagesFrom, props.sender.toLowerCase()])}>
+              Always for this sender
+            </button>
+          </Show>
+          <Show when={designed()}>
+            <button class="reading" aria-pressed={reading()} onClick={() => setReading(!reading())}>
+              {reading() ? "Show original" : "Reading view"}
+            </button>
+          </Show>
         </div>
       </Show>
-      <iframe class="html-body" sandbox="allow-same-origin" srcdoc={frameHtml(html(), remote())} onLoad={onLoad} />
+      <Show when={designed() && !reading()} fallback={body}>
+        <div class="html-stage">{body}</div>
+      </Show>
       <Show when={foldable()}>
         <button
           class="fold"
@@ -92,13 +115,19 @@ function HtmlBody(props: { html: string; sender: string; messageId: number }) {
   );
 }
 
-/** A plain-text body with its quoted reply or signature folded behind "···". */
+/** A plain-text body in Tern's type, with its quoted reply or signature folded behind "···"; unfolded, the quote
+ * sits behind a bar so it reads apart from the new text. */
 function PlainBody(props: { text: string }) {
   const [unfolded, setUnfolded] = createSignal(false);
   const at = () => foldAt(props.text);
   return (
     <>
-      <pre class="plain">{at() < 0 || unfolded() ? props.text : props.text.slice(0, at())}</pre>
+      <pre class="plain">{at() < 0 ? props.text : props.text.slice(0, at())}</pre>
+      <Show when={at() >= 0 && unfolded()}>
+        <pre class="plain quoted" classList={{ signature: /^\s*-- ?\n/.test(props.text.slice(at())) }}>
+          {props.text.slice(at()).replace(/^\s*\n/, "")}
+        </pre>
+      </Show>
       <Show when={at() >= 0}>
         <button
           class="fold"
@@ -119,7 +148,48 @@ function size(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
-/** The files of a received message: a chip opens one with the system's program, the arrow beside it saves it. */
+/** What kind of file a name is, for its badge's label and colour. */
+function kind(name: string, mime: string): { label: string; tone: string } {
+  const ext = /\.([a-z0-9]{1,5})$/i.exec(name)?.[1]?.toLowerCase() ?? "";
+  const tone =
+    ext === "pdf" ? "pdf"
+    : /^(docx?|odt|rtf|pages)$/.test(ext) ? "doc"
+    : /^(xlsx?|ods|csv|numbers)$/.test(ext) ? "sheet"
+    : /^(pptx?|odp|key)$/.test(ext) ? "slides"
+    : /^(zip|rar|7z|gz|tar)$/.test(ext) ? "archive"
+    : mime.startsWith("image/") ? "image"
+    : "other";
+  return { label: (ext || "file").slice(0, 4).toUpperCase(), tone };
+}
+
+/** One file as a card: a picture of it when it is an image already on this computer, else a badge of its type.
+ * Opening it downloads it the first time; a preview never does. */
+function FileCard(props: { message: ThreadMessage; index: number; busy: boolean; onOpen: () => void; onSave: () => void }) {
+  const file = () => props.message.attachments[props.index];
+  const [preview] = createResource(
+    () => (file().mime.startsWith("image/") ? [props.message.id, props.index] as const : null),
+    ([id, index]) => api.attachmentPreview(id, index).catch(() => null),
+  );
+  const type = () => kind(file().name, file().mime);
+  return (
+    <span class="file-card" classList={{ busy: props.busy }} title={file().mime}>
+      <button type="button" class="open" onClick={props.onOpen} title={`Open ${file().name}`}>
+        <Show when={preview()} fallback={<span class={`badge ${type().tone}`}>{type().label}</span>}>
+          {(src) => <img class="thumb" src={src()} alt="" />}
+        </Show>
+        <span class="meta">
+          <span class="name">{file().name}</span>
+          <span class="size">{props.busy ? "Getting it…" : size(file().size)}</span>
+        </span>
+      </button>
+      <button type="button" class="save" onClick={props.onSave} aria-label={`Save ${file().name}`} title="Save">
+        <Icon name="download" size={14} />
+      </button>
+    </span>
+  );
+}
+
+/** The files of a received message: a card opens one with the system's program, the arrow beside it saves it. */
 function Attachments(props: { message: ThreadMessage }) {
   const [busy, setBusy] = createSignal<number | null>(null);
   const [problem, setProblem] = createSignal("");
@@ -140,22 +210,13 @@ function Attachments(props: { message: ThreadMessage }) {
       <div class="attachments" aria-label="Attachments">
         <For each={props.message.attachments}>
           {(a, i) => (
-            <span class="file" classList={{ busy: busy() === i() }} title={a.mime}>
-              <button type="button" class="open" onClick={() => void run(i(), () => api.openAttachment(props.message.id, i()))} title={`Open ${a.name}`}>
-                <Icon name="paperclip" size={13} />
-                <span class="name">{a.name}</span>
-                <span class="size">{busy() === i() ? "Getting it…" : size(a.size)}</span>
-              </button>
-              <button
-                type="button"
-                class="save"
-                onClick={() => void run(i(), () => api.saveAttachment(props.message.id, i(), a.name))}
-                aria-label={`Save ${a.name}`}
-                title="Save"
-              >
-                <Icon name="download" size={13} />
-              </button>
-            </span>
+            <FileCard
+              message={props.message}
+              index={i()}
+              busy={busy() === i()}
+              onOpen={() => void run(i(), () => api.openAttachment(props.message.id, i()))}
+              onSave={() => void run(i(), () => api.saveAttachment(props.message.id, i(), a.name))}
+            />
           )}
         </For>
       </div>

@@ -20,6 +20,15 @@
   --star: #e9b81c;
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
   --scrim: rgba(0, 0, 0, 0.25);
+  /* The well a designed email sits on. */
+  --well: #f1f1f4;
+  /* File badges, by type; the same in both themes, white text on each. */
+  --file-pdf: #c8372f;
+  --file-doc: #2b5fb8;
+  --file-sheet: #1f7a4d;
+  --file-slides: #c4621d;
+  --file-image: #0e8aa3;
+  --file-other: #6b6b75;
   color-scheme: light;
 
   --t-xs: 11px;
@@ -27,6 +36,8 @@
   --t-md: 13px;
   --t-rd: 14px;
   --t-lg: 16px;
+  /* Message text: a size up from the interface, for reading. */
+  --t-read: 15px;
   --t-xl: 22px;
 
   --s-1: 4px;
@@ -79,6 +90,7 @@
   --star: #f2c94c;
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
   --scrim: rgba(0, 0, 0, 0.5);
+  --well: #0b0b0d;
   color-scheme: dark;
 }
 
@@ -100,6 +112,7 @@
     --star: #f2c94c;
     --shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
     --scrim: rgba(0, 0, 0, 0.5);
+    --well: #0b0b0d;
     color-scheme: dark;
   }
 }

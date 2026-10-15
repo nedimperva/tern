@@ -86,6 +86,8 @@ policy review. No implementation or real-provider acceptance was completed by th
 - **FTS5 is contentless** (`contentless_delete=1`), filled on insert, cleared by trigger.
 - **Mail HTML is untrusted.** It renders in an `<iframe sandbox="allow-same-origin">` (no scripts) with a CSP that
   blocks remote images until the user clicks "Load images". Links open through the opener plugin. Keep it that way.
+  The CSP lets fonts load from the app itself (Inter for text mail), nothing else. A picture attachment's card
+  preview only reads a file already downloaded; expanding a message never downloads its files.
 - **Passwords** only in the OS keyring (service `tern-mail`), never in SQLite or files.
 - This is a fresh codebase. It was designed after studying Mach (`D:\GitHub\mach-main` on the Windows machine, a Swift
   Gmail/Outlook client licensed PolyForm Noncommercial). **Do not copy code from Mach**; it is a reference only.

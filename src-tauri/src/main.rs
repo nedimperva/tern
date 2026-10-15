@@ -183,6 +183,7 @@ fn main() {
             commands::snooze,
             commands::unsnooze,
             commands::parse_when,
+            commands::attachment_preview,
             commands::snippets,
             commands::save_snippet,
             commands::delete_snippet,

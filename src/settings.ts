@@ -1,6 +1,6 @@
 // The person's settings: defaults here, changes kept by the engine (`settings` table) and applied at once.
 
-import { createEffect, createRoot } from "solid-js";
+import { createEffect, createRoot, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { api } from "./api";
 
@@ -28,6 +28,8 @@ export type Settings = {
   notify: boolean;
   /** The inbox in two splits, Important and Other, rather than one list. */
   splitInbox: boolean;
+  /** In dark mode, designed mail (newsletters, receipts) darkened like the rest, or left in its own colours. */
+  darkMail: "darken" | "original";
 };
 
 export const DEFAULTS: Settings = {
@@ -43,6 +45,7 @@ export const DEFAULTS: Settings = {
   background: true,
   notify: true,
   splitInbox: true,
+  darkMail: "darken",
 };
 
 export const ROW_HEIGHTS: Record<Settings["density"], number> = { dense: 36, comfortable: 44, spacious: 52 };
@@ -62,6 +65,12 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
   setStore(key, value as never);
   void api.setSetting(key, value);
 }
+
+const scheme = window.matchMedia("(prefers-color-scheme: dark)");
+const [systemDark, setSystemDark] = createSignal(scheme.matches);
+scheme.addEventListener("change", (e) => setSystemDark(e.matches));
+/** Whether Tern is drawn dark now: the setting, or the desktop's when it follows the system. */
+export const isDark = () => settings.theme === "dark" || (settings.theme === "system" && systemDark());
 
 // The theme goes on <html>, where the tokens read it; "system" leaves it to prefers-color-scheme.
 createRoot(() =>

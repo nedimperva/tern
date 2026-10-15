@@ -103,6 +103,15 @@ const SECTIONS: { name: string; body: () => JSX.Element }[] = [
             { label: "Always load", value: "always" },
           ]}
         />
+        <Select
+          name="darkMail"
+          title="Designed mail in dark mode"
+          help="Newsletters and receipts come with their own colours. Darkened, their backgrounds go dark and their text light; pictures stay as they are."
+          choices={[
+            { label: "Darken it", value: "darken" },
+            { label: "Keep its own colours", value: "original" },
+          ]}
+        />
       </>
     ),
   },
