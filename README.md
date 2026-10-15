@@ -114,7 +114,8 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 | `h` / `Shift H` | snooze / back from snooze now |
 | `Tab` | next split (Important, Other, Starred) |
 | `c` | compose |
-| `r` | reply |
+| `r` | reply (with text selected in the message, quote just that) |
+| `v` | view the conversation's attachments (`←` / `→` between them) |
 | `Ctrl Enter` | send |
 | `;` | insert a snippet while writing (`;shortcut` then `Space`) |
 | `/` | search |

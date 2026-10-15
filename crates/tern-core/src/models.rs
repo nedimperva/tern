@@ -261,6 +261,19 @@ pub struct Contact {
     pub name: String,
 }
 
+/// What Tern knows about a person, for the card on their name in a conversation.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContactCard {
+    pub email: String,
+    pub name: String,
+    /// Messages you sent them, and they sent you, as counted for suggestions.
+    pub sent: i64,
+    pub received: i64,
+    /// The newest message of each of your latest conversations with them.
+    pub recent: Vec<MessageRow>,
+}
+
 /// A file attached to a draft, as Tern keeps it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

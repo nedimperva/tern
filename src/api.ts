@@ -40,6 +40,8 @@ export type MessageRow = {
   flagged: boolean;
   hasAttachments: boolean;
 };
+
+export type ContactCard = { email: string; name: string; sent: number; received: number; recent: MessageRow[] };
 export type ThreadMessage = MessageRow & {
   messageId: string | null;
   toAddrs: string;
@@ -178,6 +180,8 @@ export interface Api {
   problemToDraft(id: number): Promise<DraftRecord>;
   /** People to suggest for what is typed in a recipient field, best first. */
   contacts(query: string): Promise<{ email: string; name: string }[]>;
+  /** A person's card: counts, and your latest conversations with them. */
+  contactCard(email: string): Promise<ContactCard>;
   /** The system file picker; paths chosen (none if cancelled). */
   pickFiles(): Promise<string[]>;
   /** Copies files into Tern's attachment folder, for a draft. */
@@ -188,6 +192,8 @@ export interface Api {
   saveAttachment(id: number, index: number, name: string): Promise<boolean>;
   /** Images the message's HTML shows from its own parts, by Content-ID, as data: URIs (fetched the first time). */
   inlineImages(id: number): Promise<Record<string, string>>;
+  /** An attachment's bytes for the viewer; the first time, the message is downloaded as for opening it. */
+  attachmentBytes(id: number, index: number): Promise<ArrayBuffer>;
   /** A picture attachment as a data: URI for its card, if it is already on this computer; never downloads. */
   attachmentPreview(id: number, index: number): Promise<string | null>;
   /** Files dropped on the window from the file manager; returns the way to stop listening. */
@@ -307,6 +313,7 @@ const tauri: Api = {
   openAttachment: (id, index) => invoke("open_attachment", { id, index }),
   inlineImages: (id) => invoke("inline_images", { id }),
   attachmentPreview: (id, index) => invoke("attachment_preview", { id, index }),
+  attachmentBytes: (id, index) => invoke("attachment_bytes", { id, index }),
   saveAttachment: async (id, index, name) => {
     const { save } = await import("@tauri-apps/plugin-dialog");
     const path = await save({ title: "Save attachment", defaultPath: name });
@@ -315,6 +322,7 @@ const tauri: Api = {
     return true;
   },
   contacts: (query) => invoke("contacts", { query }),
+  contactCard: (email) => invoke("contact_card", { email }),
   onFilesDropped: (f) => {
     let stop: (() => void) | undefined;
     let stopped = false;
@@ -463,6 +471,7 @@ function fake(): Api {
               { name: `${words[i % words.length]}-notes.pdf`, mime: "application/pdf", size: 48_213 + i },
               { name: `${words[(i + 1) % words.length]}-figures.xlsx`, mime: "application/vnd.ms-excel", size: 21_400 },
               { name: "photo.jpg", mime: "image/jpeg", size: 1_204_000 },
+              { name: "orders.csv", mime: "text/csv", size: 812 },
             ]
           : [],
     };
@@ -641,6 +650,12 @@ function fake(): Api {
       const people = names.map((n) => ({ name: n, email: n.toLowerCase().replace(/\s/g, ".") + "@example.com" }));
       return q ? people.filter((p) => p.email.startsWith(q) || p.name.toLowerCase().split(" ").some((w) => w.startsWith(q))).slice(0, 5) : [];
     },
+    contactCard: async (email) => {
+      const e = email.toLowerCase();
+      const theirs = messages.filter((m) => m.fromAddr.toLowerCase() === e).sort((a, b) => b.date - a.date);
+      const recent = theirs.filter((m, i) => theirs.findIndex((o) => o.threadId === m.threadId) === i).slice(0, 5);
+      return { email, name: theirs[0]?.fromName ?? "", sent: 3, received: theirs.length, recent };
+    },
     problemToDraft: async (id) => {
       problems = problems.filter((p) => p.id !== id);
       const record = { id: nextDraft++, accountId: 1, draft: { to: ["typo@exmaple.com"], subject: "Re: Quarterly numbers", body: "Numbers attached." }, updatedAt: now };
@@ -759,6 +774,27 @@ function fake(): Api {
     defaultMailApp: async () => false,
     makeDefaultMailApp: async () => {},
     inlineImages: async () => ({}),
+    // Stand-ins by type, enough to try the viewer: a picture, a page of text, or bytes nothing can show.
+    attachmentBytes: async (id, index) => {
+      const file = messages.find((m) => m.id === id)?.attachments[index];
+      await new Promise((r) => setTimeout(r, 300));
+      if (file?.mime.startsWith("image/")) {
+        const canvas = Object.assign(document.createElement("canvas"), { width: 1200, height: 800 });
+        const g = canvas.getContext("2d")!;
+        const fill = g.createLinearGradient(0, 0, 1200, 800);
+        fill.addColorStop(0, "#7aa6c2");
+        fill.addColorStop(0.55, "#b9d4a8");
+        fill.addColorStop(1, "#e7cf8a");
+        g.fillStyle = fill;
+        g.fillRect(0, 0, 1200, 800);
+        const blob = await new Promise<Blob>((done) => canvas.toBlob((b) => done(b!), "image/jpeg"));
+        return blob.arrayBuffer();
+      }
+      const text = file?.name.endsWith(".csv")
+        ? "month,orders,freight\nOctober,412,3980\nNovember,455,4120\n"
+        : "%PDF-1.4 stand-in";
+      return new TextEncoder().encode(text).buffer as ArrayBuffer;
+    },
     attachmentPreview: async (id, index) =>
       messages.find((m) => m.id === id)?.attachments[index]?.mime.startsWith("image/")
         ? "data:image/svg+xml," +

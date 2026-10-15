@@ -4,9 +4,9 @@
 use tauri::{AppHandle, Emitter, Manager, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
-    mime, secrets, sync, Account, AccountConfig, Action, Applied, Contact, Cursor, Draft, DraftRecord,
-    Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting, OutgoingAttachment, ReplyInit, ReplyKind,
-    SearchResult, ThreadMessage, ThreadRow,
+    mime, secrets, sync, Account, AccountConfig, Action, Applied, Contact, ContactCard, Cursor, Draft,
+    DraftRecord, Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting, OutgoingAttachment, ReplyInit,
+    ReplyKind, SearchResult, ThreadMessage, ThreadRow,
 };
 
 use std::collections::HashMap;
@@ -341,6 +341,12 @@ pub async fn contacts(state: State<'_, AppState>, query: String) -> Reply<Vec<Co
     state.store.contacts(&query, 5).map_err(text)
 }
 
+/// The card for a person's name in a conversation: who they are and your latest conversations with them.
+#[tauri::command]
+pub async fn contact_card(state: State<'_, AppState>, email: String) -> Reply<ContactCard> {
+    state.store.contact_card(&email, 5).map_err(text)
+}
+
 /// The `index`-th attachment of a message as a file on disk. The first time, the message comes down from the server
 /// on a connection of its own (the one read the UI waits on the network for: Tern keeps no attachment bytes in the
 /// store); its attachments are then kept in the cache folder, so opening one again is instant and works offline.
@@ -464,6 +470,26 @@ pub async fn inline_images(
         .map_err(|e| e.to_string())?;
     std::fs::rename(&partial, &file).map_err(|e| e.to_string())?;
     Ok(images)
+}
+
+/// Most the viewer shows inside Tern; bigger files open in the system's program.
+const VIEW_LIMIT: u64 = 60_000_000;
+
+/// An attachment's bytes for the viewer, downloaded the first time as for opening it. Sent raw, not as JSON.
+#[tauri::command]
+pub async fn attachment_bytes(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    index: usize,
+) -> Reply<tauri::ipc::Response> {
+    let path = received_file(&app, &state, id, index).await?;
+    let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+    if size > VIEW_LIMIT {
+        return Err("This file is too big to show here; open it with the system instead".into());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// Opens an attachment in the program the system uses for its type. Programs and disk images are not opened
