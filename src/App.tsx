@@ -267,7 +267,9 @@ export default function App() {
   // MARK: The open conversation
 
   let readTimer: number | undefined;
-  async function open(row: ThreadRow | undefined) {
+  /** Opens a conversation. From search, `row` is the message that matched: it opens and comes into view, wherever
+   * it sits in the conversation; otherwise the newest message is the one to read. */
+  async function open(row: ThreadRow | undefined, matched = searching()) {
     clearTimeout(readTimer);
     if (!row) return close();
     // A draft being written in Tern opens in compose, not as a conversation.
@@ -278,12 +280,24 @@ export default function App() {
     setOpenRow(row);
     const found = await api.thread(row.id);
     if (openRow() !== row) return;
+    // The conversation lists each message once, so the copy that matched may be another folder's row of it.
+    const at = !matched
+      ? -1
+      : found.findIndex((m) => m.id === row.id) >= 0
+        ? found.findIndex((m) => m.id === row.id)
+        : found.findIndex((m) => m.date === row.date && m.fromAddr === row.fromAddr && m.subject === row.subject);
     batch(() => {
       setMessages(found);
       // The newest message and anything unread start open, as they are what there is to read.
-      setExpanded(new Set(found.filter((m, i) => !m.seen || i === found.length - 1).map((m) => m.id)));
-      setMessageFocus(Math.max(0, found.length - 1));
+      const open = new Set(found.filter((m, i) => !m.seen || i === found.length - 1).map((m) => m.id));
+      if (at >= 0) open.add(found[at].id);
+      setExpanded(open);
+      setMessageFocus(at >= 0 ? at : Math.max(0, found.length - 1));
     });
+    if (at >= 0 && at < found.length - 1) {
+      const id = found[at].id;
+      requestAnimationFrame(() => document.querySelector(`.conversation [data-message="${id}"]`)?.scrollIntoView({ block: "start" }));
+    }
     if (row.unread > 0 && settings.readAfterMs >= 0) {
       readTimer = window.setTimeout(() => {
         if (openRow() === row) void act("markRead", [row], false);
@@ -635,7 +649,7 @@ export default function App() {
   const person: PersonActions = {
     write: (email) => setCompose({ to: [email], body: signature() ? `\n\n${signature()}` : "", focus: "body" }),
     search: (email) => batch(() => (close(), setQuery(`from:${email}`))),
-    open: (m) => void open(asRow(m)),
+    open: (m) => void open(asRow(m), true),
   };
 
   /** A `mailto:` link: compose, filled in from it. */
