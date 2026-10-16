@@ -116,13 +116,13 @@ export function fitFrame(frame: HTMLIFrameElement, doc: Document) {
 
 /** Text mail in Tern's type, on the app's own background: the sender's fonts and colours give way, so it reads
  * like the rest of Tern and follows dark mode. Links, sizes and emphasis stay. */
-export function textFrame(html: string, remote: boolean, t: FrameTheme): string {
+export function textFrame(html: string, remote: boolean, t: FrameTheme, size = 15): string {
   return page(
     remote,
     `${FONT_FACES}
   :root{color-scheme:${t.dark ? "dark" : "light"}}
   html,body{margin:0;padding:0;background:transparent;overflow:hidden}
-  body{padding:2px 0 4px;max-width:72ch;color:${t.fg0};font:15px/1.65 "Inter Variable","Inter",system-ui,sans-serif;word-wrap:break-word}
+  body{padding:2px 0 4px;max-width:72ch;color:${t.fg0};font:${size}px/${size > 15 ? 1.7 : 1.65} "Inter Variable","Inter",system-ui,sans-serif;word-wrap:break-word}
   body *:not(a){color:inherit!important;background-color:transparent!important;font-family:inherit!important}
   a{color:${t.accent}!important;text-decoration-color:color-mix(in srgb,${t.accent} 40%,transparent);text-underline-offset:2px}
   body blockquote{margin:8px 0!important;padding:2px 0 2px 12px!important;border:0!important;border-left:3px solid ${t.line}!important;color:${t.fg1}!important}
