@@ -30,6 +30,8 @@ export type Settings = {
   splitInbox: boolean;
   /** In dark mode, designed mail (newsletters, receipts) darkened like the rest, or left in its own colours. */
   darkMail: "darken" | "original";
+  /** Company logos in place of initials, fetched from each sender's own website. Off: it tells them you read. */
+  senderLogos: boolean;
 };
 
 export const DEFAULTS: Settings = {
@@ -46,6 +48,7 @@ export const DEFAULTS: Settings = {
   notify: true,
   splitInbox: true,
   darkMail: "darken",
+  senderLogos: false,
 };
 
 export const ROW_HEIGHTS: Record<Settings["density"], number> = { dense: 36, comfortable: 44, spacious: 52 };

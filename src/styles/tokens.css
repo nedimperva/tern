@@ -25,6 +25,8 @@
   /* An open message: barely off the background, lifted by a faint ring and shadow. Your own messages carry a
      tint just short of white. --lift-focus is the ring of the message the keys act on. */
   --card: #ffffff;
+  /* Behind a sender's logo, in both themes. */
+  --logo-bg: #ffffff;
   --mine: #fafafd;
   --mine-hover: #f4f4fa;
   --lift: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 2px 10px rgba(0, 0, 0, 0.03);

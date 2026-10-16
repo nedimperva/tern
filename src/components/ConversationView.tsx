@@ -17,6 +17,7 @@ import { when } from "./ConversationRow";
 import { ActionMenu, type MenuItem } from "./ActionMenu";
 import { Icon } from "./Icon";
 import { PersonCard, type PersonActions } from "./PersonCard";
+import { logoFor } from "../logos";
 
 /** Images the HTML shows from the message's own parts. */
 const CID = /(["'])cid:([^"']+)\1/gi;
@@ -146,9 +147,11 @@ function HtmlBody(props: { html: string; sender: string; messageId: number; extr
           </Show>
         </div>
       </Show>
-      <Show when={designed() && !reading()} fallback={body}>
-        <div class="html-stage">{body}</div>
-      </Show>
+      {/* One wrapper whose framing toggles: moving the frame between two branches let the old branch's cleanup
+          remove it, and "Show original" came back empty. */}
+      <div class="html-stage" classList={{ framed: designed() && !reading() }}>
+        {body}
+      </div>
       <Show when={foldable()}>
         <button
           class="fold"
@@ -317,6 +320,18 @@ function initials(m: ThreadMessage): string {
   return ((words[0]?.[0] ?? "") + (words.length > 1 ? words[1][0] : "")).toUpperCase();
 }
 
+/** A sender's initials on their colour, or their company's logo when logos are on and one was found. */
+function Avatar(props: { m: ThreadMessage }) {
+  const logo = () => logoFor(props.m.fromAddr);
+  return (
+    <span class="avatar" classList={{ logo: !!logo() }} style={{ background: logo() ? undefined : colour(props.m.fromAddr) }}>
+      <Show when={logo()} fallback={initials(props.m)}>
+        {(src) => <img src={src()} alt="" />}
+      </Show>
+    </span>
+  );
+}
+
 /** Where List-Unsubscribe points: a web page opens in the browser, an address gets a mail to send. */
 function unsubscribeTarget(header: string | null): { web: string } | { mail: Mailto } | null {
   const links = [...(header ?? "").matchAll(/<([^>]+)>/g)].map((x) => x[1].trim());
@@ -458,22 +473,29 @@ export function ConversationView(props: {
     return n >= 5 && !unfolded() ? { from: 1, to: n - 3 } : null;
   });
 
-  // The subject shrinks once the messages scroll under it; two thresholds, so it never flickers at the edge.
-  let root!: HTMLDivElement;
-  const [stuck, setStuck] = createSignal(false);
+  // The full header scrolls away with the messages; once the subject is out of view a compact bar fades in over
+  // the pane. The bar takes no space, so nothing moves as it comes and goes, and nothing can flicker.
+  let title!: HTMLHeadingElement;
+  const [compact, setCompact] = createSignal(false);
   onMount(() => {
-    const pane = root.closest(".conversation-pane");
-    if (!pane) return;
-    const onScroll = () => setStuck((was) => (was ? pane.scrollTop > 4 : pane.scrollTop > 40));
-    pane.addEventListener("scroll", onScroll, { passive: true });
-    onCleanup(() => pane.removeEventListener("scroll", onScroll));
+    const watch = new IntersectionObserver(([e]) => setCompact(!e.isIntersecting), { root: title.closest(".conversation-pane") });
+    watch.observe(title);
+    onCleanup(() => watch.disconnect());
   });
 
   return (
-    <div class="conversation" classList={{ replying: props.replying }} ref={root}>
-      <header class="conversation-head" classList={{ stuck: stuck() }}>
+    <div class="conversation" classList={{ replying: props.replying }}>
+      <div class="compact" classList={{ shown: compact() }} aria-hidden={!compact()}>
+        <div class="bar">
+          <span class="subject">{props.messages[0]?.subject || "(no subject)"}</span>
+          <button class="primary" tabIndex={compact() ? 0 : -1} onClick={props.onDone}>
+            Done <kbd>E</kbd>
+          </button>
+        </div>
+      </div>
+      <header class="conversation-head">
         <div class="title">
-          <h1>{props.messages[0]?.subject || "(no subject)"}</h1>
+          <h1 ref={title}>{props.messages[0]?.subject || "(no subject)"}</h1>
           <div class="meta">
             <span>{people()}</span>
             <Show when={props.messages.length > 1}>
@@ -514,9 +536,7 @@ export function ConversationView(props: {
                       <span class="stack">
                         <For each={props.messages.slice(f().from, f().to + 1).slice(0, 4)}>
                           {(h) => (
-                            <span class="avatar" style={{ background: colour(h.fromAddr) }}>
-                              {initials(h)}
-                            </span>
+                            <Avatar m={h} />
                           )}
                         </For>
                       </span>
@@ -533,9 +553,7 @@ export function ConversationView(props: {
                     classList={{ focused: i() === props.focused, open: open(), unread: !m.seen, mine: mine() }}
                   >
                     <header onClick={() => props.onToggle(i())}>
-                      <span class="avatar" style={{ background: colour(m.fromAddr) }}>
-                        {initials(m)}
-                      </span>
+                      <Avatar m={m} />
                       <span class="who">
                         <span class="line">
                           <PersonCard name={m.fromName} email={m.fromAddr} colour={colour(m.fromAddr)} initials={initials(m)} actions={props.person}>
@@ -605,14 +623,14 @@ export function ConversationView(props: {
         {(m) => (
           <div class="reply-bar">
             <div class="box">
-              <button class="start" onClick={() => props.onReply(m(), "reply")}>
+              <button class="start" title="Reply (R)" onClick={() => props.onReply(m(), "reply")}>
                 <span>{props.mine(m().fromAddr) ? "Reply…" : `Reply to ${m().fromName || m().fromAddr}…`}</span>
                 <kbd>R</kbd>
               </button>
-              <button class="link" onClick={() => props.onReply(m(), "replyAll")}>
+              <button class="link" title="Reply all (Enter)" onClick={() => props.onReply(m(), "replyAll")}>
                 Reply all <kbd>↵</kbd>
               </button>
-              <button class="link" onClick={() => props.onReply(m(), "forward")}>
+              <button class="link" title="Forward (F)" onClick={() => props.onReply(m(), "forward")}>
                 Forward <kbd>F</kbd>
               </button>
             </div>
