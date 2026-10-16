@@ -106,8 +106,9 @@ button.primary kbd {
   min-width: 0;
   background: var(--bg-0);
 }
+/* Beside a conversation, the list sits on a slightly different tone instead of behind a dividing line. */
 .app.split .list-pane {
-  border-right: 1px solid var(--line);
+  background: var(--bg-1);
 }
 .list-header {
   display: flex;
@@ -115,7 +116,6 @@ button.primary kbd {
   gap: var(--s-3);
   height: 48px;
   padding: 0 var(--s-3);
-  border-bottom: 1px solid var(--line);
 }
 .list-header h2 {
   font-size: var(--t-lg);
@@ -522,7 +522,7 @@ button.primary kbd {
   display: flex;
   align-items: flex-start;
   gap: var(--s-4);
-  padding: var(--s-5) 0 var(--s-4);
+  padding: var(--s-6) 0 var(--s-5);
 }
 .conversation-head .title {
   flex: 1;
@@ -530,28 +530,134 @@ button.primary kbd {
 }
 .conversation-head h1 {
   margin: 0;
-  font-size: var(--t-xl);
-  line-height: 28px;
-  font-weight: 600;
-  letter-spacing: -0.012em;
+  font-size: var(--t-head);
+  line-height: 30px;
+  font-weight: 650;
+  letter-spacing: -0.018em;
   text-wrap: balance;
 }
-.conversation-head .meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-1) var(--s-2);
-  margin-top: var(--s-2);
-  color: var(--fg-2);
-  font-size: var(--t-sm);
-}
-.conversation-head .sep {
-  opacity: 0.6;
-}
-.conversation-head .acts {
-  flex: none;
+.conversation-head .people {
   display: flex;
   align-items: center;
   gap: var(--s-2);
+  min-width: 0;
+  margin-top: 10px;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
+.conversation-head .people > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conversation-head .stack {
+  flex: none;
+  display: inline-flex;
+}
+.conversation-head .stack .avatar {
+  width: 20px;
+  height: 20px;
+  font-size: calc(var(--t-xs) - 3px);
+  box-shadow: 0 0 0 2px var(--bg-0);
+}
+.conversation-head .stack .avatar + .avatar {
+  margin-left: -5px;
+}
+/* What Tern blocked, how long the mail is and how to leave its list: icons that each show only when they apply
+   and say more on hover. Then Done, the menu and close. */
+.conversation-head .tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.tool {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-1);
+  height: 30px;
+  min-width: 30px;
+  padding: 0 var(--s-2);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+span.tool {
+  cursor: default;
+}
+.tool:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.tool.safe {
+  color: var(--ok);
+}
+.tool.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.tool.safe:hover {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.tools .vsep {
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--bg-3);
+}
+.tools button.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 30px;
+  padding: 0 var(--s-3);
+  border: 0;
+  font-weight: 500;
+}
+.tools button.primary kbd {
+  display: none;
+}
+.tools button.primary:hover kbd,
+.tools button.primary:focus-visible kbd {
+  display: inline-grid;
+}
+/* The words for an icon, on hover or keyboard focus. */
+.tools [data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  width: max-content;
+  max-width: 240px;
+  padding: 6px 9px;
+  border-radius: var(--r-md);
+  background: var(--tip);
+  color: var(--tip-fg);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
+  transition:
+    opacity var(--d-fast) var(--ease),
+    transform var(--d-fast) var(--ease);
+}
+.tools [data-tip]:hover::after,
+.tools [data-tip]:focus-visible::after {
+  opacity: 1;
+  transform: none;
 }
 /* The compact bar that fades in once the subject has scrolled away. Zero height in the flow, so it never moves
    anything (a header that resized itself made scroll anchoring bounce it at the top). */
@@ -572,7 +678,8 @@ button.primary kbd {
   height: 48px;
   padding: 0 var(--s-6);
   background: var(--bg-0);
-  box-shadow: 0 1px 0 var(--line);
+  /* A soft fall-off rather than a rule: the pane draws no lines. */
+  box-shadow: 0 10px 18px -16px rgba(0, 0, 0, 0.45);
   opacity: 0;
   transform: translateY(-4px);
   pointer-events: none;
@@ -594,61 +701,8 @@ button.primary kbd {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.messages {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-bottom: var(--s-2);
-}
-/* Closed messages are flat lines; the open ones are raised cards, so the eye lands on what is being read. */
-.card {
-  position: relative;
-  border-radius: var(--r-lg);
-  transition:
-    background var(--d-fast) var(--ease),
-    box-shadow var(--d-base) var(--ease);
-}
-.card:not(.open):hover {
-  background: var(--bg-2);
-}
-/* Your own messages carry a tint, so the back and forth reads at a glance. */
-.card.mine {
-  background: var(--mine);
-}
-.card.mine:not(.open):hover {
-  background: var(--mine-hover);
-}
-.card.open {
-  margin: var(--s-2) 0;
-  background: var(--card);
-  box-shadow: var(--lift);
-}
-.card.open.mine {
-  background: var(--mine);
-}
-/* The message the keys act on: a hover-like background when closed, a firmer ring when open. Quiet on purpose,
-   so it never competes with what is being read. */
-.card.focused:not(.open) {
-  background: var(--bg-2);
-}
-.card.mine.focused:not(.open) {
-  background: var(--mine-hover);
-}
-.card.open.focused {
-  box-shadow: var(--lift-focus);
-}
-.card > header {
-  display: flex;
-  gap: var(--s-3);
-  align-items: center;
-  padding: 9px var(--s-3);
-  cursor: default;
-}
-.card.open > header {
-  align-items: flex-start;
-  padding: var(--s-4) var(--s-4) 6px;
-}
-.card .avatar {
+/* Avatars: initials on the sender's colour, or a logo on white (most are drawn for a light page). */
+.conversation .avatar {
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -658,14 +712,9 @@ button.primary kbd {
   font-size: var(--t-xs);
   font-weight: 600;
   flex: none;
-  transition:
-    width var(--d-base) var(--ease),
-    height var(--d-base) var(--ease);
 }
-/* A logo sits on white in both themes: most are drawn for a light page. */
 .avatar.logo {
   background: var(--logo-bg);
-  box-shadow: inset 0 0 0 1px var(--line);
   overflow: hidden;
 }
 .avatar.logo img {
@@ -673,48 +722,39 @@ button.primary kbd {
   height: 68%;
   object-fit: contain;
 }
-.card.open .avatar {
-  width: 36px;
-  height: 36px;
-  font-size: var(--t-sm);
-}
-.card .who {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
 .card .line {
   display: flex;
-  gap: 10px;
   align-items: baseline;
+  gap: 10px;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   font-size: var(--t-md);
 }
 .card .line strong {
+  flex: none;
   font-weight: 600;
   color: var(--fg-0);
 }
-.card:not(.unread):not(.open) .line strong {
-  font-weight: 500;
-  color: var(--fg-1);
+.card.unread .line strong::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: var(--s-2);
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 2px;
 }
-.card.open .line strong {
-  font-size: var(--t-rd);
-}
-.card .snippet {
+.card .snippet,
+.card .detail {
   min-width: 0;
   color: var(--fg-2);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .card .detail {
-  margin-top: 2px;
-  color: var(--fg-2);
   font-size: var(--t-sm);
-  overflow-wrap: anywhere;
 }
 .card .clip {
   flex: none;
@@ -726,30 +766,15 @@ button.primary kbd {
 }
 .card time {
   flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   color: var(--fg-2);
   font-size: var(--t-sm);
   font-variant-numeric: tabular-nums;
-}
-.card.open time {
-  padding-top: 2px;
-}
-.card.unread time::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
 }
 .card .draft-label {
   color: var(--danger);
   font-size: var(--t-sm);
 }
-/* The body lines up under the name: header padding, avatar and gap. */
 .card .body {
-  padding: var(--s-2) var(--s-4) var(--s-4) calc(var(--s-4) + 36px + var(--s-3));
   font-size: var(--t-rd);
   animation: card-open var(--d-slow) var(--ease);
 }
@@ -759,91 +784,176 @@ button.primary kbd {
     transform: translateY(-4px);
   }
 }
-/* "3 days later" between messages far apart. */
-.gap {
+
+/* One message: on stage, with a byline and a size up in type. */
+.stage-msg .byline {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: 10px var(--s-3) 6px;
+  margin: calc(-1 * var(--s-2)) 0 var(--s-5);
+}
+.stage-msg .byline .avatar {
+  width: 40px;
+  height: 40px;
+  font-size: var(--t-md);
+}
+.stage-msg .who {
+  min-width: 0;
+}
+.stage-msg .line {
+  font-size: var(--t-read);
+}
+.stage-msg .detail {
+  display: block;
+  margin-top: 1px;
+}
+.stage-msg .plain {
+  font-size: calc(var(--t-read) + 1px);
+  line-height: 1.7;
+}
+
+/* Two or more: avatars on one strand, gaps in time as stops on it. */
+.strand {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.strand::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 16px;
+  bottom: 26px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--strand);
+}
+.strand .card {
+  position: relative;
+  padding-left: 46px;
+}
+.strand .card > .avatar {
+  position: absolute;
+  left: 0;
+  top: 7px;
+  box-shadow: 0 0 0 4px var(--bg-0);
+  transition: transform var(--d-base) var(--ease);
+}
+.strand .card.open > .avatar {
+  transform: scale(1.15);
+}
+/* Your own messages: a ring on the avatar, not a tinted block. */
+.strand .card.mine > .avatar {
+  box-shadow:
+    0 0 0 4px var(--bg-0),
+    0 0 0 5.5px var(--accent);
+}
+.strand .card > header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 -10px;
+  padding: 9px 10px;
+  border-radius: var(--r-md);
+  cursor: default;
+  transition: background var(--d-fast) var(--ease);
+}
+.strand .card > header .line {
+  flex: 1;
+}
+/* Hover, and the closed message the keys act on: a quiet background, no bar. */
+.strand .card:not(.open) > header:hover,
+.strand .card.focused:not(.open) > header {
+  background: var(--bg-2);
+}
+.strand .card:not(.unread):not(.open) .line strong {
+  font-weight: 500;
+  color: var(--fg-1);
+}
+.strand .card .body {
+  padding: 2px 0 var(--s-5);
+}
+.strand .gap {
+  position: relative;
+  padding: 6px 0 6px 46px;
   color: var(--fg-2);
   font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
-.gap::before,
-.gap::after {
+.strand .gap::before {
   content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--line);
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--bg-0);
+  box-shadow: inset 0 0 0 2px var(--strand);
 }
-.gap::before {
-  flex: 0 0 28px;
-}
-/* The folded middle of a long conversation. */
+/* The folded middle of a long conversation, a stop marked "···". */
 button.folded {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: var(--s-3);
   width: 100%;
-  padding: var(--s-2) var(--s-3);
+  padding: var(--s-2) 0 var(--s-2) 46px;
   border: 0;
-  border-radius: var(--r-lg);
-  background: transparent;
+  background: none;
   color: var(--fg-1);
   font-size: var(--t-md);
   text-align: left;
 }
+button.folded::before {
+  content: "···";
+  position: absolute;
+  left: 0;
+  width: 28px;
+  background: var(--bg-0);
+  color: var(--fg-2);
+  letter-spacing: 0.1em;
+  line-height: 20px;
+  text-align: center;
+}
 button.folded:hover {
-  background: var(--bg-2);
+  color: var(--fg-0);
 }
-.folded .stack {
-  flex: none;
-  display: inline-flex;
+
+/* Reply, Reply all and Forward after the last message, on one soft row; on the strand it is the next stop, with
+   your avatar. Keys show on hover: the status strip already lists R. */
+.reply-end {
+  position: relative;
+  margin-top: var(--s-6);
 }
-.folded .avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  color: var(--accent-fg);
-  font-size: calc(var(--t-xs) - 2px);
-  font-weight: 600;
-  box-shadow: 0 0 0 2px var(--bg-0);
+.strand .reply-end {
+  margin-top: 2px;
+  padding-left: 46px;
 }
-.folded .avatar + .avatar {
-  margin-left: -6px;
+.strand .reply-end > .avatar {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  box-shadow: 0 0 0 4px var(--bg-0);
 }
-.folded .rule {
-  flex: 1;
-  height: 1px;
-  background: var(--line);
-}
-/* Reply, Reply all and Forward after the last message, as mail apps put them. Their keys show on hover; the
-   status strip already lists R. */
-.reply-bar {
-  padding-top: var(--s-2);
-}
-.reply-bar .box {
+.reply-end .end {
   display: flex;
   align-items: center;
   gap: var(--s-1);
-  min-height: 46px;
-  padding: 6px var(--s-2);
-  background: var(--card);
-  border-radius: var(--r-lg);
-  box-shadow: var(--lift);
+  min-height: 44px;
+  padding: 0 6px 0 var(--s-1);
+  border-radius: 22px;
+  background: var(--soft);
+  transition: background var(--d-fast) var(--ease);
 }
-.reply-bar .start {
+.reply-end .end:hover {
+  background: var(--soft-hover);
+}
+.reply-end .start {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--s-2);
-  padding: var(--s-1) var(--s-2);
+  padding: var(--s-2) var(--s-3);
   border: 0;
   background: transparent;
   color: var(--fg-2);
@@ -851,30 +961,33 @@ button.folded:hover {
   text-align: left;
   cursor: text;
 }
-.reply-bar .start span {
+.reply-end .start span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.reply-bar button.link {
+.reply-end button.link {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: var(--s-1) var(--s-2);
-  border-radius: var(--r-md);
+  padding: 7px 10px;
+  border-radius: 999px;
   font-size: var(--t-sm);
+  font-weight: 500;
   white-space: nowrap;
 }
-.reply-bar button.link:hover {
-  background: var(--bg-2);
+.reply-end button.link:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
 }
-.reply-bar kbd {
-  opacity: 0;
-  transition: opacity var(--d-fast) var(--ease);
+.reply-end kbd {
+  display: none;
+  border: 0;
+  background: var(--bg-3);
 }
-.reply-bar button:hover kbd,
-.reply-bar button:focus-visible kbd {
-  opacity: 1;
+.reply-end button:hover kbd,
+.reply-end button:focus-visible kbd {
+  display: inline-grid;
 }
 .loading {
   color: var(--fg-2);
@@ -916,71 +1029,16 @@ button.folded:hover {
 .html-body.waiting {
   visibility: hidden;
 }
+/* Designed mail sits straight on the page, rounded, with no well or shadow around it. */
 .html-stage.framed {
   display: grid;
   justify-items: center;
-  padding: var(--s-5) var(--s-4);
-  background: var(--well);
-  border-radius: var(--r-lg);
 }
 .html-stage.framed .html-body {
   max-width: 680px;
-  border-radius: var(--r-md);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border-radius: var(--r-lg);
   /* Designed mail draws its own background; this only shows while it loads. */
   background: var(--bg-0);
-}
-.body-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-  margin-bottom: var(--s-3);
-}
-/* What Tern knows about a mail: what it blocked, how long it is, how to leave its list. */
-.fact {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 6px;
-  min-height: 26px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--bg-2);
-  color: var(--fg-1);
-}
-.fact svg {
-  flex: none;
-  color: var(--fg-2);
-}
-.fact.safe svg {
-  color: var(--ok);
-}
-.body-tools .fact button {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font-weight: 500;
-}
-.body-tools .fact button:hover {
-  text-decoration: underline;
-}
-.body-tools .reading {
-  margin-left: auto;
-  height: 26px;
-  padding: 0 var(--s-3);
-  border: 0;
-  border-radius: 999px;
-  background: var(--bg-2);
-  color: var(--fg-1);
-  font-weight: 500;
-}
-.body-tools .reading[aria-pressed="true"] {
-  background: var(--accent-soft);
-  color: var(--accent);
 }
 /* The "···" pill that unfolds a quoted reply or signature. */
 button.fold {
@@ -993,6 +1051,7 @@ button.fold {
   letter-spacing: 0.1em;
   color: var(--fg-1);
   background: var(--bg-2);
+  border: 0;
   border-radius: var(--r-sm);
 }
 .attachments {
@@ -1055,9 +1114,9 @@ button.fold {
 .file-card {
   display: flex;
   align-items: stretch;
-  border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--bg-1);
+  background: var(--soft);
+  transition: background var(--d-fast) var(--ease);
   min-width: 0;
   max-width: 320px;
 }
@@ -1119,9 +1178,11 @@ button.fold {
   color: var(--fg-2);
   font-variant-numeric: tabular-nums;
 }
+.file-card:hover {
+  background: var(--soft-hover);
+}
 .file-card .save {
   padding: 0 var(--s-3);
-  border-left: 1px solid var(--line);
   color: var(--fg-2);
 }
 .file-card .open:hover .name,
@@ -1299,7 +1360,7 @@ button.fold {
   width: 100%;
   max-height: none;
   box-shadow: none;
-  border: 1px solid var(--line);
+  background: var(--soft);
 }
 .compose .field {
   display: flex;
