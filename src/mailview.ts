@@ -93,10 +93,26 @@ const FONT_FACES = `
 const page = (remote: boolean, css: string, html: string) => `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${CSP(remote)}">
 <style>${css}
+  /* The frame is sized to the mail, so the mail must not size itself to the frame: a body at height 100% would
+     keep whatever height the frame last had. */
+  html,body{height:auto!important;min-height:0!important}
   img{max-width:100%;height:auto}
   pre{white-space:pre-wrap}
   ${HTML_FOLD_CSS}
 </style></head><body>${html}</body></html>`;
+
+/** Sizes a mail's frame to its content: the mail's own height, never the frame's current one (which only ever
+ * grew, leaving space below a mail shown after a taller one), and mail laid out wider than the frame (fixed-width
+ * tables, as Apple's) shrunk to fit, as other mail apps do, rather than cut off at the right. */
+export function fitFrame(frame: HTMLIFrameElement, doc: Document) {
+  const body = doc.body;
+  if (!body) return;
+  body.style.zoom = "";
+  const room = doc.documentElement.clientWidth;
+  const wide = Math.max(body.scrollWidth, doc.documentElement.scrollWidth);
+  if (room > 0 && wide > room + 1) body.style.zoom = String(room / wide);
+  frame.style.height = `${Math.ceil(body.getBoundingClientRect().height)}px`;
+}
 
 /** Text mail in Tern's type, on the app's own background: the sender's fonts and colours give way, so it reads
  * like the rest of Tern and follows dark mode. Links, sizes and emphasis stay. */
