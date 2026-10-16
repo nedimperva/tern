@@ -1072,10 +1072,6 @@ export default function App() {
             focused={messageFocus()}
             expanded={(id) => expanded().has(id)}
             mine={(addr) => accounts().some((a) => a.email.toLowerCase() === addr.toLowerCase())}
-            me={(() => {
-              const a = accounts().find((a) => a.id === messages[0]?.accountId);
-              return a && { name: a.displayName || a.email, email: a.email };
-            })()}
             replying={!!compose()?.inline}
             onToggle={toggleMessage}
             onReply={(m, kind) => respond(m, kind)}
