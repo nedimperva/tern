@@ -1825,7 +1825,8 @@ impl Store {
                     -- A row fetched again for its parts (migration 15) still has the body it had.
                     m.body_state = 'full' OR b.message_id IS NOT NULL, m.parts,
                     (SELECT d.id FROM drafts d WHERE d.account_id = m.account_id AND d.message_id = m.message_id
-                       AND d.discarded_at IS NULL AND d.sent_at IS NULL)
+                       AND d.discarded_at IS NULL AND d.sent_at IS NULL),
+                    m.list_unsubscribe
              FROM messages m LEFT JOIN bodies b ON b.message_id = m.id
              WHERE m.account_id = (SELECT account_id FROM messages WHERE id = ?1)
                AND m.thread_id = (SELECT thread_id FROM messages WHERE id = ?1)
@@ -1843,6 +1844,7 @@ impl Store {
                     body_loaded: r.get(16)?,
                     attachments: attachments_of(r.get::<_, Option<String>>(17)?.as_deref()),
                     draft_id: r.get(18)?,
+                    list_unsubscribe: r.get(19)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;

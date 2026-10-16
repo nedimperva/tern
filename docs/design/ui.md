@@ -45,6 +45,9 @@ uses a raw colour, size or duration. File: `src/styles/tokens.css`.
 | `--danger` | `#d0453f` | `#ef6b66` | Errors, discard |
 | `--star` | `#e9b81c` | `#f2c94c` | Star |
 | `--shadow` | `0 8px 30px rgba(0,0,0,.12)` | `0 8px 30px rgba(0,0,0,.6)` | Palette, dialogs |
+| `--mine` | `#f5f5fd` | `#16162a` | Your own messages in a conversation (`--mine-hover` on hover) |
+| `--card` | `#ffffff` | `#141416` | The open message card, the reply bar |
+| `--lift` / `--lift-focus` | faint ring + shadow | white ring at 5% / 12% | Open card; the focused one |
 
 Account colours (unified inbox dots, calendar): a fixed palette of 8 — `#5b5bd6 #2f9e6e #d0453f #c98a1b #0e9bb5 #b24fb0 #7a7f8a #e07a30` — assigned in order of account creation.
 
@@ -125,8 +128,22 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   how many messages each way, the last five conversations (click opens one), "Write to them" and "All their mail"
   (`from:` search). It only opens after a real pointer move, so a conversation opening under a still pointer does
   not pop it.
-- Messages as cards separated by 1 px `--line` (no borders around them). Collapsed card = one line: avatar initials (28 px circle, account-palette colour from the sender hash), name, snippet, date. Expanded card = header (name, address on hover, to/cc on click, date full), body, attachments strip.
-- Body: sanitised HTML in an iframe sized to content; `Load images` pill when remote images were blocked, with "always for this sender".
+- Header: the subject in `--t-xl` with a meta line under it (people, "you" last · message count · file count).
+  It sticks to the top of the pane and shrinks to `--t-lg` without the meta line once the messages scroll under it.
+- Closed messages are flat one-line rows: avatar initials (28 px circle, account-palette colour from the sender
+  hash), name, snippet, date; `--bg-2` on hover. Open messages are raised cards (`--bg-1`, `--r-lg`, `--lift`) with
+  a 36 px avatar and a second header line: "to you, Tom Berg · Tue 14 Oct, 14:02"; the date on the right says how
+  long ago. The body opens with a short fade (`--d-slow`).
+  The message the keys act on has no accent bar: a closed one gets `--bg-2`, an open one the firmer `--lift-focus` ring. Unread shows as a 6 px `--accent` dot before the date.
+- Your own messages carry a `--mine` tint. Messages two or more days apart get a "3 days later" divider.
+- A conversation of five or more folds its middle (all but the first and last two) into one "4 earlier messages"
+  row with stacked avatars while all of it is closed; opening or moving into any of it unfolds it.
+- A reply bar waits at the foot of the pane ("Reply to Ana…  R", Reply all `Enter`, Forward `F`); an inline reply
+  takes its place.
+- Above a body, small pills say what Tern knows: blocked trackers and images (tracking pixels are removed even
+  after "Load images"), reading time from 2 minutes, and "Mailing list · Unsubscribe" from List-Unsubscribe (a web
+  link opens in the browser; a `mailto:` one opens compose).
+- Body: sanitised HTML in an iframe sized to content; `Load images` in the privacy pill when remote images were blocked, with "always for this sender".
   Mail that is mostly text takes Tern's type (`--t-read`, 15 px / 1.65) and colours and follows dark mode; quotes sit
   behind a 3 px `--line` bar. Mail its sender designed (layout tables with their own colours, wide pictures) keeps its
   look, framed at up to 680 px on `--well`; in dark mode it is darkened (backgrounds dark, text light, pictures kept)

@@ -112,6 +112,8 @@ pub struct ThreadMessage {
     pub attachments: Vec<Attachment>,
     /// Set when this is a draft being written in Tern: compose reopens it.
     pub draft_id: Option<i64>,
+    /// The List-Unsubscribe header, raw (`<mailto:…>, <https://…>`), for the Unsubscribe button.
+    pub list_unsubscribe: Option<String>,
 }
 
 /// An attached file, for the strip under a message.

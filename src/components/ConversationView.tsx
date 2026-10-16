@@ -1,7 +1,17 @@
-import { createEffect, createMemo, createResource, createSignal, For, on, Show } from "solid-js";
-import { api, type ThreadMessage } from "../api";
+import { createEffect, createMemo, createResource, createSignal, For, type JSX, on, onCleanup, onMount, Show } from "solid-js";
+import { api, type Mailto, type ThreadMessage } from "../api";
 import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
-import { darken, designedFrame, frameTheme, isDesigned, readingFrame, readingView, textFrame } from "../mailview";
+import {
+  darken,
+  designedFrame,
+  frameTheme,
+  isDesigned,
+  readingFrame,
+  readingMinutes,
+  readingView,
+  textFrame,
+  withoutTrackers,
+} from "../mailview";
 import { isDark, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
 import { ActionMenu, type MenuItem } from "./ActionMenu";
@@ -12,7 +22,7 @@ import { PersonCard, type PersonActions } from "./PersonCard";
 const CID = /(["'])cid:([^"']+)\1/gi;
 
 // Mail is untrusted: it renders in a frame with no scripts, and no remote content (tracking pixels) until asked for.
-function HtmlBody(props: { html: string; sender: string; messageId: number }) {
+function HtmlBody(props: { html: string; sender: string; messageId: number; extra?: JSX.Element }) {
   const trusted = () => settings.loadImages === "always" || settings.imagesFrom.includes(props.sender.toLowerCase());
   const [asked, setAsked] = createSignal(false);
   const remote = () => trusted() || asked();
@@ -21,13 +31,23 @@ function HtmlBody(props: { html: string; sender: string; messageId: number }) {
   if (/["']cid:/i.test(props.html)) {
     void api.inlineImages(props.messageId).then(setInline, () => {});
   }
+  // Tracking pixels are taken out first: they never load, not even when images do.
+  const web = createMemo(() => withoutTrackers(props.html));
+  const minutes = createMemo(() => readingMinutes(props.html));
   const html = () => {
     const found = inline();
-    return props.html.replace(CID, (whole, quote: string, cid: string) =>
+    return web().html.replace(CID, (whole, quote: string, cid: string) =>
       found[cid] ? `${quote}${found[cid]}${quote}` : whole,
     );
   };
-  const hasRemote = /<img[^>]+src=["']?https?:/i.test(props.html) || /url\(["']?https?:/i.test(props.html);
+  const blocked = () => web().images > 0 && !remote();
+  const privacy = () => {
+    const { trackers, images } = web();
+    const t = `${trackers} tracker${trackers === 1 ? "" : "s"}`;
+    const i = `${images} image${images === 1 ? "" : "s"}`;
+    if (blocked()) return trackers ? `Blocked ${t} and ${i}` : `Blocked ${i}`;
+    return images ? `Images shown · ${t} still blocked` : `Blocked ${t}`;
+  };
   // Text mail takes Tern's look; mail its sender designed keeps its own, framed (see mailview.ts).
   const designed = createMemo(() => isDesigned(props.html));
   const [reading, setReading] = createSignal(false);
@@ -89,7 +109,7 @@ function HtmlBody(props: { html: string; sender: string; messageId: number }) {
   const body = (
     <iframe
       class="html-body"
-      classList={{ waiting: darkened() && !ready() }}
+      classList={{ waiting: darkened() && !ready(), own: !designed() || reading() }}
       sandbox="allow-same-origin"
       srcdoc={srcdoc()}
       onLoad={onLoad}
@@ -98,15 +118,27 @@ function HtmlBody(props: { html: string; sender: string; messageId: number }) {
   );
   return (
     <>
-      <Show when={(hasRemote && !remote()) || designed()}>
+      <Show when={blocked() || web().trackers || minutes() >= 2 || designed() || props.extra}>
         <div class="body-tools">
-          <Show when={hasRemote && !remote()}>
-            <span>Remote images are blocked.</span>
-            <button onClick={() => setAsked(true)}>Load images</button>
-            <button onClick={() => setSetting("imagesFrom", [...settings.imagesFrom, props.sender.toLowerCase()])}>
-              Always for this sender
-            </button>
+          <Show when={blocked() || web().trackers}>
+            <span class="fact safe">
+              <Icon name="shield-check" size={13} />
+              {privacy()}
+              <Show when={blocked()}>
+                <button onClick={() => setAsked(true)}>Load images</button>
+                <button onClick={() => setSetting("imagesFrom", [...settings.imagesFrom, props.sender.toLowerCase()])}>
+                  Always for this sender
+                </button>
+              </Show>
+            </span>
           </Show>
+          <Show when={minutes() >= 2}>
+            <span class="fact">
+              <Icon name="clock" size={13} />
+              {minutes()} min read
+            </span>
+          </Show>
+          {props.extra}
           <Show when={designed()}>
             <button class="reading" aria-pressed={reading()} onClick={() => setReading(!reading())}>
               {reading() ? "Show original" : "Reading view"}
@@ -285,81 +317,307 @@ function initials(m: ThreadMessage): string {
   return ((words[0]?.[0] ?? "") + (words.length > 1 ? words[1][0] : "")).toUpperCase();
 }
 
-/** The open conversation: messages as cards, oldest first, collapsed to a line unless expanded. */
+/** Where List-Unsubscribe points: a web page opens in the browser, an address gets a mail to send. */
+function unsubscribeTarget(header: string | null): { web: string } | { mail: Mailto } | null {
+  const links = [...(header ?? "").matchAll(/<([^>]+)>/g)].map((x) => x[1].trim());
+  const web = links.find((l) => /^https?:\/\//i.test(l));
+  if (web) return { web };
+  const mail = links.find((l) => /^mailto:/i.test(l));
+  if (!mail) return null;
+  const [addr, query = ""] = mail.slice("mailto:".length).split("?");
+  const q = new URLSearchParams(query);
+  return { mail: { to: [decodeURIComponent(addr)], cc: [], bcc: [], subject: q.get("subject") ?? "Unsubscribe", body: q.get("body") ?? "" } };
+}
+
+/** "Mailing list · Unsubscribe" for mail that says how to leave its list. */
+function ListFact(props: { header: string | null; onMailto: (m: Mailto) => void }) {
+  const target = createMemo(() => unsubscribeTarget(props.header));
+  const [done, setDone] = createSignal("");
+  const go = () => {
+    const t = target()!;
+    if ("web" in t) {
+      api.openUrl(t.web);
+      setDone("Unsubscribe page opened");
+    } else {
+      props.onMailto(t.mail);
+      setDone("Unsubscribe mail started");
+    }
+  };
+  return (
+    <Show when={target()}>
+      <span class="fact">
+        <Icon name="list" size={13} />
+        <Show
+          when={done()}
+          fallback={
+            <>
+              Mailing list <button onClick={go}>Unsubscribe</button>
+            </>
+          }
+        >
+          {done()}
+        </Show>
+      </span>
+    </Show>
+  );
+}
+
+const DAY = 86_400_000;
+const startOfDay = (seconds: number) => new Date(seconds * 1000).setHours(0, 0, 0, 0);
+
+/** "3 days later" between messages far apart; nothing for ones a day or less apart. */
+function later(from: number, to: number): string | null {
+  const days = Math.round((startOfDay(to) - startOfDay(from)) / DAY);
+  if (days < 2) return null;
+  if (days < 14) return `${days} days later`;
+  if (days < 60) return `${Math.round(days / 7)} weeks later`;
+  if (days < 365) return `${Math.round(days / 30)} months later`;
+  const years = Math.round(days / 365);
+  return years === 1 ? "A year later" : `${years} years later`;
+}
+
+const fullDate = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+const fullDateYear = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+function full(seconds: number): string {
+  const d = new Date(seconds * 1000);
+  return (d.getFullYear() === new Date().getFullYear() ? fullDate : fullDateYear).format(d);
+}
+
+/** How long ago, within the last month; older mail shows its date. */
+function ago(seconds: number): string {
+  const minutes = Math.round((Date.now() / 1000 - seconds) / 60);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return relative.format(-minutes, "minute");
+  const days = Math.round((startOfDay(Date.now() / 1000) - startOfDay(seconds)) / DAY);
+  if (days === 0) return relative.format(-Math.round(minutes / 60), "hour");
+  if (days < 30) return relative.format(-days, "day");
+  return when(seconds);
+}
+
+/** "to you, Tom Berg": the names of people who wrote in the conversation, "you" for this person's addresses. */
+function recipients(to: string, mine: (addr: string) => boolean, names: Map<string, string>): string {
+  const addrs = to.split(",").map((a) => a.trim()).filter(Boolean);
+  const others = addrs.filter((a) => !mine(a)).map((a) => names.get(a.toLowerCase()) || a);
+  const people = [...(addrs.some(mine) ? ["you"] : []), ...others];
+  return people.length ? `to ${people.join(", ")}` : "";
+}
+
+/** The open conversation: messages oldest first, collapsed to a line unless expanded. Open messages are raised
+ * cards; a long conversation folds its closed middle into one line (docs/design/ui.md §4.2). */
 export function ConversationView(props: {
   messages: ThreadMessage[];
   focused: number;
   expanded: (id: number) => boolean;
+  /** Whether an address is one of this person's accounts. */
+  mine: (addr: string) => boolean;
+  /** An inline reply is open below the messages, so the reply bar steps aside. */
+  replying: boolean;
   onToggle: (index: number) => void;
-  onReply: (m: ThreadMessage) => void;
+  onReply: (m: ThreadMessage, kind: "reply" | "replyAll" | "forward") => void;
   onView: (m: ThreadMessage, index: number) => void;
+  onMailto: (m: Mailto) => void;
   onDone: () => void;
   onClose: () => void;
   menu: () => MenuItem[];
   person: PersonActions;
 }) {
   const last = () => props.messages[props.messages.length - 1];
+  const names = createMemo(() => new Map(props.messages.map((m) => [m.fromAddr.toLowerCase(), m.fromName] as const)));
+  const people = createMemo(() => {
+    const out: string[] = [];
+    for (const m of props.messages) {
+      const name = props.mine(m.fromAddr) ? "you" : m.fromName || m.fromAddr;
+      if (!out.includes(name)) out.push(name);
+    }
+    // "Ana Rossi, Tom Berg, you": you read best last.
+    out.sort((a, b) => Number(a === "you") - Number(b === "you"));
+    return out.length > 4 ? `${out.slice(0, 3).join(", ")} and ${out.length - 3} others` : out.join(", ");
+  });
+  const files = () => props.messages.reduce((n, m) => n + m.attachments.length, 0);
+
+  // The middle of a long conversation (all but the first and the last two) folds into one line while all of it
+  // is closed. Opening any of it, or moving into it, unfolds it for good; another conversation starts folded.
+  const [unfolded, setUnfolded] = createSignal(false);
+  let shown: number | undefined;
+  createEffect(() => {
+    const n = props.messages.length;
+    const middle = n >= 5 ? props.messages.slice(1, n - 2) : [];
+    const touched = middle.some((m, i) => props.expanded(m.id) || props.focused === i + 1);
+    const first = props.messages[0]?.id;
+    if (first !== shown) {
+      shown = first;
+      setUnfolded(touched);
+    } else if (touched) {
+      setUnfolded(true);
+    }
+  });
+  const fold = createMemo(() => {
+    const n = props.messages.length;
+    return n >= 5 && !unfolded() ? { from: 1, to: n - 3 } : null;
+  });
+
+  // The subject shrinks once the messages scroll under it; two thresholds, so it never flickers at the edge.
+  let root!: HTMLDivElement;
+  const [stuck, setStuck] = createSignal(false);
+  onMount(() => {
+    const pane = root.closest(".conversation-pane");
+    if (!pane) return;
+    const onScroll = () => setStuck((was) => (was ? pane.scrollTop > 4 : pane.scrollTop > 40));
+    pane.addEventListener("scroll", onScroll, { passive: true });
+    onCleanup(() => pane.removeEventListener("scroll", onScroll));
+  });
+
   return (
-    <div class="conversation">
-      <header class="conversation-head">
-        <h1>{props.messages[0]?.subject || "(no subject)"}</h1>
-        <button class="primary" onClick={props.onDone}>
-          Done <kbd>E</kbd>
-        </button>
-        <ActionMenu items={props.menu} />
-        <button class="link" onClick={props.onClose} aria-label="Close">
-          <kbd>Esc</kbd>
-        </button>
-      </header>
-      <For each={props.messages}>
-        {(m, i) => (
-          <article class="card" data-message={m.id} classList={{ focused: i() === props.focused, open: props.expanded(m.id), unread: !m.seen }}>
-            <header onClick={() => props.onToggle(i())}>
-              <span class="avatar" style={{ background: colour(m.fromAddr) }}>
-                {initials(m)}
-              </span>
-              <span class="who">
-                <PersonCard name={m.fromName} email={m.fromAddr} colour={colour(m.fromAddr)} initials={initials(m)} actions={props.person}>
-                  <strong>{m.fromName || m.fromAddr}</strong>
-                </PersonCard>
-                <Show when={m.draftId != null}>
-                  <span class="draft-label">Draft · R to continue</span>
-                </Show>
-                <Show when={props.expanded(m.id)} fallback={<span class="snippet">{m.snippet}</span>}>
-                  <span class="addr">{m.fromAddr}</span>
-                  <span class="to">to {m.toAddrs}</span>
-                </Show>
-              </span>
-              <Show when={m.attachments.length || m.hasAttachments}>
-                <span
-                  class="clip"
-                  title={m.attachments.length === 1 ? "1 attachment" : m.attachments.length ? `${m.attachments.length} attachments` : "Attachments"}
-                >
-                  <Icon name="paperclip" size={13} />
-                  <Show when={m.attachments.length > 1}>{m.attachments.length}</Show>
-                </span>
-              </Show>
-              <time>{when(m.date)}</time>
-            </header>
-            <Show when={props.expanded(m.id)}>
-              <div class="body">
-                <Show when={m.bodyLoaded} fallback={<p class="loading">Loading message…</p>}>
-                  <Show when={m.bodyHtml} fallback={<PlainBody text={m.bodyText ?? ""} />}>
-                    <HtmlBody html={m.bodyHtml!} sender={m.fromAddr} messageId={m.id} />
-                  </Show>
-                </Show>
-                <Show when={m.attachments.length}>
-                  <Attachments message={m} onView={(index) => props.onView(m, index)} />
-                </Show>
-              </div>
+    <div class="conversation" classList={{ replying: props.replying }} ref={root}>
+      <header class="conversation-head" classList={{ stuck: stuck() }}>
+        <div class="title">
+          <h1>{props.messages[0]?.subject || "(no subject)"}</h1>
+          <div class="meta">
+            <span>{people()}</span>
+            <Show when={props.messages.length > 1}>
+              <span class="sep">·</span>
+              <span>{props.messages.length} messages</span>
             </Show>
-          </article>
+            <Show when={files()}>
+              <span class="sep">·</span>
+              <span>{files() === 1 ? "1 file" : `${files()} files`}</span>
+            </Show>
+          </div>
+        </div>
+        <div class="acts">
+          <button class="primary" onClick={props.onDone}>
+            Done <kbd>E</kbd>
+          </button>
+          <ActionMenu items={props.menu} />
+          <button class="link" onClick={props.onClose} aria-label="Close">
+            <kbd>Esc</kbd>
+          </button>
+        </div>
+      </header>
+      <div class="messages">
+        <For each={props.messages}>
+          {(m, i) => {
+            const open = () => props.expanded(m.id);
+            const mine = () => props.mine(m.fromAddr);
+            const folded = () => {
+              const f = fold();
+              return !!f && i() >= f.from && i() <= f.to;
+            };
+            const gap = () => (i() > 0 ? later(props.messages[i() - 1].date, m.date) : null);
+            return (
+              <>
+                <Show when={fold()?.from === i() && fold()}>
+                  {(f) => (
+                    <button class="folded" onClick={() => setUnfolded(true)}>
+                      <span class="stack">
+                        <For each={props.messages.slice(f().from, f().to + 1).slice(0, 4)}>
+                          {(h) => (
+                            <span class="avatar" style={{ background: colour(h.fromAddr) }}>
+                              {initials(h)}
+                            </span>
+                          )}
+                        </For>
+                      </span>
+                      <span>{f().to - f().from + 1} earlier messages</span>
+                      <span class="rule" />
+                    </button>
+                  )}
+                </Show>
+                <Show when={!folded()}>
+                  <Show when={gap()}>{(g) => <div class="gap">{g()}</div>}</Show>
+                  <article
+                    class="card"
+                    data-message={m.id}
+                    classList={{ focused: i() === props.focused, open: open(), unread: !m.seen, mine: mine() }}
+                  >
+                    <header onClick={() => props.onToggle(i())}>
+                      <span class="avatar" style={{ background: colour(m.fromAddr) }}>
+                        {initials(m)}
+                      </span>
+                      <span class="who">
+                        <span class="line">
+                          <PersonCard name={m.fromName} email={m.fromAddr} colour={colour(m.fromAddr)} initials={initials(m)} actions={props.person}>
+                            <strong title={m.fromAddr}>{mine() ? "You" : m.fromName || m.fromAddr}</strong>
+                          </PersonCard>
+                          <Show when={m.draftId != null}>
+                            <span class="draft-label">Draft · R to continue</span>
+                          </Show>
+                          <Show when={!open()}>
+                            <span class="snippet">{m.snippet}</span>
+                          </Show>
+                        </span>
+                        <Show when={open()}>
+                          <span class="detail">
+                            {[recipients(m.toAddrs, props.mine, names()), full(m.date)].filter(Boolean).join(" · ")}
+                          </span>
+                        </Show>
+                      </span>
+                      <Show when={m.attachments.length || m.hasAttachments}>
+                        <span
+                          class="clip"
+                          title={m.attachments.length === 1 ? "1 attachment" : m.attachments.length ? `${m.attachments.length} attachments` : "Attachments"}
+                        >
+                          <Icon name="paperclip" size={13} />
+                          <Show when={m.attachments.length > 1}>{m.attachments.length}</Show>
+                        </span>
+                      </Show>
+                      <time title={full(m.date)}>{open() ? ago(m.date) : when(m.date)}</time>
+                    </header>
+                    <Show when={open()}>
+                      <div class="body">
+                        <Show when={m.bodyLoaded} fallback={<p class="loading">Loading message…</p>}>
+                          <Show
+                            when={m.bodyHtml}
+                            fallback={
+                              <>
+                                <Show when={m.listUnsubscribe}>
+                                  <div class="body-tools">
+                                    <ListFact header={m.listUnsubscribe} onMailto={props.onMailto} />
+                                  </div>
+                                </Show>
+                                <PlainBody text={m.bodyText ?? ""} />
+                              </>
+                            }
+                          >
+                            <HtmlBody
+                              html={m.bodyHtml!}
+                              sender={m.fromAddr}
+                              messageId={m.id}
+                              extra={m.listUnsubscribe ? <ListFact header={m.listUnsubscribe} onMailto={props.onMailto} /> : undefined}
+                            />
+                          </Show>
+                        </Show>
+                        <Show when={m.attachments.length}>
+                          <Attachments message={m} onView={(index) => props.onView(m, index)} />
+                        </Show>
+                      </div>
+                    </Show>
+                  </article>
+                </Show>
+              </>
+            );
+          }}
+        </For>
+      </div>
+      <Show when={!props.replying && last()}>
+        {(m) => (
+          <div class="reply-bar">
+            <div class="box">
+              <button class="start" onClick={() => props.onReply(m(), "reply")}>
+                <span>{props.mine(m().fromAddr) ? "Reply…" : `Reply to ${m().fromName || m().fromAddr}…`}</span>
+                <kbd>R</kbd>
+              </button>
+              <button class="link" onClick={() => props.onReply(m(), "replyAll")}>
+                Reply all <kbd>↵</kbd>
+              </button>
+              <button class="link" onClick={() => props.onReply(m(), "forward")}>
+                Forward <kbd>F</kbd>
+              </button>
+            </div>
+          </div>
         )}
-      </For>
-      <Show when={last()}>
-        <button class="reply" onClick={() => props.onReply(last()!)}>
-          Reply <kbd>R</kbd>
-        </button>
       </Show>
     </div>
   );

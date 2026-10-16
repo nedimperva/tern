@@ -510,41 +510,135 @@ button.primary kbd {
 .conversation {
   max-width: 860px;
   margin: 0 auto;
-  padding: var(--s-5) var(--s-6) 64px;
+  padding: 0 var(--s-6);
   user-select: text;
-}
-.conversation-head {
+  /* Fills the pane, so the reply bar sits at its foot even under a short conversation. */
+  min-height: 100%;
   display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  margin-bottom: var(--s-4);
+  flex-direction: column;
+}
+.conversation.replying {
+  min-height: 0;
+  padding-bottom: var(--s-4);
+}
+/* The subject stays in view, smaller, once the messages scroll under it. */
+.conversation-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-4);
+  padding: var(--s-5) 0 var(--s-4);
+  background: var(--bg-0);
+  transition:
+    padding var(--d-base) var(--ease),
+    box-shadow var(--d-base) var(--ease);
+}
+.conversation-head .title {
+  flex: 1;
+  min-width: 0;
 }
 .conversation-head h1 {
-  flex: 1;
-  font-size: var(--t-lg);
-  font-weight: 600;
   margin: 0;
+  font-size: var(--t-xl);
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+  transition: font-size var(--d-base) var(--ease);
 }
+.conversation-head .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+  margin-top: var(--s-2);
+  max-height: 40px;
+  overflow: hidden;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+  transition:
+    max-height var(--d-base) var(--ease),
+    opacity var(--d-base) var(--ease),
+    margin var(--d-base) var(--ease);
+}
+.conversation-head .sep {
+  opacity: 0.6;
+}
+.conversation-head .acts {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.conversation-head.stuck {
+  padding: var(--s-3) 0;
+  box-shadow: 0 1px 0 var(--line);
+}
+.conversation-head.stuck h1 {
+  font-size: var(--t-lg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conversation-head.stuck .meta {
+  max-height: 0;
+  margin-top: 0;
+  opacity: 0;
+}
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: var(--s-2);
+}
+/* Closed messages are flat lines; the open ones are raised cards, so the eye lands on what is being read. */
 .card {
-  border-top: 1px solid var(--line);
-  padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
   position: relative;
+  border-radius: var(--r-lg);
+  transition:
+    background var(--d-fast) var(--ease),
+    box-shadow var(--d-base) var(--ease);
 }
-.card.focused::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: var(--s-3);
-  bottom: var(--s-3);
-  width: 3px;
-  border-radius: 2px;
-  background: var(--accent);
+.card:not(.open):hover {
+  background: var(--bg-2);
+}
+/* Your own messages carry a tint, so the back and forth reads at a glance. */
+.card.mine {
+  background: var(--mine);
+}
+.card.mine:not(.open):hover {
+  background: var(--mine-hover);
+}
+.card.open {
+  margin: var(--s-2) 0;
+  background: var(--card);
+  box-shadow: var(--lift);
+}
+.card.open.mine {
+  background: var(--mine);
+}
+/* The message the keys act on: a hover-like background when closed, a firmer ring when open. Quiet on purpose,
+   so it never competes with what is being read. */
+.card.focused:not(.open) {
+  background: var(--bg-2);
+}
+.card.mine.focused:not(.open) {
+  background: var(--mine-hover);
+}
+.card.open.focused {
+  box-shadow: var(--lift-focus);
 }
 .card > header {
   display: flex;
   gap: var(--s-3);
   align-items: center;
+  padding: 9px var(--s-3);
   cursor: default;
+}
+.card.open > header {
+  align-items: flex-start;
+  padding: var(--s-4) var(--s-4) 6px;
 }
 .card .avatar {
   width: 28px;
@@ -556,24 +650,52 @@ button.primary kbd {
   font-size: var(--t-xs);
   font-weight: 600;
   flex: none;
+  transition:
+    width var(--d-base) var(--ease),
+    height var(--d-base) var(--ease);
+}
+.card.open .avatar {
+  width: 36px;
+  height: 36px;
+  font-size: var(--t-sm);
 }
 .card .who {
   flex: 1;
   min-width: 0;
   display: flex;
-  gap: var(--s-2);
+  flex-direction: column;
+}
+.card .line {
+  display: flex;
+  gap: 10px;
   align-items: baseline;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   font-size: var(--t-md);
 }
-.card .who .snippet,
-.card .who .addr,
-.card .who .to {
+.card .line strong {
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.card:not(.unread):not(.open) .line strong {
+  font-weight: 500;
+  color: var(--fg-1);
+}
+.card.open .line strong {
+  font-size: var(--t-rd);
+}
+.card .snippet {
+  min-width: 0;
   color: var(--fg-2);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.card .detail {
+  margin-top: 2px;
+  color: var(--fg-2);
   font-size: var(--t-sm);
+  overflow-wrap: anywhere;
 }
 .card .clip {
   flex: none;
@@ -585,20 +707,151 @@ button.primary kbd {
 }
 .card time {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--fg-2);
   font-size: var(--t-sm);
   font-variant-numeric: tabular-nums;
+}
+.card.open time {
+  padding-top: 2px;
+}
+.card.unread time::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 .card .draft-label {
   color: var(--danger);
   font-size: var(--t-sm);
 }
-.card.unread .who strong {
-  color: var(--accent);
-}
+/* The body lines up under the name: header padding, avatar and gap. */
 .card .body {
-  margin: var(--s-3) 0 0 40px;
+  padding: var(--s-2) var(--s-4) var(--s-4) calc(var(--s-4) + 36px + var(--s-3));
   font-size: var(--t-rd);
+  animation: card-open var(--d-slow) var(--ease);
+}
+@keyframes card-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+/* "3 days later" between messages far apart. */
+.gap {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 10px var(--s-3) 6px;
+  color: var(--fg-2);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.gap::before,
+.gap::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.gap::before {
+  flex: 0 0 28px;
+}
+/* The folded middle of a long conversation. */
+button.folded {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-radius: var(--r-lg);
+  background: transparent;
+  color: var(--fg-1);
+  font-size: var(--t-md);
+  text-align: left;
+}
+button.folded:hover {
+  background: var(--bg-2);
+}
+.folded .stack {
+  flex: none;
+  display: inline-flex;
+}
+.folded .avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--accent-fg);
+  font-size: calc(var(--t-xs) - 2px);
+  font-weight: 600;
+  box-shadow: 0 0 0 2px var(--bg-0);
+}
+.folded .avatar + .avatar {
+  margin-left: -6px;
+}
+.folded .rule {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+/* Always waiting at the foot of the pane; an inline reply takes its place. */
+.reply-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: auto;
+  padding: var(--s-4) 0 var(--s-5);
+  background: linear-gradient(to bottom, transparent, var(--bg-0) 45%);
+}
+.reply-bar .box {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 46px;
+  padding: 6px var(--s-2);
+  background: var(--card);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lift);
+}
+.reply-bar .start {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  border: 0;
+  background: transparent;
+  color: var(--fg-2);
+  font-size: var(--t-md);
+  text-align: left;
+  cursor: text;
+}
+.reply-bar .start span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reply-bar button.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-md);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+.reply-bar button.link:hover {
+  background: var(--bg-2);
 }
 .loading {
   color: var(--fg-2);
@@ -632,6 +885,11 @@ button.primary kbd {
   background: transparent;
   color-scheme: normal;
 }
+/* A frame in Tern's own colours takes the app's scheme: a mismatch makes the browser paint the frame opaque, a
+   box of the default dark behind the text on a card that is not quite that colour. */
+.html-body.own {
+  color-scheme: inherit;
+}
 .html-body.waiting {
   visibility: hidden;
 }
@@ -653,26 +911,53 @@ button.primary kbd {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--s-1) 6px;
+  gap: 6px;
   font-size: var(--t-sm);
   color: var(--fg-2);
-  margin-bottom: var(--s-2);
+  margin-bottom: var(--s-3);
 }
-.body-tools button {
-  padding: 2px var(--s-2);
-}
-.body-tools .reading {
-  margin-left: auto;
+/* What Tern knows about a mail: what it blocked, how long it is, how to leave its list. */
+.fact {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  min-height: 26px;
+  padding: 3px 10px;
   border-radius: 999px;
   background: var(--bg-2);
   color: var(--fg-1);
 }
+.fact svg {
+  flex: none;
+  color: var(--fg-2);
+}
+.fact.safe svg {
+  color: var(--ok);
+}
+.body-tools .fact button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 500;
+}
+.body-tools .fact button:hover {
+  text-decoration: underline;
+}
+.body-tools .reading {
+  margin-left: auto;
+  height: 26px;
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-weight: 500;
+}
 .body-tools .reading[aria-pressed="true"] {
   background: var(--accent-soft);
   color: var(--accent);
-}
-.reply {
-  margin: var(--s-3) 0 0 var(--s-4);
 }
 /* The "···" pill that unfolds a quoted reply or signature. */
 button.fold {
