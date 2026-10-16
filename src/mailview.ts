@@ -40,6 +40,47 @@ export function isDesigned(html: string): boolean {
   return painted >= 3 || (layout > 0 && (painted > 0 || wide > 0)) || layout >= 3;
 }
 
+/** A remote picture nobody is meant to see: a pixel or a hidden image, there to report that the mail was opened. */
+function isTracker(img: HTMLImageElement): boolean {
+  const style = img.getAttribute("style") ?? "";
+  const size = (name: "width" | "height") => {
+    const attr = img.getAttribute(name);
+    const css = new RegExp(`(?:^|;)\\s*${name}\\s*:\\s*([\\d.]+)px`, "i").exec(style);
+    return Number.parseFloat(attr ?? css?.[1] ?? "NaN");
+  };
+  return size("width") <= 2 || size("height") <= 2 || /display\s*:\s*none|visibility\s*:\s*hidden/i.test(style);
+}
+
+/** What a mail would fetch from the web. */
+export type Remote = { html: string; trackers: number; images: number };
+
+/** Takes tracking pixels out of a mail, so they never load, not even once images are allowed, and counts the
+ * pictures that wait for "Load images". */
+export function withoutTrackers(html: string): Remote {
+  if (!/https?:/i.test(html)) return { html, trackers: 0, images: 0 };
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  let trackers = 0;
+  let images = (html.match(/url\(\s*["']?https?:|\sbackground=["']?https?:/gi) ?? []).length;
+  for (const img of [...doc.images]) {
+    if (!/^\s*(https?:)?\/\//i.test(img.getAttribute("src") ?? "")) continue;
+    if (isTracker(img)) {
+      img.remove();
+      trackers++;
+    } else {
+      images++;
+    }
+  }
+  return { html: trackers ? doc.documentElement.outerHTML : html, trackers, images };
+}
+
+/** Minutes a mail takes to read at an unhurried 230 words a minute. */
+export function readingMinutes(html: string): number {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll("head, style, script").forEach((el) => el.remove());
+  const words = (doc.body?.textContent ?? "").split(/\s+/).filter(Boolean).length;
+  return Math.round(words / 230);
+}
+
 const CSP = (remote: boolean) =>
   `default-src 'none'; img-src ${remote ? "data: cid: https: http:" : "data: cid:"}; style-src 'unsafe-inline'; font-src data: ${location.origin}`;
 

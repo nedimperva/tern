@@ -1068,9 +1068,12 @@ export default function App() {
             messages={messages}
             focused={messageFocus()}
             expanded={(id) => expanded().has(id)}
+            mine={(addr) => accounts().some((a) => a.email.toLowerCase() === addr.toLowerCase())}
+            replying={!!compose()?.inline}
             onToggle={toggleMessage}
-            onReply={(m) => respond(m, "reply")}
+            onReply={(m, kind) => respond(m, kind)}
             onView={(message, index) => setViewing({ message, index })}
+            onMailto={fromLink}
             onDone={() => act("archive")}
             onClose={close}
             menu={menu}

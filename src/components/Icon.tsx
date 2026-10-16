@@ -15,6 +15,11 @@ const PATHS = {
   "chevron-left": ["m15 18-6-6 6-6"],
   "chevron-right": ["m9 18 6-6-6-6"],
   more: ["M5 12h.01", "M12 12h.01", "M19 12h.01"],
+  "shield-check": [
+    "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+    "m9 12 2 2 4-4",
+  ],
+  list: ["M3 5h.01", "M3 12h.01", "M3 19h.01", "M8 5h13", "M8 12h13", "M8 19h13"],
 } as const;
 
 /** An icon in the current text colour. Decorative: label the control it sits in. */

@@ -52,6 +52,8 @@ export type ThreadMessage = MessageRow & {
   attachments: { name: string; mime: string; size: number }[];
   /** Set when this is a draft being written in Tern. */
   draftId: number | null;
+  /** The List-Unsubscribe header, raw: `<mailto:…>, <https://…>`. */
+  listUnsubscribe: string | null;
 };
 /** One conversation in a list: its newest message in the listed folder(s), and the whole conversation's totals. */
 export type ThreadRow = MessageRow & {
@@ -465,6 +467,7 @@ function fake(): Api {
           : null,
       bodyLoaded: true,
       draftId: null,
+      listUnsubscribe: i % 7 === 1 ? "<mailto:leave@fieldnotes.example?subject=unsubscribe>, <https://example.com/u>" : null,
       attachments:
         i % 11 === 0
           ? [
@@ -508,7 +511,7 @@ function fake(): Api {
   const changed = () => listeners.forEach((f) => f());
   const pending = new Map<number, () => void>();
   let nextToken = 1;
-  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, draftId, ...r }: ThreadMessage): MessageRow => r;
+  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, draftId, listUnsubscribe, ...r }: ThreadMessage): MessageRow => r;
   // Every seventh conversation is a newsletter, for the Other split.
   const otherSenders = new Map<string, boolean>();
   const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
