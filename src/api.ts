@@ -194,6 +194,9 @@ export interface Api {
   saveAttachment(id: number, index: number, name: string): Promise<boolean>;
   /** Images the message's HTML shows from its own parts, by Content-ID, as data: URIs (fetched the first time). */
   inlineImages(id: number): Promise<Record<string, string>>;
+  /** A sender's logo (data: URI) when cached; the first ask fetches it in the background and `onLogo` follows. */
+  senderLogo(addr: string): Promise<string | null>;
+  onLogo(f: () => void): void;
   /** An attachment's bytes for the viewer; the first time, the message is downloaded as for opening it. */
   attachmentBytes(id: number, index: number): Promise<ArrayBuffer>;
   /** A picture attachment as a data: URI for its card, if it is already on this computer; never downloads. */
@@ -314,6 +317,8 @@ const tauri: Api = {
   addAttachments: (paths) => invoke("add_attachments", { paths }),
   openAttachment: (id, index) => invoke("open_attachment", { id, index }),
   inlineImages: (id) => invoke("inline_images", { id }),
+  senderLogo: (addr) => invoke("sender_logo", { addr }),
+  onLogo: (f) => void listen("logo", f),
   attachmentPreview: (id, index) => invoke("attachment_preview", { id, index }),
   attachmentBytes: (id, index) => invoke("attachment_bytes", { id, index }),
   saveAttachment: async (id, index, name) => {
@@ -777,6 +782,8 @@ function fake(): Api {
     defaultMailApp: async () => false,
     makeDefaultMailApp: async () => {},
     inlineImages: async () => ({}),
+    senderLogo: async () => null,
+    onLogo: () => {},
     // Stand-ins by type, enough to try the viewer: a picture, a page of text, or bytes nothing can show.
     attachmentBytes: async (id, index) => {
       const file = messages.find((m) => m.id === id)?.attachments[index];

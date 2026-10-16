@@ -112,6 +112,15 @@ const SECTIONS: { name: string; body: () => JSX.Element }[] = [
             { label: "Keep its own colours", value: "original" },
           ]}
         />
+        <Select
+          name="senderLogos"
+          title="Sender logos"
+          help="Shows a company's logo instead of initials, taken from its own website once a month. The site can tell when you open its mail. Personal addresses (Gmail, Outlook…) keep their initials."
+          choices={[
+            { label: "Initials only", value: false },
+            { label: "Show logos", value: true },
+          ]}
+        />
       </>
     ),
   },

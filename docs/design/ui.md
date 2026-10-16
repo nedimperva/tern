@@ -129,7 +129,8 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   (`from:` search). It only opens after a real pointer move, so a conversation opening under a still pointer does
   not pop it.
 - Header: the subject in `--t-xl` with a meta line under it (people, "you" last · message count · file count).
-  It sticks to the top of the pane and shrinks to `--t-lg` without the meta line once the messages scroll under it.
+  It scrolls away with the messages; once the subject is out of view a 48 px bar (subject, Done) fades in over the
+  top of the pane. The bar takes no space, so nothing moves as it comes and goes.
 - Closed messages are flat one-line rows: avatar initials (28 px circle, account-palette colour from the sender
   hash), name, snippet, date; `--bg-2` on hover. Open messages are raised cards (`--bg-1`, `--r-lg`, `--lift`) with
   a 36 px avatar and a second header line: "to you, Tom Berg · Tue 14 Oct, 14:02"; the date on the right says how
@@ -138,8 +139,11 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - Your own messages carry a `--mine` tint. Messages two or more days apart get a "3 days later" divider.
 - A conversation of five or more folds its middle (all but the first and last two) into one "4 earlier messages"
   row with stacked avatars while all of it is closed; opening or moving into any of it unfolds it.
-- A reply bar waits at the foot of the pane ("Reply to Ana…  R", Reply all `Enter`, Forward `F`); an inline reply
-  takes its place.
+- Reply, Reply all and Forward sit after the last message (not pinned to the pane); their keys show on hover, as
+  the status strip already lists them. An inline reply takes their place.
+- Focus mode (`Shift+F`): the conversation over the whole window with the list hidden, until `Shift+F` again.
+- Sender logos (Settings → Reading, off by default): a company's logo on white in place of initials, from its own
+  website's declared icon, cached for 30 days; shared mail providers (Gmail, Outlook…) keep initials.
 - Above a body, small pills say what Tern knows: blocked trackers and images (tracking pixels are removed even
   after "Load images"), reading time from 2 minutes, and "Mailing list · Unsubscribe" from List-Unsubscribe (a web
   link opens in the browser; a `mailto:` one opens compose).

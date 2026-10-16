@@ -510,30 +510,19 @@ button.primary kbd {
 .conversation {
   max-width: 860px;
   margin: 0 auto;
-  padding: 0 var(--s-6);
+  padding: 0 var(--s-6) var(--s-6);
   user-select: text;
-  /* Fills the pane, so the reply bar sits at its foot even under a short conversation. */
-  min-height: 100%;
   display: flex;
   flex-direction: column;
 }
 .conversation.replying {
-  min-height: 0;
   padding-bottom: var(--s-4);
 }
-/* The subject stays in view, smaller, once the messages scroll under it. */
 .conversation-head {
-  position: sticky;
-  top: 0;
-  z-index: 3;
   display: flex;
   align-items: flex-start;
   gap: var(--s-4);
   padding: var(--s-5) 0 var(--s-4);
-  background: var(--bg-0);
-  transition:
-    padding var(--d-base) var(--ease),
-    box-shadow var(--d-base) var(--ease);
 }
 .conversation-head .title {
   flex: 1;
@@ -546,21 +535,14 @@ button.primary kbd {
   font-weight: 600;
   letter-spacing: -0.012em;
   text-wrap: balance;
-  transition: font-size var(--d-base) var(--ease);
 }
 .conversation-head .meta {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-1) var(--s-2);
   margin-top: var(--s-2);
-  max-height: 40px;
-  overflow: hidden;
   color: var(--fg-2);
   font-size: var(--t-sm);
-  transition:
-    max-height var(--d-base) var(--ease),
-    opacity var(--d-base) var(--ease),
-    margin var(--d-base) var(--ease);
 }
 .conversation-head .sep {
   opacity: 0.6;
@@ -571,20 +553,46 @@ button.primary kbd {
   align-items: center;
   gap: var(--s-2);
 }
-.conversation-head.stuck {
-  padding: var(--s-3) 0;
-  box-shadow: 0 1px 0 var(--line);
+/* The compact bar that fades in once the subject has scrolled away. Zero height in the flow, so it never moves
+   anything (a header that resized itself made scroll anchoring bounce it at the top). */
+.compact {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 0;
 }
-.conversation-head.stuck h1 {
+.compact .bar {
+  position: absolute;
+  top: 0;
+  left: calc(-1 * var(--s-6));
+  right: calc(-1 * var(--s-6));
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: 48px;
+  padding: 0 var(--s-6);
+  background: var(--bg-0);
+  box-shadow: 0 1px 0 var(--line);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition:
+    opacity var(--d-base) var(--ease),
+    transform var(--d-base) var(--ease);
+}
+.compact.shown .bar {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.compact .subject {
+  flex: 1;
+  min-width: 0;
   font-size: var(--t-lg);
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.conversation-head.stuck .meta {
-  max-height: 0;
-  margin-top: 0;
-  opacity: 0;
 }
 .messages {
   display: flex;
@@ -653,6 +661,17 @@ button.primary kbd {
   transition:
     width var(--d-base) var(--ease),
     height var(--d-base) var(--ease);
+}
+/* A logo sits on white in both themes: most are drawn for a light page. */
+.avatar.logo {
+  background: var(--logo-bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+.avatar.logo img {
+  width: 68%;
+  height: 68%;
+  object-fit: contain;
 }
 .card.open .avatar {
   width: 36px;
@@ -802,14 +821,10 @@ button.folded:hover {
   height: 1px;
   background: var(--line);
 }
-/* Always waiting at the foot of the pane; an inline reply takes its place. */
+/* Reply, Reply all and Forward after the last message, as mail apps put them. Their keys show on hover; the
+   status strip already lists R. */
 .reply-bar {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  margin-top: auto;
-  padding: var(--s-4) 0 var(--s-5);
-  background: linear-gradient(to bottom, transparent, var(--bg-0) 45%);
+  padding-top: var(--s-2);
 }
 .reply-bar .box {
   display: flex;
@@ -853,6 +868,14 @@ button.folded:hover {
 .reply-bar button.link:hover {
   background: var(--bg-2);
 }
+.reply-bar kbd {
+  opacity: 0;
+  transition: opacity var(--d-fast) var(--ease);
+}
+.reply-bar button:hover kbd,
+.reply-bar button:focus-visible kbd {
+  opacity: 1;
+}
 .loading {
   color: var(--fg-2);
 }
@@ -893,14 +916,14 @@ button.folded:hover {
 .html-body.waiting {
   visibility: hidden;
 }
-.html-stage {
+.html-stage.framed {
   display: grid;
   justify-items: center;
   padding: var(--s-5) var(--s-4);
   background: var(--well);
   border-radius: var(--r-lg);
 }
-.html-stage .html-body {
+.html-stage.framed .html-body {
   max-width: 680px;
   border-radius: var(--r-md);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);

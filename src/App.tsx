@@ -91,6 +91,8 @@ export default function App() {
   const [expanded, setExpanded] = createSignal<ReadonlySet<number>>(new Set());
   const [width, setWidth] = createSignal(window.innerWidth);
   const [rail, setRail] = createSignal(false);
+  // Focus mode: the open conversation over the whole window, list hidden, until F again. Kept for the session.
+  const [focusMode, setFocusMode] = createSignal(false);
   // `after` runs when the toast's change is undone (unmute after undoing a mute).
   // `undo` takes back something that is not queued work (a discarded draft).
   const [toast, setToast] = createSignal<{
@@ -736,6 +738,7 @@ export default function App() {
     { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
     { keys: "r", name: "Reply (or continue the draft)", context: "conversation", run: reply },
     { keys: "v", name: "View attachments", context: "conversation", run: viewFiles },
+    { keys: "F", name: focusMode() ? "Show the list again" : "Focus mode (hide the list)", context: "conversation", run: () => setFocusMode(!focusMode()) },
     { keys: "z", name: "Undo", run: undo },
     { keys: "h", name: "Snooze", run: () => targets().length > 0 && setSnoozing(targets()) },
     { keys: "H", name: "Back from snooze now", run: () => void wake() },
@@ -768,7 +771,7 @@ export default function App() {
   ]);
 
   /** The conversation's `…` menu: its actions in the order people reach for them, each with its key. */
-  const MENU_KEYS = ["r", "Enter", "f", "v", "e", "h", "s", "u", "m", "!", "#", "O"];
+  const MENU_KEYS = ["r", "Enter", "f", "v", "e", "h", "s", "u", "m", "!", "#", "O", "F"];
   const menu = () => {
     const all = bindings();
     const items: MenuItem[] = MENU_KEYS.flatMap((k) => {
@@ -893,7 +896,7 @@ export default function App() {
     return f ? ROLE_NAMES[f.role] ?? f.name : "";
   };
   const roomForSplit = () =>
-    settings.openMode === "full"
+    focusMode() || settings.openMode === "full"
       ? false
       : width() >= (settings.openMode === "split" ? MIN_SPLIT_WIDTH : SPLIT_WIDTH);
   const split = () => openRow() !== null && roomForSplit();

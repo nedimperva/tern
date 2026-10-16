@@ -142,6 +142,7 @@ fn main() {
             commands::add_account,
             commands::list_messages,
             commands::thread,
+            commands::sender_logo,
             commands::search,
             commands::apply,
             commands::undo,

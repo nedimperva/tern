@@ -3,6 +3,7 @@
 //! once, can be undone for a few seconds, and survives being offline.
 
 pub mod imap;
+pub mod logo;
 pub mod mailto;
 pub mod mime;
 pub mod models;

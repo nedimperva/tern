@@ -1,15 +1,17 @@
 //! What the UI can ask for. Reads answer from the store and never touch the network, except signing in to a new
-//! account and the first open of a received attachment.
+//! account, the first open of a received attachment, and (opt-in) a sender's logo, fetched in the background.
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
-    mime, secrets, sync, Account, AccountConfig, Action, Applied, Contact, ContactCard, Cursor, Draft,
+    logo, mime, secrets, sync, Account, AccountConfig, Action, Applied, Contact, ContactCard, Cursor, Draft,
     DraftRecord, Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting, OutgoingAttachment, ReplyInit,
     ReplyKind, SearchResult, ThreadMessage, ThreadRow,
 };
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 
 use tern_core::sync::SyncState;
 
@@ -622,4 +624,44 @@ pub async fn delete_snippet(state: State<'_, AppState>, id: i64) -> Reply<()> {
 #[tauri::command]
 pub async fn snippet_used(state: State<'_, AppState>, id: i64) -> Reply<()> {
     state.store.snippet_used(id).map_err(text)
+}
+
+/// How long a site's logo, or its having none, is kept before the site is asked again.
+const LOGO_TTL: Duration = Duration::from_secs(30 * 24 * 3600);
+/// Sites being fetched, so a conversation full of one sender asks once.
+static FETCHING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+
+/// A sender's logo as a data: URI, from the cache, by their address. The first ask for a site fetches it in the background and emits
+/// "logo" with the site once it is in; until then, and when the site has none, None. The UI asks only when the
+/// person turned logos on (Settings → Reading).
+#[tauri::command]
+pub async fn sender_logo(app: AppHandle, addr: String) -> Reply<Option<String>> {
+    // A bare domain (or nothing, for shared providers): also a safe file name.
+    let Some(site) = logo::site(&addr) else { return Ok(None) };
+    let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("logos");
+    let file = dir.join(&site);
+    if let Ok(meta) = std::fs::metadata(&file) {
+        if meta.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age < LOGO_TTL) {
+            let uri = std::fs::read_to_string(&file).unwrap_or_default();
+            return Ok((!uri.is_empty()).then_some(uri));
+        }
+    }
+    if FETCHING.lock().unwrap().insert(site.clone()) {
+        tauri::async_runtime::spawn_blocking(move || {
+            // A site that did not answer caches nothing, so the next look tries again.
+            match logo::fetch(&site) {
+                Ok(found) => {
+                    let uri = found
+                        .map(|l| format!("data:{};base64,{}", l.mime, mime::base64(&l.bytes)))
+                        .unwrap_or_default();
+                    if std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&file, uri)).is_ok() {
+                        let _ = app.emit("logo", &site);
+                    }
+                }
+                Err(e) => log::debug!("No logo for {site}: {e:#}"),
+            }
+            FETCHING.lock().unwrap().remove(&site);
+        });
+    }
+    Ok(None)
 }
