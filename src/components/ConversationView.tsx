@@ -4,6 +4,7 @@ import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
 import {
   darken,
   designedFrame,
+  fitFrame,
   frameTheme,
   isDesigned,
   readingFrame,
@@ -79,7 +80,7 @@ function HtmlBody(props: { html: string; sender: string; messageId: number; extr
     setReady(true);
     setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
     doc.documentElement.classList.toggle("tern-fold", !unfolded());
-    const fit = () => (frame!.style.height = `${doc.documentElement.scrollHeight}px`);
+    const fit = () => fitFrame(frame!, doc);
     fit();
     new ResizeObserver(fit).observe(doc.body);
     // Keys typed while the message has focus (after selecting text in it) still reach Tern's shortcuts.
