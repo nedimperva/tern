@@ -9,6 +9,10 @@ export const ROLE_NAMES: Record<string, string> = {
   drafts: "Drafts",
   junk: "Junk",
   trash: "Trash",
+  important: "Important",
+  bulk: "Other",
+  snoozed: "Snoozed",
+  starred: "Starred",
 };
 
 /** Said next to the account only when it is not simply working: up to date or syncing shows nothing. */
@@ -48,6 +52,9 @@ export function Rail(props: {
           <Show when={inboxUnread()}>
             <span class="count">{inboxUnread()}</span>
           </Show>
+        </a>
+        <a classList={{ active: props.isTarget({ role: "snoozed" }) }} onClick={() => go({ role: "snoozed" })}>
+          <span>Snoozed</span>
         </a>
         <For each={props.accounts}>
           {(account) => (

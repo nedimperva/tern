@@ -18,6 +18,13 @@ export type AccountConfig = {
   smtpSecurity: Security;
 };
 export type Account = AccountConfig & { id: number };
+/** What a `mailto:` link fills in. */
+export type Mailto = { to: string[]; cc: string[]; bcc: string[]; subject: string; body: string };
+/** Mail a notification was about. */
+/** Saved text that compose inserts after `;shortcut`; `{first_name}` and the like are filled in there. */
+export type Snippet = { id: number; shortcut: string; name: string; body: string };
+
+export type NewMail = { id: number; accountId: number; threadId: string; subject: string };
 export type Folder = { id: number; accountId: number; name: string; role: string; unread: number };
 export type MessageRow = {
   id: number;
@@ -33,6 +40,8 @@ export type MessageRow = {
   flagged: boolean;
   hasAttachments: boolean;
 };
+
+export type ContactCard = { email: string; name: string; sent: number; received: number; recent: MessageRow[] };
 export type ThreadMessage = MessageRow & {
   messageId: string | null;
   toAddrs: string;
@@ -43,6 +52,8 @@ export type ThreadMessage = MessageRow & {
   attachments: { name: string; mime: string; size: number }[];
   /** Set when this is a draft being written in Tern. */
   draftId: number | null;
+  /** The List-Unsubscribe header, raw: `<mailto:…>, <https://…>`. */
+  listUnsubscribe: string | null;
 };
 /** One conversation in a list: its newest message in the listed folder(s), and the whole conversation's totals. */
 export type ThreadRow = MessageRow & {
@@ -51,6 +62,8 @@ export type ThreadRow = MessageRow & {
   flagged: boolean;
   /** Who wrote in it, first to last, each once; "me" for the account itself. At most four. */
   participants: string[];
+  /** When a snoozed conversation comes back (Unix seconds). */
+  snoozedUntil: number | null;
 };
 /** Where an account's sync stands. */
 export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed";
@@ -169,6 +182,8 @@ export interface Api {
   problemToDraft(id: number): Promise<DraftRecord>;
   /** People to suggest for what is typed in a recipient field, best first. */
   contacts(query: string): Promise<{ email: string; name: string }[]>;
+  /** A person's card: counts, and your latest conversations with them. */
+  contactCard(email: string): Promise<ContactCard>;
   /** The system file picker; paths chosen (none if cancelled). */
   pickFiles(): Promise<string[]>;
   /** Copies files into Tern's attachment folder, for a draft. */
@@ -179,10 +194,50 @@ export interface Api {
   saveAttachment(id: number, index: number, name: string): Promise<boolean>;
   /** Images the message's HTML shows from its own parts, by Content-ID, as data: URIs (fetched the first time). */
   inlineImages(id: number): Promise<Record<string, string>>;
+  /** A sender's logo (data: URI) when cached; the first ask fetches it in the background and `onLogo` follows. */
+  senderLogo(addr: string): Promise<string | null>;
+  onLogo(f: () => void): void;
+  /** An attachment's bytes for the viewer; the first time, the message is downloaded as for opening it. */
+  attachmentBytes(id: number, index: number): Promise<ArrayBuffer>;
+  /** A picture attachment as a data: URI for its card, if it is already on this computer; never downloads. */
+  attachmentPreview(id: number, index: number): Promise<string | null>;
   /** Files dropped on the window from the file manager; returns the way to stop listening. */
   onFilesDropped(f: (paths: string[]) => void): () => void;
-  /** Runs `f` (and waits for it) before the window closes; returns the way to stop. */
+  /** Runs `f` (and waits for it) before the window closes or Tern quits; returns the way to stop. */
   onCloseRequested(f: () => Promise<void>): () => void;
+  /** Moves the senders of these messages to the inbox's Other split, or back to Important. */
+  setSplit(ids: number[], other: boolean): Promise<void>;
+  /** Unread messages in [Important, Other]. */
+  splitUnread(): Promise<[number, number]>;
+  /** Snoozes these conversations until `due` (Unix seconds); they come back unread. */
+  snooze(ids: number[], due: number): Promise<void>;
+  unsnooze(ids: number[]): Promise<void>;
+  /** What a typed snooze time means ("tomorrow 9am", "3h", "mon"), in Unix seconds; null if unreadable or past. */
+  parseWhen(text: string): Promise<number | null>;
+  /** Saved snippets, the most used first. */
+  snippets(): Promise<Snippet[]>;
+  /** Adds (id 0) or changes a snippet; returns its id. Fails when the shortcut is taken or not one word. */
+  saveSnippet(snippet: Snippet): Promise<number>;
+  deleteSnippet(id: number): Promise<void>;
+  /** Counts a use, so the most used come first. */
+  snippetUsed(id: number): Promise<void>;
+  /** Closing the window hides it while this says so: Tern keeps running in the tray. */
+  keepRunningWhen(f: () => boolean): void;
+  /** Saves what is being written, then quits Tern for good. */
+  quit(): Promise<void>;
+  /** The tray and the system: Compose from the tray menu, a `mailto:` link, a clicked notification, Quit. */
+  onDesktop(handlers: {
+    compose: () => void;
+    mailto: (m: Mailto) => void;
+    openMail: (m: NewMail) => void;
+  }): void;
+  /** The `mailto:` link Tern was started with, if any (once). */
+  takeMailto(): Promise<Mailto | null>;
+  autostart(): Promise<boolean>;
+  setAutostart(on: boolean): Promise<void>;
+  /** Whether `mailto:` links open in Tern. */
+  defaultMailApp(): Promise<boolean>;
+  makeDefaultMailApp(): Promise<void>;
   replyInit(id: number, kind: ReplyKind): Promise<ReplyInit>;
   problems(): Promise<OutboxProblem[]>;
   retryProblem(id: number): Promise<void>;
@@ -206,6 +261,27 @@ export interface Api {
   checkFolder(id: number): Promise<void>;
   onSyncState(f: (accountId: number, state: SyncState) => void): void;
   openUrl(url: string): void;
+}
+
+// Everything that must be saved before the window goes (an open compose), and whether closing only hides it. One
+// close listener for all of them: each Tauri listener would close the window by itself once its own part was done.
+const flushers = new Set<() => Promise<void>>();
+let keepRunning = () => false;
+let closeInstalled = false;
+const flush = () => Promise.all([...flushers].map((f) => f().catch(() => {})));
+function installClose() {
+  if (closeInstalled) return;
+  closeInstalled = true;
+  void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+    getCurrentWindow().onCloseRequested(async (event) => {
+      // A failed save must not keep the window open.
+      await flush();
+      if (keepRunning()) {
+        event.preventDefault();
+        await getCurrentWindow().hide();
+      }
+    }),
+  );
 }
 
 const tauri: Api = {
@@ -241,6 +317,10 @@ const tauri: Api = {
   addAttachments: (paths) => invoke("add_attachments", { paths }),
   openAttachment: (id, index) => invoke("open_attachment", { id, index }),
   inlineImages: (id) => invoke("inline_images", { id }),
+  senderLogo: (addr) => invoke("sender_logo", { addr }),
+  onLogo: (f) => void listen("logo", f),
+  attachmentPreview: (id, index) => invoke("attachment_preview", { id, index }),
+  attachmentBytes: (id, index) => invoke("attachment_bytes", { id, index }),
   saveAttachment: async (id, index, name) => {
     const { save } = await import("@tauri-apps/plugin-dialog");
     const path = await save({ title: "Save attachment", defaultPath: name });
@@ -249,6 +329,7 @@ const tauri: Api = {
     return true;
   },
   contacts: (query) => invoke("contacts", { query }),
+  contactCard: (email) => invoke("contact_card", { email }),
   onFilesDropped: (f) => {
     let stop: (() => void) | undefined;
     let stopped = false;
@@ -262,16 +343,38 @@ const tauri: Api = {
     return () => ((stopped = true), stop?.());
   },
   onCloseRequested: (f) => {
-    let stop: (() => void) | undefined;
-    let stopped = false;
-    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-      getCurrentWindow()
-        // The window closes once this resolves; a failed save must not keep it open.
-        .onCloseRequested(() => f().catch(() => {}))
-        .then((unlisten) => (stopped ? unlisten() : (stop = unlisten))),
-    );
-    return () => ((stopped = true), stop?.());
+    flushers.add(f);
+    installClose();
+    return () => void flushers.delete(f);
   },
+  keepRunningWhen: (f) => {
+    keepRunning = f;
+    installClose();
+  },
+  quit: async () => {
+    await flush();
+    await invoke("quit");
+  },
+  onDesktop: (h) => {
+    void listen("compose", () => h.compose());
+    void listen<Mailto>("mailto", (e) => h.mailto(e.payload));
+    void listen<NewMail>("open-mail", (e) => h.openMail(e.payload));
+    void listen("quit", () => void tauri.quit());
+  },
+  takeMailto: () => invoke("take_mailto"),
+  setSplit: (ids, other) => invoke("set_split", { ids, other }),
+  splitUnread: () => invoke("split_unread"),
+  snooze: (ids, due) => invoke("snooze", { ids, due }),
+  unsnooze: (ids) => invoke("unsnooze", { ids }),
+  parseWhen: (text) => invoke("parse_when", { text, offset: -new Date().getTimezoneOffset() }),
+  snippets: () => invoke("snippets"),
+  saveSnippet: (snippet) => invoke("save_snippet", { snippet }),
+  deleteSnippet: (id) => invoke("delete_snippet", { id }),
+  snippetUsed: (id) => invoke("snippet_used", { id }),
+  autostart: () => invoke("autostart"),
+  setAutostart: (on) => invoke("set_autostart", { on }),
+  defaultMailApp: () => invoke("default_mail_app"),
+  makeDefaultMailApp: () => invoke("make_default_mail_app"),
   replyInit: (id, kind) => invoke("reply_init", { id, kind }),
   onChange: (f) => void listen("mail-changed", f),
   syncStates: () => invoke("sync_states"),
@@ -286,6 +389,20 @@ const tauri: Api = {
 };
 
 // MARK: A fake mailbox for the browser
+
+/** A sender-designed newsletter for the fake mailbox: layout tables, its own colours, a wide picture. */
+function newsletter(subject: string): string {
+  return `<table width="100%" bgcolor="#eeeae2" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 0">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;font-family:Georgia,serif;color:#222">
+<tr><td style="background:#0f4c3a;color:#f4efe2;padding:22px 28px"><div style="font:bold 12px Arial;letter-spacing:2px">THE FIELD NOTES</div>
+<h1 style="font-size:24px;margin:10px 0 0">${subject}</h1></td></tr>
+<tr><td><img width="600" alt="Mountains" src="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="160"><defs><linearGradient id="g" x2="1"><stop offset="0" stop-color="#d7b58a"/><stop offset=".6" stop-color="#a8c3a0"/><stop offset="1" stop-color="#6f9c8a"/></linearGradient></defs><rect width="600" height="160" fill="url(#g)"/></svg>')}"></td></tr>
+<tr><td style="padding:20px 28px;font-size:16px;line-height:1.6"><p>This week we walked the old railway line from Mostar toward Konjic, now a gravel trail along the Neretva.</p>
+<p>Below: three day trips, where to sleep, and what the <b>October weather</b> really does up there.</p>
+<p><a href="https://example.com/guide" style="display:inline-block;background:#0f4c3a;color:#ffffff;padding:10px 18px;text-decoration:none;font-family:Arial">Read the full guide</a></p></td></tr>
+<tr><td style="background:#f2efe7;color:#777777;font:12px Arial;padding:14px 28px">You get this because you signed up at fieldnotes.example. <a href="https://example.com/u" style="color:#777777">Unsubscribe</a></td></tr>
+</table></td></tr></table>`;
+}
 
 function fake(): Api {
   const words = "invoice meeting lunch release budget travel report design review contract launch offer update".split(" ");
@@ -303,6 +420,11 @@ function fake(): Api {
     smtpPort: 465,
     smtpSecurity: "tls",
   };
+  let snippets: Snippet[] = [
+    { id: 1, shortcut: "thanks", name: "Thanks", body: "Thanks {first_name}!\n\n{cursor}" },
+    { id: 2, shortcut: "call", name: "Call me", body: "Hi {first_name},\n\nCould we talk about {subject} on a call this week?{cursor}" },
+  ];
+  const used = new Map<number, number>();
   const folders: Folder[] = [
     { id: 1, accountId: 1, name: "INBOX", role: "inbox", unread: 0 },
     { id: 2, accountId: 1, name: "Archive", role: "archive", unread: 0 },
@@ -341,14 +463,25 @@ function fake(): Api {
       toAddrs: account.email,
       bodyText: body,
       bodyHtml:
-        i % 3 === 0
+        i % 7 === 1
+          ? newsletter(subject)
+          : i % 3 === 0
           ? `<div style="font-family:sans-serif"><h2>${subject}</h2><p>${body.split("\n-- ")[0].replace(/\n/g, "<br>")}</p>` +
             (quote ? `<div class="gmail_quote">On Mon, someone wrote:<blockquote>Earlier message about ${subject}.</blockquote></div>` : "") +
             `</div>`
           : null,
       bodyLoaded: true,
       draftId: null,
-      attachments: i % 11 === 0 ? [{ name: `${words[i % words.length]}-notes.pdf`, mime: "application/pdf", size: 48_213 + i }] : [],
+      listUnsubscribe: i % 7 === 1 ? "<mailto:leave@fieldnotes.example?subject=unsubscribe>, <https://example.com/u>" : null,
+      attachments:
+        i % 11 === 0
+          ? [
+              { name: `${words[i % words.length]}-notes.pdf`, mime: "application/pdf", size: 48_213 + i },
+              { name: `${words[(i + 1) % words.length]}-figures.xlsx`, mime: "application/vnd.ms-excel", size: 21_400 },
+              { name: "photo.jpg", mime: "image/jpeg", size: 1_204_000 },
+              { name: "orders.csv", mime: "text/csv", size: 812 },
+            ]
+          : [],
     };
   });
   const listeners: (() => void)[] = [];
@@ -383,13 +516,30 @@ function fake(): Api {
   const changed = () => listeners.forEach((f) => f());
   const pending = new Map<number, () => void>();
   let nextToken = 1;
-  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, draftId, ...r }: ThreadMessage): MessageRow => r;
-  const inTarget = (m: ThreadMessage, t: Target): boolean =>
-    "folder" in t
-      ? m.folderId === t.folder
-      : t.role === "starred"
-        ? m.flagged && inTarget(m, { role: "inbox" })
-        : folders.find((f) => f.id === m.folderId)?.role === t.role;
+  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, draftId, listUnsubscribe, ...r }: ThreadMessage): MessageRow => r;
+  // Every seventh conversation is a newsletter, for the Other split.
+  const otherSenders = new Map<string, boolean>();
+  const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
+  const snoozed = new Map<string, number>();
+  const inInbox = (m: ThreadMessage) => folders.find((f) => f.id === m.folderId)?.role === "inbox";
+  const inTarget = (m: ThreadMessage, t: Target): boolean => {
+    if ("folder" in t) return m.folderId === t.folder;
+    const asleep = snoozed.has(m.threadId);
+    switch (t.role) {
+      case "inbox":
+        return inInbox(m) && !asleep;
+      case "starred":
+        return m.flagged && inInbox(m) && !asleep;
+      case "important":
+        return inInbox(m) && !asleep && !isOther(m);
+      case "bulk":
+        return inInbox(m) && !asleep && isOther(m);
+      case "snoozed":
+        return inInbox(m) && asleep;
+      default:
+        return folders.find((f) => f.id === m.folderId)?.role === t.role;
+    }
+  };
 
   return {
     accounts: async () => [account],
@@ -425,7 +575,14 @@ function fake(): Api {
         shown.add(m.threadId);
         const all = messages.filter((o) => o.threadId === m.threadId).sort((a, b) => a.date - b.date);
         const participants = [...new Set(all.map((o) => o.fromName))].slice(0, 4);
-        out.push({ ...row(m), count: all.length, unread: all.filter((o) => !o.seen).length, flagged: all.some((o) => o.flagged), participants });
+        out.push({
+          ...row(m),
+          count: all.length,
+          unread: all.filter((o) => !o.seen).length,
+          flagged: all.some((o) => o.flagged),
+          participants,
+          snoozedUntil: snoozed.get(m.threadId) ?? null,
+        });
       }
       return out;
     },
@@ -501,6 +658,12 @@ function fake(): Api {
       const people = names.map((n) => ({ name: n, email: n.toLowerCase().replace(/\s/g, ".") + "@example.com" }));
       return q ? people.filter((p) => p.email.startsWith(q) || p.name.toLowerCase().split(" ").some((w) => w.startsWith(q))).slice(0, 5) : [];
     },
+    contactCard: async (email) => {
+      const e = email.toLowerCase();
+      const theirs = messages.filter((m) => m.fromAddr.toLowerCase() === e).sort((a, b) => b.date - a.date);
+      const recent = theirs.filter((m, i) => theirs.findIndex((o) => o.threadId === m.threadId) === i).slice(0, 5);
+      return { email, name: theirs[0]?.fromName ?? "", sent: 3, received: theirs.length, recent };
+    },
     problemToDraft: async (id) => {
       problems = problems.filter((p) => p.id !== id);
       const record = { id: nextDraft++, accountId: 1, draft: { to: ["typo@exmaple.com"], subject: "Re: Quarterly numbers", body: "Numbers attached." }, updatedAt: now };
@@ -573,7 +736,82 @@ function fake(): Api {
     },
     openAttachment: async () => {},
     onCloseRequested: () => () => {},
+    keepRunningWhen: () => {},
+    quit: async () => {},
+    onDesktop: () => {},
+    takeMailto: async () => null,
+    setSplit: async (ids, other) => {
+      for (const m of messages.filter((m) => ids.includes(m.id))) otherSenders.set(m.fromAddr, other);
+    },
+    splitUnread: async () => {
+      const unread = messages.filter((m) => !m.seen && inInbox(m) && !snoozed.has(m.threadId));
+      const other = unread.filter(isOther).length;
+      return [unread.length - other, other];
+    },
+    snooze: async (ids, due) => {
+      for (const m of messages.filter((m) => ids.includes(m.id))) snoozed.set(m.threadId, due);
+    },
+    unsnooze: async (ids) => {
+      for (const m of messages.filter((m) => ids.includes(m.id))) snoozed.delete(m.threadId);
+    },
+    // Enough to try the picker: a number of hours, or tomorrow at 8.
+    parseWhen: async (text) => {
+      const t = text.trim();
+      if (!t) return null;
+      const h = /^(\d+)\s*h/.exec(t);
+      if (h) return Math.floor(Date.now() / 1000) + Number(h[1]) * 3600;
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      d.setHours(8, 0, 0, 0);
+      return Math.floor(d.getTime() / 1000);
+    },
+    snippets: async () => [...snippets].sort((a, b) => (used.get(b.id) ?? 0) - (used.get(a.id) ?? 0)),
+    saveSnippet: async (snippet) => {
+      const shortcut = snippet.shortcut.trim().replace(/^;/, "");
+      if (!shortcut || /\s/.test(shortcut)) throw "A shortcut is one word, such as thanks.";
+      if (snippets.some((s) => s.id !== snippet.id && s.shortcut.toLowerCase() === shortcut.toLowerCase()))
+        throw `Another snippet already uses ;${shortcut}.`;
+      const id = snippet.id || Math.max(0, ...snippets.map((s) => s.id)) + 1;
+      snippets = [...snippets.filter((s) => s.id !== id), { ...snippet, id, shortcut }];
+      return id;
+    },
+    deleteSnippet: async (id) => void (snippets = snippets.filter((s) => s.id !== id)),
+    snippetUsed: async (id) => void used.set(id, (used.get(id) ?? 0) + 1),
+    autostart: async () => false,
+    setAutostart: async () => {},
+    defaultMailApp: async () => false,
+    makeDefaultMailApp: async () => {},
     inlineImages: async () => ({}),
+    senderLogo: async () => null,
+    onLogo: () => {},
+    // Stand-ins by type, enough to try the viewer: a picture, a page of text, or bytes nothing can show.
+    attachmentBytes: async (id, index) => {
+      const file = messages.find((m) => m.id === id)?.attachments[index];
+      await new Promise((r) => setTimeout(r, 300));
+      if (file?.mime.startsWith("image/")) {
+        const canvas = Object.assign(document.createElement("canvas"), { width: 1200, height: 800 });
+        const g = canvas.getContext("2d")!;
+        const fill = g.createLinearGradient(0, 0, 1200, 800);
+        fill.addColorStop(0, "#7aa6c2");
+        fill.addColorStop(0.55, "#b9d4a8");
+        fill.addColorStop(1, "#e7cf8a");
+        g.fillStyle = fill;
+        g.fillRect(0, 0, 1200, 800);
+        const blob = await new Promise<Blob>((done) => canvas.toBlob((b) => done(b!), "image/jpeg"));
+        return blob.arrayBuffer();
+      }
+      const text = file?.name.endsWith(".csv")
+        ? "month,orders,freight\nOctober,412,3980\nNovember,455,4120\n"
+        : "%PDF-1.4 stand-in";
+      return new TextEncoder().encode(text).buffer as ArrayBuffer;
+    },
+    attachmentPreview: async (id, index) =>
+      messages.find((m) => m.id === id)?.attachments[index]?.mime.startsWith("image/")
+        ? "data:image/svg+xml," +
+          encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"><defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="#7aa6c2"/><stop offset=".55" stop-color="#b9d4a8"/><stop offset="1" stop-color="#e7cf8a"/></linearGradient></defs><rect width="80" height="60" fill="url(#g)"/></svg>`,
+          )
+        : null,
     saveAttachment: async () => true,
     openUrl: (url) => void window.open(url, "_blank", "noopener"),
   };

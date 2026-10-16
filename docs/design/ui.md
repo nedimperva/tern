@@ -45,6 +45,9 @@ uses a raw colour, size or duration. File: `src/styles/tokens.css`.
 | `--danger` | `#d0453f` | `#ef6b66` | Errors, discard |
 | `--star` | `#e9b81c` | `#f2c94c` | Star |
 | `--shadow` | `0 8px 30px rgba(0,0,0,.12)` | `0 8px 30px rgba(0,0,0,.6)` | Palette, dialogs |
+| `--mine` | `#f5f5fd` | `#16162a` | Your own messages in a conversation (`--mine-hover` on hover) |
+| `--card` | `#ffffff` | `#141416` | The open message card, the reply bar |
+| `--lift` / `--lift-focus` | faint ring + shadow | white ring at 5% / 12% | Open card; the focused one |
 
 Account colours (unified inbox dots, calendar): a fixed palette of 8 — `#5b5bd6 #2f9e6e #d0453f #c98a1b #0e9bb5 #b24fb0 #7a7f8a #e07a30` — assigned in order of account creation.
 
@@ -118,10 +121,40 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ### 4.2 Conversation pane
 
 - Header: subject (`--t-lg`), label chips, a "Done" primary button with the keycap `E` and an overflow (`…`) with every action and its key.
-- Messages as cards separated by 1 px `--line` (no borders around them). Collapsed card = one line: avatar initials (28 px circle, account-palette colour from the sender hash), name, snippet, date. Expanded card = header (name, address on hover, to/cc on click, date full), body, attachments strip.
-- Body: sanitised HTML in an iframe sized to content; `Load images` pill when remote images were blocked, with "always for this sender".
+  Built: the `…` menu lists the conversation's actions in the order people reach for them (reply first, Trash
+  last) with their keys; arrows or `j`/`k`, `Enter` and `Esc` work in it, and any other key closes it and does
+  what it always does.
+- A sender's name shows their card when the pointer rests on it (or on a click): name, address (click copies),
+  how many messages each way, the last five conversations (click opens one), "Write to them" and "All their mail"
+  (`from:` search). It only opens after a real pointer move, so a conversation opening under a still pointer does
+  not pop it.
+- Header: the subject in `--t-xl` with a meta line under it (people, "you" last · message count · file count).
+  It scrolls away with the messages; once the subject is out of view a 48 px bar (subject, Done) fades in over the
+  top of the pane. The bar takes no space, so nothing moves as it comes and goes.
+- Closed messages are flat one-line rows: avatar initials (28 px circle, account-palette colour from the sender
+  hash), name, snippet, date; `--bg-2` on hover. Open messages are raised cards (`--bg-1`, `--r-lg`, `--lift`) with
+  a 36 px avatar and a second header line: "to you, Tom Berg · Tue 14 Oct, 14:02"; the date on the right says how
+  long ago. The body opens with a short fade (`--d-slow`).
+  The message the keys act on has no accent bar: a closed one gets `--bg-2`, an open one the firmer `--lift-focus` ring. Unread shows as a 6 px `--accent` dot before the date.
+- Your own messages carry a `--mine` tint. Messages two or more days apart get a "3 days later" divider.
+- A conversation of five or more folds its middle (all but the first and last two) into one "4 earlier messages"
+  row with stacked avatars while all of it is closed; opening or moving into any of it unfolds it.
+- Reply, Reply all and Forward sit after the last message (not pinned to the pane); their keys show on hover, as
+  the status strip already lists them. An inline reply takes their place.
+- Focus mode (`Shift+F`): the conversation over the whole window with the list hidden, until `Shift+F` again.
+- Sender logos (Settings → Reading, off by default): a company's logo on white in place of initials, from its own
+  website's declared icon, cached for 30 days; shared mail providers (Gmail, Outlook…) keep initials.
+- Above a body, small pills say what Tern knows: blocked trackers and images (tracking pixels are removed even
+  after "Load images"), reading time from 2 minutes, and "Mailing list · Unsubscribe" from List-Unsubscribe (a web
+  link opens in the browser; a `mailto:` one opens compose).
+- Body: sanitised HTML in an iframe sized to content; `Load images` in the privacy pill when remote images were blocked, with "always for this sender".
+  Mail that is mostly text takes Tern's type (`--t-read`, 15 px / 1.65) and colours and follows dark mode; quotes sit
+  behind a 3 px `--line` bar. Mail its sender designed (layout tables with their own colours, wide pictures) keeps its
+  look, framed at up to 680 px on `--well`; in dark mode it is darkened (backgrounds dark, text light, pictures kept)
+  unless Settings → Reading says to keep its colours. "Reading view" shows a designed mail's words and pictures in
+  Tern's colours with a book face. `src/mailview.ts` decides and draws all three.
 - Quoted text and signatures collapse behind a `···` pill.
-- Attachments strip: file chips with icon, name, size; `Enter` opens the viewer.
+- Attachments strip: file cards with a type badge (PDF, XLSX…, coloured `--file-*`) or a picture preview once the file is on this computer, name, size and Save; clicking opens it.
 - Inline reply box at the bottom when replying (see Compose); `Esc` collapses it and keeps the draft.
 - AI summary (Sprint 10): one line under the subject, `--fg-1`, with a tiny `AI` keycap; click or key expands.
 
@@ -168,6 +201,10 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ### 4.11 Attachment viewer
 
 - Full-window overlay, `rgba(0,0,0,.85)`, content centred, filename + size + `Open with system` + `Save` top-right, arrows for next/previous, `Esc` closes.
+- Built: `--viewer-scrim` (dark in both themes, blurred behind), filename with size and "n of m" top-left. `V` in a
+  conversation or a click on a file card opens it; `←`/`→` step through the message's files, `Ctrl S` saves.
+  Pictures fit and click to full size; PDFs show in the web view's own reader; text shows in mono and `.csv`/`.tsv`
+  as a table; sound and video play. Other kinds show "Open with system".
 
 ## 5. Interaction rules
 
@@ -177,7 +214,8 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - Destructive actions (trash, discard, mark all done) never confirm; they undo. Exception: emptying Trash/Spam.
 - Hover reveals, never moves: a hovered row shows star and the action strip (archive, snooze, star, more) over the date without shifting content.
 - Scroll keeps the focused row inside the middle 60 % of the viewport; `j`/`k` never cause a jump of more than one row.
-- Text selection inside a message does not trigger single-key shortcuts; typing in any input never does.
+- Text selection inside a message does not trigger single-key shortcuts, except `r`: with text selected, the reply
+  quotes just that (quick quote) and shows the quote unfolded. Typing in any input never triggers them.
 - Long operations (initial sync) show progress in the status strip, never a modal.
 
 ## 6. Accessibility

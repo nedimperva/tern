@@ -93,6 +93,8 @@ pub struct ThreadRow {
     pub flagged: bool,
     /// Who wrote in it, first to last, each once (names where known), at most four.
     pub participants: Vec<String>,
+    /// When a snoozed conversation comes back (Unix seconds).
+    pub snoozed_until: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -110,6 +112,8 @@ pub struct ThreadMessage {
     pub attachments: Vec<Attachment>,
     /// Set when this is a draft being written in Tern: compose reopens it.
     pub draft_id: Option<i64>,
+    /// The List-Unsubscribe header, raw (`<mailto:…>, <https://…>`), for the Unsubscribe button.
+    pub list_unsubscribe: Option<String>,
 }
 
 /// An attached file, for the strip under a message.
@@ -146,6 +150,8 @@ pub struct NewMessage {
     /// List-Id and List-Unsubscribe, raw, for mailing-list handling later.
     pub list_id: Option<String>,
     pub list_unsubscribe: Option<String>,
+    /// `Precedence: bulk` (or list, junk): sent to many at once.
+    pub precedence_bulk: bool,
     /// Addresses only, comma-separated, as `to_addrs`. Kept for reply-all.
     pub cc_addrs: String,
     pub reply_to: String,
@@ -255,6 +261,19 @@ pub struct Draft {
 pub struct Contact {
     pub email: String,
     pub name: String,
+}
+
+/// What Tern knows about a person, for the card on their name in a conversation.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContactCard {
+    pub email: String,
+    pub name: String,
+    /// Messages you sent them, and they sent you, as counted for suggestions.
+    pub sent: i64,
+    pub received: i64,
+    /// The newest message of each of your latest conversations with them.
+    pub recent: Vec<MessageRow>,
 }
 
 /// A file attached to a draft, as Tern keeps it.
@@ -436,4 +455,29 @@ pub enum Failure {
 pub struct Applied {
     pub token: Vec<i64>,
     pub accounts: Vec<i64>,
+}
+
+/// A message that just arrived, for a notification.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewMail {
+    pub id: i64,
+    pub account_id: i64,
+    pub thread_id: String,
+    pub from_name: String,
+    pub from_addr: String,
+    pub subject: String,
+    pub snippet: String,
+}
+
+/// A saved piece of text that compose inserts when its shortcut is typed after `;`. The body is plain text with
+/// `{first_name}`-style places that compose fills in.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Snippet {
+    /// 0 for one not saved yet.
+    pub id: i64,
+    pub shortcut: String,
+    pub name: String,
+    pub body: String,
 }
