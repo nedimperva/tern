@@ -214,6 +214,9 @@ function SnippetSettings() {
   let keys = 0;
   const [list, setList] = createSignal<Row[]>([]);
   const [error, setError] = createSignal("");
+  // A refused save shows on its own row and stays until that row saves: the row is not kept until then.
+  const [refused, setRefusedAll] = createSignal<Record<number, string>>({});
+  const setRefused = (key: number, why: string) => setRefusedAll({ ...refused(), [key]: why });
   onMount(() => void api.snippets().then((all) => setList(all.map((s) => ({ ...s, key: ++keys }))), (e) => setError(String(e))));
   const change = (key: number, patch: Partial<Snippet>) => setList(list().map((s) => (s.key === key ? { ...s, ...patch } : s)));
   // One save at a time, so a new snippet is not added twice.
@@ -225,9 +228,9 @@ function SnippetSettings() {
       if (!s || (s.id === 0 && !s.shortcut.trim())) return;
       try {
         change(key, { id: await api.saveSnippet(s) });
-        setError("");
+        setRefused(key, "");
       } catch (e) {
-        setError(String(e));
+        setRefused(key, String(e));
       }
     }));
   // Typing saves after a pause, and closing settings saves what is left (a removed field gets no blur).
@@ -265,6 +268,8 @@ function SnippetSettings() {
             <div class="snippet-head">
               <input
                 class="snippet-key"
+                classList={{ invalid: !!refused()[s().key] }}
+                aria-invalid={!!refused()[s().key]}
                 value={s().shortcut}
                 placeholder="shortcut"
                 aria-label="Shortcut"
@@ -287,6 +292,9 @@ function SnippetSettings() {
               aria-label="Text"
               onInput={(e) => (change(s().key, { body: e.currentTarget.value }), later(s().key))}
             />
+            <Show when={refused()[s().key]}>
+              <p class="setting-error">{refused()[s().key]} Not saved until the shortcut changes.</p>
+            </Show>
           </div>
         )}
       </Index>
