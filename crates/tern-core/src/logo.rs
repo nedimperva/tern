@@ -8,9 +8,29 @@ use anyhow::Result;
 
 /// Mail domains many people share: a logo there would be the provider's, not the sender's.
 const SHARED: &[&str] = &[
-    "gmail.com", "googlemail.com", "msn.com", "ymail.com", "icloud.com", "me.com", "mac.com", "aol.com", "proton.me",
-    "protonmail.com", "pm.me", "web.de", "mail.ru", "fastmail.com", "fastmail.fm", "hey.com", "zoho.com",
-    "tutanota.com", "tuta.io", "mail.com", "qq.com", "163.com", "126.com",
+    "gmail.com",
+    "googlemail.com",
+    "msn.com",
+    "ymail.com",
+    "icloud.com",
+    "me.com",
+    "mac.com",
+    "aol.com",
+    "proton.me",
+    "protonmail.com",
+    "pm.me",
+    "web.de",
+    "mail.ru",
+    "fastmail.com",
+    "fastmail.fm",
+    "hey.com",
+    "zoho.com",
+    "tutanota.com",
+    "tuta.io",
+    "mail.com",
+    "qq.com",
+    "163.com",
+    "126.com",
 ];
 /// Providers with a domain per country (hotmail.co.uk, yahoo.de).
 const SHARED_PREFIXES: &[&str] = &["hotmail.", "outlook.", "live.", "yahoo.", "gmx.", "yandex."];
@@ -96,12 +116,8 @@ fn agent() -> ureq::Agent {
 
 fn get(agent: &ureq::Agent, url: &str, limit: u64) -> Result<(String, Vec<u8>), ureq::Error> {
     let mut res = agent.get(url).call()?;
-    let mime = res
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_ascii_lowercase();
+    let mime =
+        res.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
     let bytes = res.body_mut().with_config().limit(limit).read_to_vec()?;
     Ok((mime, bytes))
 }
@@ -166,7 +182,7 @@ fn icon_links(html: &str, base: &str) -> Vec<String> {
         };
         found.push((rank, url));
     }
-    found.sort_by(|a, b| b.0.cmp(&a.0));
+    found.sort_by_key(|(rank, _)| std::cmp::Reverse(*rank));
     found.into_iter().map(|(_, url)| url).collect()
 }
 
