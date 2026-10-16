@@ -1,6 +1,6 @@
 # Sprint 5 — Triage: split inbox, snooze, reminders, send later
 
-**Status:** todo
+**Status:** in progress (M2 basics built) · started 2026-10-15
 
 ## Delivery scope
 
@@ -36,13 +36,13 @@ unsubscribes; `m` mutes. All of it works offline and syncs when back.
 - [ ] Split counts in the tabs (unread), updated from the `threads` table, not by counting rows.
 
 ### Snooze / Remind me (`h`)
-- [ ] Picker with presets (Later today, Tomorrow, This weekend, Next week, Pick a time) and a text field that
+- [x] Picker with presets (Later today, Tomorrow, This weekend, Next week, Pick a time) and a text field that
       parses `3h`, `tomorrow 9am`, `mon`, `in 2 days`, `dec 3` (own parser, ~150 lines, tested).
-- [ ] `reminders` table: `thread_id, due, kind (snooze | followup), note, created`.
+- [x] `reminders` table: `thread_id, due, kind (snooze | followup), note, created`.
 - [ ] Snoozed threads leave the inbox: plain IMAP → move to a `Tern/Snoozed` folder (created on first use);
       Gmail → `-\Inbox +Tern/Snoozed` label. Both are reversible without data loss if the user stops using Tern.
 - [ ] A scheduler in the sync worker fires due reminders: move back to Inbox, mark unread, add a `\Flagged`-free "Reminder" chip, notify (Sprint 8 adds OS notifications).
-- [ ] `g h` shows Reminders sorted by due; `Shift+H` un-snoozes.
+- [x] `g h` shows Reminders sorted by due; `Shift+H` un-snoozes.
 
 ### Follow-up reminders on send
 - [ ] In compose: "Remind me if no reply in … " (`Cmd+Shift+H`). Stores a `followup` reminder keyed on the sent thread.
@@ -73,8 +73,26 @@ Team split, "teaches the rule" from Move, RFC 8058 POST (keep mailto/URL).
 
 ## Decisions
 
-_None yet._
+- 2026-10-15 — **Two splits from headers, no rules engine yet.** Important and Other. Other is mail with `List-Id`,
+  `List-Unsubscribe`, `Precedence: bulk|list|junk`, or from a noreply-style address (`triage::is_bulk`, kept as
+  `messages.bulk`). "Move sender to Other/Important" (Ctrl+K) records the sender (`sender_splits`), which wins for
+  its past and future mail. The split is per message, so a conversation answered by a person after a newsletter
+  shows in Important. Custom splits, the Calendar and Team splits and Gmail's categories wait for the rules engine.
+  Notifications only come for Important. Settings → Reading → Inbox turns the splits off.
+- 2026-10-15 — **Snooze is Tern's alone, for now.** Planned: move to a `Tern/Snoozed` folder. Built: the
+  conversation stays in the server's inbox and leaves Tern's lists while a `reminders` row exists. No folder to
+  create, no hierarchy delimiter to guess, nothing to undo on the server. Other mail apps still show it in the inbox,
+  and it comes back only while Tern runs (at the next start if it fell due while closed); the picker says so. Coming
+  back marks it unread (through the outbox) and notifies; a reply from someone else brings it back early.
+  `h` snoozes, `Shift+H` brings it back now, `g h` lists snoozed conversations with their time. The time reader is
+  `triage::when` in the engine, with tests.
 
 ## Log
 
-_No sessions yet._
+- 2026-10-15 — M2 basics: Important/Other splits (schema v16), sender moves, local snooze with the picker and time
+  reader, Snoozed list, split unread counts on the tabs. Conversation lists of a role (the inbox, a split) now scan
+  in pages with a LIMIT: without one SQLite sorted the whole inbox first, about 45 ms per page at 50k messages
+  (`store_bench`: unified inbox and Important now under 1 ms). An empty Other split on a large inbox still walks the
+  whole inbox (35 ms in the bench, which has no bulk mail); split unread counts cost about 22 ms in the bench, where
+  three quarters of 50k messages are unread. UI tried against the fake mailbox in headless Chromium, light and dark.
+  Not built: rules engine, custom splits, follow-up reminders, send later, unsubscribe, mass actions.

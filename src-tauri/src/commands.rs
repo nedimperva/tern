@@ -1,15 +1,17 @@
 //! What the UI can ask for. Reads answer from the store and never touch the network, except signing in to a new
-//! account and the first open of a received attachment.
+//! account, the first open of a received attachment, and (opt-in) a sender's logo, fetched in the background.
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
-    mime, secrets, sync, Account, AccountConfig, Action, Applied, Contact, Cursor, Draft, DraftRecord,
-    Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting, OutgoingAttachment, ReplyInit, ReplyKind,
-    SearchResult, ThreadMessage, ThreadRow,
+    logo, mime, secrets, sync, Account, AccountConfig, Action, Applied, Contact, ContactCard, Cursor, Draft,
+    DraftRecord, Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting, OutgoingAttachment, ReplyInit,
+    ReplyKind, SearchResult, ThreadMessage, ThreadRow,
 };
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 
 use tern_core::sync::SyncState;
 
@@ -341,6 +343,12 @@ pub async fn contacts(state: State<'_, AppState>, query: String) -> Reply<Vec<Co
     state.store.contacts(&query, 5).map_err(text)
 }
 
+/// The card for a person's name in a conversation: who they are and your latest conversations with them.
+#[tauri::command]
+pub async fn contact_card(state: State<'_, AppState>, email: String) -> Reply<ContactCard> {
+    state.store.contact_card(&email, 5).map_err(text)
+}
+
 /// The `index`-th attachment of a message as a file on disk. The first time, the message comes down from the server
 /// on a connection of its own (the one read the UI waits on the network for: Tern keeps no attachment bytes in the
 /// store); its attachments are then kept in the cache folder, so opening one again is instant and works offline.
@@ -388,6 +396,44 @@ async fn received_file(
     }
 }
 
+/// Most a picture attachment may weigh to be shown on its card.
+const PREVIEW_LIMIT: u64 = 8_000_000;
+
+/// A picture attachment as a data: URI for its card, when it was already downloaded (opened or saved before). It
+/// never downloads: expanding a message must not fetch every file it carries.
+#[tauri::command]
+pub async fn attachment_preview(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    index: usize,
+) -> Reply<Option<String>> {
+    let Some((_, _, listed)) = state.store.attachment_source(id).map_err(text)? else { return Ok(None) };
+    let Some(name) = listed.get(index) else { return Ok(None) };
+    let mime = match name.rsplit('.').next().map(str::to_ascii_lowercase).as_deref() {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        _ => return Ok(None),
+    };
+    let path = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("received")
+        .join(id.to_string())
+        .join(index.to_string())
+        .join(mime::safe_file_name(name));
+    match std::fs::metadata(&path) {
+        Ok(meta) if meta.is_file() && meta.len() <= PREVIEW_LIMIT => {
+            let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+            Ok(Some(format!("data:{mime};base64,{}", mime::base64(&bytes))))
+        }
+        _ => Ok(None),
+    }
+}
+
 /// Most an inline-image cache holds for one message.
 const INLINE_LIMIT: usize = 20_000_000;
 
@@ -428,6 +474,26 @@ pub async fn inline_images(
     Ok(images)
 }
 
+/// Most the viewer shows inside Tern; bigger files open in the system's program.
+const VIEW_LIMIT: u64 = 60_000_000;
+
+/// An attachment's bytes for the viewer, downloaded the first time as for opening it. Sent raw, not as JSON.
+#[tauri::command]
+pub async fn attachment_bytes(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    index: usize,
+) -> Reply<tauri::ipc::Response> {
+    let path = received_file(&app, &state, id, index).await?;
+    let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+    if size > VIEW_LIMIT {
+        return Err("This file is too big to show here; open it with the system instead".into());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// Opens an attachment in the program the system uses for its type. Programs and disk images are not opened
 /// (the UI offers Save for them instead).
 #[tauri::command]
@@ -455,4 +521,147 @@ pub async fn save_attachment(
     let file = received_file(&app, &state, id, index).await?;
     std::fs::copy(&file, &path).map_err(|e| format!("{path}: {e}"))?;
     Ok(())
+}
+
+/// The `mailto:` link Tern was started with, once; the window asks when it is ready.
+#[tauri::command]
+pub fn take_mailto(app: AppHandle) -> Option<tern_core::mailto::Mailto> {
+    crate::desktop::take_pending(&app)
+}
+
+/// Quits for good (the window has saved what was being written). Closing the window only hides it.
+#[tauri::command]
+pub fn quit(app: AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
+pub fn autostart(app: AppHandle) -> Reply<bool> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+/// Starts Tern at login, in the tray, or stops doing so.
+#[tauri::command]
+pub fn set_autostart(app: AppHandle, on: bool) -> Reply<()> {
+    use tauri_plugin_autostart::ManagerExt;
+    let launcher = app.autolaunch();
+    if on { launcher.enable() } else { launcher.disable() }.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn default_mail_app(app: AppHandle) -> bool {
+    use tauri_plugin_deep_link::DeepLinkExt;
+    app.deep_link().is_registered("mailto").unwrap_or(false)
+}
+
+/// Makes Tern open `mailto:` links. Only when asked: it takes over from whatever mail app did that before. Windows
+/// keeps the final say in its own settings, which this opens there.
+#[tauri::command]
+pub fn make_default_mail_app(app: AppHandle) -> Reply<()> {
+    use tauri_plugin_deep_link::DeepLinkExt;
+    app.deep_link().register("mailto").map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        let _ = app.opener().open_url("ms-settings:defaultapps", None::<&str>);
+    }
+    Ok(())
+}
+
+/// Moves the senders of these messages to the inbox's Other split (or back to Important).
+#[tauri::command]
+pub async fn set_split(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>, other: bool) -> Reply<()> {
+    state.store.set_split(&ids, other).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
+/// Unread messages in the Important and Other splits.
+#[tauri::command]
+pub async fn split_unread(state: State<'_, AppState>) -> Reply<(i64, i64)> {
+    state.store.split_unread().map_err(text)
+}
+
+/// Snoozes these conversations until `due` (Unix seconds). Tern brings them back while it runs.
+#[tauri::command]
+pub async fn snooze(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>, due: i64) -> Reply<()> {
+    state.store.snooze(&ids, due, crate::desktop::now()).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn unsnooze(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>) -> Reply<()> {
+    state.store.unsnooze(&ids).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
+/// What a typed snooze time means, in Unix seconds; `offset` is the local time's minutes east of UTC.
+#[tauri::command]
+pub fn parse_when(text: String, offset: i64) -> Option<i64> {
+    tern_core::triage::when(&text, crate::desktop::now(), offset)
+}
+
+/// Saved snippets, the most used first.
+#[tauri::command]
+pub async fn snippets(state: State<'_, AppState>) -> Reply<Vec<tern_core::Snippet>> {
+    state.store.snippets().map_err(text)
+}
+
+/// Adds or changes a snippet; its id comes back.
+#[tauri::command]
+pub async fn save_snippet(state: State<'_, AppState>, snippet: tern_core::Snippet) -> Reply<i64> {
+    state.store.save_snippet(&snippet).map_err(text)
+}
+
+#[tauri::command]
+pub async fn delete_snippet(state: State<'_, AppState>, id: i64) -> Reply<()> {
+    state.store.delete_snippet(id).map_err(text)
+}
+
+#[tauri::command]
+pub async fn snippet_used(state: State<'_, AppState>, id: i64) -> Reply<()> {
+    state.store.snippet_used(id).map_err(text)
+}
+
+/// How long a site's logo, or its having none, is kept before the site is asked again.
+const LOGO_TTL: Duration = Duration::from_secs(30 * 24 * 3600);
+/// Sites being fetched, so a conversation full of one sender asks once.
+static FETCHING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+
+/// A sender's logo as a data: URI, from the cache, by their address. The first ask for a site fetches it in the background and emits
+/// "logo" with the site once it is in; until then, and when the site has none, None. The UI asks only when the
+/// person turned logos on (Settings → Reading).
+#[tauri::command]
+pub async fn sender_logo(app: AppHandle, addr: String) -> Reply<Option<String>> {
+    // A bare domain (or nothing, for shared providers): also a safe file name.
+    let Some(site) = logo::site(&addr) else { return Ok(None) };
+    let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("logos");
+    let file = dir.join(&site);
+    if let Ok(meta) = std::fs::metadata(&file) {
+        if meta.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age < LOGO_TTL) {
+            let uri = std::fs::read_to_string(&file).unwrap_or_default();
+            return Ok((!uri.is_empty()).then_some(uri));
+        }
+    }
+    if FETCHING.lock().unwrap().insert(site.clone()) {
+        tauri::async_runtime::spawn_blocking(move || {
+            // A site that did not answer caches nothing, so the next look tries again.
+            match logo::fetch(&site) {
+                Ok(found) => {
+                    let uri = found
+                        .map(|l| format!("data:{};base64,{}", l.mime, mime::base64(&l.bytes)))
+                        .unwrap_or_default();
+                    if std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&file, uri)).is_ok() {
+                        let _ = app.emit("logo", &site);
+                    }
+                }
+                Err(e) => log::debug!("No logo for {site}: {e:#}"),
+            }
+            FETCHING.lock().unwrap().remove(&site);
+        });
+    }
+    Ok(None)
 }

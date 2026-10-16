@@ -3,6 +3,8 @@
 //! once, can be undone for a few seconds, and survives being offline.
 
 pub mod imap;
+pub mod logo;
+pub mod mailto;
 pub mod mime;
 pub mod models;
 pub mod presets;
@@ -13,6 +15,7 @@ pub mod secrets;
 pub mod smtp;
 pub mod store;
 pub mod sync;
+pub mod triage;
 
 pub use models::*;
 pub use store::Store;

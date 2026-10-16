@@ -340,6 +340,13 @@ button.primary kbd {
 .crow .clip {
   color: var(--fg-2);
 }
+.crow .date.snoozed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  color: var(--accent);
+}
 .crow .date {
   flex: none;
   min-width: 44px;
@@ -503,41 +510,143 @@ button.primary kbd {
 .conversation {
   max-width: 860px;
   margin: 0 auto;
-  padding: var(--s-5) var(--s-6) 64px;
+  padding: 0 var(--s-6) var(--s-6);
   user-select: text;
+  display: flex;
+  flex-direction: column;
+}
+.conversation.replying {
+  padding-bottom: var(--s-4);
 }
 .conversation-head {
   display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  margin-bottom: var(--s-4);
+  align-items: flex-start;
+  gap: var(--s-4);
+  padding: var(--s-5) 0 var(--s-4);
+}
+.conversation-head .title {
+  flex: 1;
+  min-width: 0;
 }
 .conversation-head h1 {
+  margin: 0;
+  font-size: var(--t-xl);
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+}
+.conversation-head .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+  margin-top: var(--s-2);
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
+.conversation-head .sep {
+  opacity: 0.6;
+}
+.conversation-head .acts {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+/* The compact bar that fades in once the subject has scrolled away. Zero height in the flow, so it never moves
+   anything (a header that resized itself made scroll anchoring bounce it at the top). */
+.compact {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 0;
+}
+.compact .bar {
+  position: absolute;
+  top: 0;
+  left: calc(-1 * var(--s-6));
+  right: calc(-1 * var(--s-6));
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: 48px;
+  padding: 0 var(--s-6);
+  background: var(--bg-0);
+  box-shadow: 0 1px 0 var(--line);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition:
+    opacity var(--d-base) var(--ease),
+    transform var(--d-base) var(--ease);
+}
+.compact.shown .bar {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.compact .subject {
   flex: 1;
+  min-width: 0;
   font-size: var(--t-lg);
   font-weight: 600;
-  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: var(--s-2);
+}
+/* Closed messages are flat lines; the open ones are raised cards, so the eye lands on what is being read. */
 .card {
-  border-top: 1px solid var(--line);
-  padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
   position: relative;
+  border-radius: var(--r-lg);
+  transition:
+    background var(--d-fast) var(--ease),
+    box-shadow var(--d-base) var(--ease);
 }
-.card.focused::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: var(--s-3);
-  bottom: var(--s-3);
-  width: 3px;
-  border-radius: 2px;
-  background: var(--accent);
+.card:not(.open):hover {
+  background: var(--bg-2);
+}
+/* Your own messages carry a tint, so the back and forth reads at a glance. */
+.card.mine {
+  background: var(--mine);
+}
+.card.mine:not(.open):hover {
+  background: var(--mine-hover);
+}
+.card.open {
+  margin: var(--s-2) 0;
+  background: var(--card);
+  box-shadow: var(--lift);
+}
+.card.open.mine {
+  background: var(--mine);
+}
+/* The message the keys act on: a hover-like background when closed, a firmer ring when open. Quiet on purpose,
+   so it never competes with what is being read. */
+.card.focused:not(.open) {
+  background: var(--bg-2);
+}
+.card.mine.focused:not(.open) {
+  background: var(--mine-hover);
+}
+.card.open.focused {
+  box-shadow: var(--lift-focus);
 }
 .card > header {
   display: flex;
   gap: var(--s-3);
   align-items: center;
+  padding: 9px var(--s-3);
   cursor: default;
+}
+.card.open > header {
+  align-items: flex-start;
+  padding: var(--s-4) var(--s-4) 6px;
 }
 .card .avatar {
   width: 28px;
@@ -549,24 +658,63 @@ button.primary kbd {
   font-size: var(--t-xs);
   font-weight: 600;
   flex: none;
+  transition:
+    width var(--d-base) var(--ease),
+    height var(--d-base) var(--ease);
+}
+/* A logo sits on white in both themes: most are drawn for a light page. */
+.avatar.logo {
+  background: var(--logo-bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+.avatar.logo img {
+  width: 68%;
+  height: 68%;
+  object-fit: contain;
+}
+.card.open .avatar {
+  width: 36px;
+  height: 36px;
+  font-size: var(--t-sm);
 }
 .card .who {
   flex: 1;
   min-width: 0;
   display: flex;
-  gap: var(--s-2);
+  flex-direction: column;
+}
+.card .line {
+  display: flex;
+  gap: 10px;
   align-items: baseline;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   font-size: var(--t-md);
 }
-.card .who .snippet,
-.card .who .addr,
-.card .who .to {
+.card .line strong {
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.card:not(.unread):not(.open) .line strong {
+  font-weight: 500;
+  color: var(--fg-1);
+}
+.card.open .line strong {
+  font-size: var(--t-rd);
+}
+.card .snippet {
+  min-width: 0;
   color: var(--fg-2);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.card .detail {
+  margin-top: 2px;
+  color: var(--fg-2);
   font-size: var(--t-sm);
+  overflow-wrap: anywhere;
 }
 .card .clip {
   flex: none;
@@ -578,49 +726,261 @@ button.primary kbd {
 }
 .card time {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--fg-2);
   font-size: var(--t-sm);
   font-variant-numeric: tabular-nums;
+}
+.card.open time {
+  padding-top: 2px;
+}
+.card.unread time::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 .card .draft-label {
   color: var(--danger);
   font-size: var(--t-sm);
 }
-.card.unread .who strong {
-  color: var(--accent);
-}
+/* The body lines up under the name: header padding, avatar and gap. */
 .card .body {
-  margin: var(--s-3) 0 0 40px;
+  padding: var(--s-2) var(--s-4) var(--s-4) calc(var(--s-4) + 36px + var(--s-3));
   font-size: var(--t-rd);
+  animation: card-open var(--d-slow) var(--ease);
+}
+@keyframes card-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+/* "3 days later" between messages far apart. */
+.gap {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 10px var(--s-3) 6px;
+  color: var(--fg-2);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.gap::before,
+.gap::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.gap::before {
+  flex: 0 0 28px;
+}
+/* The folded middle of a long conversation. */
+button.folded {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-radius: var(--r-lg);
+  background: transparent;
+  color: var(--fg-1);
+  font-size: var(--t-md);
+  text-align: left;
+}
+button.folded:hover {
+  background: var(--bg-2);
+}
+.folded .stack {
+  flex: none;
+  display: inline-flex;
+}
+.folded .avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--accent-fg);
+  font-size: calc(var(--t-xs) - 2px);
+  font-weight: 600;
+  box-shadow: 0 0 0 2px var(--bg-0);
+}
+.folded .avatar + .avatar {
+  margin-left: -6px;
+}
+.folded .rule {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+/* Reply, Reply all and Forward after the last message, as mail apps put them. Their keys show on hover; the
+   status strip already lists R. */
+.reply-bar {
+  padding-top: var(--s-2);
+}
+.reply-bar .box {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 46px;
+  padding: 6px var(--s-2);
+  background: var(--card);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lift);
+}
+.reply-bar .start {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  border: 0;
+  background: transparent;
+  color: var(--fg-2);
+  font-size: var(--t-md);
+  text-align: left;
+  cursor: text;
+}
+.reply-bar .start span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reply-bar button.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-md);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+.reply-bar button.link:hover {
+  background: var(--bg-2);
+}
+.reply-bar kbd {
+  opacity: 0;
+  transition: opacity var(--d-fast) var(--ease);
+}
+.reply-bar button:hover kbd,
+.reply-bar button:focus-visible kbd {
+  opacity: 1;
 }
 .loading {
   color: var(--fg-2);
 }
+/* Message bodies (docs/design/ui.md §4.2): text mail in Tern's reading type, designed mail framed on a well. */
 .plain {
   white-space: pre-wrap;
-  font: inherit;
+  font: var(--t-read) / 1.65 var(--font);
+  max-width: 72ch;
   margin: 0;
+  overflow-wrap: anywhere;
+}
+.plain.quoted {
+  margin-top: var(--s-2);
+  padding: 2px 0 2px var(--s-3);
+  border-left: 3px solid var(--line);
+  color: var(--fg-1);
+  font-size: var(--t-rd);
+}
+/* A signature is the sender's own, not a quote: muted, without the bar. */
+.plain.quoted.signature {
+  padding-left: 0;
+  border-left: 0;
+  color: var(--fg-2);
 }
 .html-body {
   width: 100%;
   border: 0;
   display: block;
   min-height: 40px;
-  border-radius: var(--r-md);
-  /* Mail HTML is written for white; it keeps it in either theme. */
-  background: #fff;
+  background: transparent;
+  color-scheme: normal;
 }
-.remote-bar {
+/* A frame in Tern's own colours takes the app's scheme: a mismatch makes the browser paint the frame opaque, a
+   box of the default dark behind the text on a card that is not quite that colour. */
+.html-body.own {
+  color-scheme: inherit;
+}
+.html-body.waiting {
+  visibility: hidden;
+}
+.html-stage.framed {
+  display: grid;
+  justify-items: center;
+  padding: var(--s-5) var(--s-4);
+  background: var(--well);
+  border-radius: var(--r-lg);
+}
+.html-stage.framed .html-body {
+  max-width: 680px;
+  border-radius: var(--r-md);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  /* Designed mail draws its own background; this only shows while it loads. */
+  background: var(--bg-0);
+}
+.body-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   font-size: var(--t-sm);
   color: var(--fg-2);
-  margin-bottom: var(--s-2);
+  margin-bottom: var(--s-3);
 }
-.remote-bar button {
-  padding: 2px var(--s-2);
-  margin-left: 6px;
+/* What Tern knows about a mail: what it blocked, how long it is, how to leave its list. */
+.fact {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  min-height: 26px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-1);
 }
-.reply {
-  margin: var(--s-3) 0 0 var(--s-4);
+.fact svg {
+  flex: none;
+  color: var(--fg-2);
+}
+.fact.safe svg {
+  color: var(--ok);
+}
+.body-tools .fact button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 500;
+}
+.body-tools .fact button:hover {
+  text-decoration: underline;
+}
+.body-tools .reading {
+  margin-left: auto;
+  height: 26px;
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-weight: 500;
+}
+.body-tools .reading[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 /* The "···" pill that unfolds a quoted reply or signature. */
 button.fold {
@@ -691,8 +1051,91 @@ button.fold {
   font-size: var(--t-sm);
   color: var(--danger);
 }
-.remote-bar button + button {
-  margin-left: var(--s-1);
+/* A received file: a picture of it or a badge of its type, its name and size, and Save. */
+.file-card {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  min-width: 0;
+  max-width: 320px;
+}
+.file-card button {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.file-card .open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px var(--s-2) 6px 6px;
+  min-width: 0;
+  text-align: left;
+}
+.file-card .badge,
+.file-card .thumb {
+  flex: none;
+  width: 36px;
+  height: 40px;
+  border-radius: var(--r-sm);
+}
+.file-card .thumb {
+  width: 52px;
+  object-fit: cover;
+}
+.file-card .badge {
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: var(--file-other);
+}
+.file-card .badge.pdf { background: var(--file-pdf); }
+.file-card .badge.doc { background: var(--file-doc); }
+.file-card .badge.sheet { background: var(--file-sheet); }
+.file-card .badge.slides { background: var(--file-slides); }
+.file-card .badge.image { background: var(--file-image); }
+.file-card .meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.file-card .name {
+  font-size: var(--t-md);
+  font-weight: 500;
+  color: var(--fg-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-card .size {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.file-card .save {
+  padding: 0 var(--s-3);
+  border-left: 1px solid var(--line);
+  color: var(--fg-2);
+}
+.file-card .open:hover .name,
+.file-card .save:hover {
+  color: var(--accent);
+}
+.file-card .open:focus-visible,
+.file-card .save:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--r-lg);
+}
+.file-card.busy {
+  opacity: 0.7;
 }
 
 /* MARK: Overlays */
@@ -764,6 +1207,17 @@ button.fold {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  color: var(--fg-2);
+}
+.command-bar .when {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.snooze-note {
+  margin: 0;
+  padding: var(--s-2) var(--s-4) var(--s-3);
+  font-size: var(--t-sm);
   color: var(--fg-2);
 }
 .command-bar li.none {
@@ -1207,6 +1661,42 @@ button.fold {
   color: var(--fg-2);
 }
 
+.settings-body > .help {
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  line-height: 1.6;
+}
+.setting.snippet {
+  grid-template-columns: 1fr;
+}
+.snippet-head {
+  display: flex;
+  gap: var(--s-2);
+  align-items: stretch;
+}
+.snippet-head .snippet-key {
+  width: 140px;
+  font-family: var(--mono);
+}
+.snippet-head input:not(.snippet-key) {
+  flex: 1;
+}
+.snippet-head input {
+  font-size: var(--t-rd);
+}
+.setting.snippet textarea {
+  width: 100%;
+  resize: vertical;
+  font: var(--t-rd) / 1.5 var(--font);
+}
+
+.setting-error {
+  margin: var(--s-3) 0 0;
+  font-size: var(--t-sm);
+  color: var(--danger);
+}
+
 /* MARK: Performance overlay */
 
 .perf {
@@ -1221,4 +1711,311 @@ button.fold {
   font: var(--t-sm) / 1.5 var(--mono);
   pointer-events: none;
   opacity: 0.9;
+}
+/* `;` in compose: the snippets that match, under the typed shortcut. */
+.suggestions.snippet-picker {
+  min-width: 280px;
+  max-width: 480px;
+}
+.snippet-picker .snippet-key {
+  color: var(--accent);
+  font-weight: 600;
+}
+.snippet-picker .addr {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* MARK: Attachment viewer (docs/design/ui.md §4.11): the file over everything, on a dark scrim in either theme. */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--viewer-scrim);
+  backdrop-filter: blur(8px);
+  color: var(--viewer-fg);
+}
+.viewer header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+}
+.viewer .title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-right: auto;
+}
+.viewer .title strong {
+  font-size: var(--t-lg);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.viewer .title span {
+  font-size: var(--t-sm);
+  color: var(--viewer-fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+.viewer header button {
+  background: var(--viewer-button);
+  color: var(--viewer-fg);
+  border: 0;
+}
+.viewer header button:hover {
+  background: var(--viewer-button-hover);
+}
+.viewer header kbd {
+  background: transparent;
+  color: var(--viewer-fg-dim);
+  border-color: var(--viewer-button-hover);
+}
+.viewer .stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 64px var(--s-5);
+  overflow: auto;
+}
+.viewer .stage img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  cursor: zoom-in;
+  border-radius: var(--r-sm);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.viewer .stage img.zoomed {
+  max-width: none;
+  max-height: none;
+  cursor: zoom-out;
+}
+.viewer .stage .pdf {
+  width: min(1000px, 100%);
+  height: 100%;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: #fff;
+}
+.viewer .stage video {
+  max-width: 100%;
+  max-height: 100%;
+}
+.viewer .stage .text,
+.viewer .stage .sheet-wrap {
+  width: min(1000px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  margin: 0;
+  padding: var(--s-4) var(--s-5);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: var(--t-md) / 1.6 var(--mono);
+  white-space: pre-wrap;
+  align-self: start;
+}
+.viewer .stage .sheet-wrap {
+  width: auto;
+  max-width: 100%;
+  padding: var(--s-2);
+}
+.viewer .table-view {
+  border-collapse: collapse;
+  font: var(--t-md) / 1.4 var(--font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.viewer .table-view th,
+.viewer .table-view td {
+  padding: 6px var(--s-3);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.viewer .table-view th {
+  position: sticky;
+  top: calc(-1 * var(--s-2));
+  background: var(--bg-1);
+  font-weight: 600;
+}
+.viewer-note {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-3);
+  color: var(--viewer-fg-dim);
+  text-align: center;
+}
+.viewer-note p {
+  margin: 0;
+}
+.viewer-problem {
+  margin: 0 var(--s-4) var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--danger);
+}
+.viewer .nav {
+  position: absolute;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--viewer-button);
+  color: var(--viewer-fg);
+}
+.viewer .nav:hover {
+  background: var(--viewer-button-hover);
+}
+.viewer .nav.prev {
+  left: var(--s-3);
+}
+.viewer .nav.next {
+  right: var(--s-3);
+}
+
+/* The conversation's … menu. */
+.action-menu {
+  position: relative;
+}
+.action-menu .more {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  color: var(--fg-1);
+}
+.action-menu .more:hover,
+.action-menu .more[aria-expanded="true"] {
+  background: var(--bg-hover);
+}
+.action-menu ul {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 6;
+  min-width: 260px;
+  margin: 0;
+  padding: var(--s-1);
+  list-style: none;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+.action-menu li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: 6px var(--s-2);
+  border-radius: var(--r-sm);
+  font-size: var(--t-md);
+  cursor: default;
+}
+.action-menu li.pointed {
+  background: var(--accent-soft);
+}
+
+/* A sender's card, on hover or click of their name. */
+.person {
+  cursor: pointer;
+}
+.person:hover > strong {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.person-card {
+  position: fixed;
+  z-index: 7;
+  width: 340px;
+  padding: var(--s-3);
+  white-space: normal;
+  cursor: default;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  font-size: var(--t-md);
+  color: var(--fg-0);
+}
+.person-head {
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+}
+.person-head > span:last-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.person-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--accent-fg);
+  display: grid;
+  place-items: center;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  flex: none;
+}
+.person-addr {
+  padding: 0;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.person-counts {
+  margin: var(--s-3) 0 var(--s-2);
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
+.person-recent {
+  margin: 0 calc(-1 * var(--s-2));
+  padding: 0;
+  list-style: none;
+}
+.person-recent button {
+  display: flex;
+  width: 100%;
+  gap: var(--s-3);
+  align-items: baseline;
+  padding: 5px var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-0);
+  font: inherit;
+  text-align: left;
+}
+.person-recent button:hover {
+  background: var(--bg-hover);
+}
+.person-recent .subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.person-recent time {
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+  flex: none;
+}
+.person-actions {
+  display: flex;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
 }

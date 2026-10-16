@@ -13,7 +13,10 @@ decisions that aren't visible from the code.
 - Built and tested against the dev server: sync (IDLE, QRESYNC, headers first), conversations and the keyboard
   shell (package 02), compose with drafts, attachments, signatures and autocomplete (package 03), received
   attachments open/save, and the status strip's "changes waiting" / problems lists (package 08's M1 slice).
-  Search filters (package 06). Owner acceptance is tracked in `docs/acceptance/m1-alpha.md`; the owner ticks it.
+  Search filters (package 06). Package 08's M2 slice: tray, background running, notifications, single instance,
+  login start and `mailto:`. Package 05's basics: Important/Other splits and a local snooze (see its Decisions).
+  Common-word search walks the date index (package 06 Decisions) and basic snippets (`;` in compose, package 07).
+  Owner acceptance is tracked in `docs/acceptance/m1-alpha.md`; the owner ticks it.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items, so Gmail goes through the Gmail API (also provisional), not IMAP.
@@ -26,6 +29,7 @@ decisions that aren't visible from the code.
   greeting itself; its `auth_login` is SASL `AUTHENTICATE LOGIN`, the IMAP `LOGIN` command is `login`. It drops a
   response it cannot parse without an error (an X-GM-* item, a malformed literal): compare what came back with what
   was asked for.
+  `rust-ini` is held at 0.21.1 in Cargo.lock: 0.21.3 added struct fields that break `tauri-plugin-deep-link` 2.6.2.
   Every write to the IMAP stream is flushed: rustls can keep the end of a long write (an APPEND) buffered, and
   then server and client wait on each other until the command times out.
 - The user is moving to Linux first: **Omarchy** (Arch + Hyprland, Wayland). Linux is now the primary target;
@@ -82,6 +86,8 @@ policy review. No implementation or real-provider acceptance was completed by th
 - **FTS5 is contentless** (`contentless_delete=1`), filled on insert, cleared by trigger.
 - **Mail HTML is untrusted.** It renders in an `<iframe sandbox="allow-same-origin">` (no scripts) with a CSP that
   blocks remote images until the user clicks "Load images". Links open through the opener plugin. Keep it that way.
+  The CSP lets fonts load from the app itself (Inter for text mail), nothing else. A picture attachment's card
+  preview only reads a file already downloaded; expanding a message never downloads its files.
 - **Passwords** only in the OS keyring (service `tern-mail`), never in SQLite or files.
 - This is a fresh codebase. It was designed after studying Mach (`D:\GitHub\mach-main` on the Windows machine, a Swift
   Gmail/Outlook client licensed PolyForm Noncommercial). **Do not copy code from Mach**; it is a reference only.

@@ -57,7 +57,7 @@ export function keyHandler(bindings: () => Binding[], context: () => Context, bl
     const all = bindings();
     // Ctrl+K opens the palette from anywhere, the search field included; everything else waits while a dialog is
     // open or someone is typing (Ctrl+A there selects the text, not every conversation).
-    if (name !== "Ctrl+k" && (blocked() || typing(e))) return;
+    if (name !== "Ctrl+k" && name !== "Ctrl+q" && (blocked() || typing(e))) return;
     if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
     const keys = pending ? `${pending} ${name}` : name;
     pending = "";
