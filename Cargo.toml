@@ -8,3 +8,11 @@ codegen-units = 1
 opt-level = 3
 strip = true
 panic = "abort"
+
+# Debug builds: line numbers for Tern's own code (panics and backtraces still point at the line), no debug info
+# for dependencies. Windows .pdb files had grown target/ past 11 GB; this keeps builds as fast and far smaller.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
