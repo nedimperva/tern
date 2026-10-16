@@ -2039,3 +2039,10 @@ button.fold {
   gap: var(--s-2);
   margin-top: var(--s-3);
 }
+.snippet-head .snippet-key.invalid {
+  border-color: var(--danger);
+}
+/* A message brought into view (a search hit) clears the compact bar that floats over the top. */
+.conversation [data-message] {
+  scroll-margin-top: 60px;
+}
