@@ -46,7 +46,6 @@ uses a raw colour, size or duration. File: `src/styles/tokens.css`.
 | `--star` | `#e9b81c` | `#f2c94c` | Star |
 | `--shadow` | `0 8px 30px rgba(0,0,0,.12)` | `0 8px 30px rgba(0,0,0,.6)` | Palette, dialogs |
 | `--soft` | `#f5f5f7` | `#1a1a1e` | Files, the reply row, an inline reply (`--soft-hover` on hover) |
-| `--strand` | `#ececef` | `#242428` | The thread line in a conversation |
 | `--tip` / `--tip-fg` | `#18181b` / `#fafafa` | `#ededef` / `#111113` | Tooltips on the conversation's header icons |
 
 Account colours (unified inbox dots, calendar): a fixed palette of 8 — `#5b5bd6 #2f9e6e #d0453f #c98a1b #0e9bb5 #b24fb0 #7a7f8a #e07a30` — assigned in order of account creation.
@@ -129,7 +128,7 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   (`from:` search). It only opens after a real pointer move, so a conversation opening under a still pointer does
   not pop it.
 - The pane draws no outlines. Separation comes from space and tones of the background: `--soft` for files, the
-  reply row and an inline reply, `--strand` for the thread line.
+  reply row, an inline reply and a conversation's history.
 - Header: the subject in `--t-head` (24 px). For two or more messages a line under it: up to four sender avatars,
   the people ("you" last) and the message count. On the right, icons that show only when they apply, each saying
   more in a tooltip: a green shield with the tracker count (what Tern blocked; a click loads the images), a clock
@@ -138,17 +137,14 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   `…` and close. "Always load images from this sender" is in `…` while images are blocked.
   The header scrolls away with the messages; once the subject is out of view a 48 px bar (subject, Done) fades in
   over the top of the pane. The bar takes no space, so nothing moves as it comes and goes.
-- One message takes the stage: a byline (40 px avatar, name, "to you · 2 hours ago") and the body a size up
-  (16 px / 1.7).
-- Two or more run on a thread line: 28 px avatars on one `--strand` line, the open ones a little larger. Closed
-  messages are one line (name, snippet, date), `--bg-2` on hover; open ones add "to you, Tom Berg · Tue 14 Oct,
-  14:02" and say how long ago on the right. Your own messages have an `--accent` ring on the avatar. Unread is a
-  6 px `--accent` dot after the name. A closed message the keys act on gets `--bg-2`; there is no accent bar.
-  Messages two or more days apart get a "3 days later" stop on the line.
-- A conversation of five or more folds its middle (all but the first and last two) into one "··· 4 earlier
-  messages" stop while all of it is closed; opening or moving into any of it unfolds it.
-- Reply, Reply all and Forward sit on one `--soft` row after the last message (on the line, as its next stop, with
-  your avatar); their keys show on hover, as the status strip already lists them. An inline reply takes its place.
+- The newest message, or the only one, takes the stage: a byline (40 px avatar, name, "to you · 2 hours ago") and
+  the body a size up (16 px / 1.7). Unread is a 6 px `--accent` dot after the name; your own messages have an
+  `--accent` ring on the avatar.
+- Above it, every earlier message is one line on a `--soft` panel (24 px avatar, name, snippet, date), all of them
+  there, none folded away. A click (or `o`) opens a line in place on `--bg-0`, with "to you, Tom Berg · Tue 14 Oct,
+  14:02"; unread ones start open. A closed line the keys act on, and a hovered one, get `--soft-hover`; there is no
+  accent bar. Messages two or more days apart get a small "3 days later" label above them.
+- Reply, Reply all and Forward sit on one `--soft` row after the last message; their keys show on hover, as the status strip already lists them. An inline reply takes its place.
 - Focus mode (`Shift+F`): the conversation over the whole window with the list hidden, until `Shift+F` again.
 - Sender logos (Settings → Reading, off by default): a company's logo on white in place of initials, from its own
   website's declared icon, cached for 30 days; shared mail providers (Gmail, Outlook…) keep initials.

@@ -812,127 +812,86 @@ span.tool {
   line-height: 1.7;
 }
 
-/* Two or more: avatars on one strand, gaps in time as stops on it. */
-.strand {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
-.strand::before {
-  content: "";
-  position: absolute;
-  left: 13px;
-  top: 16px;
-  bottom: 26px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--strand);
-}
-.strand .card {
-  position: relative;
-  padding-left: 46px;
-}
-.strand .card > .avatar {
-  position: absolute;
-  left: 0;
-  top: 7px;
-  box-shadow: 0 0 0 4px var(--bg-0);
-  transition: transform var(--d-base) var(--ease);
-}
-.strand .card.open > .avatar {
-  transform: scale(1.15);
-}
 /* Your own messages: a ring on the avatar, not a tinted block. */
-.strand .card.mine > .avatar {
+.card.mine .avatar {
   box-shadow:
-    0 0 0 4px var(--bg-0),
-    0 0 0 5.5px var(--accent);
+    0 0 0 2px var(--bg-0),
+    0 0 0 3.5px var(--accent);
 }
-.strand .card > header {
+
+/* Every earlier message, one line each on a soft panel above the stage; all there, none folded away. */
+.history {
+  margin-bottom: var(--s-5);
+  padding: var(--s-1);
+  border-radius: 14px;
+  background: var(--soft);
+}
+.history .card.mine .avatar {
+  box-shadow:
+    0 0 0 2px var(--soft),
+    0 0 0 3.5px var(--accent);
+}
+.card.row > header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
-  margin: 0 -10px;
-  padding: 9px 10px;
-  border-radius: var(--r-md);
+  padding: var(--s-2) 10px;
+  border-radius: 10px;
   cursor: default;
   transition: background var(--d-fast) var(--ease);
 }
-.strand .card > header .line {
+.card.row > header .avatar {
+  width: 24px;
+  height: 24px;
+  font-size: calc(var(--t-xs) - 2px);
+}
+.card.row > header .line {
   flex: 1;
 }
-/* Hover, and the closed message the keys act on: a quiet background, no bar. */
-.strand .card:not(.open) > header:hover,
-.strand .card.focused:not(.open) > header {
-  background: var(--bg-2);
+/* Hover, and the closed line the keys act on: a step darker, no bar. */
+.card.row:not(.open) > header:hover,
+.card.row.focused:not(.open) > header {
+  background: var(--soft-hover);
 }
-.strand .card:not(.unread):not(.open) .line strong {
+.card.row:not(.unread):not(.open) .line strong {
   font-weight: 500;
   color: var(--fg-1);
 }
-.strand .card .body {
-  padding: 2px 0 var(--s-5);
-}
-.strand .gap {
-  position: relative;
-  padding: 6px 0 6px 46px;
-  color: var(--fg-2);
-  font-size: var(--t-xs);
-}
-.strand .gap::before {
-  content: "";
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  margin-top: -4px;
-  border-radius: 50%;
+/* A line opened in place lifts onto the page's own background. */
+.card.row.open {
+  margin: var(--s-1) 0;
+  border-radius: 10px;
   background: var(--bg-0);
-  box-shadow: inset 0 0 0 2px var(--strand);
 }
-/* The folded middle of a long conversation, a stop marked "···". */
-button.folded {
-  position: relative;
-  display: flex;
-  width: 100%;
-  padding: var(--s-2) 0 var(--s-2) 46px;
-  border: 0;
-  background: none;
-  color: var(--fg-1);
-  font-size: var(--t-md);
-  text-align: left;
+.card.row.open .avatar {
+  box-shadow: none;
 }
-button.folded::before {
-  content: "···";
-  position: absolute;
-  left: 0;
-  width: 28px;
-  background: var(--bg-0);
+.card.row.mine.open .avatar {
+  box-shadow:
+    0 0 0 2px var(--bg-0),
+    0 0 0 3.5px var(--accent);
+}
+.card.row .body {
+  padding: 2px var(--s-4) var(--s-4) 44px;
+}
+/* "3 days later": a small label above the message it leads to. */
+.gap {
+  padding: var(--s-2) 10px 2px;
   color: var(--fg-2);
-  letter-spacing: 0.1em;
-  line-height: 20px;
-  text-align: center;
+  font-size: calc(var(--t-xs) - 1px);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
-button.folded:hover {
-  color: var(--fg-0);
+.history + .gap {
+  margin: calc(-1 * var(--s-3)) 0 var(--s-3);
+  padding: 0;
 }
 
-/* Reply, Reply all and Forward after the last message, on one soft row; on the strand it is the next stop, with
-   your avatar. Keys show on hover: the status strip already lists R. */
+/* Reply, Reply all and Forward after the last message, on one soft row. Keys show on hover: the status strip
+   already lists R. */
 .reply-end {
-  position: relative;
   margin-top: var(--s-6);
-}
-.strand .reply-end {
-  margin-top: 2px;
-  padding-left: 46px;
-}
-.strand .reply-end > .avatar {
-  position: absolute;
-  left: 0;
-  top: 8px;
-  box-shadow: 0 0 0 4px var(--bg-0);
 }
 .reply-end .end {
   display: flex;

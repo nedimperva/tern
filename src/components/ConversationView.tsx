@@ -391,17 +391,15 @@ function MessageBody(props: {
   );
 }
 
-/** The open conversation (docs/design/ui.md §4.2). One message takes the stage: a byline and a size up in type.
- * Two or more run on a thread line: avatars on one strand, time gaps as stops, the closed middle of a long one
- * folded. The header says, as icons, what Tern blocked, how long the mail is and how to leave its list. */
+/** The open conversation (docs/design/ui.md §4.2). The newest message, or the only one, takes the stage: a byline
+ * and a size up in type. Every earlier message is one line above it, all of them there, and opens in place. The
+ * header says, as icons, what Tern blocked, how long the mail is and how to leave its list. */
 export function ConversationView(props: {
   messages: ThreadMessage[];
   focused: number;
   expanded: (id: number) => boolean;
   /** Whether an address is one of this person's accounts. */
   mine: (addr: string) => boolean;
-  /** The account the conversation is in, for the avatar beside the reply. */
-  me?: { name: string; email: string };
   /** An inline reply is open below the messages, so the reply row steps aside. */
   replying: boolean;
   onToggle: (index: number) => void;
@@ -490,30 +488,18 @@ export function ConversationView(props: {
     ];
   };
 
-  // The middle of a long conversation (all but the first and the last two) folds into one line while all of it
-  // is closed. Opening any of it, or moving into it, unfolds it for good; another conversation starts folded,
-  // with images blocked again.
-  const [unfolded, setUnfolded] = createSignal(false);
+  // Another conversation starts with its images blocked, reading view off and nobody unsubscribed.
   let shown: number | undefined;
   createEffect(() => {
-    const n = props.messages.length;
-    const middle = n >= 5 ? props.messages.slice(1, n - 2) : [];
-    const touched = middle.some((m, i) => props.expanded(m.id) || props.focused === i + 1);
     const first = props.messages[0]?.id;
-    if (first !== shown) {
-      shown = first;
-      setUnfolded(touched);
-      setAsked(false);
-      setLeft("");
-      setReading(false);
-    } else if (touched) {
-      setUnfolded(true);
-    }
+    if (first === shown) return;
+    shown = first;
+    setAsked(false);
+    setLeft("");
+    setReading(false);
   });
-  const fold = createMemo(() => {
-    const n = props.messages.length;
-    return n >= 5 && !unfolded() ? { from: 1, to: n - 3 } : null;
-  });
+  /** "3 days later" above the message at `i`, when the one before it is days older. */
+  const gap = (i: number) => (i > 0 ? later(props.messages[i - 1].date, props.messages[i].date) : null);
 
   // The full header scrolls away with the messages; once the subject is out of view a compact bar fades in over
   // the pane. The bar takes no space, so nothing moves as it comes and goes, and nothing can flicker.
@@ -541,7 +527,6 @@ export function ConversationView(props: {
     <Show when={!props.replying && last()}>
       {(m) => (
         <div class="reply-end">
-          <Show when={!stage() && props.me}>{(me) => <Avatar addr={me().email} name={me().name} />}</Show>
           <div class="end">
             <button class="start" title="Reply (R)" onClick={() => props.onReply(m(), "reply")}>
               <span>{props.mine(m().fromAddr) ? "Reply…" : `Reply to ${m().fromName || m().fromAddr}…`}</span>
@@ -624,111 +609,97 @@ export function ConversationView(props: {
           </button>
         </div>
       </header>
-      <Show
-        when={stage() && last()}
-        fallback={
-          <div class="strand">
-            <For each={props.messages}>
-              {(m, i) => {
-                const open = () => props.expanded(m.id);
-                const folded = () => {
-                  const f = fold();
-                  return !!f && i() >= f.from && i() <= f.to;
-                };
-                const gap = () => (i() > 0 ? later(props.messages[i() - 1].date, m.date) : null);
-                return (
-                  <>
-                    <Show when={fold()?.from === i() && fold()}>
-                      {(f) => (
-                        <button class="folded" onClick={() => setUnfolded(true)}>
-                          {f().to - f().from + 1} earlier messages
-                        </button>
-                      )}
-                    </Show>
-                    <Show when={!folded()}>
-                      <Show when={gap()}>{(g) => <div class="gap">{g()}</div>}</Show>
-                      <article
-                        class="card"
-                        data-message={m.id}
-                        classList={{ focused: i() === props.focused, open: open(), unread: !m.seen, mine: props.mine(m.fromAddr) }}
-                      >
-                        <Avatar addr={m.fromAddr} name={m.fromName} />
-                        <header onClick={() => props.onToggle(i())}>
-                          <span class="line">
-                            {sender(m)}
-                            <Show when={m.draftId != null}>
-                              <span class="draft-label">Draft · R to continue</span>
-                            </Show>
-                            <Show when={open()} fallback={<span class="snippet">{m.snippet}</span>}>
-                              <span class="detail">
-                                {[recipients(m.toAddrs, props.mine, names()), full(m.date)].filter(Boolean).join(" · ")}
-                              </span>
-                            </Show>
-                          </span>
-                          <Show when={m.attachments.length || m.hasAttachments}>
-                            <span
-                              class="clip"
-                              title={m.attachments.length === 1 ? "1 attachment" : m.attachments.length ? `${m.attachments.length} attachments` : "Attachments"}
-                            >
-                              <Icon name="paperclip" size={13} />
-                              <Show when={m.attachments.length > 1}>{m.attachments.length}</Show>
-                            </span>
-                          </Show>
-                          <time title={full(m.date)}>{open() ? ago(m.date) : when(m.date)}</time>
-                        </header>
-                        <Show when={open()}>
-                          <div class="body">
-                            <MessageBody
-                              m={m}
-                              web={webs().get(m.id)}
-                              remote={remoteFor(m)}
-                              designed={designed().has(m.id)}
-                              reading={reading()}
-                              onView={(index) => props.onView(m, index)} />
-                          </div>
+      {/* Every earlier message as one line, all of them there: a click opens one in place. */}
+      <Show when={!stage()}>
+        <div class="history">
+          <For each={props.messages.slice(0, -1)}>
+            {(m, i) => {
+              const open = () => props.expanded(m.id);
+              return (
+                <>
+                  <Show when={gap(i())}>{(g) => <div class="gap">{g()}</div>}</Show>
+                  <article
+                    class="card row"
+                    data-message={m.id}
+                    classList={{ focused: i() === props.focused, open: open(), unread: !m.seen, mine: props.mine(m.fromAddr) }}
+                  >
+                    <header onClick={() => props.onToggle(i())}>
+                      <Avatar addr={m.fromAddr} name={m.fromName} />
+                      <span class="line">
+                        {sender(m)}
+                        <Show when={m.draftId != null}>
+                          <span class="draft-label">Draft · R to continue</span>
                         </Show>
-                      </article>
+                        <Show when={open()} fallback={<span class="snippet">{m.snippet}</span>}>
+                          <span class="detail">
+                            {[recipients(m.toAddrs, props.mine, names()), full(m.date)].filter(Boolean).join(" · ")}
+                          </span>
+                        </Show>
+                      </span>
+                      <Show when={m.attachments.length || m.hasAttachments}>
+                        <span
+                          class="clip"
+                          title={m.attachments.length === 1 ? "1 attachment" : m.attachments.length ? `${m.attachments.length} attachments` : "Attachments"}
+                        >
+                          <Icon name="paperclip" size={13} />
+                          <Show when={m.attachments.length > 1}>{m.attachments.length}</Show>
+                        </span>
+                      </Show>
+                      <time title={full(m.date)}>{when(m.date)}</time>
+                    </header>
+                    <Show when={open()}>
+                      <div class="body">
+                        <MessageBody
+                          m={m}
+                          web={webs().get(m.id)}
+                          remote={remoteFor(m)}
+                          designed={designed().has(m.id)}
+                          reading={reading()}
+                          onView={(index) => props.onView(m, index)}
+                        />
+                      </div>
                     </Show>
-                  </>
-                );
-              }}
-            </For>
-            {replyRow()}
-          </div>
-        }
-      >
+                  </article>
+                </>
+              );
+            }}
+          </For>
+        </div>
+        <Show when={gap(props.messages.length - 1)}>{(g) => <div class="gap">{g()}</div>}</Show>
+      </Show>
+      {/* The newest message, or the only one, on stage: a byline and the body a size up. */}
+      <Show when={last()}>
         {(m) => (
-          <>
-            <article class="card stage-msg" data-message={m().id} classList={{ unread: !m().seen }}>
-              <div class="byline">
-                <Avatar addr={m().fromAddr} name={m().fromName} />
-                <div class="who">
-                  <div class="line">
-                    {sender(m())}
-                    <Show when={m().draftId != null}>
-                      <span class="draft-label">Draft · R to continue</span>
-                    </Show>
-                  </div>
-                  <div class="detail" title={full(m().date)}>
-                    {[recipients(m().toAddrs, props.mine, names()), ago(m().date)].filter(Boolean).join(" · ")}
-                  </div>
+          <article class="card stage-msg" data-message={m().id} classList={{ unread: !m().seen, mine: props.mine(m().fromAddr) }}>
+            <div class="byline">
+              <Avatar addr={m().fromAddr} name={m().fromName} />
+              <div class="who">
+                <div class="line">
+                  {sender(m())}
+                  <Show when={m().draftId != null}>
+                    <span class="draft-label">Draft · R to continue</span>
+                  </Show>
+                </div>
+                <div class="detail" title={full(m().date)}>
+                  {[recipients(m().toAddrs, props.mine, names()), ago(m().date)].filter(Boolean).join(" · ")}
                 </div>
               </div>
-              <div class="body">
-                <MessageBody
-                  m={m()}
-                  web={webs().get(m().id)}
-                  remote={remoteFor(m())}
-                  designed={designed().has(m().id)}
-                  reading={reading()}
-                  large
-                  onView={(index) => props.onView(m(), index)} />
-              </div>
-            </article>
-            {replyRow()}
-          </>
+            </div>
+            <div class="body">
+              <MessageBody
+                m={m()}
+                web={webs().get(m().id)}
+                remote={remoteFor(m())}
+                designed={designed().has(m().id)}
+                reading={reading()}
+                large
+                onView={(index) => props.onView(m(), index)}
+              />
+            </div>
+          </article>
         )}
       </Show>
+      {replyRow()}
     </div>
   );
 }
