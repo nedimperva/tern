@@ -3,11 +3,11 @@
 A fast, local-first, keyboard-first mail app: Linux first, then Windows. The initial supported-provider
 target is Fastmail, followed by Gmail through one selected backend; custom IMAP is experimental.
 
-**Development status:** the frontend builds, but engine compilation, desktop runtime and real-account
-acceptance are still pending. The behavior described below is the intended design, not a production-readiness claim.
+**Development status:** early alpha (0.3.x). Tern syncs and sends real mail and its author uses it every day,
+on Linux and Windows. Expect rough edges: installers are unsigned, there is no auto-update yet, and Gmail works
+over IMAP with an app password until Gmail sign-in lands. Use a test account or keep another mail client around.
 See [the milestone roadmap](docs/PLAN.md): safe foundation → Linux private alpha → focused Linux beta →
-Windows release → expansion. Windows compile/test checks start in the foundation phase. Optional AI
-remains planned, off by default, and does not gate the core mail releases; calendar and advanced provider/preview features follow later.
+Windows release → expansion. Optional AI remains planned, off by default; calendar and more providers follow later.
 
 Everything you see comes from a SQLite database on your device, so lists, threads and search never wait on the network.
 When you archive, star or send, the change shows immediately and goes to the server in the background after a
