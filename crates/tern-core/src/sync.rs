@@ -124,6 +124,8 @@ pub enum SyncState {
     /// The server refused the password. Not retried until the app starts again or is woken (window focus), so a
     /// wrong password does not lock the account.
     AuthFailed,
+    /// Sync is paused: signed out, nothing fetched or sent until it resumes. Changes wait in the outbox.
+    Paused,
 }
 
 /// How long a refused sign-in waits before the next try, unless woken sooner.
@@ -141,11 +143,18 @@ pub async fn run_account(
     account: Account,
     password: String,
     wake: Arc<Notify>,
+    mut paused: tokio::sync::watch::Receiver<bool>,
     on_change: Arc<dyn Fn() + Send + Sync>,
     on_state: Arc<dyn Fn(SyncState) + Send + Sync>,
 ) {
     let mut resumed = watch_clock();
-    tokio::spawn(watch_inbox(account.clone(), password.clone(), wake.clone(), resumed.clone()));
+    tokio::spawn(watch_inbox(
+        account.clone(),
+        password.clone(),
+        wake.clone(),
+        resumed.clone(),
+        paused.clone(),
+    ));
     let mut session: Option<Session> = None;
     let mut schedule = Schedule::default();
     let mut failures: u32 = 0;
@@ -158,6 +167,18 @@ pub async fn run_account(
         }
     };
     loop {
+        if *paused.borrow_and_update() {
+            if let Some(s) = session.take() {
+                let _ = within(s.logout()).await;
+            }
+            report(SyncState::Paused);
+            // Paused means paused: neither a wake nor the network coming back starts a pass, only resuming.
+            if paused.wait_for(|p| !*p).await.is_err() {
+                return;
+            }
+            failures = 0;
+            continue;
+        }
         if resumed.has_changed().unwrap_or(false) {
             resumed.mark_unchanged();
             log::info!("{}: woke from sleep or the network came back; reconnecting", account.config.email);
@@ -209,6 +230,7 @@ pub async fn run_account(
             _ = wake.notified() => {}
             _ = tokio::time::sleep(wait) => {}
             _ = resumed.changed() => {}
+            _ = paused.changed() => {}
         }
     }
 }
@@ -257,10 +279,14 @@ async fn watch_inbox(
     password: String,
     wake: Arc<Notify>,
     mut resumed: tokio::sync::watch::Receiver<u64>,
+    mut paused: tokio::sync::watch::Receiver<bool>,
 ) {
     let email = &account.config.email;
     let mut failures: u32 = 0;
     loop {
+        if paused.wait_for(|p| !*p).await.is_err() {
+            return;
+        }
         let mut s = match within(connect(&account.config, &password)).await {
             Ok(s) => s,
             Err(e) => {
@@ -283,15 +309,22 @@ async fn watch_inbox(
             let _ = s.logout().await;
             return;
         }
-        tokio::select! {
+        let pause = tokio::select! {
             stopped = keep_idling(&mut s, &wake) => {
                 if let Err(e) = stopped {
                     log::warn!("{email}: inbox watch stopped: {e:#}");
                     tokio::time::sleep(backoff(1)).await;
                 }
+                false
             }
             // After sleep the connection is most likely dead without either side knowing; start a new one.
-            _ = resumed.changed() => {}
+            _ = resumed.changed() => false,
+            // The guard `wait_for` returns is not Send; drop it inside.
+            _ = async { paused.wait_for(|p| *p).await.map(|_| ()) } => true,
+        };
+        if pause {
+            // Mid-IDLE the server ignores LOGOUT until DONE; dropping the connection is enough.
+            drop(s);
         }
     }
 }
@@ -1134,6 +1167,65 @@ mod tests {
         let sizes: HashMap<u32, u32> = [(1, 1_000), (2, big), (3, 1_000), (4, 1_000)].into();
         let batches = by_size(&[1, 2, 3, 4], &sizes);
         assert_eq!(batches, [&[1][..], &[2][..], &[3, 4][..]]);
+    }
+
+    /// Pausing holds an account before it connects, resuming lets it try, and pausing again stops its retries.
+    #[tokio::test]
+    async fn paused_sync_waits_for_resume() {
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        use crate::models::{AccountConfig, Security};
+        use crate::Store;
+
+        use super::SyncState;
+
+        let store = Arc::new(Store::open_in_memory().unwrap());
+        let account = store
+            .add_account(&AccountConfig {
+                email: "ada@example.com".into(),
+                display_name: String::new(),
+                username: "ada".into(),
+                // Nothing listens on port 1, so an unpaused pass fails at once and goes offline.
+                imap_host: "127.0.0.1".into(),
+                imap_port: 1,
+                imap_security: Security::Tls,
+                smtp_host: "127.0.0.1".into(),
+                smtp_port: 1,
+                smtp_security: Security::Tls,
+            })
+            .unwrap();
+        let (pause, paused) = tokio::sync::watch::channel(true);
+        let (tx, mut states) = tokio::sync::mpsc::unbounded_channel();
+        let wake = Arc::new(tokio::sync::Notify::new());
+        tokio::spawn(super::run_account(
+            store,
+            account,
+            String::new(),
+            wake.clone(),
+            paused,
+            Arc::new(|| {}),
+            Arc::new(move |s| {
+                let _ = tx.send(s);
+            }),
+        ));
+        async fn next(states: &mut tokio::sync::mpsc::UnboundedReceiver<SyncState>) -> SyncState {
+            tokio::time::timeout(Duration::from_secs(5), states.recv())
+                .await
+                .expect("a state in time")
+                .unwrap()
+        }
+        assert_eq!(next(&mut states).await, SyncState::Paused);
+        wake.notify_one();
+        let woken = tokio::time::timeout(Duration::from_millis(200), states.recv()).await;
+        assert!(woken.is_err(), "a wake does not start a pass while paused");
+
+        pause.send(false).unwrap();
+        assert_eq!(next(&mut states).await, SyncState::Connecting);
+        assert_eq!(next(&mut states).await, SyncState::Offline);
+        // In the retry wait: pausing takes effect without waiting for the next try.
+        pause.send(true).unwrap();
+        assert_eq!(next(&mut states).await, SyncState::Paused);
     }
 
     #[tokio::test]
