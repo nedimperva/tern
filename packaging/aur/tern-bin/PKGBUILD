@@ -4,7 +4,7 @@
 # see packaging/aur/README.md for publishing to the AUR.
 
 pkgname=tern-bin
-pkgver=0.3.1
+pkgver=0.3.2
 pkgrel=1
 pkgdesc='Fast, local-first, keyboard-first mail client for IMAP'
 arch=('x86_64')
@@ -17,12 +17,10 @@ conflicts=('tern')
 options=('!strip' '!debug')
 source=("Tern_${pkgver}_amd64.deb::${url}/releases/download/v${pkgver}/Tern_${pkgver}_amd64.deb"
         "LICENSE-${pkgver}::https://raw.githubusercontent.com/nedimperva/tern/v${pkgver}/LICENSE")
-sha256sums=('a1b1b01606735a0016d0f5d45cff40a2d164c8750ac6180a9c737a89094901ed'
+sha256sums=('cfad9609e775e88116f66bd58086830b6cb84bb8879632b93df144c657957341'
             '3a272cff53901b899da45738174654ca1773af90a0d2bfff6f7b2d4b1fe2df3c')
 
 package() {
   bsdtar -xf data.tar.gz -C "${pkgdir}" --no-same-owner
-  # Tauri leaves Categories empty, which menus then hide under "Other".
-  sed -i 's/^Categories=$/Categories=Network;Email;/' "${pkgdir}/usr/share/applications/Tern.desktop"
   install -Dm644 "LICENSE-${pkgver}" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }

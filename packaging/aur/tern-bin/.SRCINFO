@@ -1,6 +1,6 @@
 pkgbase = tern-bin
 	pkgdesc = Fast, local-first, keyboard-first mail client for IMAP
-	pkgver = 0.3.1
+	pkgver = 0.3.2
 	pkgrel = 1
 	url = https://github.com/nedimperva/tern
 	arch = x86_64
@@ -15,9 +15,9 @@ pkgbase = tern-bin
 	conflicts = tern
 	options = !strip
 	options = !debug
-	source = Tern_0.3.1_amd64.deb::https://github.com/nedimperva/tern/releases/download/v0.3.1/Tern_0.3.1_amd64.deb
-	source = LICENSE-0.3.1::https://raw.githubusercontent.com/nedimperva/tern/v0.3.1/LICENSE
-	sha256sums = a1b1b01606735a0016d0f5d45cff40a2d164c8750ac6180a9c737a89094901ed
+	source = Tern_0.3.2_amd64.deb::https://github.com/nedimperva/tern/releases/download/v0.3.2/Tern_0.3.2_amd64.deb
+	source = LICENSE-0.3.2::https://raw.githubusercontent.com/nedimperva/tern/v0.3.2/LICENSE
+	sha256sums = cfad9609e775e88116f66bd58086830b6cb84bb8879632b93df144c657957341
 	sha256sums = 3a272cff53901b899da45738174654ca1773af90a0d2bfff6f7b2d4b1fe2df3c
 
 pkgname = tern-bin
