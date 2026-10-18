@@ -353,6 +353,8 @@ fn notify(app: &AppHandle, mail: &[NewMail], why: Notice) {
 }
 
 /// Shows one notification; a click opens the conversation, and one conversation also gets Archive and Reply.
+/// Windows notifications can't report clicks yet (M3), so there only the text is used.
+#[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
 fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest: NewMail) {
     let mut note = notify_rust::Notification::new();
     note.summary(&summary).body(&body).appname("Tern");
