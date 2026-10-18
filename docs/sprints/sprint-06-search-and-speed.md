@@ -1,6 +1,6 @@
 # Sprint 6 — Search and speed
 
-**Status:** in progress · started 2026-10-15
+**Status:** in progress (sync/search progress slice) · started 2026-10-15
 
 ## Delivery scope
 
