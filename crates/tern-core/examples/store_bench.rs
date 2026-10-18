@@ -3,8 +3,8 @@
 //!
 //!     cargo run --release -p tern-core --example store_bench
 //!
-//! TERN_BENCH_MESSAGES changes the size; TERN_BENCH_SLACK multiplies every target, for slower machines such as CI
-//! runners (CI uses 3). Rows without a target are measured and printed only.
+//! TERN_BENCH_MESSAGES changes the size; TERN_BENCH_SLACK multiplies every target, for machines whose timings vary,
+//! such as shared CI runners (CI uses 3). Rows without a target are measured and printed only.
 
 #[path = "common/mailbox.rs"]
 mod mailbox;

@@ -56,7 +56,8 @@ jobs:
       - name: tests
         run: cargo test --workspace
 
-      # The speed table at 100,000 messages; runners are slower than the reference laptop, so targets get 3x.
+      # The speed table at 100,000 messages. Shared runners vary from run to run, so targets get 3x: this catches
+      # regressions of several times; the reference numbers come from the Omarchy laptop.
       - name: store_bench
         if: runner.os == 'Linux'
         env:
