@@ -13,6 +13,9 @@ updates:
       # Pinned exactly on purpose; see CLAUDE.md (io-imap) and Cargo.lock (rust-ini).
       - dependency-name: io-imap
       - dependency-name: rust-ini
+      # imap-codec (inside io-imap 0.7) is written against nom 7; our nom entry only switches on `alloc` for it.
+      - dependency-name: nom
+        update-types: [version-update:semver-major]
   - package-ecosystem: npm
     directory: /
     schedule:
