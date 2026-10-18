@@ -132,6 +132,13 @@ CREATE TABLE snippets (id INTEGER PRIMARY KEY, shortcut TEXT NOT NULL UNIQUE COL
                        name TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', used INTEGER NOT NULL DEFAULT 0);
 ```
 
+## v18 — package 06, download progress (implemented 2026-10-18)
+What the server said each folder holds at its latest SELECT, so the status strip can say "Downloading mail: 12,400
+of 48,210" (`Store::sync_progress`, which counts rows here against it; NULL until a folder is first checked).
+```sql
+ALTER TABLE folders ADD COLUMN server_count INTEGER;
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'

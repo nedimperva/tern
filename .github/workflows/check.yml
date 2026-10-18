@@ -55,3 +55,10 @@ jobs:
 
       - name: tests
         run: cargo test --workspace
+
+      # The speed table at 100,000 messages; runners are slower than the reference laptop, so targets get 3x.
+      - name: store_bench
+        if: runner.os == 'Linux'
+        env:
+          TERN_BENCH_SLACK: "3"
+        run: cargo run --release -p tern-core --example store_bench
