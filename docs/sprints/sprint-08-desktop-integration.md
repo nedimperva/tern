@@ -1,6 +1,6 @@
 # Sprint 8 — Desktop integration
 
-**Status:** in progress (M2 slice built, owner checks open) · started 2026-10-14
+**Status:** in progress (desktop polish slice) · started 2026-10-14
 
 ## Delivery scope
 
