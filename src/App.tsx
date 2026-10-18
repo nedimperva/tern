@@ -93,6 +93,8 @@ export default function App() {
   const [rail, setRail] = createSignal(false);
   // Focus mode: the open conversation over the whole window, list hidden, until F again. Kept for the session.
   const [focusMode, setFocusMode] = createSignal(false);
+  // A downloaded update waiting for "Restart to update" (AppImage and Windows builds only).
+  const [update, setUpdate] = createSignal<string | null>(null);
   // `after` runs when the toast's change is undone (unmute after undoing a mute).
   // `undo` takes back something that is not queued work (a discarded draft).
   const [toast, setToast] = createSignal<{
@@ -247,6 +249,8 @@ export default function App() {
     api.keepRunningWhen(() => settings.background);
     api.onDesktop({ compose: newMessage, mailto: fromLink, openMail: (m) => void openMail(m) });
     void api.takeMailto().then((m) => m && fromLink(m));
+    api.onUpdateReady(setUpdate);
+    void api.updateReady().then((v) => v && setUpdate(v));
     // Fetch the compose editor while the person reads, so the first "c" opens at once.
     const warm = () => void import("./components/Editor");
     if ("requestIdleCallback" in window) requestIdleCallback(warm);
@@ -434,6 +438,14 @@ export default function App() {
   const toggleStar = () => act(targets().every((r) => r.flagged) ? "unstar" : "star");
   /** Mark read when anything is unread, else mark unread. */
   const toggleRead = () => act(targets().some((r) => r.unread > 0) ? "markRead" : "markUnread");
+
+  async function restartToUpdate() {
+    try {
+      await api.restartToUpdate();
+    } catch (e) {
+      showToast(`The update didn't install: ${e}`, []);
+    }
+  }
 
   let toastTimer: number | undefined;
   function showToast(text: string, token: number[], after?: () => unknown, undoAction?: () => unknown) {
@@ -779,6 +791,7 @@ export default function App() {
     { keys: "?", name: "Keyboard shortcuts", run: () => setSheet(true) },
     { keys: "Ctrl+,", name: "Settings", run: () => setSettingsOpen("Appearance") },
     { keys: "Ctrl+q", name: "Quit Tern", run: () => void api.quit() },
+    ...(update() ? [{ keys: "", name: `Restart to update to ${update()}`, run: restartToUpdate }] : []),
     { keys: "Ctrl+P", name: "Performance overlay", run: () => setPerf(!perf()) },
     { keys: "Ctrl+\\", name: "Accounts and folders", run: () => setRail(!rail()) },
     { keys: "Ctrl+k", name: "Command palette", run: () => setPalette(!palette()), hidden: true },
@@ -1048,6 +1061,13 @@ export default function App() {
             <button class="link problems-link" onClick={() => setReviewing(true)}>
               {problems().length === 1 ? "1 change didn't go through" : `${problems().length} changes didn't go through`}
             </button>
+          </Show>
+          <Show when={update()}>
+            {(v) => (
+              <button class="link update-link" onClick={restartToUpdate}>
+                Restart to update to {v()}
+              </button>
+            )}
           </Show>
           <Show when={selection().size}>
             <span class="selected-count">{selection().size} selected</span>

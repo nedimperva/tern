@@ -403,6 +403,11 @@ button.primary kbd {
   text-decoration: underline;
   font-size: inherit;
 }
+.status .update-link {
+  color: var(--accent);
+  text-decoration: underline;
+  font-size: inherit;
+}
 .status .hints {
   display: flex;
   gap: var(--s-3);

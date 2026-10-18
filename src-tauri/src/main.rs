@@ -2,6 +2,7 @@
 
 mod commands;
 mod desktop;
+mod update;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -98,7 +99,9 @@ fn main() {
         ))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(desktop::Desktop::new())
+        .manage(update::Updates::default())
         .setup(|app| {
             use tauri_plugin_deep_link::DeepLinkExt;
             let links = app.deep_link().get_current().ok().flatten().unwrap_or_default();
@@ -128,6 +131,7 @@ fn main() {
             // Sets the mark that later mail is measured against.
             desktop::mail_changed(app.handle());
             desktop::watch_snoozes(app.handle());
+            update::watch(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -176,6 +180,8 @@ fn main() {
             commands::muted,
             commands::take_mailto,
             commands::quit,
+            commands::update_ready,
+            commands::restart_to_update,
             commands::autostart,
             commands::set_autostart,
             commands::default_mail_app,
