@@ -185,8 +185,7 @@ Optional AI (off by default), calendar and more providers come later. See [docs/
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first, and please follow
-the [code of conduct](CODE_OF_CONDUCT.md).
+Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
 ## License
 
