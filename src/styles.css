@@ -340,6 +340,30 @@ button.primary kbd {
 .crow .clip {
   color: var(--fg-2);
 }
+.crow .chip.follow-up {
+  flex: none;
+  padding: 1px var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+.compose .follow-up {
+  display: inline-flex;
+  white-space: nowrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  font-size: var(--t-sm);
+}
+.compose .follow-up button {
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  cursor: pointer;
+}
 .crow .date.snoozed {
   display: inline-flex;
   align-items: center;
@@ -1513,6 +1537,9 @@ button.fold {
   display: flex;
   gap: var(--s-3);
   margin-left: var(--s-2);
+}
+.compose footer button {
+  white-space: nowrap;
 }
 .compose footer .discard {
   margin-left: auto;

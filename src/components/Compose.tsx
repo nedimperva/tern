@@ -1,5 +1,7 @@
 import { createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
-import { api, type Account, type Draft, type ForwardOf, type OutgoingAttachment, type Snippet } from "../api";
+import { api, type Account, type Draft, type ForwardOf, type OutgoingAttachment, type SendOptions, type Snippet } from "../api";
+import { until } from "./ConversationRow";
+import { SnoozePicker } from "./SnoozePicker";
 import type { SnippetSource } from "./Editor";
 import { Icon } from "./Icon";
 // The editor is a chunk of its own (ProseMirror is most of its weight); App loads it once the list is up.
@@ -75,7 +77,7 @@ const SAVE_AFTER_MS = 800;
 export function Compose(props: {
   accounts: Account[];
   init: ComposeInit;
-  onSend: (accountId: number, draft: Draft, done: boolean, draftId: number | null) => void;
+  onSend: (accountId: number, draft: Draft, done: boolean, draftId: number | null, options: SendOptions) => void;
   /** Closed; `saved` is the draft id when what was written was kept as a draft. */
   onClose: (saved: number | null) => void;
   /** Discarded; the draft id when one had been saved (so it can be undone). */
@@ -91,6 +93,9 @@ export function Compose(props: {
   const [body, setBody] = createSignal(props.init.body ?? "");
   const [html, setHtml] = createSignal<string | null>(props.init.html ?? null);
   const [problem, setProblem] = createSignal("");
+  // Remind me if no reply (Ctrl+Shift+H): when, if set. Send later (Ctrl+Shift+L) sends as soon as a time is picked.
+  const [followUp, setFollowUp] = createSignal<number | null>(null);
+  const [picking, setPicking] = createSignal<"later" | "followUp" | null>(null);
   const [files, setFiles] = createSignal<OutgoingAttachment[]>(props.init.attachments ?? []);
   const [forwardOf, setForwardOf] = createSignal(props.init.forwardOf ?? null);
   const total = () =>
@@ -176,7 +181,7 @@ export function Compose(props: {
     if (!bodyFirst) toInput.focus();
   });
 
-  const send = (done: boolean) => {
+  const send = (done: boolean, at: number | null = null) => {
     // Whatever is still typed in a field counts as entered.
     const all = (list: string[], input?: HTMLInputElement) => [...list, ...splitAddresses(input?.value ?? "")];
     const recipients = { to: all(to(), toInput), cc: all(cc(), ccInput), bcc: all(bcc(), bccInput) };
@@ -187,13 +192,15 @@ export function Compose(props: {
     if (from() == null) return;
     clearTimeout(saveTimer);
     dirty = false;
-    props.onSend(from()!, { ...draft(), ...recipients }, done, draftId);
+    props.onSend(from()!, { ...draft(), ...recipients }, done, draftId, { at, followUp: followUp() });
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
     const ctrl = e.ctrlKey || e.metaKey;
     if (e.key === "Escape") void close();
     else if (ctrl && e.key === "Enter") send(e.shiftKey);
+    else if (ctrl && e.shiftKey && e.key.toLowerCase() === "l") setPicking("later");
+    else if (ctrl && e.shiftKey && e.key.toLowerCase() === "h") setPicking("followUp");
     else if (ctrl && e.shiftKey && (e.key === "," || e.key === "<")) discard();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "a") void pick();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "c") {
@@ -289,6 +296,31 @@ export function Compose(props: {
           Send & Done <kbd>Ctrl Shift ↵</kbd>
         </button>
         <span class="extras">
+          <button type="button" class="link" onClick={() => setPicking("later")} title="Send later (Ctrl+Shift+L)">
+            Later
+          </button>
+          <Show
+            when={followUp()}
+            fallback={
+              <button type="button" class="link" onClick={() => setPicking("followUp")} title="Remind me if no reply (Ctrl+Shift+H)">
+                Remind
+              </button>
+            }
+          >
+            {(due) => (
+              <span
+                class="follow-up"
+                title="Remind me if no reply by then: the conversation comes back to the top of the inbox"
+                aria-label={`Remind me if no reply by ${until(due())}`}
+              >
+                <Icon name="clock" size={12} />
+                <span>{until(due())}</span>
+                <button type="button" aria-label="No reminder" onClick={() => setFollowUp(null)}>
+                  ×
+                </button>
+              </span>
+            )}
+          </Show>
           <button type="button" class="link" onClick={() => void pick()} title="Attach files (Ctrl+Shift+A), or drop them here">
             Attach
           </button>
@@ -313,11 +345,53 @@ export function Compose(props: {
     </form>
   );
 
-  return (
-    <Show when={!props.init.inline} fallback={form}>
-      <div class="overlay" onMouseDown={(e) => e.target === e.currentTarget && void close()}>
-        {form}
-      </div>
+  const picker = (
+    <Show when={picking()}>
+      {(what) => (
+        <SnoozePicker
+          count={1}
+          title={what() === "later" ? "Send later" : "Remind me if no reply"}
+          presets={
+            what() === "later"
+              ? [
+                  { name: "Later today", text: "later" },
+                  { name: "Tomorrow morning", text: "tomorrow" },
+                  { name: "Monday morning", text: "mon" },
+                ]
+              : [
+                  { name: "Tomorrow", text: "tomorrow" },
+                  { name: "In 3 days", text: "in 3 days" },
+                  { name: "Next week", text: "next week" },
+                  { name: "In 2 weeks", text: "in 2 weeks" },
+                ]
+          }
+          placeholder={what() === "later" ? "Send when? tomorrow 9am, mon, 3h" : "No reply by when? 3 days, mon, next week"}
+          note={
+            what() === "later"
+              ? "Tern sends it then if it's running. If it was closed, it asks before sending."
+              : "If nobody answers by then, the conversation comes back to the top of the inbox. Tern has to be running."
+          }
+          onPick={(due) => {
+            // Read before closing: the Show's value is gone once `picking` is null.
+            const later = what() === "later";
+            setPicking(null);
+            if (later) send(false, due);
+            else setFollowUp(due);
+          }}
+          onClose={() => setPicking(null)}
+        />
+      )}
     </Show>
+  );
+
+  return (
+    <>
+      <Show when={!props.init.inline} fallback={form}>
+        <div class="overlay" onMouseDown={(e) => e.target === e.currentTarget && void close()}>
+          {form}
+        </div>
+      </Show>
+      {picker}
+    </>
   );
 }

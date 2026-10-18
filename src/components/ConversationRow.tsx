@@ -79,6 +79,11 @@ export function ConversationRow(props: {
           </span>
         </Show>
       </span>
+      <Show when={props.row.followUp}>
+        <span class="chip follow-up" title="You asked to be reminded if nobody replied. Done (e) dismisses it.">
+          No reply yet
+        </span>
+      </Show>
       <Show when={props.row.snoozedUntil} fallback={<span class="date">{when(props.row.date)}</span>}>
         {(due) => (
           <span class="date snoozed" title="Snoozed until then">

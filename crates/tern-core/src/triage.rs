@@ -273,6 +273,9 @@ mod tests {
     fn spans() {
         assert_eq!(when("3h", NOW, BERLIN), Some(NOW + 3 * 3600));
         assert_eq!(when("in 2 days", NOW, BERLIN), Some(NOW + 2 * 86_400));
+        // Compose's follow-up presets.
+        assert_eq!(when("in 3 days", NOW, BERLIN), Some(NOW + 3 * 86_400));
+        assert_eq!(when("in 2 weeks", NOW, BERLIN), Some(NOW + 14 * 86_400));
         assert_eq!(when("45 min", NOW, BERLIN), Some(NOW + 45 * 60));
         assert_eq!(when("later", NOW, BERLIN), Some(NOW + 3 * 3600));
     }

@@ -181,6 +181,14 @@ pub fn watch_snoozes(app: &AppHandle) {
 
 fn wake_snoozed(app: &AppHandle) -> anyhow::Result<()> {
     let Some(state) = app.try_state::<AppState>() else { return Ok(()) };
+    // Follow-ups that came due without an answer join the top of the inbox.
+    let unanswered = state.store.check_follow_ups(now())?;
+    if !unanswered.is_empty() {
+        let _ = app.emit("mail-changed", ());
+        if Notices::read(&state.store)?.now() {
+            notify(app, &unanswered, Notice::NoReply);
+        }
+    }
     let back = state.store.wake_snoozed(now())?;
     if back.is_empty() {
         return Ok(());
@@ -192,7 +200,7 @@ fn wake_snoozed(app: &AppHandle) -> anyhow::Result<()> {
     }
     let _ = app.emit("mail-changed", ());
     if Notices::read(&state.store)?.now() {
-        notify(app, &back, true);
+        notify(app, &back, Notice::Snoozed);
     }
     Ok(())
 }
@@ -275,7 +283,7 @@ fn look(app: &AppHandle) -> anyhow::Result<()> {
         .collect();
     drop(news);
     if !mail.is_empty() && notices.now() {
-        notify(app, &mail, false);
+        notify(app, &mail, Notice::New);
     }
     Ok(())
 }
@@ -285,6 +293,8 @@ fn look(app: &AppHandle) -> anyhow::Result<()> {
 fn archive(app: &AppHandle, m: &NewMail) -> anyhow::Result<()> {
     use tern_core::{Action, ListTarget};
     let state = app.state::<AppState>();
+    // A follow-up's conversation is in Sent: archiving it means done with the reminder.
+    state.store.dismiss_follow_ups(&[m.id])?;
     let ids = state.store.conversation_ids(&[m.id], Action::Archive, &ListTarget::Role("inbox".into()))?;
     let applied = state.store.apply(&ids, Action::Archive, crate::UNDO_SECONDS)?;
     for account in &applied.accounts {
@@ -296,7 +306,16 @@ fn archive(app: &AppHandle, m: &NewMail) -> anyhow::Result<()> {
 
 /// One notification for what arrived together (or came back from snooze): the message itself when it is one
 /// conversation, a count otherwise.
-fn notify(app: &AppHandle, mail: &[NewMail], snoozed: bool) {
+/// Why a notification shows.
+#[derive(Clone, Copy, PartialEq)]
+enum Notice {
+    New,
+    Snoozed,
+    /// A follow-up came due: nobody answered.
+    NoReply,
+}
+
+fn notify(app: &AppHandle, mail: &[NewMail], why: Notice) {
     let latest = mail.last().expect("some mail").clone();
     let one = mail.iter().all(|m| (m.account_id, &m.thread_id) == (latest.account_id, &latest.thread_id));
     let who = |m: &NewMail| if m.from_name.is_empty() { m.from_addr.clone() } else { m.from_name.clone() };
@@ -314,10 +333,27 @@ fn notify(app: &AppHandle, mail: &[NewMail], snoozed: bool) {
         let more = names.len().saturating_sub(3);
         names.truncate(3);
         let list = names.join(", ");
-        let what = if snoozed { "conversations are back from snooze" } else { "new messages" };
+        let what = match why {
+            Notice::New => "new messages",
+            Notice::Snoozed => "conversations are back from snooze",
+            Notice::NoReply => "conversations have no reply yet",
+        };
         (format!("{} {what}", mail.len()), if more > 0 { format!("{list} and {more} more") } else { list })
     };
-    let summary = if snoozed && one { format!("Back from snooze: {summary}") } else { summary };
+    let summary = match why {
+        Notice::Snoozed if one => format!("Back from snooze: {summary}"),
+        // A follow-up's newest message is your own; what matters is the conversation.
+        Notice::NoReply if one => {
+            let subject = if latest.subject.is_empty() { "(no subject)" } else { latest.subject.as_str() };
+            return show_notice(app, "No reply yet".into(), subject.to_string(), one, latest);
+        }
+        _ => summary,
+    };
+    show_notice(app, summary, body, one, latest);
+}
+
+/// Shows one notification; a click opens the conversation, and one conversation also gets Archive and Reply.
+fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest: NewMail) {
     let mut note = notify_rust::Notification::new();
     note.summary(&summary).body(&body).appname("Tern");
     #[cfg(target_os = "linux")]

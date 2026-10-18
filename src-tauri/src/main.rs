@@ -142,6 +142,11 @@ fn main() {
                 states: Default::default(),
                 pause: tokio::sync::watch::channel(false).0,
             };
+            // Sends scheduled for a time that passed while Tern was closed wait to be confirmed.
+            let held = state.store.hold_overdue(desktop::now())?;
+            if held > 0 {
+                log::info!("{held} scheduled send(s) came due while Tern was closed; holding them");
+            }
             for account in state.store.accounts()? {
                 start_account(app.handle(), &state, account);
             }
@@ -200,6 +205,7 @@ fn main() {
             commands::take_mailto,
             commands::quit,
             commands::set_sync_paused,
+            commands::send_now,
             commands::update_ready,
             commands::restart_to_update,
             commands::autostart,
