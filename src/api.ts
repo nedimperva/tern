@@ -225,6 +225,11 @@ export interface Api {
   keepRunningWhen(f: () => boolean): void;
   /** Saves what is being written, then quits Tern for good. */
   quit(): Promise<void>;
+  /** The version of Tern downloaded and waiting for a restart, if any; `onUpdateReady` has it when it arrives. */
+  updateReady(): Promise<string | null>;
+  onUpdateReady(f: (version: string) => void): void;
+  /** Saves what is being written, installs the waiting update and starts the new version. */
+  restartToUpdate(): Promise<void>;
   /** The tray and the system: Compose from the tray menu, a `mailto:` link, a clicked notification, Quit. */
   onDesktop(handlers: {
     compose: () => void;
@@ -354,6 +359,12 @@ const tauri: Api = {
   quit: async () => {
     await flush();
     await invoke("quit");
+  },
+  updateReady: () => invoke("update_ready"),
+  onUpdateReady: (f) => void listen<string>("update-ready", (e) => f(e.payload)),
+  restartToUpdate: async () => {
+    await flush();
+    await invoke("restart_to_update");
   },
   onDesktop: (h) => {
     void listen("compose", () => h.compose());
@@ -738,6 +749,10 @@ function fake(): Api {
     onCloseRequested: () => () => {},
     keepRunningWhen: () => {},
     quit: async () => {},
+    // Open the page with #update to see a downloaded update waiting.
+    updateReady: async () => (location.hash === "#update" ? "0.4.0" : null),
+    onUpdateReady: () => {},
+    restartToUpdate: async () => location.reload(),
     onDesktop: () => {},
     takeMailto: async () => null,
     setSplit: async (ids, other) => {

@@ -1,8 +1,12 @@
 name: release
 
-# Pushing a tag like v0.2.0 builds the installers and attaches them to a draft GitHub release.
-# The draft stays hidden until the owner publishes it. A PR that changes this file only builds, so the
-# installers can be tried from the run's artifacts before anything is tagged.
+# Pushing a tag like v0.2.0 builds the installers and attaches them to a draft GitHub release, with that
+# version's section of CHANGELOG.md as its notes. The draft stays hidden until the owner publishes it. A PR that
+# changes this file only builds, so the installers can be tried from the run's artifacts before anything is tagged.
+#
+# The updater artifacts (signed AppImage and NSIS installer, latest.json) need the TAURI_SIGNING_PRIVATE_KEY and
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets. Installed copies look for latest.json on the newest release that
+# is neither a draft nor a pre-release, so a release reaches them when it is published.
 on:
   push:
     tags: ["v*"]
@@ -43,18 +47,46 @@ jobs:
 
       - run: npm ci
 
+      # A tag without its CHANGELOG.md section fails here, before anything is built.
+      - name: Release notes
+        id: notes
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          notes=$(awk -v v="[$version]" '/^## \[/ { on = index($0, v) == 4; next } /^\[.*\]: / { next } on' CHANGELOG.md)
+          if [ -z "${notes//[[:space:]]/}" ] && [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "::error::CHANGELOG.md has no section for $version"
+            exit 1
+          fi
+          {
+            echo 'body<<NOTES_END'
+            echo "$notes"
+            echo
+            echo '### Install'
+            echo
+            echo 'Linux: the `.AppImage` runs as is and updates itself; `.deb` and `.rpm` install with the system'"'"'s package'
+            echo 'tool, and on Arch `yay -S tern-bin`.'
+            echo 'Windows: download the `-setup.exe` and run it. The installer isn'"'"'t signed yet, so Windows may show'
+            echo '"Windows protected your PC": choose More info, then Run anyway.'
+            echo 'NOTES_END'
+          } >> "$GITHUB_OUTPUT"
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && 'v__VERSION__' || '' }}
           releaseName: Tern v__VERSION__
-          releaseBody: |
-            Windows: download the `-setup.exe` and run it. The installer isn't signed yet, so Windows may show
-            "Windows protected your PC": choose More info, then Run anyway.
-            Linux: the `.AppImage` runs as is; `.deb` and `.rpm` install with the system's package tool.
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
-          prerelease: true
+          # The updater reads releases/latest, which skips pre-releases.
+          prerelease: false
+          # Only release builds sign updates, so a local `tauri build` needs no key.
+          args: '--config {"bundle":{"createUpdaterArtifacts":true}}'
+          # Windows updates through the NSIS installer, which the updater runs without questions.
+          updaterJsonPreferNsis: true
 
       - name: Keep the installers from a test build
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -67,3 +99,4 @@ jobs:
             target/release/bundle/appimage/*.AppImage
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
+            target/release/bundle/**/*.sig

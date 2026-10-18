@@ -15,7 +15,7 @@ Linux first, then Windows · Rust · Tauri 2 · SolidJS · SQLite
 > [!WARNING]
 > **Tern is early alpha software (0.3.x).** It syncs and sends real mail and its author uses it every day, but
 > expect rough edges. Try it with a test account, or keep another mail client around. Installers are not
-> code-signed yet and there is no auto-update.
+> code-signed yet.
 
 ## Why Tern
 
@@ -42,8 +42,13 @@ Download the latest build from [Releases](https://github.com/nedimperva/tern/rel
 
 | System | File |
 |---|---|
+| Arch, Omarchy | `yay -S tern-bin` (from the AUR) |
 | Linux | `.AppImage` (any distro), `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE) |
 | Windows 10/11 | `-setup.exe` or `.msi` |
+
+The AppImage and the Windows installers update themselves: a new version downloads in the background and
+"Restart to update" appears in the status strip. AUR, `.deb` and `.rpm` installs update through the package
+manager. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 On Linux, passwords are kept by the Secret Service, so a keyring such as gnome-keyring or KWallet must be running
 and unlocked. On Windows, SmartScreen warns on first run because the installer is not signed yet; choose
@@ -73,7 +78,7 @@ Found a vulnerability? Please report it privately; see [SECURITY.md](SECURITY.md
 ### Linux (Arch, including Omarchy)
 
 ```sh
-sudo pacman -S --needed base-devel rustup nodejs npm webkit2gtk-4.1 libappindicator-gtk3 librsvg \
+sudo pacman -S --needed base-devel rustup nodejs npm webkit2gtk-4.1 libayatana-appindicator librsvg \
   openssl gnome-keyring libsecret
 rustup default stable
 ```

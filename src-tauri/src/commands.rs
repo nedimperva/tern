@@ -535,6 +535,18 @@ pub fn quit(app: AppHandle) {
     app.exit(0);
 }
 
+/// The version of Tern downloaded and waiting for a restart, if any.
+#[tauri::command]
+pub fn update_ready(app: AppHandle) -> Option<String> {
+    crate::update::ready(&app)
+}
+
+/// Installs the waiting update and restarts (the window has saved what was being written).
+#[tauri::command]
+pub fn restart_to_update(app: AppHandle) -> Reply<()> {
+    crate::update::install(&app).map_err(|e| format!("{e:#}"))
+}
+
 #[tauri::command]
 pub fn autostart(app: AppHandle) -> Reply<bool> {
     use tauri_plugin_autostart::ManagerExt;

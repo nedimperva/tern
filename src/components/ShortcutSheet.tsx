@@ -13,7 +13,7 @@ export function ShortcutSheet(props: { bindings: Binding[]; onClose: () => void 
   const [query, setQuery] = createSignal("");
   const shown = createMemo(() => {
     const q = query().trim();
-    return props.bindings.filter((b) => !b.hidden && (!q || fuzzy(b.name, q) || keyLabel(b.keys).toLowerCase() === q.toLowerCase()));
+    return props.bindings.filter((b) => !b.hidden && b.keys && (!q || fuzzy(b.name, q) || keyLabel(b.keys).toLowerCase() === q.toLowerCase()));
   });
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key !== "Escape") return;

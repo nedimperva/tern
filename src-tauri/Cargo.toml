@@ -23,3 +23,5 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 tauri-plugin-deep-link = "2"
 tauri-plugin-autostart = "2"
 notify-rust = "4"
+# No `zip`: release updates are a plain AppImage and an NSIS .exe, and zip 4 carries open advisories.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }

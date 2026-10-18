@@ -46,6 +46,11 @@
     }
   },
   "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk1MTE5RUIxNTk3MzU4RDcKUldUWFdITlpzWjRSbFZXYlM0M2lkeStSNDZKcVFWZTc2Y1d6NFcxNm4vb1dBbXVHVHJJUExlbzMK",
+      "endpoints": ["https://github.com/nedimperva/tern/releases/latest/download/latest.json"],
+      "requireSignedVersion": true
+    },
     "deep-link": {
       "desktop": {
         "schemes": [
