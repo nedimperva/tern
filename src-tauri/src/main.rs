@@ -134,7 +134,10 @@ fn main() {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let state = AppState {
-                store: Arc::new(Store::open(&dir.join("mail.db"))?),
+                // TERN_DB opens another store, such as one from `gen_mailbox`, to try the app on a big mailbox.
+                store: Arc::new(Store::open(
+                    &std::env::var_os("TERN_DB").map(std::path::PathBuf::from).unwrap_or(dir.join("mail.db")),
+                )?),
                 wakers: Default::default(),
                 states: Default::default(),
                 pause: tokio::sync::watch::channel(false).0,
@@ -173,6 +176,7 @@ fn main() {
             commands::discard_waiting,
             commands::network_back,
             commands::sync_states,
+            commands::sync_progress,
             commands::check_folder,
             commands::list_threads,
             commands::apply_conversations,

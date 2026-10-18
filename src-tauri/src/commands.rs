@@ -259,6 +259,12 @@ pub async fn sync_states(state: State<'_, AppState>) -> Reply<HashMap<i64, SyncS
     Ok(state.states.lock().unwrap().clone())
 }
 
+/// How far each account's download has come, for the status strip and the search note.
+#[tauri::command]
+pub async fn sync_progress(state: State<'_, AppState>) -> Reply<Vec<tern_core::SyncProgress>> {
+    state.store.sync_progress().map_err(text)
+}
+
 #[tauri::command]
 pub async fn settings(state: State<'_, AppState>) -> Reply<HashMap<String, serde_json::Value>> {
     state.store.settings().map_err(text)
