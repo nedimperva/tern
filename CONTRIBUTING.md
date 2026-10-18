@@ -68,9 +68,18 @@ These come from [CLAUDE.md](CLAUDE.md) and the design docs. Pull requests that b
 
 ## Releases (maintainer)
 
-Bump the version in `package.json`, `src-tauri/tauri.conf.json` and both `Cargo.toml` files, merge, then push a
-tag such as `v0.3.2`. The `release` workflow builds the Windows installers (`-setup.exe`, `.msi`) and the Linux
-AppImage, `.deb` and `.rpm` onto a draft pre-release, which is published by hand.
+1. Bump the version in `package.json`, `src-tauri/tauri.conf.json` and both `Cargo.toml` files, and turn
+   `## [Unreleased]` in `CHANGELOG.md` into `## [0.3.2] - YYYY-MM-DD` (with a fresh empty Unreleased above it).
+   Merge.
+2. Push a tag such as `v0.3.2`. The `release` workflow builds the Windows installers (`-setup.exe`, `.msi`) and
+   the Linux AppImage, `.deb` and `.rpm`, signs the updates and attaches everything, with `latest.json`, to a
+   draft release whose notes are the version's CHANGELOG section. A tag without that section fails.
+3. Try the draft's installers, then publish it. Installed AppImage and Windows copies see it within a day.
+4. Update the AUR package: see [packaging/aur/README.md](packaging/aur/README.md).
+
+The updater signing key is in the repository secrets (`TAURI_SIGNING_PRIVATE_KEY`, `..._PASSWORD`); the owner
+keeps a backup. Installed copies only accept updates signed with it, so a lost key means asking everyone to
+reinstall once.
 
 ## License
 
