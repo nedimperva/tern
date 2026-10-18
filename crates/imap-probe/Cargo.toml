@@ -15,7 +15,7 @@ io-imap = "0.7"
 io-sasl = { version = "0.1", default-features = false }
 # io-imap 0.7.1 does not build from a fresh resolve: imap-codec turns off nom's default features and nothing
 # turns `alloc` back on. Enabling it here is the workaround.
-nom = { version = "7", features = ["alloc"] }
+nom = { version = "8", features = ["alloc"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt", "sync", "time"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }

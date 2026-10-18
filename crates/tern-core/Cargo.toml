@@ -21,7 +21,7 @@ log = "0.4"
 mail-parser = "0.11"
 # io-imap 0.7.1 does not build from a fresh resolve: imap-codec turns off nom's default features and nothing turns
 # `alloc` back on. Enabling it here is the workaround; drop it once io-imap or imap-codec fixes it.
-nom = { version = "7", default-features = false, features = ["alloc"] }
+nom = { version = "8", default-features = false, features = ["alloc"] }
 # Bundled SQLite is new enough for FTS5 contentless-delete and RETURNING, on every platform.
 rusqlite = { version = "0.32", features = ["bundled"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
