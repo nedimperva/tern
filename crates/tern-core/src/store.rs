@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 17;
+const SCHEMA_VERSION: i64 = 18;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -118,6 +118,77 @@ fn row(r: &Row) -> rusqlite::Result<MessageRow> {
         flagged: r.get(10)?,
         has_attachments: r.get(11)?,
     })
+}
+
+/// Fills in each conversation of a list page from all its messages: two queries for the page, not three per row.
+fn conversations(conn: &Connection, latests: Vec<MessageRow>) -> Result<Vec<ThreadRow>> {
+    let keys = serde_json::to_string(
+        &latests.iter().map(|m| (m.account_id, m.thread_id.as_str())).collect::<Vec<_>>(),
+    )?;
+    let page = "(SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?1))";
+    struct Sums {
+        ids: HashSet<String>,
+        unread: i64,
+        flagged: bool,
+        participants: Vec<String>,
+        snoozed_until: Option<i64>,
+    }
+    let mut sums: HashMap<(i64, String), Sums> = HashMap::new();
+    let mut messages = conn.prepare_cached(&format!(
+        "SELECT m.account_id, m.thread_id, m.id, m.message_id, m.seen, m.flagged, m.from_name, m.from_addr,
+                lower(m.from_addr) = lower(a.email)
+         FROM messages m JOIN accounts a ON a.id = m.account_id
+         WHERE (m.account_id, m.thread_id) IN {page}
+         ORDER BY m.account_id, m.thread_id, m.date, m.id"
+    ))?;
+    let mut rows = messages.query([&keys])?;
+    while let Some(r) = rows.next()? {
+        let key = (r.get::<_, i64>(0)?, r.get::<_, String>(1)?);
+        let s = sums.entry(key).or_insert_with(|| Sums {
+            ids: HashSet::new(),
+            unread: 0,
+            flagged: false,
+            participants: Vec::new(),
+            snoozed_until: None,
+        });
+        // A message in several folders (or a copy in Sent) counts once.
+        let id =
+            r.get::<_, Option<String>>(3)?.unwrap_or_else(|| format!("#{}", r.get::<_, i64>(2).unwrap_or(0)));
+        s.ids.insert(id);
+        s.unread += i64::from(!r.get::<_, bool>(4)?);
+        s.flagged |= r.get::<_, bool>(5)?;
+        let (name, addr, mine): (String, String, bool) = (r.get(6)?, r.get(7)?, r.get(8)?);
+        let who = if mine {
+            "me".to_string()
+        } else if name.is_empty() {
+            addr
+        } else {
+            name
+        };
+        if s.participants.len() < 4 && !s.participants.contains(&who) {
+            s.participants.push(who);
+        }
+    }
+    let mut snoozes = conn.prepare_cached(&format!(
+        "SELECT account_id, thread_id, due FROM reminders WHERE kind = 'snooze' AND (account_id, thread_id) IN {page}"
+    ))?;
+    let mut rows = snoozes.query([&keys])?;
+    while let Some(r) = rows.next()? {
+        if let Some(s) = sums.get_mut(&(r.get(0)?, r.get(1)?)) {
+            s.snoozed_until = Some(r.get(2)?);
+        }
+    }
+    Ok(latests
+        .into_iter()
+        .map(|latest| {
+            let s = sums.remove(&(latest.account_id, latest.thread_id.clone()));
+            let (count, unread, flagged, participants, snoozed_until) = match s {
+                Some(s) => (s.ids.len() as i64, s.unread, s.flagged, s.participants, s.snoozed_until),
+                None => (1, i64::from(!latest.seen), latest.flagged, Vec::new(), None),
+            };
+            ThreadRow { latest, count, unread, flagged, participants, snoozed_until }
+        })
+        .collect())
 }
 
 fn security(r: &Row, i: usize) -> rusqlite::Result<Security> {
@@ -252,6 +323,9 @@ fn migrate(conn: &Connection) -> Result<()> {
                                         name TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '',
                                         used INTEGER NOT NULL DEFAULT 0);"
             }
+            // How many messages the server said a folder holds at its last SELECT, for download progress. NULL
+            // until the folder is first checked.
+            17 => "ALTER TABLE folders ADD COLUMN server_count INTEGER;",
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -672,6 +746,49 @@ impl Store {
         Ok(())
     }
 
+    /// What the server said the folder holds, at its latest SELECT.
+    pub fn set_server_count(&self, folder_id: i64, count: u32) -> Result<()> {
+        self.conn()
+            .execute("UPDATE folders SET server_count = ?2 WHERE id = ?1", params![folder_id, count])?;
+        Ok(())
+    }
+
+    /// How far each account's download has come: messages here against the server's counts (only folders checked
+    /// at least once), and how many of the messages here have their text, which is what search reads.
+    pub fn sync_progress(&self) -> Result<Vec<SyncProgress>> {
+        let conn = self.conn();
+        // Both counts per folder read an index: `messages_list` for all rows, the partial `messages_bodyless` for
+        // rows without their text.
+        let mut stmt = conn.prepare_cached(
+            "SELECT f.account_id, f.server_count,
+                    (SELECT count(*) FROM messages m WHERE m.folder_id = f.id),
+                    (SELECT count(*) FROM messages m WHERE m.folder_id = f.id AND m.body_state != 'full')
+             FROM folders f WHERE f.role != 'all' ORDER BY f.account_id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?))
+        })?;
+        let mut out: Vec<SyncProgress> = Vec::new();
+        for row in rows {
+            let (account_id, server, local, bodyless) = row?;
+            if out.last().is_none_or(|p| p.account_id != account_id) {
+                out.push(SyncProgress { account_id, ..Default::default() });
+            }
+            let p = out.last_mut().expect("pushed above");
+            match server {
+                // A row moved here and not yet seen on the server can make `local` run ahead for a moment.
+                Some(server) => {
+                    p.total += server;
+                    p.have += local.min(server);
+                }
+                None => p.unchecked += 1,
+            }
+            p.messages += local;
+            p.with_text += local - bodyless;
+        }
+        Ok(out)
+    }
+
     /// (seen, flagged) of one message, for tests.
     #[cfg(test)]
     pub(crate) fn flags_of(&self, folder_id: i64, uid: u32) -> Option<(bool, bool)> {
@@ -982,27 +1099,15 @@ impl Store {
             "SELECT EXISTS (SELECT 1 FROM messages m WHERE {filter} AND m.account_id = ?2 AND m.thread_id = ?3
                             AND (m.date, m.id) >= (?4, ?5))"
         ))?;
-        let mut sums = conn.prepare_cached(
-            "SELECT count(DISTINCT COALESCE(message_id, id)), count(*) FILTER (WHERE NOT seen), max(flagged)
-             FROM messages WHERE account_id = ?1 AND thread_id = ?2",
-        )?;
-        let mut senders = conn.prepare_cached(
-            "SELECT m.from_name, m.from_addr, lower(m.from_addr) = lower(a.email)
-             FROM messages m JOIN accounts a ON a.id = m.account_id
-             WHERE m.account_id = ?1 AND m.thread_id = ?2 ORDER BY m.date, m.id",
-        )?;
-        let mut snoozed = conn.prepare_cached(
-            "SELECT due FROM reminders WHERE account_id = ?1 AND thread_id = ?2 AND kind = 'snooze'",
-        )?;
         let mut seen = HashSet::new();
-        let mut out = Vec::new();
+        let mut latests: Vec<MessageRow> = Vec::new();
         // The scan goes in pages with a LIMIT: across several folders (a role) SQLite sorts what it finds, and
         // without a limit it would sort the whole inbox before the first row.
         let chunk = (limit * 4).max(100);
         let mut at = cursor;
         let mut page: Vec<MessageRow> = Vec::new();
         let mut exhausted = false;
-        while out.len() < limit {
+        while latests.len() < limit {
             if page.is_empty() {
                 if exhausted {
                     break;
@@ -1027,31 +1132,9 @@ impl Store {
             {
                 continue;
             }
-            let (count, unread, flagged): (i64, i64, bool) = sums
-                .query_row(params![latest.account_id, latest.thread_id], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-                })?;
-            let mut participants: Vec<String> = Vec::new();
-            for who in senders.query_map(params![latest.account_id, latest.thread_id], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, bool>(2)?))
-            })? {
-                let (name, addr, mine) = who?;
-                let who = if mine {
-                    "me".to_string()
-                } else if name.is_empty() {
-                    addr
-                } else {
-                    name
-                };
-                if participants.len() < 4 && !participants.contains(&who) {
-                    participants.push(who);
-                }
-            }
-            let snoozed_until =
-                snoozed.query_row(params![latest.account_id, latest.thread_id], |r| r.get(0)).optional()?;
-            out.push(ThreadRow { latest, count, unread, flagged, participants, snoozed_until });
+            latests.push(latest);
         }
-        Ok(out)
+        conversations(&conn, latests)
     }
 
     /// Mutes the conversations of these messages: they leave the inbox now (see `apply`), and mail that arrives in
@@ -3630,6 +3713,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                17 => "ALTER TABLE folders DROP COLUMN server_count;",
                 16 => "DROP INDEX messages_date; DROP TABLE snippets;",
                 15 => "ALTER TABLE messages DROP COLUMN bulk; DROP TABLE sender_splits; DROP TABLE reminders;",
                 // Step 14 only changed data.
@@ -3705,6 +3789,34 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         let store = Store::init(conn).unwrap();
         assert_eq!(subjects(&store, IMPORTANT), ["person"]);
         assert_eq!(subjects(&store, OTHER), ["robot", "news"]);
+    }
+
+    #[test]
+    fn download_progress_counts_against_the_server() {
+        let (store, account, inbox, archive) = setup();
+        let headers_only = NewMessage { headers_only: true, ..message(2, "b", 2) };
+        store.insert_messages(account, inbox, &[message(1, "a", 1), headers_only]).unwrap();
+        let p = &store.sync_progress().unwrap()[0];
+        assert_eq!((p.have, p.total, p.unchecked), (0, 0, 2), "no folder checked yet");
+        assert_eq!((p.with_text, p.messages), (1, 2));
+
+        store.set_server_count(inbox, 10).unwrap();
+        store.set_server_count(archive, 0).unwrap();
+        let p = &store.sync_progress().unwrap()[0];
+        assert_eq!((p.account_id, p.have, p.total, p.unchecked), (account, 2, 10, 0));
+        // More here than the server counted (a move not seen there yet) never reads as more than done.
+        store.set_server_count(inbox, 1).unwrap();
+        assert_eq!(store.sync_progress().unwrap()[0].have, 1);
+    }
+
+    #[test]
+    fn migration_18_adds_server_counts() {
+        let (store, _, inbox, _) = setup();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 17);
+        let store = Store::init(conn).unwrap();
+        store.set_server_count(inbox, 3).unwrap();
+        assert_eq!(store.sync_progress().unwrap()[0].total, 3);
     }
 
     #[test]

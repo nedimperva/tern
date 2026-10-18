@@ -457,6 +457,21 @@ pub struct Applied {
     pub accounts: Vec<i64>,
 }
 
+/// How far one account's download has come (`Store::sync_progress`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncProgress {
+    pub account_id: i64,
+    /// Messages here, in folders the server has counted, against that count.
+    pub have: i64,
+    pub total: i64,
+    /// Folders not checked yet, whose size is unknown.
+    pub unchecked: i64,
+    /// Messages here with their text (searchable in full), out of all messages here.
+    pub with_text: i64,
+    pub messages: i64,
+}
+
 /// A message that just arrived, for a notification.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

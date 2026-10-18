@@ -9,6 +9,7 @@ import {
   type MessageRow,
   type OutboxProblem,
   type OutboxWaiting,
+  type SyncProgress,
   type SyncState,
   type Target,
   type ThreadMessage,
@@ -42,6 +43,8 @@ import { keyHandler, keyLabel, type Binding, type Context } from "./keys";
 
 const PAGE = 100;
 const UNDO_MS = 5000;
+// Missing messages below this are new mail arriving, not a backlog worth a "Downloading mail" sentence.
+const BACKLOG = 100;
 /** With the "auto" open mode, from this width an open conversation sits beside the list; narrower, it covers it. */
 const SPLIT_WIDTH = 1200;
 /** Below this width there is no room for the list beside a conversation, whatever the setting (§3). */
@@ -73,6 +76,16 @@ const DONE: Record<Exclude<Action, object>, string> = {
 export default function App() {
   const [accounts, setAccounts] = createSignal<Account[]>([]);
   const [syncStates, setSyncStates] = createSignal<Record<number, SyncState>>({});
+  const [progress, setProgress] = createSignal<SyncProgress[]>([]);
+  // Counting is cheap but not free at 100k messages; a backfill changes mail many times a second.
+  let progressTimer: number | undefined;
+  const readProgress = () => {
+    if (progressTimer !== undefined) return;
+    progressTimer = window.setTimeout(() => {
+      progressTimer = undefined;
+      void api.syncProgress().then(setProgress, () => {});
+    }, 1000);
+  };
   const [folders, setFolders] = createSignal<Folder[]>([]);
   // Where Tern opens and `g i` goes: the Important split, or the whole inbox with splits off.
   const home = (): Target => ({ role: settings.splitInbox ? "important" : "inbox" });
@@ -224,11 +237,14 @@ export default function App() {
       void refresh();
       void reloadConversation();
     });
+    readProgress();
   };
 
   onMount(() => {
+    void api.syncProgress().then(setProgress, () => {});
     api.onSyncState((id, state) => {
       setSyncStates({ ...syncStates(), [id]: state });
+      readProgress();
       // A lost connection can put work back in the queue without a mail change.
       void api.waiting().then(setWaiting);
     });
@@ -700,6 +716,29 @@ export default function App() {
 
   const paused = () => Object.values(syncStates()).some((s) => s === "paused");
 
+  /** "Downloading mail: 12,400 of 48,210" while an account is fetching a backlog. A few new messages are not a
+   * download worth a sentence, and a folder whose messages can't be read must not keep it up forever: only accounts
+   * still syncing count. */
+  const downloading = () => {
+    const busy = progress().filter((p) => ["syncing", "connecting"].includes(syncStates()[p.accountId]));
+    const sum = (key: "have" | "total" | "unchecked") => busy.reduce((n, p) => n + p[key], 0);
+    const [have, total, unchecked] = [sum("have"), sum("total"), sum("unchecked")];
+    if (!busy.length || (total - have < BACKLOG && !unchecked)) return null;
+    if (!total) return "Downloading mail…";
+    const n = (x: number) => x.toLocaleString();
+    return `Downloading mail: ${n(have)} of ${n(total)}${unchecked ? "…" : ""}`;
+  };
+
+  /** What the search note says about mail whose text isn't here yet. */
+  const coverage = () => {
+    const all = progress().reduce((n, p) => n + p.messages, 0);
+    const text = progress().reduce((n, p) => n + p.withText, 0);
+    const n = (x: number) => x.toLocaleString();
+    return text < all
+      ? `The text of ${n(text)} of ${n(all)} messages is on this computer; the others were searched by sender and subject only.`
+      : "Older mail without its text downloaded was searched by sender and subject only.";
+  };
+
   const go = (t: Target) => {
     batch(() => (setQuery(""), setTarget(t)));
     if ("folder" in t) void api.checkFolder(t.folder);
@@ -974,6 +1013,8 @@ export default function App() {
       return { text: `Can't reach ${host}. Trying again.`, tone: "warn" };
     }
     if (paused()) return { text: "Sync paused. Changes wait until you resume.", tone: "warn" };
+    const download = downloading();
+    if (download) return { text: download, tone: "ok" };
     if (entries.some(([, s]) => s === "connecting")) return { text: "Connecting…", tone: "warn" };
     return { text: entries.length ? "Up to date" : "", tone: "ok" };
   };
@@ -1017,7 +1058,7 @@ export default function App() {
           </button>
         </header>
         <Show when={searching() && partial()}>
-          <div class="search-note">Older mail without its text downloaded was searched by sender and subject only.</div>
+          <div class="search-note">{coverage()}</div>
         </Show>
         <Show
           when={rows().length}

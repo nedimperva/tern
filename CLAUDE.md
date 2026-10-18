@@ -21,6 +21,10 @@ decisions that aren't visible from the code.
   (`src-tauri/src/update.rs`; .deb/.rpm/AUR never do), release notes come from `CHANGELOG.md` (a tag without its
   section fails), and `packaging/aur/tern-bin` repackages the `.deb`. Releases are no longer pre-releases: the
   updater reads `releases/latest`. The signing key lives in the repo secrets and the owner's `~/.tauri/`.
+  Package 08 polish (Pause sync, tray dot, notification Archive/Reply, quiet hours, `tern --compose`) and
+  package 06 progress: the strip says "Downloading mail: X of Y" from each folder's server count (schema v18).
+  `cargo run --release -p tern-core --example gen_mailbox -- PATH` makes a 100k test store; `TERN_DB=PATH` opens it.
+  `store_bench` exits non-zero on a missed target and runs in CI with `TERN_BENCH_SLACK=3`.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items, so Gmail goes through the Gmail API (also provisional), not IMAP.

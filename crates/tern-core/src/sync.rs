@@ -203,7 +203,8 @@ pub async fn run_account(
         let wait = match result {
             Ok(more) => {
                 failures = 0;
-                report(SyncState::Idle);
+                // Still syncing while a backfill has more to fetch, so the window keeps showing its progress.
+                report(if more { SyncState::Syncing } else { SyncState::Idle });
                 match store.next_due(account.id) {
                     _ if more => Duration::ZERO,
                     Ok(Some(due)) => Duration::from_secs((due - now()).max(0) as u64).min(POLL),
@@ -534,6 +535,7 @@ async fn sync_folder<S: Stream>(
         }
         None => (within(s.select(name)).await.with_context(|| format!("Could not open {name}"))?, None),
     };
+    store.set_server_count(folder_id, mailbox.exists)?;
     let mut changed = false;
 
     let renumbered = known.uid_validity.is_some() && known.uid_validity != mailbox.uid_validity;

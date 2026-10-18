@@ -24,6 +24,18 @@ export type Mailto = { to: string[]; cc: string[]; bcc: string[]; subject: strin
 /** Saved text that compose inserts after `;shortcut`; `{first_name}` and the like are filled in there. */
 export type Snippet = { id: number; shortcut: string; name: string; body: string };
 
+/** How far one account's download has come: messages here against the server's counts, and how many have their
+ * text (what search reads in full). */
+export type SyncProgress = {
+  accountId: number;
+  have: number;
+  total: number;
+  /** Folders not checked yet, whose size is unknown. */
+  unchecked: number;
+  withText: number;
+  messages: number;
+};
+
 export type NewMail = { id: number; accountId: number; threadId: string; subject: string };
 export type Folder = { id: number; accountId: number; name: string; role: string; unread: number };
 export type MessageRow = {
@@ -266,6 +278,7 @@ export interface Api {
   setSetting(key: string, value: unknown): Promise<void>;
   /** Each account's sync state as last reported; `onSyncState` has the changes after that. */
   syncStates(): Promise<Record<number, SyncState>>;
+  syncProgress(): Promise<SyncProgress[]>;
   /** The person opened this folder: check it on the server now. */
   checkFolder(id: number): Promise<void>;
   onSyncState(f: (accountId: number, state: SyncState) => void): void;
@@ -395,6 +408,7 @@ const tauri: Api = {
   replyInit: (id, kind) => invoke("reply_init", { id, kind }),
   onChange: (f) => void listen("mail-changed", f),
   syncStates: () => invoke("sync_states"),
+  syncProgress: () => invoke("sync_progress"),
   mute: (ids, mute) => invoke("mute", { ids, mute }),
   muted: (id) => invoke("muted", { id }),
   settings: () => invoke("settings"),
@@ -726,7 +740,15 @@ function fake(): Api {
     networkBack: () => {},
     onChange: (f) => void listeners.push(f),
     // Open the page with #offline to see how a lost connection looks.
-    syncStates: async () => ({ 1: location.hash === "#offline" ? "offline" : location.hash === "#paused" ? "paused" : "idle" }),
+    // #offline, #paused and #backfill show those states; #backfill also a download in progress.
+    syncStates: async () => ({
+      1: ({ "#offline": "offline", "#paused": "paused", "#backfill": "syncing" } as const)[location.hash] ?? "idle",
+    }),
+    syncProgress: async () => [
+      location.hash === "#backfill"
+        ? { accountId: 1, have: 12_400, total: 48_210, unchecked: 0, withText: 9_800, messages: 12_400 }
+        : { accountId: 1, have: messages.length, total: messages.length, unchecked: 0, withText: messages.length, messages: messages.length },
+    ],
     onSyncState: (f) => void stateListeners.push(f),
     setSyncPaused: async (on) => stateListeners.forEach((f) => f(1, on ? "paused" : "idle")),
     checkFolder: async () => {},
