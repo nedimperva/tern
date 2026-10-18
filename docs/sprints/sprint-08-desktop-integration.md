@@ -23,19 +23,19 @@ when it is offline.
 
 ### Plugins
 - [x] `tauri-plugin-single-instance` (first in the builder), focusing the window and forwarding argv for `mailto:`.
-- [ ] `tauri-plugin-notification`; on Linux this is `org.freedesktop.Notifications` — works on Hyprland with `mako`/`dunst`/`swaync`.
+- [-] ~~`tauri-plugin-notification`; on Linux this is `org.freedesktop.Notifications` — works on Hyprland with `mako`/`dunst`/`swaync`.~~ — replaced by notify-rust, which reports clicks and actions (Decisions, 2026-10-15).
 - [x] `tauri-plugin-autostart` (XDG autostart `.desktop` on Linux; registry on Windows later).
 - [x] `tauri-plugin-deep-link` for `mailto:`; register the scheme in `tauri.conf.json` and the `.desktop` file (`MimeType=x-scheme-handler/mailto`).
 - [ ] `tauri-plugin-dialog` already from Sprint 3; `tauri-plugin-clipboard-manager` for "Copy link / Copy address".
 - [x] Review `capabilities/default.json` after each plugin; least privilege.
 
 ### Notifications
-- [ ] Rules: notify for Important split only by default; per-split toggle; quiet hours; never for muted/snoozed/own sent.
-- [ ] Group by thread; body is the snippet; click → open the conversation; actions `Archive` / `Reply` where the server supports notification actions (freedesktop does).
+- [x] Rules: notify for Important split only by default; per-split toggle; quiet hours; never for muted/snoozed/own sent.
+- [x] Group by thread; body is the snippet; click → open the conversation; actions `Archive` / `Reply` where the server supports notification actions (freedesktop does).
 - [ ] Reminder-due and follow-up-due notifications from Sprint 5.
 
 ### Tray
-- [ ] Tray icon with an unread dot (two icon variants), menu: Open, Compose, Check now, Pause sync, Quit. `libappindicator`/StatusNotifier on Linux (works in Waybar).
+- [x] Tray icon with an unread dot (two icon variants), menu: Open, Compose, Check now, Pause sync, Quit. `libappindicator`/StatusNotifier on Linux (works in Waybar).
 - [x] Closing the window hides to the tray when "Keep running in background" is on (default on); `Cmd+Q` quits.
 
 ### `mailto:`
@@ -48,10 +48,10 @@ when it is offline.
 - [x] Network change detection: on Linux `org.freedesktop.NetworkManager` state over D-Bus (`zbus`) → immediate reconnect; fallback to the backoff timer.
 
 ### Linux polish
-- [ ] `.desktop` file with actions (Compose), icon sizes, `StartupWMClass` matching the Wayland app id.
+- [x] `.desktop` file with actions (Compose), icon sizes, `StartupWMClass` matching the Wayland app id.
 - [ ] Hyprland: confirm `class` and write the recommended `windowrulev2` lines in README; respect `GTK_THEME`'s dark preference via `prefers-color-scheme` (works through WebKitGTK when the portal is present).
 - [ ] Wayland fractional scaling check; text stays crisp at 1.25 / 1.5.
-- [ ] First-run: suggest `gnome-keyring` unlock if Secret Service fails, with the exact command.
+- [x] First-run: suggest `gnome-keyring` unlock if Secret Service fails, with the exact command.
 
 ## Cut first
 Notification actions, NetworkManager D-Bus (keep backoff), quiet hours.
@@ -81,6 +81,23 @@ Notification actions, NetworkManager D-Bus (keep backoff), quiet hours.
   NetworkManager where it runs; WebView2 from Windows) calls `network_back`, and every account drops its
   connections and reconnects at once, as after sleep. One path for both systems and no D-Bus code. The sentence
   never says "Offline" from the event alone unless the engine also cannot reach the server.
+- 2026-10-18 — **Desktop polish slice selected by the owner** (M2): notification rules and actions, tray dot and
+  Pause sync, the `.desktop` Compose action, Hyprland notes, the keyring hint. Not in it: the clipboard plugin
+  ("Copy address" has no menu to live in yet), follow-up notifications (package 05 builds follow-ups first).
+- 2026-10-18 — **Pause sync is for this run only.** Every account signs out and waits; the IDLE watch drops its
+  connection; queued changes and sends stay in the outbox ("Sync paused. Changes wait until you resume." with
+  Resume in the status strip). Opening an attachment or `cid:` image still downloads it, since that is a read the
+  person asked for. A restart resumes: a forgotten pause must not stop mail for days.
+- 2026-10-18 — **"Per-split toggle" is Important, or Important and Other.** Splits are fixed (Important/Other), so
+  one setting covers it. **Quiet hours** drop notifications, they don't save them for later; the mail is in the
+  inbox. They use the system's local time (`chrono`, already in the tree through io-imap).
+- 2026-10-18 — **Notification actions on Linux only**: one conversation gets Archive and Reply. Archive goes through
+  the outbox like `e` (with its 5-second window, but no visible Undo); Reply opens the conversation and starts a
+  reply to its newest message. Windows notifications can't report clicks yet (M3).
+- 2026-10-18 — **Our own `.desktop` template** (`src-tauri/tern.desktop`, deb and rpm; the AppImage is made from
+  the deb's files): `Exec=tern %u`, `Categories=Network;Email;` (Tauri's default leaves them empty, which hides
+  Tern under "Other"), and a Compose action that runs `tern --compose`, handled at start and by a running
+  instance like an empty `mailto:`.
 
 ## Log
 
@@ -103,3 +120,11 @@ Notification actions, NetworkManager D-Bus (keep backoff), quiet hours.
   Tried under Xvfb: a second start with a mailto: link exits and the first instance opens compose filled in. Tray,
   notifications and hiding need a real desktop; not yet tried on Hyprland or Windows. Not built yet: notification
   actions, quiet hours, tray unread dot, Pause sync, clipboard plugin, .desktop Compose action, Linux polish.
+- 2026-10-18 — Desktop polish slice. Engine: `run_account` takes a pause signal (test: paused accounts don't
+  connect, wake does nothing, resume connects, pausing during a retry wait takes effect); `new_mail` can include
+  Other (test); `triage::quiet` for quiet hours (test); keyring advice on Linux (test). Shell: tray icon with a red
+  dot while an inbox has unread mail (`icons/tray*.png`), Pause/Resume sync in the tray and palette, notification
+  Archive/Reply, quiet hours and "Notify for", `--compose`, `tern.desktop`. Hyprland: class confirmed as `tern`
+  with `hyprctl clients` on Omarchy (Hyprland 0.56, Lua config); README has the `o.window` float rule (not tried).
+  UI tried in `npm run dev` in headless Chromium (paused strip, Desktop settings). Tray, notifications, Compose
+  action and scaling need the owner on Hyprland; this machine's monitor is at scale 1.
