@@ -128,3 +128,5 @@ Notification actions, NetworkManager D-Bus (keep backoff), quiet hours.
   with `hyprctl clients` on Omarchy (Hyprland 0.56, Lua config); README has the `o.window` float rule (not tried).
   UI tried in `npm run dev` in headless Chromium (paused strip, Desktop settings). Tray, notifications, Compose
   action and scaling need the owner on Hyprland; this machine's monitor is at scale 1.
+- 2026-10-18 — Owner ran the branch build on Omarchy/Hyprland with their real accounts (installed over
+  `~/.local/bin/tern`): "seems like everything works". Fractional scaling and the dark-preference check remain open.
