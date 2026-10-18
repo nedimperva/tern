@@ -49,8 +49,8 @@ when it is offline.
 
 ### Linux polish
 - [x] `.desktop` file with actions (Compose), icon sizes, `StartupWMClass` matching the Wayland app id.
-- [ ] Hyprland: confirm `class` and write the recommended `windowrulev2` lines in README; respect `GTK_THEME`'s dark preference via `prefers-color-scheme` (works through WebKitGTK when the portal is present).
-- [ ] Wayland fractional scaling check; text stays crisp at 1.25 / 1.5.
+- [x] (owner 2026-10-18) Hyprland: confirm `class` and write the recommended `windowrulev2` lines in README; respect `GTK_THEME`'s dark preference via `prefers-color-scheme` (works through WebKitGTK when the portal is present).
+- [x] (owner 2026-10-18) Wayland fractional scaling check; text stays crisp at 1.25 / 1.5.
 - [x] First-run: suggest `gnome-keyring` unlock if Secret Service fails, with the exact command.
 
 ## Cut first
@@ -129,4 +129,5 @@ Notification actions, NetworkManager D-Bus (keep backoff), quiet hours.
   UI tried in `npm run dev` in headless Chromium (paused strip, Desktop settings). Tray, notifications, Compose
   action and scaling need the owner on Hyprland; this machine's monitor is at scale 1.
 - 2026-10-18 — Owner ran the branch build on Omarchy/Hyprland with their real accounts (installed over
-  `~/.local/bin/tern`): "seems like everything works". Fractional scaling and the dark-preference check remain open.
+  `~/.local/bin/tern`): "seems like everything works". Owner also checked fractional scaling and that the
+  "System" theme follows Omarchy's light/dark switch: both work.
