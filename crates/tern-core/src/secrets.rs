@@ -32,6 +32,23 @@ pub fn password(email: &str) -> Result<String> {
         .with_context(|| format!("No saved password for {email}"))
 }
 
+/// OAuth tokens for an account (`oauth::Tokens`, as JSON), under `<email>/oauth` beside any password.
+pub fn set_tokens(email: &str, tokens: &crate::oauth::Tokens) -> Result<()> {
+    keyring::Entry::new(SERVICE, &format!("{email}/oauth"))?
+        .set_password(&serde_json::to_string(tokens)?)
+        .map_err(|e| {
+            let advice = advice(&e);
+            anyhow::Error::new(e).context(advice)
+        })
+}
+
+pub fn tokens(email: &str) -> Result<crate::oauth::Tokens> {
+    let json = keyring::Entry::new(SERVICE, &format!("{email}/oauth"))?
+        .get_password()
+        .with_context(|| format!("No saved sign-in for {email}"))?;
+    Ok(serde_json::from_str(&json)?)
+}
+
 pub fn delete_password(email: &str) -> Result<()> {
     keyring::Entry::new(SERVICE, email)?.delete_credential()?;
     Ok(())

@@ -46,6 +46,14 @@ per-user quota at the published new-project rate, excluding other calls. This is
 about exact burst behavior. Fetch the newest useful page first and backfill visibly. The previous
 20,000-message/30-second complete-list target is withdrawn.
 
+## Probe (2026-10-19)
+
+`crates/tern-core/examples/gmail_probe.rs` collects the API column: mailbox and label counts, the first screen
+(100 inbox messages with headers, one request each), an empty `history.list`, quota used, and a full-backfill
+estimate at the published per-user rate. It runs once `secrets/google-client.json` exists (setup step 4).
+The IMAP column comes from the owner's existing app-password Gmail account and the package 01 probe: io-imap
+drops FETCH responses with X-GM-* items, so labels and Gmail threads are not available over IMAP in Tern today.
+
 ## Decision gate
 
 - [ ] Fill the comparison with probe results and known limitations.

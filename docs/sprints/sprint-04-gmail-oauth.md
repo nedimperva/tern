@@ -25,14 +25,14 @@ in Gmail, labelling in Gmail shows in Tern, a search like `from:alice has:attach
 ## Tasks
 
 ### OAuth engine (`tern-core::oauth`)
-- [ ] `oauth2` crate, authorization code + PKCE (S256). Loopback redirect: bind `127.0.0.1:0` with a tiny
+- [x] `oauth2` crate, authorization code + PKCE (S256). Loopback redirect: bind `127.0.0.1:0` with a tiny
       `tokio` HTTP listener (no framework; read the first line, reply with a "You can close this tab" page,
       shut down). State parameter checked.
 - [ ] Open the system browser with `tauri-plugin-opener`. Time out after 5 minutes.
-- [ ] Tokens (refresh + access + expiry) in the keyring as JSON under `tern-mail/<email>/oauth`. Never in SQLite.
+- [x] Tokens (refresh + access + expiry) in the keyring as JSON under `tern-mail/<email>/oauth`. Never in SQLite.
 - [ ] Refresh 5 minutes before expiry, on demand when a server rejects a token, and once at startup. One refresh in flight per account.
 - [ ] `invalid_grant` (user revoked) → account state `auth-failed`, UI banner with "Sign in again".
-- [ ] Provider table: `google` now; `microsoft` in Sprint 11. Each has `auth_url`, `token_url`, `scopes`, `client_id`, `client_secret?`.
+- [x] Provider table: `google` now; `microsoft` in Sprint 11. Each has `auth_url`, `token_url`, `scopes`, `client_id`, `client_secret?`.
 
 ### XOAUTH2 (IMAP choice only)
 - [ ] SASL initial response `base64("user=" email "\x01auth=Bearer " token "\x01\x01")` for IMAP `AUTHENTICATE XOAUTH2` and SMTP `AUTH XOAUTH2`.
@@ -79,8 +79,26 @@ Workspace MX detection and Gmail deep links. Preserve partial-result/sync-covera
 
 ## Decisions
 
-_None yet._
+- 2026-10-19 — **Owner chose Gmail sign-in as the next M2 slice.** The owner setup (test account, Cloud project,
+  desktop client; [Gmail test setup](../research/gmail-test-setup.md)) is not done yet, so this slice builds what
+  needs no credentials: the OAuth core and the probe that collects the decision evidence the moment the client file
+  exists. The Gmail backend itself waits for the confirmed decision.
+- 2026-10-19 — **No `oauth2` crate.** Planned: the `oauth2` crate. Built: `tern_core::oauth`, about 250 lines:
+  PKCE from `ring` (already here through rustls), the authorize URL with `url`, a one-request listener on
+  `127.0.0.1:0` in tokio, and the token calls through `ureq` on the same rustls and platform verifier as the rest
+  of Tern. The crate would bring its own HTTP client and TLS choice for two POSTs. `invalid_grant` is its own error
+  (`oauth::Revoked`), so "sign in again" can be told apart from a network failure.
+- 2026-10-19 — **The probe measures the API side only.** The IMAP side is already known in part: io-imap drops
+  every FETCH that carries X-GM-* items (package 01 probe, docs/research/stack.md), so Gmail over IMAP in Tern is
+  plain IMAP without native labels or threads; the owner's app-password Gmail account shows its sync speed. Building
+  XOAUTH2 just to measure that path is not worth it. The probe asks only for `gmail.modify`, `openid` and `email`.
 
 ## Log
 
-_No sessions yet._
+- 2026-10-19 — OAuth core: `tern_core::oauth` (provider table with Google, PKCE, authorize URL, loopback listener
+  with state check and 5-minute limit, code exchange and refresh, ID-token email, `Revoked`) with tests against the
+  RFC 7636 vector, a real listener and a fake token server; `secrets::set_tokens/tokens` (`<email>/oauth` in the
+  keyring). `examples/gmail_probe.rs` signs in through the browser and prints the API half of the comparison as a
+  table (mailbox size, labels, first screen of 100 inbox messages, history.list, quota used, full-backfill
+  estimate). Not run yet: it needs `secrets/google-client.json`. Not wired into the app: sign-in UI, refresh
+  scheduling, `auth-failed` banner (they follow the decision).

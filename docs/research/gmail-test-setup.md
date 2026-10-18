@@ -33,9 +33,8 @@ Follow [Gmail OAuth → Setup](gmail-oauth.md#setup-owner-during-m0), with these
       May 1, 2026 (see the decision checklist).
 - [ ] Enable **Gmail API**.
 - [ ] Audience: External, publishing status **Testing**, test user = the test account.
-- [ ] Scopes: add **both** `https://mail.google.com/` (IMAP path) and
-      `https://www.googleapis.com/auth/gmail.modify` (API path), plus `openid` and `email`. Both are needed
-      only so the probe can compare; the shipped app requests one, per the decision.
+- [ ] Scopes: `https://www.googleapis.com/auth/gmail.modify`, plus `openid` and `email`. (Updated 2026-10-19:
+      the IMAP side is measured with the app-password account, so `https://mail.google.com/` isn't needed.)
 - [ ] OAuth client: **Desktop app**, named `Tern desktop`. Download its JSON.
 - [ ] In APIs & Services → Gmail API → Quotas, note the per-user and per-project limits shown for this project.
 
@@ -48,6 +47,15 @@ Follow [Gmail OAuth → Setup](gmail-oauth.md#setup-owner-during-m0), with these
       the probe signs in through the browser consent screen.
 
 Refresh tokens in Testing mode expire after 7 days; expect to re-consent weekly while probing.
+
+## 5. Run the probe
+
+```sh
+cargo run --release -p tern-core --example gmail_probe -- secrets/google-client.json
+```
+
+The browser opens; sign in as the test account and allow access ("Google hasn't verified this app" is expected
+while in Testing: Advanced → Go to Tern). The probe only reads. Paste the table it prints into the decision record.
 
 ## Status
 
