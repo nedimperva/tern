@@ -1078,10 +1078,11 @@ impl Store {
         )?)
     }
 
-    /// Mail worth a notification: unread, in an inbox's Important split, newer than `after` (a message id) and dated from `since` on
-    /// (older mail arriving during a first sync or a backfill is not news). Mail from the account's own address
-    /// and muted conversations are left out. Also returns the newest message id, for the next `after`.
-    pub fn new_mail(&self, after: i64, since: i64) -> Result<(i64, Vec<NewMail>)> {
+    /// Mail worth a notification: unread, in an inbox's Important split (or Other too, with `other`), newer than
+    /// `after` (a message id) and dated from `since` on (older mail arriving during a first sync or a backfill is
+    /// not news). Mail from the account's own address, snoozed and muted conversations are left out. Also returns
+    /// the newest message id, for the next `after`.
+    pub fn new_mail(&self, after: i64, since: i64, other: bool) -> Result<(i64, Vec<NewMail>)> {
         let conn = self.conn();
         let newest: i64 = conn.query_row("SELECT COALESCE(max(id), 0) FROM messages", [], |r| r.get(0))?;
         let mut stmt = conn.prepare_cached(&format!(
@@ -1090,11 +1091,11 @@ impl Store {
              WHERE m.id > ?1 AND m.id <= ?3 AND m.date >= ?2 AND f.role = 'inbox' AND NOT m.seen
                AND lower(m.from_addr) <> lower(a.email)
                AND NOT EXISTS (SELECT 1 FROM muted u WHERE u.account_id = m.account_id AND u.thread_id = m.thread_id)
-               AND NOT {IS_OTHER} AND NOT {IS_SNOOZED}
+               AND (?4 OR NOT {IS_OTHER}) AND NOT {IS_SNOOZED}
              ORDER BY m.id"
         ))?;
         let mail = stmt
-            .query_map(params![after, since, newest], |r| {
+            .query_map(params![after, since, newest, other], |r| {
                 Ok(NewMail {
                     id: r.get(0)?,
                     account_id: r.get(1)?,
@@ -3226,19 +3227,19 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn new_mail_is_unread_recent_inbox_mail_from_others() {
         let (store, account, inbox, archive) = setup();
         store.insert_messages(account, inbox, &[message(1, "old", 100)]).unwrap();
-        let (mark, none) = store.new_mail(0, 1_000).unwrap();
+        let (mark, none) = store.new_mail(0, 1_000, false).unwrap();
         assert!(none.is_empty(), "too old to be news");
         let mine = NewMessage { from_addr: "Me@Example.com".into(), ..message(2, "mine", 2_000) };
         let read = NewMessage { seen: true, ..message(3, "read", 2_000) };
         store.insert_messages(account, inbox, &[message(4, "news", 2_000), mine, read]).unwrap();
         store.insert_messages(account, archive, &[message(5, "elsewhere", 2_000)]).unwrap();
-        let (next, mail) = store.new_mail(mark, 1_000).unwrap();
+        let (next, mail) = store.new_mail(mark, 1_000, false).unwrap();
         assert_eq!(mail.iter().map(|m| m.subject.as_str()).collect::<Vec<_>>(), ["news"]);
-        assert!(store.new_mail(next, 1_000).unwrap().1.is_empty(), "each message is news once");
+        assert!(store.new_mail(next, 1_000, false).unwrap().1.is_empty(), "each message is news once");
         assert_eq!(store.inbox_unread().unwrap(), 3);
         assert_eq!(store.accounts_with_mail().unwrap(), [account]);
         store.mute(&[mail[0].id], true).unwrap();
-        assert!(store.new_mail(mark, 1_000).unwrap().1.is_empty(), "muted");
+        assert!(store.new_mail(mark, 1_000, false).unwrap().1.is_empty(), "muted");
     }
 
     fn mail_to_me(uid: u32, from: &str, to: &str, cc: &str) -> NewMessage {
@@ -3746,6 +3747,11 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         assert!(subjects(&store, OTHER).is_empty(), "the sender's later mail follows");
         store.set_split(&[sale], true).unwrap();
         assert_eq!(subjects(&store, IMPORTANT), ["hello"]);
+        let news = |other| -> Vec<String> {
+            store.new_mail(0, 0, other).unwrap().1.into_iter().map(|m| m.subject).collect()
+        };
+        assert_eq!(news(false), ["hello"], "Other stays quiet unless asked");
+        assert_eq!(news(true).len(), 3);
         // Archiving from Other takes the conversation out of the inbox.
         store
             .apply(
@@ -3770,7 +3776,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         assert_eq!((snoozed[0].latest.subject.as_str(), snoozed[0].snoozed_until), ("later", Some(5_000)));
         assert!(store.wake_snoozed(4_999).unwrap().is_empty());
         assert!(
-            store.new_mail(0, 0).unwrap().1.iter().all(|m| m.subject == "now"),
+            store.new_mail(0, 0, false).unwrap().1.iter().all(|m| m.subject == "now"),
             "no notice while snoozed"
         );
         let woke = store.wake_snoozed(5_000).unwrap();
