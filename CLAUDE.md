@@ -17,6 +17,10 @@ decisions that aren't visible from the code.
   login start and `mailto:`. Package 05's basics: Important/Other splits and a local snooze (see its Decisions).
   Common-word search walks the date index (package 06 Decisions) and basic snippets (`;` in compose, package 07).
   Owner acceptance is tracked in `docs/acceptance/m1-alpha.md`; the owner ticks it.
+  Package 14's Linux distribution slice: the AppImage and Windows builds update themselves from signed releases
+  (`src-tauri/src/update.rs`; .deb/.rpm/AUR never do), release notes come from `CHANGELOG.md` (a tag without its
+  section fails), and `packaging/aur/tern-bin` repackages the `.deb`. Releases are no longer pre-releases: the
+  updater reads `releases/latest`. The signing key lives in the repo secrets and the owner's `~/.tauri/`.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items, so Gmail goes through the Gmail API (also provisional), not IMAP.
@@ -95,7 +99,7 @@ policy review. No implementation or real-provider acceptance was completed by th
 ## Linux / Omarchy notes
 
 - System packages (Arch):
-  `sudo pacman -S --needed base-devel rustup nodejs npm webkit2gtk-4.1 libappindicator-gtk3 librsvg openssl gnome-keyring libsecret`
+  `sudo pacman -S --needed base-devel rustup nodejs npm webkit2gtk-4.1 libayatana-appindicator librsvg openssl gnome-keyring libsecret`
   then `rustup default stable`.
 - Passwords use the Secret Service D-Bus API (`keyring` feature `sync-secret-service`). That needs a running
   provider such as gnome-keyring with an unlocked "login" collection. If saving a password fails with "no such
