@@ -1223,9 +1223,10 @@ mod tests {
         pause.send(false).unwrap();
         assert_eq!(next(&mut states).await, SyncState::Connecting);
         assert_eq!(next(&mut states).await, SyncState::Offline);
-        // In the retry wait: pausing takes effect without waiting for the next try.
+        // In the retry wait: pausing takes effect without waiting for the next try. A retry may report first
+        // (another test's `network_back` restarts every worker), so look for Paused within the time limit.
         pause.send(true).unwrap();
-        assert_eq!(next(&mut states).await, SyncState::Paused);
+        while next(&mut states).await != SyncState::Paused {}
     }
 
     #[tokio::test]
