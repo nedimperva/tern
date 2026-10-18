@@ -88,7 +88,7 @@ Trigram index, warm-cache startup (keep if it is under a day).
 - 2026-10-18 — **Other has a 5 ms target for now (measured 2.25 ms).** It scans inbox rows and keeps the ~1 in 12
   that are bulk mail or from senders moved there, with a sender lookup per row. A partial index on bulk mail
   can't serve it alone, because moving a sender overrides `bulk` both ways; the fix is a rewrite of the split
-  filter, worth its own slice. **Owner:** keep 5 ms for Other, or make that rewrite the next performance task?
+  filter, worth its own slice. **Owner (2026-10-18): keep 5 ms.**
 - 2026-10-18 — **CI runs `store_bench` with targets ×3** (`TERN_BENCH_SLACK=3`, Linux only). The first CI run was
   about twice as fast as the laptop (Other 1.1 ms, conversation pages 0.3–0.45 ms), but shared runners vary from
   run to run, so the step catches regressions of several times, not fractions. The reference evidence is the run

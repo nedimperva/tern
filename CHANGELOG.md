@@ -7,17 +7,31 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-18
+
+The first release that updates itself (AppImage and Windows); 0.3.1 and earlier need this one installed by hand.
+
 ### Added
 
 - The AppImage and the Windows installers update themselves: a new version downloads in the background, its
   signature is checked, and "Restart to update" in the status strip installs it. `.deb`, `.rpm` and AUR installs
   are updated by their package manager.
 - An AUR package, `tern-bin`, built from the release's `.deb`.
+- Pause sync, from the tray, the command palette or the status strip: Tern signs out and changes wait until you
+  resume. A restart resumes.
+- The tray icon shows a dot while an inbox has unread mail.
+- A notification about one conversation has Archive and Reply buttons (Linux).
+- Settings → Desktop: notify for Important mail only (the default) or for Other too, and quiet hours.
+- The launcher entry has a Compose action (`tern --compose`), and Tern is listed under Internet / Email.
+- "Downloading mail: 12,400 of 48,210" in the status strip while a big mailbox comes down; the search note says
+  how many messages have their text here.
 
 ### Changed
 
 - Releases are published as normal releases rather than pre-releases, so the updater can find the latest one.
 - Clicking a search result opens that message; a snippet whose shortcut is already taken says so on its row.
+- Conversation lists are about a third faster on big mailboxes.
+- When the system keyring refuses a password on Linux, the error says what to install and check.
 - Vite 8, TypeScript 7, rusqlite 0.40 and newer Tauri packages.
 
 ## [0.3.1] - 2026-10-16
@@ -59,7 +73,8 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/nedimperva/tern/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/nedimperva/tern/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/nedimperva/tern/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nedimperva/tern/releases/tag/v0.2.0
