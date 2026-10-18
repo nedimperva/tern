@@ -9,7 +9,7 @@ description = "Package 01 decision gate: the same IMAP checks with async-imap an
 [dependencies]
 anyhow = "1"
 async-imap = { version = "0.12", default-features = false, features = ["runtime-tokio"] }
-base64 = "0.22"
+base64 = "0.23"
 futures = "0.3"
 io-imap = "0.7"
 io-sasl = { version = "0.1", default-features = false }
