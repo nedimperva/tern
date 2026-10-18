@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest an idea for Tern.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The problem or workflow, before any solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you imagine it working, including any keyboard shortcut.
+  - type: textarea
+    id: other
+    attributes:
+      label: Anything else
+      description: Other mail clients that do this well, screenshots, links.

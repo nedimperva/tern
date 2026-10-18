@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in Tern doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please don't include passwords, real addresses or message content you wouldn't want public.
+        For a security problem, use [a private report](https://github.com/nedimperva/tern/security/advisories/new) instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Press …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Tern version
+      description: Shown in Settings, or the release you installed.
+      placeholder: 0.3.1
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux (Wayland)
+        - Linux (X11)
+        - Windows 11
+        - Windows 10
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution and desktop
+      description: For Linux, e.g. Arch + Hyprland, Ubuntu 24.04 + GNOME.
+  - type: input
+    id: provider
+    attributes:
+      label: Mail provider or server
+      description: For example Fastmail, Gmail, Dovecot, Stalwart. Leave out your own domain if you like.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Remove anything private first.

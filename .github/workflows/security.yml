@@ -1,0 +1,58 @@
+name: security
+
+# Known-vulnerability checks for the Rust and npm dependencies, plus CodeQL code scanning.
+# Runs weekly too, because new advisories appear without any change here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths: ["Cargo.lock", "package-lock.json", ".github/workflows/security.yml"]
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      # Unmaintained/unsound warnings come from the GTK stack Tauri needs on Linux; only real
+      # vulnerabilities fail the job.
+      - name: cargo audit
+        run: cargo audit
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=moderate
+
+  codeql:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, rust, actions]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}
