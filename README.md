@@ -1,43 +1,76 @@
+<div align="center">
+
 # Tern
 
-A fast, local-first, keyboard-first mail app: Linux first, then Windows. The initial supported-provider
-target is Fastmail, followed by Gmail through one selected backend; custom IMAP is experimental.
+**A fast, local-first, keyboard-first mail client for any IMAP account.**
 
-**Development status:** the frontend builds, but engine compilation, desktop runtime and real-account
-acceptance are still pending. The behavior described below is the intended design, not a production-readiness claim.
-See [the milestone roadmap](docs/PLAN.md): safe foundation → Linux private alpha → focused Linux beta →
-Windows release → expansion. Windows compile/test checks start in the foundation phase. Optional AI
-remains planned, off by default, and does not gate the core mail releases; calendar and advanced provider/preview features follow later.
+[![check](https://github.com/nedimperva/tern/actions/workflows/check.yml/badge.svg)](https://github.com/nedimperva/tern/actions/workflows/check.yml)
+[![release](https://img.shields.io/github/v/release/nedimperva/tern?include_prereleases&sort=semver)](https://github.com/nedimperva/tern/releases)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Everything you see comes from a SQLite database on your device, so lists, threads and search never wait on the network.
-When you archive, star or send, the change shows immediately and goes to the server in the background after a
-5-second undo window. If you're offline, it goes once you're back.
+Linux first, then Windows · Rust · Tauri 2 · SolidJS · SQLite
 
-## Layout
+</div>
 
-```
-crates/tern-core/        the engine (Rust, no UI)
-  src/store.rs           SQLite schema, list/thread/search queries, the outbox with undo
-  src/sync.rs            IMAP sync worker: folders, new mail, flags, sending the outbox
-  src/imap.rs            the only code that talks to the IMAP library (io-imap)
-  src/mime.rs            parsing raw messages
-  src/smtp.rs            sending
-  src/secrets.rs         passwords in Credential Manager / Secret Service / Keychain
-  src/presets.rs         server settings for well-known providers
-  examples/store_bench.rs  timings on a 50,000-message mailbox
-src-tauri/               the desktop shell: commands the UI calls, one sync worker per account
-src/                     the UI (SolidJS): virtualized list, thread view, compose, command bar
-```
+> [!WARNING]
+> **Tern is early alpha software (0.3.x).** It syncs and sends real mail and its author uses it every day, but
+> expect rough edges. Try it with a test account, or keep another mail client around. Installers are not
+> code-signed yet and there is no auto-update.
 
-## Setup
+## Why Tern
 
-**Windows**
+Everything you see comes from a SQLite database on your device, so lists, threads and search never wait on the
+network. When you archive, star or send, the change shows at once and goes to the server in the background after
+a 5-second undo window. If you're offline, it goes once you're back.
+
+## Features
+
+- **Any IMAP/SMTP account.** IDLE for new mail, QRESYNC for fast resyncs, headers first so the inbox fills quickly.
+  Gmail works over IMAP with an app password; Gmail sign-in (OAuth) is planned.
+- **Keyboard first.** Gmail-style keys and a command bar (`Ctrl K`) for every action. See [Keys](#keys).
+- **Undo everything.** Archive, move, star and send wait 5 seconds before reaching the server; `z` takes them back.
+  A send that may already have gone out is never retried on its own.
+- **Triage.** Important / Other splits, local snooze, and fast full-text search with filters.
+- **Compose.** Drafts, attachments, signatures, address autocomplete, snippets (`;`) and quoting a selection.
+- **Desktop integration.** Tray icon, notifications, background running, start at login and `mailto:` links.
+- **Private by default.** Remote images are blocked until you load them, mail HTML runs without scripts, sender
+  logos are off unless you turn them on, and there is no telemetry.
+
+## Install
+
+Download the latest build from [Releases](https://github.com/nedimperva/tern/releases):
+
+| System | File |
+|---|---|
+| Linux | `.AppImage` (any distro), `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE) |
+| Windows 10/11 | `-setup.exe` or `.msi` |
+
+On Linux, passwords are kept by the Secret Service, so a keyring such as gnome-keyring or KWallet must be running
+and unlocked. On Windows, SmartScreen warns on first run because the installer is not signed yet; choose
+"More info" → "Run anyway".
+
+## Security and privacy
+
+- Passwords live only in the OS keyring (Credential Manager, Secret Service or Keychain), never in the database or
+  in files.
+- IMAP and SMTP use TLS (rustls with the platform's certificate verifier). Nothing links OpenSSL.
+- Mail HTML is untrusted: it renders in a sandboxed frame with no scripts, under a content security policy that
+  blocks remote content until you choose "Load images". Links open in your browser.
+- Unless you load a message's images or turn on sender logos, Tern talks only to your mail servers. It sends no
+  analytics or crash reports.
+
+Found a vulnerability? Please report it privately; see [SECURITY.md](SECURITY.md).
+
+## Building from source
+
+
+### Windows
 
 1. Install Rust from https://rustup.rs, using the default MSVC toolchain.
 2. Install the Visual Studio Build Tools with the "Desktop development with C++" workload. On Windows 11 the WebView2
    runtime is already there.
 
-**Linux (Arch, including Omarchy)**
+### Linux (Arch, including Omarchy)
 
 ```sh
 sudo pacman -S --needed base-devel rustup nodejs npm webkit2gtk-4.1 libappindicator-gtk3 librsvg \
@@ -49,7 +82,7 @@ Passwords are stored through the Secret Service, so a keyring such as gnome-keyr
 On Wayland, Tern sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` itself, because WebKitGTK's DMA-BUF renderer can leave
 the window blank or crash on some setups (NVIDIA among them). Set the variable to `0` before starting Tern to opt out.
 
-**Linux (Debian/Ubuntu)**
+### Linux (Debian/Ubuntu)
 
 ```sh
 sudo apt install build-essential curl wget file libssl-dev pkg-config \
@@ -57,7 +90,7 @@ sudo apt install build-essential curl wget file libssl-dev pkg-config \
 curl https://sh.rustup.rs -sSf | sh
 ```
 
-**Then, on either system:**
+### Then, on any system
 
 ```sh
 npm install
@@ -91,13 +124,6 @@ scripts/dev-mail-server.sh tern       # npm run tauri dev, trusting the test CA
 CI (`.github/workflows/check.yml`) runs on every pull request, on Linux and Windows: the frontend build, then
 `cargo fmt --check` (Linux), `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`.
 Run the same before pushing. The Linux job installs the Debian/Ubuntu packages listed above.
-
-## Releases
-
-Bump the version (package.json, tauri.conf.json and both Cargo.toml files), merge, then push a tag such as `v0.2.1`.
-The `release` workflow builds the Windows installer (`-setup.exe` and `.msi`) and the Linux AppImage, `.deb` and
-`.rpm`, and attaches them to a draft pre-release. Publish the draft on GitHub to make it visible. The installers
-are not code-signed yet, so Windows SmartScreen warns on first run, and there is no auto-update.
 
 ## Keys
 
@@ -134,12 +160,34 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 | Opening a thread | < 50 ms |
 | Archiving 50 messages | < 20 ms |
 
-## Next
+## Project layout
 
-The roadmap controls delivery order; these are engine/UI work items, not a fixed weekly schedule.
-Choose the initial Gmail transport through the early [decision gate](docs/research/gmail-backend-decision.md).
 
-- Real-provider acceptance (Fastmail or another test account) for sync, compose, drafts and attachments
-- Gmail through the chosen backend, with OAuth; Microsoft later (it no longer accepts passwords)
-- Snippets, snooze and basic splits for the beta
-- Notifications, a tray icon, `mailto:`, starting at login, and Linux packages
+```
+crates/tern-core/        the engine (Rust, no UI)
+  src/store.rs           SQLite schema, list/thread/search queries, the outbox with undo
+  src/sync.rs            IMAP sync worker: folders, new mail, flags, sending the outbox
+  src/imap.rs            the only code that talks to the IMAP library (io-imap)
+  src/mime.rs            parsing raw messages
+  src/smtp.rs            sending
+  src/secrets.rs         passwords in Credential Manager / Secret Service / Keychain
+  src/presets.rs         server settings for well-known providers
+  examples/store_bench.rs  timings on a 50,000-message mailbox
+src-tauri/               the desktop shell: commands the UI calls, one sync worker per account
+src/                     the UI (SolidJS): virtualized list, thread view, compose, command bar
+```
+
+## Roadmap
+
+Delivery follows milestones: safe foundation → Linux private alpha → focused Linux beta → Windows release →
+expansion. Tern is in the Linux beta now. Next up are Gmail sign-in, wider provider testing and Linux packaging.
+Optional AI (off by default), calendar and more providers come later. See [docs/PLAN.md](docs/PLAN.md).
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first, and please follow
+the [code of conduct](CODE_OF_CONDUCT.md).
+
+## License
+
+[MIT](LICENSE) © Nedim Perva

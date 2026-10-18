@@ -1,0 +1,31 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      cargo:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # Pinned exactly on purpose; see CLAUDE.md (io-imap) and Cargo.lock (rust-ini).
+      - dependency-name: io-imap
+      - dependency-name: rust-ini
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      npm:
+        patterns: ["*"]
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
