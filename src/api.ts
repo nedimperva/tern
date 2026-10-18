@@ -66,7 +66,7 @@ export type ThreadRow = MessageRow & {
   snoozedUntil: number | null;
 };
 /** Where an account's sync stands. */
-export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed";
+export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed" | "paused";
 /** "junk" marks spam; "inbox" is Mark Not Done; `moveTo` takes a folder id (folders of other accounts are skipped). */
 export type Action =
   | "archive"
@@ -235,7 +235,11 @@ export interface Api {
     compose: () => void;
     mailto: (m: Mailto) => void;
     openMail: (m: NewMail) => void;
+    /** A notification's Reply: open the conversation and reply to it. */
+    reply: (m: NewMail) => void;
   }): void;
+  /** Pauses or resumes sync for every account (also in the tray); `onSyncState` reports "paused" per account. */
+  setSyncPaused(on: boolean): Promise<void>;
   /** The `mailto:` link Tern was started with, if any (once). */
   takeMailto(): Promise<Mailto | null>;
   autostart(): Promise<boolean>;
@@ -370,9 +374,11 @@ const tauri: Api = {
     void listen("compose", () => h.compose());
     void listen<Mailto>("mailto", (e) => h.mailto(e.payload));
     void listen<NewMail>("open-mail", (e) => h.openMail(e.payload));
+    void listen<NewMail>("reply-mail", (e) => h.reply(e.payload));
     void listen("quit", () => void tauri.quit());
   },
   takeMailto: () => invoke("take_mailto"),
+  setSyncPaused: (on) => invoke("set_sync_paused", { on }),
   setSplit: (ids, other) => invoke("set_split", { ids, other }),
   splitUnread: () => invoke("split_unread"),
   snooze: (ids, due) => invoke("snooze", { ids, due }),
@@ -496,6 +502,7 @@ function fake(): Api {
     };
   });
   const listeners: (() => void)[] = [];
+  const stateListeners: ((accountId: number, state: SyncState) => void)[] = [];
   let waiting: OutboxWaiting[] =
     location.hash === "#offline"
       ? [
@@ -719,8 +726,9 @@ function fake(): Api {
     networkBack: () => {},
     onChange: (f) => void listeners.push(f),
     // Open the page with #offline to see how a lost connection looks.
-    syncStates: async () => ({ 1: location.hash === "#offline" ? "offline" : "idle" }),
-    onSyncState: () => {},
+    syncStates: async () => ({ 1: location.hash === "#offline" ? "offline" : location.hash === "#paused" ? "paused" : "idle" }),
+    onSyncState: (f) => void stateListeners.push(f),
+    setSyncPaused: async (on) => stateListeners.forEach((f) => f(1, on ? "paused" : "idle")),
     checkFolder: async () => {},
     mute: async (ids, mute) => {
       for (const m of messages.filter((m) => ids.includes(m.id))) {

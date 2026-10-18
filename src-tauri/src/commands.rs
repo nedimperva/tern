@@ -535,6 +535,12 @@ pub fn quit(app: AppHandle) {
     app.exit(0);
 }
 
+/// Pauses or resumes sync for every account; the "sync-state" events say when each one has.
+#[tauri::command]
+pub fn set_sync_paused(app: AppHandle, on: bool) {
+    crate::desktop::set_paused(&app, on);
+}
+
 /// The version of Tern downloaded and waiting for a restart, if any.
 #[tauri::command]
 pub fn update_ready(app: AppHandle) -> Option<String> {

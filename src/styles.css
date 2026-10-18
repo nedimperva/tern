@@ -1695,6 +1695,16 @@ button.fold {
 .setting.snippet {
   grid-template-columns: 1fr;
 }
+.quiet-hours {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
+.quiet-hours input {
+  font-size: var(--t-rd);
+}
 .snippet-head {
   display: flex;
   gap: var(--s-2);

@@ -5,24 +5,35 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Wry};
 use tern_core::mailto::{self, Mailto};
-use tern_core::NewMail;
+use tern_core::{NewMail, Store};
 
 use crate::AppState;
 
 /// The argument the login item starts Tern with: straight to the tray, no window.
 pub const HIDDEN: &str = "--hidden";
+/// The launcher's Compose action (`tern.desktop`): open with a new message.
+pub const COMPOSE: &str = "--compose";
 
 /// Mail older than this is not news, even if it only arrived now (a first sync, a backfill, a catch-up).
 const NEWS_WINDOW: i64 = 24 * 3600;
 /// A new account's first sync brings in a whole inbox; stay quiet while it does.
 const QUIET_AFTER_FIRST_MAIL: Duration = Duration::from_secs(60);
 
+const TRAY: &[u8] = include_bytes!("../icons/tray.png");
+/// The same icon with a dot: unread mail in an inbox.
+const TRAY_UNREAD: &[u8] = include_bytes!("../icons/tray-unread.png");
+
 pub struct Desktop {
     tray: Mutex<Option<TrayIcon<Wry>>>,
+    /// Pause sync / Resume sync, renamed as it toggles.
+    pause_item: Mutex<Option<MenuItem<Wry>>>,
+    /// Whether the tray shows the dot now, so the icon is only set when that changes.
+    dot: Mutex<Option<bool>>,
     /// A `mailto:` link Tern was started with, until the window asks for it.
     pending: Mutex<Option<Mailto>>,
     news: Mutex<News>,
@@ -38,7 +49,13 @@ struct News {
 
 impl Desktop {
     pub fn new() -> Self {
-        Desktop { tray: Mutex::new(None), pending: Mutex::new(None), news: Mutex::new(News::default()) }
+        Desktop {
+            tray: Mutex::new(None),
+            pause_item: Mutex::new(None),
+            dot: Mutex::new(None),
+            pending: Mutex::new(None),
+            news: Mutex::new(News::default()),
+        }
     }
 }
 
@@ -54,12 +71,14 @@ pub fn show(app: &AppHandle) {
 /// Builds the tray. Without a tray host (a Hyprland setup with no Waybar tray, say) this does nothing visible;
 /// starting Tern again still brings the window back.
 pub fn tray(app: &AppHandle) -> tauri::Result<()> {
+    let pause = MenuItem::with_id(app, "pause", "Pause sync", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[
             &MenuItem::with_id(app, "open", "Open Tern", true, None::<&str>)?,
             &MenuItem::with_id(app, "compose", "Compose", true, None::<&str>)?,
             &MenuItem::with_id(app, "check", "Check for mail", true, None::<&str>)?,
+            &pause,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "quit", "Quit Tern", true, None::<&str>)?,
         ],
@@ -75,6 +94,7 @@ pub fn tray(app: &AppHandle) -> tauri::Result<()> {
                 let _ = app.emit("compose", ());
             }
             "check" => app.state::<AppState>().wake_all(),
+            "pause" => set_paused(app, !paused(app)),
             "quit" => quit(app),
             _ => {}
         })
@@ -89,12 +109,25 @@ pub fn tray(app: &AppHandle) -> tauri::Result<()> {
                 show(tray.app_handle());
             }
         });
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
+    builder = builder.icon(Image::from_bytes(TRAY)?);
     let tray = builder.build(app)?;
-    *app.state::<Desktop>().tray.lock().unwrap() = Some(tray);
+    let desktop = app.state::<Desktop>();
+    *desktop.tray.lock().unwrap() = Some(tray);
+    *desktop.pause_item.lock().unwrap() = Some(pause);
     Ok(())
+}
+
+fn paused(app: &AppHandle) -> bool {
+    app.try_state::<AppState>().is_some_and(|s| *s.pause.borrow())
+}
+
+/// Pauses or resumes every account's sync, from the tray, the palette or the status strip.
+pub fn set_paused(app: &AppHandle, on: bool) {
+    let Some(state) = app.try_state::<AppState>() else { return };
+    state.pause.send_replace(on);
+    if let Some(item) = app.state::<Desktop>().pause_item.lock().unwrap().as_ref() {
+        let _ = item.set_text(if on { "Resume sync" } else { "Pause sync" });
+    }
 }
 
 /// Asks the window to save what is being written and then quit; quits anyway if it does not answer.
@@ -158,10 +191,39 @@ fn wake_snoozed(app: &AppHandle) -> anyhow::Result<()> {
         state.wake(*account);
     }
     let _ = app.emit("mail-changed", ());
-    if state.store.settings()?.get("notify").and_then(|v| v.as_bool()).unwrap_or(true) {
+    if Notices::read(&state.store)?.now() {
         notify(app, &back, true);
     }
     Ok(())
+}
+
+/// The notification settings: on or off, Other too, and quiet hours ("HH:MM" local time, empty for none).
+struct Notices {
+    on: bool,
+    other: bool,
+    quiet_from: String,
+    quiet_to: String,
+}
+
+impl Notices {
+    fn read(store: &Store) -> anyhow::Result<Self> {
+        let settings = store.settings()?;
+        let flag = |key: &str, default| settings.get(key).and_then(|v| v.as_bool()).unwrap_or(default);
+        let text = |key: &str| settings.get(key).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        Ok(Notices {
+            on: flag("notify", true),
+            other: flag("notifyOther", false),
+            quiet_from: text("quietFrom"),
+            quiet_to: text("quietTo"),
+        })
+    }
+
+    /// Whether a notification may show now. Mail that arrives in quiet hours is not saved up for later.
+    fn now(&self) -> bool {
+        use chrono::Timelike;
+        let t = chrono::Local::now();
+        self.on && !tern_core::triage::quiet(t.hour() * 60 + t.minute(), &self.quiet_from, &self.quiet_to)
+    }
 }
 
 /// After sync changed something: notify about mail that just arrived, and update the tray's unread count. Runs
@@ -184,10 +246,17 @@ fn look(app: &AppHandle) -> anyhow::Result<()> {
         let unread = store.inbox_unread()?;
         let _ =
             tray.set_tooltip(Some(if unread > 0 { format!("Tern: {unread} unread") } else { "Tern".into() }));
+        let mut dot = desktop.dot.lock().unwrap();
+        if *dot != Some(unread > 0) {
+            *dot = Some(unread > 0);
+            let _ = tray.set_icon(Some(Image::from_bytes(if unread > 0 { TRAY_UNREAD } else { TRAY })?));
+        }
     }
+    let notices = Notices::read(store)?;
     let mut news = desktop.news.lock().unwrap();
     let first = news.after.is_none();
-    let (newest, mail) = store.new_mail(news.after.unwrap_or(i64::MAX), now() - NEWS_WINDOW)?;
+    let (newest, mail) =
+        store.new_mail(news.after.unwrap_or(i64::MAX), now() - NEWS_WINDOW, notices.other)?;
     news.after = Some(newest);
     if first {
         // What is here at start is not news, and accounts that already have mail are past their first sync.
@@ -205,10 +274,23 @@ fn look(app: &AppHandle) -> anyhow::Result<()> {
         })
         .collect();
     drop(news);
-    let on = store.settings()?.get("notify").and_then(|v| v.as_bool()).unwrap_or(true);
-    if on && !mail.is_empty() {
+    if !mail.is_empty() && notices.now() {
         notify(app, &mail, false);
     }
+    Ok(())
+}
+
+/// Archives a notification's conversation through the outbox, as `e` in the inbox would.
+#[cfg(target_os = "linux")]
+fn archive(app: &AppHandle, m: &NewMail) -> anyhow::Result<()> {
+    use tern_core::{Action, ListTarget};
+    let state = app.state::<AppState>();
+    let ids = state.store.conversation_ids(&[m.id], Action::Archive, &ListTarget::Role("inbox".into()))?;
+    let applied = state.store.apply(&ids, Action::Archive, crate::UNDO_SECONDS)?;
+    for account in &applied.accounts {
+        state.wake(*account);
+    }
+    let _ = app.emit("mail-changed", ());
     Ok(())
 }
 
@@ -241,6 +323,10 @@ fn notify(app: &AppHandle, mail: &[NewMail], snoozed: bool) {
     #[cfg(target_os = "linux")]
     {
         note.icon("mail-unread").action("default", "Open");
+        // One conversation can be dealt with from the notification itself.
+        if one {
+            note.action("archive", "Archive").action("reply", "Reply");
+        }
     }
     #[cfg(windows)]
     {
@@ -252,11 +338,21 @@ fn notify(app: &AppHandle, mail: &[NewMail], snoozed: bool) {
             // Clicking the notification opens that conversation. The wait blocks, so it gets its own thread.
             let app = app.clone();
             std::thread::spawn(move || {
-                handle.wait_for_action(|action| {
-                    if action == "default" {
+                handle.wait_for_action(|action| match action {
+                    "default" => {
                         show(&app);
                         let _ = app.emit("open-mail", &latest);
                     }
+                    "reply" => {
+                        show(&app);
+                        let _ = app.emit("reply-mail", &latest);
+                    }
+                    "archive" => {
+                        if let Err(e) = archive(&app, &latest) {
+                            log::warn!("archive from a notification: {e:#}");
+                        }
+                    }
+                    _ => {}
                 })
             });
         }

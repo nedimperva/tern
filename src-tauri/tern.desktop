@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name={{name}}
+GenericName=Mail
+Comment=Fast, local-first mail
+Exec={{exec}} %u
+StartupWMClass={{exec}}
+Icon={{icon}}
+Terminal=false
+Categories=Network;Email;
+Keywords=mail;email;imap;inbox;
+MimeType=x-scheme-handler/mailto;
+Actions=compose;
+
+[Desktop Action compose]
+Name=Compose
+Exec={{exec}} --compose
