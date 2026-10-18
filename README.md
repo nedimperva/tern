@@ -50,6 +50,16 @@ The AppImage and the Windows installers update themselves: a new version downloa
 "Restart to update" appears in the status strip. AUR, `.deb` and `.rpm` installs update through the package
 manager. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
+On Hyprland the window's class is `tern`. It tiles like any window (Tern's minimum is 720×480); to float it
+instead, add a rule to `~/.config/hypr/hyprland.lua` on Omarchy:
+
+```lua
+o.window("^(tern)$", { float = true, center = true, size = { 1280, 820 } })
+```
+
+The launcher entry has a **Compose** action (`tern --compose`), so a launcher such as Walker can start a new
+message directly.
+
 On Linux, passwords are kept by the Secret Service, so a keyring such as gnome-keyring or KWallet must be running
 and unlocked. On Windows, SmartScreen warns on first run because the installer is not signed yet; choose
 "More info" → "Run anyway".

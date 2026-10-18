@@ -26,6 +26,11 @@ export type Settings = {
   background: boolean;
   /** A notification when new mail reaches the inbox (read by the engine too). */
   notify: boolean;
+  /** Notify for the inbox's Other split as well as Important (read by the engine). */
+  notifyOther: boolean;
+  /** Quiet hours, "HH:MM" local time; no notifications from one to the other. Empty: none (read by the engine). */
+  quietFrom: string;
+  quietTo: string;
   /** The inbox in two splits, Important and Other, rather than one list. */
   splitInbox: boolean;
   /** In dark mode, designed mail (newsletters, receipts) darkened like the rest, or left in its own colours. */
@@ -46,6 +51,9 @@ export const DEFAULTS: Settings = {
   signatureBelow: false,
   background: true,
   notify: true,
+  notifyOther: false,
+  quietFrom: "",
+  quietTo: "",
   splitInbox: true,
   darkMail: "darken",
   senderLogos: false,

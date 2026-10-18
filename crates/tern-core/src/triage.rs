@@ -228,9 +228,38 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
+/// Whether `minute` (of the local day, 0..1440) falls in quiet hours from `from` to `to`, both "HH:MM". A range
+/// that passes midnight ("22:00" to "07:00") wraps; an unreadable or empty end, or equal ends, means no quiet hours.
+pub fn quiet(minute: u32, from: &str, to: &str) -> bool {
+    let read = |t: &str| {
+        let (h, m) = t.trim().split_once(':')?;
+        let (h, m): (u32, u32) = (h.parse().ok()?, m.parse().ok()?);
+        (h < 24 && m < 60).then_some(h * 60 + m)
+    };
+    match (read(from), read(to)) {
+        (Some(a), Some(b)) if a < b => (a..b).contains(&minute),
+        (Some(a), Some(b)) if a > b => minute >= a || minute < b,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quiet_hours_wrap_past_midnight() {
+        let at = |h: u32, m: u32| h * 60 + m;
+        assert!(quiet(at(23, 0), "22:00", "07:00"));
+        assert!(quiet(at(6, 59), "22:00", "07:00"));
+        assert!(!quiet(at(7, 0), "22:00", "07:00"));
+        assert!(!quiet(at(12, 0), "22:00", "07:00"));
+        assert!(quiet(at(13, 30), "13:00", "14:00"));
+        assert!(!quiet(at(14, 0), "13:00", "14:00"));
+        assert!(!quiet(at(3, 0), "", "07:00"), "off when an end is missing");
+        assert!(!quiet(at(3, 0), "07:00", "07:00"));
+        assert!(!quiet(at(3, 0), "25:00", "07:00"));
+    }
 
     // Thursday 2026-10-15, 14:30 in Berlin (UTC+2).
     const NOW: i64 = 1_792_022_400 + 12 * 3600 + 30 * 60;

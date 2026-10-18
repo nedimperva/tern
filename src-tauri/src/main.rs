@@ -21,6 +21,9 @@ pub struct AppState {
     pub wakers: Mutex<HashMap<i64, Arc<Notify>>>,
     /// The last `SyncState` each account's worker reported, for a window that asks after the event went out.
     pub states: Arc<Mutex<HashMap<i64, SyncState>>>,
+    /// Every account's sync worker waits while this is true (Pause sync). Not kept across restarts, so a
+    /// forgotten pause can't stop mail for good.
+    pub pause: tokio::sync::watch::Sender<bool>,
 }
 
 /// What the "sync-state" event carries.
@@ -73,6 +76,7 @@ pub fn start_account(app: &AppHandle, state: &AppState, account: Account) {
         account,
         password,
         wake,
+        state.pause.subscribe(),
         on_change,
         on_state,
     ));
@@ -91,7 +95,12 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     tauri::Builder::default()
         // First, so a second start hands over its link (or just brings the window back) and exits.
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| desktop::show(app)))
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            desktop::show(app);
+            if argv.iter().any(|a| a == desktop::COMPOSE) {
+                let _ = app.emit("compose", ());
+            }
+        }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -105,7 +114,12 @@ fn main() {
         .setup(|app| {
             use tauri_plugin_deep_link::DeepLinkExt;
             let links = app.deep_link().get_current().ok().flatten().unwrap_or_default();
-            desktop::started_with(app.handle(), &links.iter().map(|u| u.to_string()).collect::<Vec<_>>());
+            let mut links: Vec<String> = links.iter().map(|u| u.to_string()).collect();
+            // The launcher's Compose action: a new message, as an empty mailto: link would open.
+            if std::env::args().any(|a| a == desktop::COMPOSE) {
+                links.push("mailto:".into());
+            }
+            desktop::started_with(app.handle(), &links);
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
                 desktop::open_links(&handle, &event.urls().iter().map(|u| u.to_string()).collect::<Vec<_>>())
@@ -123,6 +137,7 @@ fn main() {
                 store: Arc::new(Store::open(&dir.join("mail.db"))?),
                 wakers: Default::default(),
                 states: Default::default(),
+                pause: tokio::sync::watch::channel(false).0,
             };
             for account in state.store.accounts()? {
                 start_account(app.handle(), &state, account);
@@ -180,6 +195,7 @@ fn main() {
             commands::muted,
             commands::take_mailto,
             commands::quit,
+            commands::set_sync_paused,
             commands::update_ready,
             commands::restart_to_update,
             commands::autostart,

@@ -247,7 +247,12 @@ export default function App() {
     void refresh();
     // The tray, the system's links and notifications. Closing the window leaves Tern in the tray unless turned off.
     api.keepRunningWhen(() => settings.background);
-    api.onDesktop({ compose: newMessage, mailto: fromLink, openMail: (m) => void openMail(m) });
+    api.onDesktop({
+      compose: newMessage,
+      mailto: fromLink,
+      openMail: (m) => void openMail(m),
+      reply: (m) => void replyToMail(m),
+    });
     void api.takeMailto().then((m) => m && fromLink(m));
     api.onUpdateReady(setUpdate);
     void api.updateReady().then((v) => v && setUpdate(v));
@@ -677,15 +682,23 @@ export default function App() {
     });
   }
 
-  /** A clicked notification: the inbox, with that conversation open. */
+  /** A clicked notification: the inbox, with that conversation open. False when it is no longer there. */
   async function openMail(m: NewMail) {
     batch(() => (close(), setQuery(""), setTarget(home())));
     await load();
     const i = rows().findIndex((r) => r.accountId === m.accountId && r.threadId === m.threadId);
-    if (i < 0) return;
+    if (i < 0) return false;
     setFocus(i);
-    void open(rows()[i]);
+    await open(rows()[i]);
+    return true;
   }
+
+  /** A notification's Reply: the conversation open, replying to its newest message. */
+  async function replyToMail(m: NewMail) {
+    if (await openMail(m)) void respond(messages[messages.length - 1], "reply");
+  }
+
+  const paused = () => Object.values(syncStates()).some((s) => s === "paused");
 
   const go = (t: Target) => {
     batch(() => (setQuery(""), setTarget(t)));
@@ -791,6 +804,7 @@ export default function App() {
     { keys: "?", name: "Keyboard shortcuts", run: () => setSheet(true) },
     { keys: "Ctrl+,", name: "Settings", run: () => setSettingsOpen("Appearance") },
     { keys: "Ctrl+q", name: "Quit Tern", run: () => void api.quit() },
+    { keys: "", name: paused() ? "Resume sync" : "Pause sync", run: () => void api.setSyncPaused(!paused()) },
     ...(update() ? [{ keys: "", name: `Restart to update to ${update()}`, run: restartToUpdate }] : []),
     { keys: "Ctrl+P", name: "Performance overlay", run: () => setPerf(!perf()) },
     { keys: "Ctrl+\\", name: "Accounts and folders", run: () => setRail(!rail()) },
@@ -959,6 +973,7 @@ export default function App() {
       const host = unreachable.length === 1 && unreachable[0] ? unreachable[0].imapHost : "the mail server";
       return { text: `Can't reach ${host}. Trying again.`, tone: "warn" };
     }
+    if (paused()) return { text: "Sync paused. Changes wait until you resume.", tone: "warn" };
     if (entries.some(([, s]) => s === "connecting")) return { text: "Connecting…", tone: "warn" };
     return { text: entries.length ? "Up to date" : "", tone: "ok" };
   };
@@ -1052,6 +1067,11 @@ export default function App() {
             <span class="dot" />
             {syncSentence().text}
           </span>
+          <Show when={paused()}>
+            <button class="link waiting-link" onClick={() => void api.setSyncPaused(false)}>
+              Resume
+            </button>
+          </Show>
           <Show when={late().length}>
             <button class="link waiting-link" onClick={() => setReviewing(true)}>
               {late().length === 1 ? "1 change waiting" : `${late().length} changes waiting`}

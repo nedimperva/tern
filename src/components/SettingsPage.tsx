@@ -164,6 +164,39 @@ function DesktopSettings() {
           { label: "Don't notify me", value: false },
         ]}
       />
+      <Select
+        name="notifyOther"
+        title="Notify for"
+        help="Other holds newsletters and automatic mail; it never interrupts unless you ask."
+        choices={[
+          { label: "Important mail", value: false },
+          { label: "Important and Other", value: true },
+        ]}
+      />
+      <div class="setting">
+        <span class="title">Quiet hours</span>
+        <span class="quiet-hours">
+          <input
+            type="time"
+            value={settings.quietFrom}
+            aria-label="Quiet from"
+            onChange={(e) => setSetting("quietFrom", e.currentTarget.value)}
+          />
+          <span>to</span>
+          <input
+            type="time"
+            value={settings.quietTo}
+            aria-label="Quiet until"
+            onChange={(e) => setSetting("quietTo", e.currentTarget.value)}
+          />
+          <Show when={settings.quietFrom || settings.quietTo}>
+            <button class="link" onClick={() => (setSetting("quietFrom", ""), setSetting("quietTo", ""))}>
+              Clear
+            </button>
+          </Show>
+        </span>
+        <span class="help">No notifications between these times. Mail that arrives then waits in the inbox, without a notice later.</span>
+      </div>
       <label class="setting">
         <span class="title">Start at login</span>
         <select
