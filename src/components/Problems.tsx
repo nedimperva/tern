@@ -1,5 +1,6 @@
 import { For, onCleanup, onMount, Show } from "solid-js";
 import type { OutboxProblem, OutboxWaiting } from "../api";
+import { until } from "./ConversationRow";
 
 /** "in 40 s", "in 3 min": when waiting work is tried next. */
 function nextTry(at: number, now: number) {
@@ -9,8 +10,11 @@ function nextTry(at: number, now: number) {
 
 export function ProblemsDialog(props: {
   problems: OutboxProblem[];
-  /** Work still on its way to the server, past its undo window. */
+  /** Work still on its way to the server, past its undo window (and scheduled sends held after Tern was closed). */
   waiting: OutboxWaiting[];
+  /** Sends scheduled for later. */
+  scheduled: OutboxWaiting[];
+  onSendNow: (id: number) => void;
   /** No connection at all: waiting work goes out once it is back. */
   offline: boolean;
   /** Unix seconds, for when the next try is. */
@@ -32,6 +36,7 @@ export function ProblemsDialog(props: {
   onCleanup(() => window.removeEventListener("keydown", onKey, true));
 
   const waitingNote = (w: OutboxWaiting) => {
+    if (w.held) return `Was due ${new Date(w.notBefore * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}, while Tern was closed. Send it now, or edit it.`;
     if (w.sending) return "Going out now";
     if (props.offline) return "Goes out when the connection is back";
     if (w.attempts === 0) return "Goes out in a moment";
@@ -42,7 +47,7 @@ export function ProblemsDialog(props: {
   return (
     <div class="overlay" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
       <div class="problems" role="dialog" aria-label="Changes on their way to the server">
-        <Show when={props.problems.length || !props.waiting.length}>
+        <Show when={props.problems.length || (!props.waiting.length && !props.scheduled.length)}>
           <h2>Changes that didn't go through</h2>
           <p class="note">
             Tern stopped trying these. Retry sends one again; Discard drops it and puts your mailbox back as it was.
@@ -92,10 +97,14 @@ export function ProblemsDialog(props: {
                   </Show>
                   <span class="note">{waitingNote(w)}</span>
                 </div>
+                <Show when={w.held}>
+                  <button onClick={() => props.onEdit(w.id)}>Edit</button>
+                  <button onClick={() => props.onSendNow(w.id)}>Send now</button>
+                </Show>
                 <Show
-                  when={w.canDiscard}
+                  when={w.canDiscard && !w.held}
                   fallback={
-                    <Show when={!w.sending}>
+                    <Show when={!w.sending && !w.held}>
                       <span class="note" title="A later change to the same messages counts on this one">
                         Needed by a later change
                       </span>
@@ -106,6 +115,24 @@ export function ProblemsDialog(props: {
                     Discard
                   </button>
                 </Show>
+              </div>
+            )}
+          </For>
+        </Show>
+        <Show when={props.scheduled.length}>
+          <h2>Scheduled</h2>
+          <p class="note">
+            These go out at their time while Tern is running. If Tern is closed then, it asks when it next starts.
+          </p>
+          <For each={props.scheduled}>
+            {(w) => (
+              <div class="problem">
+                <div class="what">
+                  <strong>{w.what}</strong>
+                  <span class="note">Sends {until(w.notBefore)}</span>
+                </div>
+                <button onClick={() => props.onEdit(w.id)}>Edit</button>
+                <button onClick={() => props.onSendNow(w.id)}>Send now</button>
               </div>
             )}
           </For>

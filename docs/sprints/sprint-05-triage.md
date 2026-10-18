@@ -1,6 +1,6 @@
 # Sprint 5 — Triage: split inbox, snooze, reminders, send later
 
-**Status:** in progress (M2 basics built) · started 2026-10-15
+**Status:** in progress (follow-ups and send later) · started 2026-10-15
 
 ## Delivery scope
 
@@ -45,13 +45,13 @@ unsubscribes; `m` mutes. All of it works offline and syncs when back.
 - [x] `g h` shows Reminders sorted by due; `Shift+H` un-snoozes.
 
 ### Follow-up reminders on send
-- [ ] In compose: "Remind me if no reply in … " (`Cmd+Shift+H`). Stores a `followup` reminder keyed on the sent thread.
-- [ ] Cancelled automatically when a reply arrives in that thread from someone else.
-- [ ] Due → the thread returns to the inbox with a "No reply yet" chip.
+- [x] In compose: "Remind me if no reply in … " (`Cmd+Shift+H`). Stores a `followup` reminder keyed on the sent thread.
+- [x] Cancelled automatically when a reply arrives in that thread from someone else.
+- [x] Due → the thread returns to the inbox with a "No reply yet" chip.
 
 ### Send later
-- [ ] `Cmd+Shift+L` in compose → same time picker → `Outbox::Send` with `not_before`. Shows under `g d` with a clock chip; editable; cancellable.
-- [ ] Sends happen only while Tern runs (local-first, no server). Say so in the UI. If the time passed while Tern was closed, send on next launch after a confirm.
+- [x] `Cmd+Shift+L` in compose → same time picker → `Outbox::Send` with `not_before`. Shows under `g d` with a clock chip; editable; cancellable.
+- [x] Sends happen only while Tern runs (local-first, no server). Say so in the UI. If the time passed while Tern was closed, send on next launch after a confirm.
 
 ### Unsubscribe and mute
 - [ ] `Cmd+U`: RFC 8058 one-click (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`) via HTTPS POST; else `mailto:` → send an unsubscribe mail; else open the URL. Then archive and offer "Also block sender".
@@ -87,6 +87,24 @@ Team split, "teaches the rule" from Move, RFC 8058 POST (keep mailto/URL).
   `h` snoozes, `Shift+H` brings it back now, `g h` lists snoozed conversations with their time. The time reader is
   `triage::when` in the engine, with tests.
 
+- 2026-10-19 — **Follow-ups and send later, selected by the owner** (rest of package 05's M2 scope). Not in it:
+  unsubscribe, block sender, mass actions, the rules engine.
+- 2026-10-19 — **A follow-up waits on the sent message's Message-ID.** Which conversation a new message joins is
+  only known once its copy in Sent is here (References, else the subject), so the `reminders` row keeps the bare
+  Message-ID (schema v19, `message_id`) and finds the conversation through it. It is cancelled when anyone but
+  the account writes in that conversation after the send, and dropped if the send is undone or discarded.
+- 2026-10-19 — **"Returns to the inbox" is a pinned row.** The conversation lives in Sent, not the inbox folder, so
+  a due follow-up is shown at the top of the inbox and Important (first page only) with "No reply yet", announced
+  once ("No reply yet: subject"). Done (`e`) or the notification's Archive dismisses it; a reply cancels it.
+  Nothing changes on the server.
+- 2026-10-19 — **Send later is an outbox send with its time** (`outbox.scheduled`). Picking a time sends at once
+  (Undo still works in its window). "N scheduled" in the status strip opens the list with Send now and Edit
+  (back to a draft). Planned: shown under `g d` with a clock chip; built: the strip and the review dialog, where
+  waiting work already lives. At start, a scheduled send more than a minute overdue is **held**
+  (`outbox.held`): "1 scheduled send to confirm" until Send now or Edit, so nothing goes out hours late unasked.
+- 2026-10-19 — Compose's footer says **Later** and **Remind** (single words like Attach, Cc, Bcc; the full names
+  are in the tooltips, the pickers' titles and the shortcuts): two two-word buttons did not fit at 720 px.
+
 ## Log
 
 - 2026-10-15 — M2 basics: Important/Other splits (schema v16), sender moves, local snooze with the picker and time
@@ -96,3 +114,11 @@ Team split, "teaches the rule" from Move, RFC 8058 POST (keep mailto/URL).
   whole inbox (35 ms in the bench, which has no bulk mail); split unread counts cost about 22 ms in the bench, where
   three quarters of 50k messages are unread. UI tried against the fake mailbox in headless Chromium, light and dark.
   Not built: rules engine, custom splits, follow-up reminders, send later, unsubscribe, mass actions.
+- 2026-10-19 — Follow-ups and send later. Engine: schema v19 (`outbox.scheduled/held`, `reminders.message_id/fired`),
+  `queue_send_at`, `hold_overdue`, `send_now`, `check_follow_ups`, `dismiss_follow_ups`, pinned rows in
+  `list_threads`, held work skipped by `claim_due`/`next_due`, undo drops the follow-up (tests for each, and the
+  migration). Shell: holds overdue sends at start; the 20-second snooze watcher also checks follow-ups and
+  notifies "No reply yet"; Done and the notification's Archive dismiss. UI: Later/Remind in compose with the time
+  picker (its own presets), the "No reply yet" chip, "N scheduled" and "to confirm" links, Scheduled section in
+  the review dialog. Tried in `npm run dev` (`#followup`, `#scheduled`) in headless Chromium; found and fixed a
+  stale read of the picker's kind after closing it. Not tried in the Tauri window against a server yet.

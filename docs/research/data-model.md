@@ -139,6 +139,17 @@ of 48,210" (`Store::sync_progress`, which counts rows here against it; NULL unti
 ALTER TABLE folders ADD COLUMN server_count INTEGER;
 ```
 
+## v19 — package 05, send later and follow-ups (implemented 2026-10-19)
+A scheduled send is an outbox row with its time in `not_before`; one whose time passed while Tern was closed is
+held until the person confirms it. A follow-up reminder keeps its sent message's bare Message-ID, which finds the
+conversation once the copy in Sent is here; `fired` once it came due and was announced.
+```sql
+ALTER TABLE outbox ADD COLUMN scheduled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE outbox ADD COLUMN held INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE reminders ADD COLUMN message_id TEXT;
+ALTER TABLE reminders ADD COLUMN fired INTEGER NOT NULL DEFAULT 0;
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'

@@ -101,6 +101,10 @@ pub async fn apply_conversations(
     action: Action,
     target: ListTarget,
 ) -> Reply<Applied> {
+    // Done on a follow-up that came due dismisses it; its messages are in Sent, so nothing else moves.
+    if action.moves() {
+        state.store.dismiss_follow_ups(&ids).map_err(text)?;
+    }
     let ids = state.store.conversation_ids(&ids, action, &target).map_err(text)?;
     apply(app, state, ids, action).await
 }
@@ -182,6 +186,8 @@ pub async fn send(
     mut draft: Draft,
     delay: Option<i64>,
     draft_id: Option<i64>,
+    at: Option<i64>,
+    follow_up: Option<i64>,
 ) -> Reply<Vec<i64>> {
     // The undo window for sending is a setting (0 to 20 s); other actions keep UNDO_SECONDS.
     let delay = delay.unwrap_or(UNDO_SECONDS).clamp(0, 60);
@@ -189,7 +195,8 @@ pub async fn send(
     if let Some(saved) = draft_id.map(|id| state.store.draft(id)).transpose().map_err(text)?.flatten() {
         draft.message_id = saved.draft.message_id;
     }
-    let id = state.store.queue_send(account_id, draft, delay).map_err(text)?;
+    // Send later (`at`) goes at the picked time; only while Tern runs, which compose says.
+    let id = state.store.queue_send_at(account_id, draft, delay, at, follow_up).map_err(text)?;
     if let Some(draft_id) = draft_id {
         state.store.draft_sent(draft_id).map_err(text)?;
     }
@@ -539,6 +546,15 @@ pub fn take_mailto(app: AppHandle) -> Option<tern_core::mailto::Mailto> {
 #[tauri::command]
 pub fn quit(app: AppHandle) {
     app.exit(0);
+}
+
+/// A scheduled send goes now, also one held because its time passed while Tern was closed.
+#[tauri::command]
+pub async fn send_now(state: State<'_, AppState>, id: i64) -> Reply<()> {
+    if let Some(account) = state.store.send_now(id).map_err(text)? {
+        state.wake(account);
+    }
+    Ok(())
 }
 
 /// Pauses or resumes sync for every account; the "sync-state" events say when each one has.

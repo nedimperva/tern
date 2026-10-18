@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 18;
+const SCHEMA_VERSION: i64 = 19;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -186,7 +186,7 @@ fn conversations(conn: &Connection, latests: Vec<MessageRow>) -> Result<Vec<Thre
                 Some(s) => (s.ids.len() as i64, s.unread, s.flagged, s.participants, s.snoozed_until),
                 None => (1, i64::from(!latest.seen), latest.flagged, Vec::new(), None),
             };
-            ThreadRow { latest, count, unread, flagged, participants, snoozed_until }
+            ThreadRow { latest, count, unread, flagged, participants, snoozed_until, follow_up: false }
         })
         .collect())
 }
@@ -326,6 +326,15 @@ fn migrate(conn: &Connection) -> Result<()> {
             // How many messages the server said a folder holds at its last SELECT, for download progress. NULL
             // until the folder is first checked.
             17 => "ALTER TABLE folders ADD COLUMN server_count INTEGER;",
+            // Send later: a scheduled send, and one held because its time passed while Tern was closed. Follow-ups:
+            // the sent message a reminder waits on (its bare Message-ID, which finds the conversation once the copy
+            // in Sent is here), and whether it has come due and been announced.
+            18 => {
+                "ALTER TABLE outbox ADD COLUMN scheduled INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE outbox ADD COLUMN held INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE reminders ADD COLUMN message_id TEXT;
+                 ALTER TABLE reminders ADD COLUMN fired INTEGER NOT NULL DEFAULT 0;"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -493,6 +502,9 @@ pub const SNOOZED: &str = "snoozed";
 /// The message goes to Other: its sender was moved there, or (with no choice made) it is bulk mail.
 const IS_OTHER: &str = "COALESCE((SELECT s.other FROM sender_splits s
                                   WHERE s.account_id = m.account_id AND s.addr = lower(m.from_addr)), m.bulk)";
+/// The conversation a follow-up reminder `r` watches: the one its sent message is in, once that is here.
+const FOLLOW_UP_THREAD: &str = "(SELECT f.thread_id FROM messages f
+                                 WHERE f.account_id = r.account_id AND f.message_id = r.message_id LIMIT 1)";
 /// Its conversation is snoozed.
 const IS_SNOOZED: &str = "EXISTS (SELECT 1 FROM reminders r
                                  WHERE r.account_id = m.account_id AND r.thread_id = m.thread_id AND r.kind = 'snooze')";
@@ -1134,7 +1146,30 @@ impl Store {
             }
             latests.push(latest);
         }
-        conversations(&conn, latests)
+        let mut rows = conversations(&conn, latests)?;
+        // Follow-ups that came due sit at the top of the inbox (and Important) until done or answered.
+        let inbox = matches!(target, ListTarget::Role(r) if r == "inbox" || r == IMPORTANT);
+        if inbox && before.is_none() {
+            let mut stmt = conn.prepare_cached(&format!(
+                "SELECT {ROW} FROM reminders r JOIN messages m ON m.id = (
+                     SELECT id FROM messages WHERE account_id = r.account_id AND thread_id = {FOLLOW_UP_THREAD}
+                     ORDER BY date DESC, id DESC LIMIT 1)
+                 WHERE r.kind = 'followup' AND r.fired ORDER BY r.due"
+            ))?;
+            let due: Vec<MessageRow> = stmt.query_map([], row)?.collect::<rusqlite::Result<_>>()?;
+            if !due.is_empty() {
+                let keys: HashSet<(i64, String)> =
+                    due.iter().map(|m| (m.account_id, m.thread_id.clone())).collect();
+                rows.retain(|t| !keys.contains(&(t.latest.account_id, t.latest.thread_id.clone())));
+                let mut pinned = conversations(&conn, due)?;
+                for t in &mut pinned {
+                    t.follow_up = true;
+                }
+                pinned.append(&mut rows);
+                rows = pinned;
+            }
+        }
+        Ok(rows)
     }
 
     /// Mutes the conversations of these messages: they leave the inbox now (see `apply`), and mail that arrives in
@@ -1601,7 +1636,8 @@ impl Store {
     /// Turns a send that was refused into a draft again, for the person to fix and send (problems list "Edit").
     pub fn problem_to_draft(&self, outbox_id: i64) -> Result<DraftRecord> {
         let (account_id, payload): (i64, String) = self.conn().query_row(
-            "SELECT account_id, payload FROM outbox WHERE id = ?1 AND gave_up_at IS NOT NULL",
+            "SELECT account_id, payload FROM outbox
+             WHERE id = ?1 AND (gave_up_at IS NOT NULL OR (scheduled = 1 AND claimed = 0))",
             [outbox_id],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
@@ -2175,7 +2211,20 @@ impl Store {
         Ok(Applied { token, accounts: accounts.into_iter().collect() })
     }
 
-    pub fn queue_send(&self, account_id: i64, mut draft: Draft, delay: i64) -> Result<i64> {
+    pub fn queue_send(&self, account_id: i64, draft: Draft, delay: i64) -> Result<i64> {
+        self.queue_send_at(account_id, draft, delay, None, None)
+    }
+
+    /// `queue_send`, sent at `at` instead (send later; Unix seconds), and with a follow-up reminder due at
+    /// `follow_up` unless someone else writes in the conversation first.
+    pub fn queue_send_at(
+        &self,
+        account_id: i64,
+        mut draft: Draft,
+        delay: i64,
+        at: Option<i64>,
+        follow_up: Option<i64>,
+    ) -> Result<i64> {
         let conn = self.conn();
         // Who the person writes to ranks first in autocomplete, before the copy in Sent is even synced.
         let me: String =
@@ -2194,7 +2243,110 @@ impl Store {
             let domain = email.rsplit_once('@').map_or("localhost", |(_, d)| d);
             draft.message_id = Some(crate::smtp::new_message_id(domain)?);
         }
-        enqueue(&conn, account_id, &OutboxOp::Send(draft), delay)
+        let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
+        let id = enqueue(&conn, account_id, &OutboxOp::Send(draft), delay)?;
+        if let Some(at) = at {
+            conn.execute("UPDATE outbox SET not_before = ?2, scheduled = 1 WHERE id = ?1", params![id, at])?;
+        }
+        if let Some(due) = follow_up {
+            // Keyed by the Message-ID until the copy in Sent says which conversation it is in.
+            conn.execute(
+                "INSERT OR REPLACE INTO reminders (account_id, thread_id, kind, due, created, message_id)
+                 VALUES (?1, ?2, 'followup', ?3, ?4, ?2)",
+                params![account_id, bare, due, at.unwrap_or(now() + delay)],
+            )?;
+        }
+        Ok(id)
+    }
+
+    /// Holds scheduled sends whose time passed more than a minute ago, at start: they were due while Tern was
+    /// closed, and the person decides whether they still go. Returns how many.
+    pub fn hold_overdue(&self, now: i64) -> Result<usize> {
+        Ok(self.conn().execute(
+            "UPDATE outbox SET held = 1
+             WHERE scheduled = 1 AND claimed = 0 AND gave_up_at IS NULL AND attempts = 0 AND not_before < ?1 - 60",
+            [now],
+        )?)
+    }
+
+    /// A scheduled (or held) send goes now. Returns its account, to wake, or None if it is not waiting any more.
+    pub fn send_now(&self, outbox_id: i64) -> Result<Option<i64>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "UPDATE outbox SET not_before = ?2, held = 0
+                 WHERE id = ?1 AND scheduled = 1 AND claimed = 0 AND gave_up_at IS NULL RETURNING account_id",
+                params![outbox_id, now()],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Follow-ups: cancels those answered by someone else, and marks the ones that came due with no answer, which
+    /// it returns (their conversation's newest message) for a notification. Waits for the copy in Sent: until it
+    /// is here, Tern can't tell which conversation to watch.
+    pub fn check_follow_ups(&self, now: i64) -> Result<Vec<NewMail>> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
+            &format!(
+                "DELETE FROM reminders AS r WHERE r.kind = 'followup' AND EXISTS (
+                     SELECT 1 FROM messages m JOIN accounts a ON a.id = m.account_id
+                     WHERE m.account_id = r.account_id AND m.thread_id = {FOLLOW_UP_THREAD}
+                       AND m.date > r.created AND lower(m.from_addr) <> lower(a.email))"
+            ),
+            [],
+        )?;
+        let due: Vec<(i64, String, String)> = tx
+            .prepare(&format!(
+                "SELECT r.account_id, r.thread_id, {FOLLOW_UP_THREAD} FROM reminders r
+                 WHERE r.kind = 'followup' AND NOT r.fired AND r.due <= ?1 AND {FOLLOW_UP_THREAD} IS NOT NULL"
+            ))?
+            .query_map([now], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        let mut out = Vec::new();
+        for (account_id, key, thread_id) in due {
+            tx.execute(
+                "UPDATE reminders SET fired = 1 WHERE account_id = ?1 AND thread_id = ?2 AND kind = 'followup'",
+                params![account_id, key],
+            )?;
+            let latest = tx
+                .query_row(
+                    "SELECT id, from_name, from_addr, subject, snippet FROM messages
+                     WHERE account_id = ?1 AND thread_id = ?2 ORDER BY date DESC, id DESC LIMIT 1",
+                    params![account_id, thread_id],
+                    |r| {
+                        Ok(NewMail {
+                            id: r.get(0)?,
+                            account_id,
+                            thread_id: thread_id.clone(),
+                            from_name: r.get(1)?,
+                            from_addr: r.get(2)?,
+                            subject: r.get(3)?,
+                            snippet: r.get(4)?,
+                        })
+                    },
+                )
+                .optional()?;
+            out.extend(latest);
+        }
+        tx.commit()?;
+        Ok(out)
+    }
+
+    /// Done on a follow-up that came due: the reminder goes (the conversation itself is in Sent, not the inbox).
+    /// Returns how many there were.
+    pub fn dismiss_follow_ups(&self, ids: &[i64]) -> Result<usize> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(&format!(
+            "DELETE FROM reminders AS r WHERE r.kind = 'followup' AND r.fired
+               AND (r.account_id, {FOLLOW_UP_THREAD}) = (SELECT account_id, thread_id FROM messages WHERE id = ?1)"
+        ))?;
+        let mut gone = 0;
+        for id in ids {
+            gone += stmt.execute([id])?;
+        }
+        Ok(gone)
     }
 
     /// Takes back what `apply` or `queue_send` did, if it has not gone to the server yet.
@@ -2214,17 +2366,27 @@ impl Store {
     pub fn outbox_waiting(&self) -> Result<Vec<OutboxWaiting>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
-            "SELECT id, account_id, payload, not_before, attempts, COALESCE(last_error, ''), claimed
+            "SELECT id, account_id, payload, not_before, attempts, COALESCE(last_error, ''), claimed, scheduled, held
              FROM outbox WHERE gave_up_at IS NULL ORDER BY id",
         )?;
-        type Row = (i64, i64, String, i64, i64, String, i64);
+        type Row = (i64, i64, String, i64, i64, String, i64, bool, bool);
         let rows = stmt
             .query_map([], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?))
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                    r.get(7)?,
+                    r.get(8)?,
+                ))
             })?
             .collect::<rusqlite::Result<Vec<Row>>>()?;
         rows.into_iter()
-            .map(|(id, account_id, payload, not_before, attempts, last_error, claimed)| {
+            .map(|(id, account_id, payload, not_before, attempts, last_error, claimed, scheduled, held)| {
                 let op = serde_json::from_str(&payload)?;
                 let can_discard = claimed == 0 && !waited_on(&conn, id, &op)?;
                 Ok(OutboxWaiting {
@@ -2236,6 +2398,8 @@ impl Store {
                     last_error,
                     sending: claimed != 0,
                     can_discard,
+                    scheduled,
+                    held,
                 })
             })
             .collect()
@@ -2257,7 +2421,7 @@ impl Store {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
             "UPDATE outbox SET claimed = 1
-             WHERE account_id = ?1 AND claimed = 0 AND not_before <= ?2 AND gave_up_at IS NULL
+             WHERE account_id = ?1 AND claimed = 0 AND not_before <= ?2 AND gave_up_at IS NULL AND held = 0
              RETURNING id, payload",
         )?;
         let mut rows = stmt
@@ -2470,7 +2634,8 @@ impl Store {
     /// When the account's next queued work falls due.
     pub fn next_due(&self, account_id: i64) -> Result<Option<i64>> {
         Ok(self.conn().query_row(
-            "SELECT MIN(not_before) FROM outbox WHERE account_id = ?1 AND claimed = 0 AND gave_up_at IS NULL",
+            "SELECT MIN(not_before) FROM outbox
+             WHERE account_id = ?1 AND claimed = 0 AND gave_up_at IS NULL AND held = 0",
             [account_id],
             |r| r.get(0),
         )?)
@@ -2641,6 +2806,11 @@ fn take_back(tx: &Connection, id: i64, tried: bool) -> Result<bool> {
         if restored > 0 {
             mirror_draft(tx, account_id, draft)?;
         }
+        // A message that never went out gets no answer to wait for.
+        tx.execute(
+            "DELETE FROM reminders WHERE account_id = ?1 AND kind = 'followup' AND message_id = ?2",
+            params![account_id, bare],
+        )?;
     }
     tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
     Ok(true)
@@ -3713,6 +3883,10 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                18 => {
+                    "ALTER TABLE outbox DROP COLUMN scheduled; ALTER TABLE outbox DROP COLUMN held;
+                     ALTER TABLE reminders DROP COLUMN message_id; ALTER TABLE reminders DROP COLUMN fired;"
+                }
                 17 => "ALTER TABLE folders DROP COLUMN server_count;",
                 16 => "DROP INDEX messages_date; DROP TABLE snippets;",
                 15 => "ALTER TABLE messages DROP COLUMN bulk; DROP TABLE sender_splits; DROP TABLE reminders;",
@@ -3807,6 +3981,108 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         // More here than the server counted (a move not seen there yet) never reads as more than done.
         store.set_server_count(inbox, 1).unwrap();
         assert_eq!(store.sync_progress().unwrap()[0].have, 1);
+    }
+
+    #[test]
+    fn a_send_later_waits_for_its_time_and_is_held_if_it_passed_while_closed() {
+        let (store, account, _, _) = setup();
+        let at = now() + 3_600;
+        let id = store.queue_send_at(account, draft_to("later"), 5, Some(at), None).unwrap();
+        assert!(store.claim_due(account).unwrap().is_empty(), "not before its time");
+        let w = &store.outbox_waiting().unwrap()[0];
+        assert!(w.scheduled && !w.held && w.not_before == at);
+        assert_eq!(store.hold_overdue(at + 30).unwrap(), 0, "a minute's grace");
+        assert_eq!(store.hold_overdue(at + 3_600).unwrap(), 1);
+        assert!(store.outbox_waiting().unwrap()[0].held);
+        assert_eq!(store.next_due(account).unwrap(), None, "held work doesn't wake the worker");
+        assert_eq!(store.send_now(id).unwrap(), Some(account));
+        assert_eq!(store.claim_due(account).unwrap().len(), 1, "goes once asked");
+
+        // Edit turns a scheduled send back into a draft.
+        let other = store.queue_send_at(account, draft_to("edit me"), 5, Some(at), None).unwrap();
+        let record = store.problem_to_draft(other).unwrap();
+        assert_eq!(record.draft.subject, "edit me");
+        let left: Vec<i64> = store.outbox_waiting().unwrap().iter().map(|w| w.id).collect();
+        assert_eq!(left, [id], "only the first, now going out, is left");
+    }
+
+    #[test]
+    fn a_follow_up_comes_due_without_a_reply_and_is_pinned_until_done() {
+        let (store, account, inbox, _) = setup();
+        let sent = store.upsert_folder(account, "Sent", "sent").unwrap();
+        let due = now() + 100;
+        let id = store.queue_send_at(account, draft_to("any news?"), 0, None, Some(due)).unwrap();
+        let message_id = match &store.claim_due(account).unwrap()[0].1 {
+            OutboxOp::Send(d) => d.message_id.clone().unwrap(),
+            _ => unreachable!(),
+        };
+        store.outbox_sent(id, None).unwrap();
+        assert!(store.check_follow_ups(due).unwrap().is_empty(), "waits for the copy in Sent");
+        let copy = NewMessage {
+            message_id: Some(bare_id(&message_id)),
+            from_addr: "me@example.com".into(),
+            date: now(),
+            ..message(1, "any news?", now())
+        };
+        store.insert_messages(account, sent, &[copy]).unwrap();
+        assert!(store.check_follow_ups(due - 1).unwrap().is_empty(), "not yet due");
+        let fired = store.check_follow_ups(due).unwrap();
+        assert_eq!(fired.iter().map(|m| m.subject.as_str()).collect::<Vec<_>>(), ["any news?"]);
+        assert!(store.check_follow_ups(due + 10).unwrap().is_empty(), "announced once");
+
+        let top = &store.list_threads(&ListTarget::Role(IMPORTANT.into()), None, 10).unwrap()[0];
+        assert!(top.follow_up && top.latest.subject == "any news?");
+        assert!(
+            store.list_threads(&ListTarget::Folder(inbox), None, 10).unwrap().is_empty(),
+            "only the inbox views"
+        );
+        assert_eq!(store.dismiss_follow_ups(&[top.latest.id]).unwrap(), 1);
+        assert!(store.list_threads(&ListTarget::Role("inbox".into()), None, 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_reply_from_someone_else_cancels_a_follow_up_and_undo_drops_it() {
+        let (store, account, inbox, _) = setup();
+        let sent = store.upsert_folder(account, "Sent", "sent").unwrap();
+        let id = store.queue_send_at(account, draft_to("question"), 0, None, Some(now() + 100)).unwrap();
+        let message_id = match &store.claim_due(account).unwrap()[0].1 {
+            OutboxOp::Send(d) => bare_id(d.message_id.as_deref().unwrap()),
+            _ => unreachable!(),
+        };
+        store.outbox_sent(id, None).unwrap();
+        let copy = NewMessage {
+            message_id: Some(message_id.clone()),
+            from_addr: "me@example.com".into(),
+            ..message(1, "question", now())
+        };
+        store.insert_messages(account, sent, &[copy]).unwrap();
+        let answer = NewMessage {
+            message_id: Some("answer@x".into()),
+            in_reply_to: Some(message_id),
+            date: now() + 10,
+            ..message(2, "Re: question", now() + 10)
+        };
+        store.insert_messages(account, inbox, &[answer]).unwrap();
+        assert!(store.check_follow_ups(now() + 1_000).unwrap().is_empty(), "answered");
+
+        let token = store.queue_send_at(account, draft_to("undo me"), 5, None, Some(now() + 100)).unwrap();
+        assert!(store.undo(&[token]).unwrap());
+        let left: i64 = store
+            .conn()
+            .query_row("SELECT count(*) FROM reminders WHERE kind = 'followup'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 0, "an unsent message has nothing to wait for");
+    }
+
+    #[test]
+    fn migration_19_adds_send_later_and_follow_ups() {
+        let (store, account, _, _) = setup();
+        store.queue_send(account, draft_to("queued before"), 5).unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 18);
+        let store = Store::init(conn).unwrap();
+        let w = &store.outbox_waiting().unwrap()[0];
+        assert!(!w.scheduled && !w.held, "existing work is neither");
     }
 
     #[test]

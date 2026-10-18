@@ -95,6 +95,8 @@ pub struct ThreadRow {
     pub participants: Vec<String>,
     /// When a snoozed conversation comes back (Unix seconds).
     pub snoozed_until: Option<i64>,
+    /// A follow-up reminder on a sent message came due with no reply: pinned at the top of the inbox until done.
+    pub follow_up: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -436,6 +438,10 @@ pub struct OutboxWaiting {
     pub sending: bool,
     /// Whether discarding it would leave nothing stranded: not in hand, and no later work depends on it.
     pub can_discard: bool,
+    /// A message sent later on purpose (`not_before` is the time picked), not work held up.
+    pub scheduled: bool,
+    /// A scheduled send whose time passed while Tern was closed: it waits for "Send now" or Edit.
+    pub held: bool,
 }
 
 /// How a try at queued work went wrong, which decides what happens to it next.

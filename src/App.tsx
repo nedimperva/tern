@@ -9,6 +9,7 @@ import {
   type MessageRow,
   type OutboxProblem,
   type OutboxWaiting,
+  type SendOptions,
   type SyncProgress,
   type SyncState,
   type Target,
@@ -135,7 +136,12 @@ export default function App() {
   });
   /** Waiting work worth mentioning: past its undo window by a moment, tried before, or going out now. A change
    * still in its undo window is the toast's business. */
-  const late = () => waiting().filter((w) => w.sending || w.attempts > 0 || w.notBefore + 2 <= clock());
+  // Scheduled sends are not late until their time (or held after Tern was closed); they have their own link.
+  const late = () =>
+    waiting().filter((w) => !w.held && (w.sending || w.attempts > 0 || (w.notBefore + 2 <= clock() && !w.scheduled)));
+  const scheduled = () => waiting().filter((w) => w.scheduled && !w.held && !w.sending);
+  // Scheduled sends whose time passed while Tern was closed: they wait for the person.
+  const held = () => waiting().filter((w) => w.held);
 
   const [reviewing, setReviewing] = createSignal(false);
   const [sheet, setSheet] = createSignal(false);
@@ -573,14 +579,18 @@ export default function App() {
   }
 
   /** Queues the message (it leaves after the undo window); with `done`, the conversation it answers is marked done. */
-  async function send(accountId: number, draft: Draft, done: boolean, draftId: number | null) {
+  async function send(accountId: number, draft: Draft, done: boolean, draftId: number | null, options: SendOptions = {}) {
     const sending = compose();
     const answering = sending?.inline ? openRow() : null;
     setCompose(null);
     try {
-      const token = await api.send(accountId, draft, settings.sendDelay, draftId);
+      const token = await api.send(accountId, draft, settings.sendDelay, draftId, options);
       const doneToken = done && answering ? await act("archive", [answering], false) : [];
-      const text = settings.sendDelay > 0 ? "Sending…" : "Sent";
+      const text = options.at
+        ? `Sends ${until(options.at)}`
+        : settings.sendDelay > 0
+          ? "Sending…"
+          : "Sent";
       // Undo brings the message back into compose, as it was.
       const reopen = () => setCompose({ ...sending, accountId, ...draft, draftId, focus: "body", unsaved: true });
       showToast(done && answering ? `${text} and marked done` : text, [...token, ...doneToken], reopen);
@@ -1118,6 +1128,16 @@ export default function App() {
               {late().length === 1 ? "1 change waiting" : `${late().length} changes waiting`}
             </button>
           </Show>
+          <Show when={held().length}>
+            <button class="link problems-link" onClick={() => setReviewing(true)}>
+              {held().length === 1 ? "1 scheduled send to confirm" : `${held().length} scheduled sends to confirm`}
+            </button>
+          </Show>
+          <Show when={scheduled().length}>
+            <button class="link waiting-link" onClick={() => setReviewing(true)}>
+              {scheduled().length === 1 ? "1 scheduled" : `${scheduled().length} scheduled`}
+            </button>
+          </Show>
           <Show when={problems().length}>
             <button class="link problems-link" onClick={() => setReviewing(true)}>
               {problems().length === 1 ? "1 change didn't go through" : `${problems().length} changes didn't go through`}
@@ -1201,7 +1221,9 @@ export default function App() {
       <Show when={reviewing()}>
         <ProblemsDialog
           problems={problems()}
-          waiting={late()}
+          waiting={[...held(), ...late()]}
+          scheduled={scheduled()}
+          onSendNow={(id) => void api.sendNow(id).then(refresh)}
           offline={!online() || Object.values(syncStates()).includes("offline")}
           now={clock()}
           onDiscardWaiting={(id) =>

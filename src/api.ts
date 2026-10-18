@@ -76,6 +76,8 @@ export type ThreadRow = MessageRow & {
   participants: string[];
   /** When a snoozed conversation comes back (Unix seconds). */
   snoozedUntil: number | null;
+  /** A follow-up on a sent message came due with no reply: pinned at the top of the inbox until done. */
+  followUp?: boolean;
 };
 /** Where an account's sync stands. */
 export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed" | "paused";
@@ -164,7 +166,14 @@ export type OutboxWaiting = {
   sending: boolean;
   /** False while it is being sent, or when later changes depend on it. */
   canDiscard: boolean;
+  /** Sent later on purpose: `notBefore` is the time picked. */
+  scheduled: boolean;
+  /** A scheduled send whose time passed while Tern was closed; it waits for Send now or Edit. */
+  held: boolean;
 };
+
+/** Send later and a follow-up reminder, both Unix seconds. */
+export type SendOptions = { at?: number | null; followUp?: number | null };
 
 export interface Api {
   accounts(): Promise<Account[]>;
@@ -182,7 +191,9 @@ export interface Api {
   apply(ids: number[], action: Action): Promise<Applied>;
   undo(token: number[]): Promise<boolean>;
   /** Queues a send; `delay` is the undo window in seconds; `draftId` when it was a saved draft. */
-  send(accountId: number, draft: Draft, delay?: number, draftId?: number | null): Promise<number[]>;
+  send(accountId: number, draft: Draft, delay?: number, draftId?: number | null, options?: SendOptions): Promise<number[]>;
+  /** A scheduled send goes now (also one held after Tern was closed). */
+  sendNow(id: number): Promise<void>;
   /** Saves compose's contents; returns the draft id. `uploadNow` when compose closes. */
   saveDraft(id: number | null, accountId: number, draft: Draft, uploadNow: boolean): Promise<number>;
   draft(id: number): Promise<DraftRecord | null>;
@@ -324,7 +335,9 @@ const tauri: Api = {
   discardWaiting: (id) => invoke("discard_waiting", { id }),
   networkBack: () => void invoke("network_back"),
   undo: (token) => invoke("undo", { token }),
-  send: (accountId, draft, delay, draftId) => invoke("send", { accountId, draft, delay, draftId }),
+  send: (accountId, draft, delay, draftId, options) =>
+    invoke("send", { accountId, draft, delay, draftId, at: options?.at ?? null, followUp: options?.followUp ?? null }),
+  sendNow: (id) => invoke("send_now", { id }),
   saveDraft: (id, accountId, draft, uploadNow) => invoke("save_draft", { id, accountId, draft, uploadNow }),
   draft: (id) => invoke("draft", { id }),
   draftForMessage: (id) => invoke("draft_for_message", { id }),
@@ -520,11 +533,17 @@ function fake(): Api {
   let waiting: OutboxWaiting[] =
     location.hash === "#offline"
       ? [
-          { id: 3, accountId: 1, what: "Move 2 messages to Archive", notBefore: now - 60, attempts: 0, lastError: "", sending: false, canDiscard: false },
-          { id: 4, accountId: 1, what: "Star 2 messages", notBefore: now - 50, attempts: 0, lastError: "", sending: false, canDiscard: true },
-          { id: 5, accountId: 1, what: "Send “Notes from today”", notBefore: now + 40, attempts: 2, lastError: "Could not connect to smtp.example.com: timed out", sending: false, canDiscard: true },
+          { id: 3, accountId: 1, what: "Move 2 messages to Archive", notBefore: now - 60, attempts: 0, lastError: "", sending: false, canDiscard: false, scheduled: false, held: false },
+          { id: 4, accountId: 1, what: "Star 2 messages", notBefore: now - 50, attempts: 0, lastError: "", sending: false, canDiscard: true, scheduled: false, held: false },
+          { id: 5, accountId: 1, what: "Send “Notes from today”", notBefore: now + 40, attempts: 2, lastError: "Could not connect to smtp.example.com: timed out", sending: false, canDiscard: true, scheduled: false, held: false },
         ]
-      : [];
+      : // Open the page with #scheduled to see a send later, and one held after Tern was closed.
+        location.hash === "#scheduled"
+        ? [
+            { id: 6, accountId: 1, what: "Send “Plan for Monday”", notBefore: now + 86_400, attempts: 0, lastError: "", sending: false, canDiscard: true, scheduled: true, held: false },
+            { id: 7, accountId: 1, what: "Send “Happy birthday!”", notBefore: now - 7_200, attempts: 0, lastError: "", sending: false, canDiscard: true, scheduled: true, held: true },
+          ]
+        : [];
   let problems: OutboxProblem[] = [
     {
       id: 1,
@@ -614,6 +633,8 @@ function fake(): Api {
           flagged: all.some((o) => o.flagged),
           participants,
           snoozedUntil: snoozed.get(m.threadId) ?? null,
+          // Open the page with #followup to see a follow-up that came due, pinned at the top.
+          followUp: location.hash === "#followup" && out.length === 0 && !before,
         });
       }
       return out;
@@ -670,6 +691,10 @@ function fake(): Api {
     send: async (_a, _d, _delay, draftId) => {
       if (draftId != null) drafts.delete(draftId);
       return [nextToken++];
+    },
+    sendNow: async (id) => {
+      waiting = waiting.filter((w) => w.id !== id);
+      changed();
     },
     saveDraft: async (id, accountId, draft) => {
       const key = id ?? nextDraft++;
