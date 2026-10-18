@@ -1,6 +1,6 @@
 # Sprint 14 — Open-source launch
 
-**Status:** todo
+**Status:** in progress · started 2026-10-18
 
 ## Delivery scope
 
