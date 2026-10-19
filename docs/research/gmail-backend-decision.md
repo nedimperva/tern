@@ -1,6 +1,6 @@
 # Initial Gmail backend decision
 
-**Status:** provisional owner decision: **Gmail API** (2026-10-13). Confirm with the comparison below before Gmail-specific implementation.
+**Status:** owner decision: **IMAP with Google sign-in (XOAUTH2)** (2026-10-19), replacing the provisional API choice of 2026-10-13. See Decision below.
 
 The initial release gets one Gmail backend, not an IMAP implementation followed automatically by an API
 rewrite. Fastmail remains the first supported IMAP provider. This comparison does not block unrelated
@@ -137,18 +137,28 @@ run), with nothing refused. That run used 4,014 of the 6,000 units a minute allo
 
 ## Decision gate
 
-- [ ] Fill the comparison with probe results and known limitations.
-- [ ] Recommend one path, including realistic freshness, backfill, search-coverage and verification behavior.
-- [ ] Owner records **IMAP** or **API** below before provider-specific implementation starts.
+- [x] Fill the comparison with probe results and known limitations.
+- [x] Recommend one path, including realistic freshness, backfill, search-coverage and verification behavior.
+- [x] Owner records **IMAP** or **API** below before provider-specific implementation starts.
 - [ ] Update package 04 and, if API is chosen, activate the selected slice of package 12 for M2.
 - [ ] Specify supported scopes, message identity/location mapping and required production adapter boundary.
 - [ ] Keep a second Gmail backend and user-facing switching out of initial-release scope.
 
-Decision: **API, provisional** (owner, 2026-10-13). Reasons given: the API is Google's long-term interface for
-Gmail (labels, threads and history natively), it allows a narrower scope than IMAP's full-mail scope, verification
-cost is the same on both paths, and it lets the IMAP library (io-imap) ignore Gmail's X-GM-* extensions it cannot
-parse. Evidence: **API side collected 2026-10-19** (see Results); IMAP timing and a batched first screen to come. The comparison still runs once the test account and Cloud project exist;
-a surprise there (for example quotas far worse than estimated) reopens the decision before any Gmail code exists.
+Decision: **IMAP with Google sign-in** (owner, 2026-10-19; option 1). IMAP already syncs the owner's Gmail, gives
+the first screen in under half a second and every header in under a minute, and has no per-minute quota. The one
+thing the owner disliked was the app password; XOAUTH2 replaces it with the browser sign-in `tern_core::oauth`
+already does (io-imap 0.7.1 and lettre both support XOAUTH2). Scope: `https://mail.google.com/`. Labels come from
+Gmail's label folders matched by Message-ID; threads from Tern's own threading. The X-GM-* tasks in package 04 stay
+out until imap-codec can parse them.
+
+The provisional choice before the evidence was **API** (owner, 2026-10-13), for native labels, threads and history
+and a narrower scope. The probe reversed it: with projects created from May 2026 a full download is quota-bound
+(about 33 minutes for 9.8k messages), and `gmail.modify` is as restricted as IMAP's scope, so it gained nothing in
+verification.
+
+Cost: Google charges nothing for IMAP, the API or the OAuth client. While the Cloud project is in Testing (up to 100
+listed test users, sign-in renewed every 7 days) there is no cost at all. A public release with a restricted scope
+needs Google's yearly security assessment by an approved assessor, which is paid; the API path needs the same one.
 
 ## Verification and optional AI
 

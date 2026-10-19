@@ -92,6 +92,12 @@ Workspace MX detection and Gmail deep links. Preserve partial-result/sync-covera
   every FETCH that carries X-GM-* items (package 01 probe, docs/research/stack.md), so Gmail over IMAP in Tern is
   plain IMAP without native labels or threads; the owner's app-password Gmail account shows its sync speed. Building
   XOAUTH2 just to measure that path is not worth it. The probe asks only for `gmail.modify`, `openid` and `email`.
+- 2026-10-19 — **Gmail goes through IMAP, signed in with Google (XOAUTH2).** Owner decision after the comparison
+  ([decision record](../research/gmail-backend-decision.md)): IMAP was 0.44 s for the first screen against 4.5 s
+  for the API, and 42 s for every header against about 33 minutes of quota. The XOAUTH2 tasks above are in scope.
+  The X-GM-LABELS/THRID/MSGID/RAW tasks are not, while io-imap drops those responses: labels come from Gmail's
+  label folders matched by Message-ID, threads from Tern's threading, server search from plain IMAP SEARCH.
+  The package 12 API slice stays inactive.
 
 ## Log
 
