@@ -7,6 +7,18 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Several signatures per account, with formatting (bold, italic, links). Pick one for new mail and one for
+  replies and forwards; switch in compose from the footer or with Ctrl+Shift+S. Your existing signature is kept.
+- Snippets can be kept to one account, can fill in the subject and add people to Cc, and show how often they
+  are used. The `;` picker shows what a snippet will insert before you pick it.
+
+### Changed
+
+- Settings are grouped into General, Writing and Accounts, with a search field. Snippets and signatures each
+  have a list and an editor with a live preview; each account has a page with its server details.
+
 ## [0.3.3] - 2026-10-19
 
 ### Added

@@ -1659,40 +1659,89 @@ button.fold {
   inset: 0;
   z-index: 12;
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 232px 1fr;
   background: var(--bg-0);
 }
 .settings-page nav {
   background: var(--bg-1);
   border-right: 1px solid var(--line);
-  padding: var(--s-5) var(--s-3);
+  padding: var(--s-5) var(--s-3) var(--s-4);
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow-y: auto;
+}
+.settings-page .nav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 var(--s-2) var(--s-3);
 }
 .settings-page nav h2 {
   font-size: var(--t-lg);
-  margin: 0 var(--s-2) var(--s-4);
+  margin: 0;
+}
+.settings-page .find {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: var(--t-md);
+}
+.settings-page nav .find {
+  margin-bottom: var(--s-3);
+}
+.settings-page .nav-group {
+  padding: var(--s-3) 10px var(--s-1);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
 }
 .settings-page nav a {
-  padding: 6px var(--s-2);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 7px 10px;
   border-radius: var(--r-md);
   font-size: var(--t-md);
+  color: var(--fg-1);
+  text-decoration: none;
   cursor: default;
+}
+.settings-page nav a:hover {
+  background: var(--bg-2);
 }
 .settings-page nav a.active {
   background: var(--bg-3);
+  color: var(--fg-0);
   font-weight: 600;
 }
-.settings-page nav button {
+.settings-page .nav-none {
+  margin: var(--s-2) 10px;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.settings-page nav .close {
   margin-top: auto;
-  align-self: flex-start;
-  padding-left: var(--s-2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--s-2) 10px;
+}
+.settings-page .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
 }
 .settings-body {
   width: min(640px, 100%);
+  box-sizing: border-box;
   padding: var(--s-5) var(--s-6);
   overflow-y: auto;
+}
+.settings-body.wide {
+  width: min(1040px, 100%);
 }
 .settings-body h1 {
   font-size: var(--t-xl);
@@ -1709,28 +1758,43 @@ button.fold {
 .setting .title {
   font-size: var(--t-rd);
 }
-.setting.signature {
-  grid-template-columns: 1fr;
-}
-.setting.signature textarea {
-  width: 100%;
-  resize: vertical;
-  font: var(--t-rd) / 1.5 var(--font);
-}
 .setting .help {
   grid-column: 1 / -1;
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
-
-.settings-body > .help {
-  margin: 0 0 var(--s-3);
+.setting .mono {
+  font: var(--t-sm) / 1.4 var(--mono);
+  color: var(--fg-1);
+}
+.settings-body .help {
   font-size: var(--t-sm);
   color: var(--fg-2);
   line-height: 1.6;
 }
-.setting.snippet {
-  grid-template-columns: 1fr;
+.settings-body h1 + .snippets-settings,
+.settings-body h1 + .signatures-settings {
+  margin-top: calc(-1 * var(--s-4));
+}
+.section-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  margin-bottom: var(--s-4);
+}
+.section-intro .help,
+.section-lead {
+  margin: 0;
+}
+.section-lead {
+  margin-bottom: var(--s-4);
+}
+.section-intro button.primary,
+.signatures-settings .add-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
 }
 .quiet-hours {
   display: flex;
@@ -1742,31 +1806,393 @@ button.fold {
 .quiet-hours input {
   font-size: var(--t-rd);
 }
-.snippet-head {
-  display: flex;
-  gap: var(--s-2);
-  align-items: stretch;
-}
-.snippet-head .snippet-key {
-  width: 140px;
-  font-family: var(--mono);
-}
-.snippet-head input:not(.snippet-key) {
-  flex: 1;
-}
-.snippet-head input {
-  font-size: var(--t-rd);
-}
-.setting.snippet textarea {
-  width: 100%;
-  resize: vertical;
-  font: var(--t-rd) / 1.5 var(--font);
-}
-
 .setting-error {
   margin: var(--s-3) 0 0;
   font-size: var(--t-sm);
   color: var(--danger);
+}
+.settings-empty {
+  flex: 1;
+  padding: var(--s-6) var(--s-5);
+  border-radius: var(--r-lg);
+  background: var(--soft);
+  color: var(--fg-1);
+  text-align: center;
+}
+
+/* A list on the left, the picked one's editor on the right (snippets, signatures). */
+.master-detail {
+  display: flex;
+  gap: var(--s-5);
+  align-items: flex-start;
+}
+.master {
+  width: 280px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.signatures-settings .master {
+  width: 240px;
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+button.pill {
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 12px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+button.pill[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+.master-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.master-list .none {
+  padding: var(--s-3);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.master-list button {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px var(--s-3) 10px 14px;
+  border: none;
+  border-radius: var(--r-md);
+  background: none;
+  text-align: left;
+  font-size: var(--t-md);
+}
+.master-list button:hover {
+  background: var(--bg-2);
+}
+.master-list button.picked {
+  background: var(--bg-3);
+}
+.master-list button.picked::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--s-2);
+  bottom: var(--s-2);
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.master-list .row-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.master-list .name {
+  font-weight: 500;
+}
+.master-list .picked .name {
+  font-weight: 600;
+}
+.master-list .snippet-key {
+  font: var(--t-sm) / 18px var(--mono);
+  color: var(--fg-1);
+}
+.master-list .picked .snippet-key {
+  color: var(--accent);
+}
+.master-list .row-sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg-2);
+}
+.master-list .badges {
+  display: flex;
+  gap: var(--s-1);
+}
+.badge {
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  line-height: 16px;
+}
+.signatures-settings .add-row {
+  justify-content: center;
+  height: 36px;
+  margin-top: 6px;
+  border: 1px dashed var(--line);
+  background: none;
+  color: var(--fg-1);
+}
+.detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.detail .pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-4);
+}
+.detail .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.detail .field.narrow {
+  max-width: 320px;
+}
+.detail .field .title {
+  font-size: var(--t-md);
+  font-weight: 500;
+  padding: 0;
+}
+.detail .field .help {
+  font-size: var(--t-sm);
+  line-height: 16px;
+}
+.detail .field-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.detail .hint {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.detail .prefixed {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+}
+.detail .prefixed:focus-within {
+  border-color: var(--accent);
+}
+.detail .prefixed.invalid:focus-within {
+  border-color: var(--danger);
+}
+.detail .prefixed > span {
+  padding-left: 10px;
+  font-family: var(--mono);
+  color: var(--fg-2);
+}
+.detail .prefixed input {
+  flex: 1;
+  min-width: 0;
+  padding-left: 2px;
+  border: none;
+  background: none;
+  font-family: var(--mono);
+}
+.detail .note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.detail .note.ok {
+  color: var(--ok);
+}
+.detail .note.bad {
+  color: var(--danger);
+}
+.detail .textbox {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  overflow: hidden;
+}
+.detail .textbox:focus-within {
+  border-color: var(--accent);
+}
+.detail .places {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: var(--s-2) 10px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+}
+button.place {
+  height: 22px;
+  padding: 0 var(--s-2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: var(--t-xs) / 22px var(--mono);
+}
+button.place.muted {
+  background: var(--bg-2);
+  color: var(--fg-1);
+}
+.detail .textbox textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 0;
+  resize: vertical;
+  font: var(--t-rd) / 1.5 var(--font);
+}
+.detail .textbox .editor-body {
+  min-height: 110px;
+  padding: var(--s-3) var(--s-4);
+}
+.detail .plain {
+  align-self: flex-start;
+  font-size: var(--t-sm);
+}
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: 14px var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--soft);
+}
+.preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.preview .label,
+.snippet-preview .label {
+  font-size: var(--t-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.preview p {
+  margin: 0;
+}
+.preview-subject {
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.preview-text {
+  font-size: var(--t-rd);
+  line-height: 1.5;
+  white-space: pre-line;
+}
+.preview-signature {
+  color: var(--fg-1);
+}
+.preview-quote {
+  padding-left: 10px;
+  border-left: 3px solid var(--line);
+  color: var(--fg-2);
+}
+.preview .caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  vertical-align: -0.2em;
+  background: var(--accent);
+}
+.detail-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+}
+.detail-foot .meta {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.detail-foot .actions {
+  display: flex;
+  gap: var(--s-2);
+}
+.tabs {
+  display: flex;
+  gap: var(--s-5);
+  margin-bottom: var(--s-5);
+  border-bottom: 1px solid var(--line);
+}
+.tabs button {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 36px;
+  margin-bottom: -1px;
+  padding: 0 2px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--fg-1);
+}
+.tabs button[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.tabs .muted {
+  font-weight: 400;
+  color: var(--fg-2);
+}
+.segmented {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+}
+.segmented label {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-md);
+  color: var(--fg-1);
+  cursor: pointer;
+}
+.segmented label.on {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.segmented label:focus-within {
+  outline: 2px solid var(--accent);
+}
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* MARK: Performance overlay */
@@ -1784,19 +2210,91 @@ button.fold {
   pointer-events: none;
   opacity: 0.9;
 }
-/* `;` in compose: the snippets that match, under the typed shortcut. */
-.suggestions.snippet-picker {
-  min-width: 280px;
-  max-width: 480px;
+/* `;` in compose: the snippets that match, under the typed shortcut, and what the pointed one would insert. */
+.snippet-picker {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  width: min(600px, calc(100% - var(--s-5)));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.snippet-choices {
+  width: 230px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+}
+.snippet-picker .suggestions {
+  position: static;
+  min-width: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+.snippet-picker li {
+  justify-content: space-between;
 }
 .snippet-picker .snippet-key {
-  color: var(--accent);
-  font-weight: 600;
+  font: var(--t-sm) / 18px var(--mono);
+  color: var(--fg-1);
 }
-.snippet-picker .addr {
+.snippet-picker li.pointed .snippet-key {
+  color: var(--accent);
+}
+.snippet-keys {
+  display: flex;
+  gap: var(--s-1);
+  align-items: center;
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.snippet-keys kbd + kbd {
+  margin-left: var(--s-2);
+}
+.snippet-preview {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  background: var(--soft);
+}
+.snippet-preview p {
+  margin: 0;
+  max-height: 180px;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  font-size: var(--t-md);
+  line-height: 1.55;
+  white-space: pre-line;
+}
+/* Compose's footer: which signature the message carries. */
+.compose .signature-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  height: 28px;
+  padding: 0 var(--s-1) 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.compose .signature-pick select {
+  border: none;
+  padding: 0 var(--s-1);
+  background: none;
+  color: var(--fg-0);
+  font-weight: 500;
+  font-size: var(--t-sm);
 }
 
 /* MARK: Attachment viewer (docs/design/ui.md §4.11): the file over everything, on a dark scrim in either theme. */
@@ -2090,9 +2588,6 @@ button.fold {
   display: flex;
   gap: var(--s-2);
   margin-top: var(--s-3);
-}
-.snippet-head .snippet-key.invalid {
-  border-color: var(--danger);
 }
 /* A message brought into view (a search hit) clears the compact bar that floats over the top. */
 .conversation [data-message] {

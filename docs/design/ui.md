@@ -173,6 +173,10 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - Field rows (36 px): `To`, then `Cc` `Bcc` appear only when used or via `Ctrl+Shift+C/B`; `From` only when > 1 identity; `Subject`. Labels are `--fg-2` on the left (64 px), values are chips (`--bg-2`, `--r-sm`, remove on `Backspace`).
 - Editor body: `--t-rd`, min 160 px, grows with content. Formatting bar appears only on text selection, floating above the selection: B I U S · link · list · quote.
 - Footer: `Send  Ctrl↵` primary button, `Send & Done`, `Later`, `Remind`, attach icon, snippet icon, discard right-aligned in `--fg-2`.
+- Signature: a pill in the footer ("Signature: Full ▾") when the account has any; picking one, or `Ctrl+Shift+S`
+  to step through them and None, swaps the signature in the text. Changing From brings the new account's.
+- Snippet picker (`;`): a 600 px popover, matches on the left (name, `;shortcut`, keys), and on `--soft` to the
+  right the pointed snippet as it would go in, filled for the person written to.
 - Autocomplete: dropdown under the field, 5 rows, avatar initials + name + address; `Enter`/`Tab` picks.
 - Autosave indicator: "Saved" in `--fg-2` fades in after each save.
 
@@ -190,7 +194,19 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 
 ### 4.8 Settings (`Ctrl+,`)
 
-- Full-screen page over the list with a left list of sections (Accounts · Appearance · Keys · Splits · Snippets · Reminders · Calendar · AI · Advanced) and a 640 px content column. Controls are plain: toggles, selects, text fields. Every setting has one line of explanation under it.
+- Full-screen page over the list with a 232 px left list of sections in three groups, each under a `--t-xs`
+  label: General (Appearance · Reading · Notifications · Desktop), Writing (Compose · Snippets · Signatures) and
+  Accounts (one entry per account, with its colour dot). A search field at the top of the list narrows it to the
+  sections whose settings match. Content sits in a 640 px column. Controls are plain: toggles, selects, text
+  fields. Every setting has one line of explanation under it.
+- Built (2026-10-19), Snippets and Signatures use a wider (1040 px) list-and-detail layout. On the left, a list
+  of rows (name, `;shortcut` or "New mail"/"Replies" badges); the picked row is `--bg-3` with a 3 px `--accent` bar.
+  On the right, its editor, with a `--soft` preview at the bottom and a footer that says when it saved.
+  Snippets: find field, filter pills (All, each account, Most used), the shortcut checked as it is typed ("Free to
+  use" in `--ok`, "Taken by …" in `--danger`), the places as `--accent-soft` chips that insert at the cursor,
+  "Available in" (an account) and "Also fill in" (subject, Cc), and a preview written to a made-up person.
+  Signatures: a tab per account, the signature in compose's editor (select text to format it), which one goes on
+  new mail and which on replies, and above or below the quote as a segmented control.
 
 ### 4.9 Account setup
 

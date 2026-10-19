@@ -223,6 +223,10 @@ fn main() {
             commands::save_snippet,
             commands::delete_snippet,
             commands::snippet_used,
+            commands::signatures,
+            commands::save_signature,
+            commands::set_signature_default,
+            commands::delete_signature,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tern");

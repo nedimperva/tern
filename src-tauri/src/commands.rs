@@ -666,6 +666,34 @@ pub async fn snippet_used(state: State<'_, AppState>, id: i64) -> Reply<()> {
     state.store.snippet_used(id).map_err(text)
 }
 
+/// Every account's signatures.
+#[tauri::command]
+pub async fn signatures(state: State<'_, AppState>) -> Reply<Vec<tern_core::Signature>> {
+    state.store.signatures().map_err(text)
+}
+
+/// Adds or changes a signature; its id comes back.
+#[tauri::command]
+pub async fn save_signature(state: State<'_, AppState>, signature: tern_core::Signature) -> Reply<i64> {
+    state.store.save_signature(&signature).map_err(text)
+}
+
+/// The account's signature for new mail, or with `reply` for replies and forwards; none with no id.
+#[tauri::command]
+pub async fn set_signature_default(
+    state: State<'_, AppState>,
+    account_id: i64,
+    reply: bool,
+    id: Option<i64>,
+) -> Reply<()> {
+    state.store.set_signature_default(account_id, reply, id).map_err(text)
+}
+
+#[tauri::command]
+pub async fn delete_signature(state: State<'_, AppState>, id: i64) -> Reply<()> {
+    state.store.delete_signature(id).map_err(text)
+}
+
 /// How long a site's logo, or its having none, is kept before the site is asked again.
 const LOGO_TTL: Duration = Duration::from_secs(30 * 24 * 3600);
 /// Sites being fetched, so a conversation full of one sender asks once.

@@ -1,4 +1,4 @@
-import { batch, createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { batch, createEffect, createMemo, createSignal, For, lazy, on, onCleanup, onMount, Show, Suspense } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import {
   api,
@@ -10,6 +10,7 @@ import {
   type OutboxProblem,
   type OutboxWaiting,
   type SendOptions,
+  type Signature,
   type SyncProgress,
   type SyncState,
   type Target,
@@ -23,7 +24,7 @@ import {
 } from "./api";
 import { AccountSetup } from "./components/AccountSetup";
 import { CommandBar, type Command } from "./components/CommandBar";
-import { Compose, type ComposeInit } from "./components/Compose";
+import { Compose, defaultSignature, type ComposeInit } from "./components/Compose";
 import { ConversationRow } from "./components/ConversationRow";
 import type { MenuItem } from "./components/ActionMenu";
 import type { PersonActions } from "./components/PersonCard";
@@ -31,7 +32,6 @@ import { ConversationView, takeQuote } from "./components/ConversationView";
 import { ProblemsDialog } from "./components/Problems";
 import { Rail, ROLE_NAMES } from "./components/Rail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
-import { SettingsPage } from "./components/SettingsPage";
 import { SnoozePicker } from "./components/SnoozePicker";
 import { AttachmentViewer } from "./components/AttachmentViewer";
 import { until } from "./components/ConversationRow";
@@ -41,6 +41,8 @@ import { loadSettings, ROW_HEIGHTS, setSetting, settings } from "./settings";
 import { Icon } from "./components/Icon";
 import { VirtualList } from "./components/VirtualList";
 import { keyHandler, keyLabel, type Binding, type Context } from "./keys";
+// Settings open seldom: their page is a chunk of its own.
+const SettingsPage = lazy(() => import("./components/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 
 const PAGE = 100;
 const UNDO_MS = 5000;
@@ -76,6 +78,9 @@ const DONE: Record<Exclude<Action, object>, string> = {
 
 export default function App() {
   const [accounts, setAccounts] = createSignal<Account[]>([]);
+  // Every account's signatures, for compose; read again when settings close.
+  const [signatures, setSignatures] = createSignal<Signature[]>([]);
+  const loadSignatures = () => void api.signatures().then(setSignatures, () => {});
   const [syncStates, setSyncStates] = createSignal<Record<number, SyncState>>({});
   const [progress, setProgress] = createSignal<SyncProgress[]>([]);
   // Counting is cheap but not free at 100k messages; a backfill changes mail many times a second.
@@ -204,6 +209,7 @@ export default function App() {
   }
 
   async function refresh() {
+    loadSignatures();
     const [a, f, p, w, s] = await Promise.all([
       api.accounts(),
       api.folders(),
@@ -496,11 +502,14 @@ export default function App() {
     void load();
   }
 
-  /** The account's signature with its "-- " line, or nothing. */
-  const signature = (accountId = accounts()[0]?.id) => {
-    const text = accountId == null ? "" : (settings.signatures[String(accountId)] ?? "").trim();
-    return text ? `-- \n${text}` : "";
-  };
+  /** Compose's signature for new mail or a reply from `accountId`: the account's own for that kind, if any, with
+   * whatever is quoted. Compose puts the three together. */
+  const signing = (accountId: number | undefined, kind: "new" | "reply", quote = "", below = false) => ({
+    id: defaultSignature(signatures(), accountId ?? accounts()[0]?.id, kind)?.id ?? null,
+    kind,
+    quote,
+    below,
+  });
 
   /** Opens a reply, reply-all or forward to `m`, set up by the engine from the message's headers. Replies sit
    * under the open conversation; a forward is a new message in its own dialog. */
@@ -529,14 +538,13 @@ export default function App() {
             .map((l) => (l.startsWith(">") ? `>${l}` : `> ${l}`))
             .join("\n")}`;
     // The signature goes above what is quoted or forwarded, unless set to go below a quote.
-    const sig = signature(init.accountId);
-    const body = !sig ? quote : kind !== "forward" && settings.signatureBelow ? `${quote}\n\n${sig}` : `\n\n${sig}${quote}`;
     setCompose({
       accountId: init.accountId,
       to: init.to,
       cc: init.cc,
       subject: init.subject,
-      body,
+      body: "",
+      signature: signing(init.accountId, "reply", quote, kind !== "forward" && settings.signatureBelow),
       inReplyTo: init.inReplyTo,
       references: init.references,
       focus: kind === "forward" ? "to" : "body",
@@ -686,24 +694,24 @@ export default function App() {
     ),
   );
 
-  const newMessage = () => setCompose({ body: signature() ? `\n\n${signature()}` : "" });
+  const newMessage = () => setCompose({ body: "", signature: signing(undefined, "new") });
 
   /** What a person's card in the conversation can do. */
   const person: PersonActions = {
-    write: (email) => setCompose({ to: [email], body: signature() ? `\n\n${signature()}` : "", focus: "body" }),
+    write: (email) => setCompose({ to: [email], body: "", signature: signing(undefined, "new"), focus: "body" }),
     search: (email) => batch(() => (close(), setQuery(`from:${email}`))),
     open: (m) => void open(asRow(m), true),
   };
 
   /** A `mailto:` link: compose, filled in from it. */
   function fromLink(m: Mailto) {
-    const sig = signature();
     setCompose({
       to: m.to,
       cc: m.cc,
       bcc: m.bcc,
       subject: m.subject,
-      body: sig ? `${m.body}\n\n${sig}` : m.body,
+      body: m.body,
+      signature: signing(undefined, "new"),
       focus: m.to.length ? "body" : "to",
     });
   }
@@ -1200,7 +1208,7 @@ export default function App() {
           <Show when={compose()?.inline ? compose() : null}>
             {(init) => (
               <div class="inline-reply">
-                <Compose accounts={accounts()} init={init()} onSend={send} onClose={composeClosed} onDiscard={composeDiscarded} />
+                <Compose accounts={accounts()} signatures={signatures()} init={init()} onSend={send} onClose={composeClosed} onDiscard={composeDiscarded} />
               </div>
             )}
           </Show>
@@ -1239,7 +1247,11 @@ export default function App() {
         />
       </Show>
       <Show when={settingsOpen()}>
-        {(section) => <SettingsPage accounts={accounts()} section={section()} onClose={() => setSettingsOpen(null)} />}
+        {(section) => (
+          <Suspense>
+            <SettingsPage accounts={accounts()} section={section()} onClose={() => (setSettingsOpen(null), loadSignatures())} />
+          </Suspense>
+        )}
       </Show>
       <Show when={perf()}>
         <PerfOverlay />
@@ -1261,7 +1273,7 @@ export default function App() {
         />
       </Show>
       <Show when={compose() && !compose()!.inline ? compose() : null}>
-        {(init) => <Compose accounts={accounts()} init={init()} onSend={send} onClose={composeClosed} onDiscard={composeDiscarded} />}
+        {(init) => <Compose accounts={accounts()} signatures={signatures()} init={init()} onSend={send} onClose={composeClosed} onDiscard={composeDiscarded} />}
       </Show>
       <Show when={setup() || (ready() && accounts().length === 0)}>
         <AccountSetup

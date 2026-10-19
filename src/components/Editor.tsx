@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { baseKeymap, setBlockType, toggleMark, wrapIn, lift } from "prosemirror-commands";
 import { history, redo, undo } from "prosemirror-history";
 import { inputRules, wrappingInputRule, InputRule } from "prosemirror-inputrules";
@@ -10,7 +10,8 @@ import { EditorView } from "prosemirror-view";
 import { fromHtml, fromText, schema, toHtml, toText } from "../editor/schema";
 import type { Snippet } from "../api";
 
-/** Where compose's snippets come from: the saved ones, their text with the places filled in, and a use counted. */
+/** Where compose's snippets come from: the ones offered here, their text with the places filled in, and what using
+ * one does besides (its use counted, its subject and Cc filled in). */
 export type SnippetSource = {
   list: () => Snippet[];
   fill: (s: Snippet) => Promise<string>;
@@ -87,6 +88,13 @@ export function Editor(props: {
     const p = picker();
     return p && props.snippets ? matchSnippets(props.snippets.list(), p.typed) : [];
   };
+  // The pointed snippet's text as it would go in, filled for the person written to.
+  const [preview, setPreview] = createSignal("");
+  createEffect(() => {
+    const s = offered()[pointed()];
+    if (!s || !props.snippets) return setPreview("");
+    void props.snippets.fill(s).then((text) => offered()[pointed()] === s && setPreview(text.replace(/\{cursor\}/g, "")));
+  });
 
   const openLink = () => {
     setLinking(true);
@@ -263,27 +271,33 @@ export function Editor(props: {
       </Show>
       <Show when={picker() && offered().length ? picker() : null}>
         {(at) => (
-          <ul
-            class="suggestions snippet-picker"
-            role="listbox"
-            aria-label="Snippets"
-            style={{ left: `${at().left}px`, top: `${at().top}px` }}
-          >
-            <For each={offered()}>
-              {(s, i) => (
-                <li
-                  role="option"
-                  aria-selected={i() === pointed()}
-                  classList={{ pointed: i() === pointed() }}
-                  onMouseDown={(e) => (e.preventDefault(), void insert(s))}
-                >
-                  <span class="snippet-key">;{s.shortcut}</span>
-                  <span class="name">{s.name}</span>
-                  <span class="addr">{s.body.replace(/\{cursor\}/g, "").split("\n").find((l) => l.trim())}</span>
-                </li>
-              )}
-            </For>
-          </ul>
+          <div class="snippet-picker" style={{ left: `${at().left}px`, top: `${at().top}px` }}>
+            <div class="snippet-choices">
+              <ul class="suggestions" role="listbox" aria-label="Snippets">
+                <For each={offered()}>
+                  {(s, i) => (
+                    <li
+                      role="option"
+                      aria-selected={i() === pointed()}
+                      classList={{ pointed: i() === pointed() }}
+                      onMouseDown={(e) => (e.preventDefault(), void insert(s))}
+                      onMouseEnter={() => setPointed(i())}
+                    >
+                      <span class="name">{s.name || s.shortcut}</span>
+                      <span class="snippet-key">;{s.shortcut}</span>
+                    </li>
+                  )}
+                </For>
+              </ul>
+              <p class="snippet-keys">
+                <kbd>↵</kbd> insert <kbd>Esc</kbd> close
+              </p>
+            </div>
+            <div class="snippet-preview" aria-live="polite">
+              <span class="label">Will insert</span>
+              <p>{preview()}</p>
+            </div>
+          </div>
         )}
       </Show>
       <Show when={bar()}>

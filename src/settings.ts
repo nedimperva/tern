@@ -14,8 +14,6 @@ export type Settings = {
   readAfterMs: number;
   /** Remote images in mail: blocked until asked for, or always loaded. */
   loadImages: "ask" | "always";
-  /** Each account's signature, by account id. Plain text for now. */
-  signatures: Record<string, string>;
   /** In replies: the signature above the quoted message (as most people read it), or below it. */
   signatureBelow: boolean;
   /** Seconds a sent message waits before it goes, so Undo can stop it. */
@@ -47,7 +45,6 @@ export const DEFAULTS: Settings = {
   loadImages: "ask",
   imagesFrom: [],
   sendDelay: 5,
-  signatures: {},
   signatureBelow: false,
   background: true,
   notify: true,
