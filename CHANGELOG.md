@@ -7,10 +7,21 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-19
+
+### Added
+
+- Send later (Ctrl+Shift+L, or Later in compose): the message waits in the outbox until its time. A send whose
+  time passed while Tern was closed waits for you to confirm it.
+- Remind me (Ctrl+Shift+H): if nobody replies by the time you pick, the conversation is pinned at the top of the
+  inbox with "No reply yet" and a notification. Done dismisses it; a reply cancels it.
+
 ### Changed
 
 - A new app icon: a tern, replacing the old kite, in the launcher, taskbar, installers, tray and Linux
   notifications.
+- The compose footer fits on one line: only Send keeps its key hint and Attach is a paperclip; the other
+  shortcuts are in tooltips.
 
 ## [0.3.2] - 2026-10-18
 
@@ -78,7 +89,8 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/nedimperva/tern/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/nedimperva/tern/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/nedimperva/tern/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/nedimperva/tern/compare/v0.2.0...v0.3.0
