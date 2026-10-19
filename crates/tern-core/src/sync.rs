@@ -197,7 +197,9 @@ pub async fn run_account(
                 connected = true;
             }
             report(SyncState::Syncing);
-            pass(&store, &account, &password, &mut session, &mut schedule, &*on_change).await
+            // The name on sent mail can change in settings while this runs: each pass reads it again.
+            let current = store.account(account.id)?.unwrap_or_else(|| account.clone());
+            pass(&store, &current, &password, &mut session, &mut schedule, &*on_change).await
         }
         .await;
         let wait = match result {

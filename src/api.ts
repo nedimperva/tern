@@ -21,8 +21,31 @@ export type Account = AccountConfig & { id: number };
 /** What a `mailto:` link fills in. */
 export type Mailto = { to: string[]; cc: string[]; bcc: string[]; subject: string; body: string };
 /** Mail a notification was about. */
-/** Saved text that compose inserts after `;shortcut`; `{first_name}` and the like are filled in there. */
-export type Snippet = { id: number; shortcut: string; name: string; body: string };
+/** Saved text that compose inserts after `;shortcut`; `{first_name}` and the like are filled in there. It can be
+ * kept to one account, and can also set the subject (when compose has none) and add people to Cc. `used` and
+ * `lastUsed` (Unix seconds) are counted by the engine. */
+export type Snippet = {
+  id: number;
+  shortcut: string;
+  name: string;
+  body: string;
+  accountId: number | null;
+  subject: string | null;
+  cc: string[];
+  used: number;
+  lastUsed: number | null;
+};
+/** One of an account's signatures: plain text, with `html` when it has formatting. An account has at most one for
+ * new mail and one for replies and forwards. */
+export type Signature = {
+  id: number;
+  accountId: number;
+  name: string;
+  body: string;
+  html: string | null;
+  forNew: boolean;
+  forReply: boolean;
+};
 
 /** How far one account's download has come: messages here against the server's counts, and how many have their
  * text (what search reads in full). */
@@ -177,6 +200,8 @@ export type SendOptions = { at?: number | null; followUp?: number | null };
 
 export interface Api {
   accounts(): Promise<Account[]>;
+  /** The name on mail sent from the account; empty sends the address alone. */
+  setAccountName(id: number, name: string): Promise<void>;
   folders(): Promise<Folder[]>;
   preset(email: string): Promise<Preset | null>;
   addAccount(config: AccountConfig, password: string): Promise<Account>;
@@ -244,6 +269,13 @@ export interface Api {
   deleteSnippet(id: number): Promise<void>;
   /** Counts a use, so the most used come first. */
   snippetUsed(id: number): Promise<void>;
+  /** Every account's signatures. */
+  signatures(): Promise<Signature[]>;
+  /** Adds (id 0) or changes a signature's name and text; returns its id. An account's first goes on all its mail. */
+  saveSignature(signature: Signature): Promise<number>;
+  /** The account's signature for new mail, or with `reply` for replies and forwards; null for none. */
+  setSignatureDefault(accountId: number, reply: boolean, id: number | null): Promise<void>;
+  deleteSignature(id: number): Promise<void>;
   /** Closing the window hides it while this says so: Tern keeps running in the tray. */
   keepRunningWhen(f: () => boolean): void;
   /** Saves what is being written, then quits Tern for good. */
@@ -319,6 +351,7 @@ function installClose() {
 
 const tauri: Api = {
   accounts: () => invoke("accounts"),
+  setAccountName: (id, name) => invoke("set_account_name", { id, name }),
   folders: () => invoke("folders"),
   preset: (email) => invoke("preset", { email }),
   addAccount: (config, password) => invoke("add_account", { config, password }),
@@ -414,6 +447,10 @@ const tauri: Api = {
   saveSnippet: (snippet) => invoke("save_snippet", { snippet }),
   deleteSnippet: (id) => invoke("delete_snippet", { id }),
   snippetUsed: (id) => invoke("snippet_used", { id }),
+  signatures: () => invoke("signatures"),
+  saveSignature: (signature) => invoke("save_signature", { signature }),
+  setSignatureDefault: (accountId, reply, id) => invoke("set_signature_default", { accountId, reply, id }),
+  deleteSignature: (id) => invoke("delete_signature", { id }),
   autostart: () => invoke("autostart"),
   setAutostart: (on) => invoke("set_autostart", { on }),
   defaultMailApp: () => invoke("default_mail_app"),
@@ -464,11 +501,15 @@ function fake(): Api {
     smtpPort: 465,
     smtpSecurity: "tls",
   };
+  const plain = { accountId: null, subject: null, cc: [], used: 0, lastUsed: null };
   let snippets: Snippet[] = [
-    { id: 1, shortcut: "thanks", name: "Thanks", body: "Thanks {first_name}!\n\n{cursor}" },
-    { id: 2, shortcut: "call", name: "Call me", body: "Hi {first_name},\n\nCould we talk about {subject} on a call this week?{cursor}" },
+    { ...plain, id: 1, shortcut: "thanks", name: "Thanks", body: "Thanks {first_name}!\n\n{cursor}" },
+    { ...plain, id: 2, shortcut: "call", name: "Call me", body: "Hi {first_name},\n\nCould we talk about {subject} on a call this week?{cursor}" },
   ];
-  const used = new Map<number, number>();
+  let signatures: Signature[] = [
+    { id: 1, accountId: 1, name: "Full", body: "Ada Lovelace\nAnalytical Engines Ltd", html: null, forNew: true, forReply: false },
+    { id: 2, accountId: 1, name: "Short", body: "Ada", html: null, forNew: false, forReply: true },
+  ];
   const folders: Folder[] = [
     { id: 1, accountId: 1, name: "INBOX", role: "inbox", unread: 0 },
     { id: 2, accountId: 1, name: "Archive", role: "archive", unread: 0 },
@@ -594,6 +635,7 @@ function fake(): Api {
 
   return {
     accounts: async () => [account],
+    setAccountName: async (_, name) => void (account.displayName = name.trim()),
     folders: async () =>
       folders.map((f) => ({ ...f, unread: messages.filter((m) => m.folderId === f.id && !m.seen).length })),
     preset: async () => ({
@@ -835,18 +877,37 @@ function fake(): Api {
       d.setHours(8, 0, 0, 0);
       return Math.floor(d.getTime() / 1000);
     },
-    snippets: async () => [...snippets].sort((a, b) => (used.get(b.id) ?? 0) - (used.get(a.id) ?? 0)),
+    snippets: async () => [...snippets].sort((a, b) => b.used - a.used),
     saveSnippet: async (snippet) => {
       const shortcut = snippet.shortcut.trim().replace(/^;/, "");
       if (!shortcut || /\s/.test(shortcut)) throw "A shortcut is one word, such as thanks.";
       if (snippets.some((s) => s.id !== snippet.id && s.shortcut.toLowerCase() === shortcut.toLowerCase()))
         throw `Another snippet already uses ;${shortcut}.`;
       const id = snippet.id || Math.max(0, ...snippets.map((s) => s.id)) + 1;
-      snippets = [...snippets.filter((s) => s.id !== id), { ...snippet, id, shortcut }];
+      const was = snippets.find((s) => s.id === id);
+      const kept = { ...snippet, id, shortcut, used: was?.used ?? 0, lastUsed: was?.lastUsed ?? null };
+      snippets = [...snippets.filter((s) => s.id !== id), kept];
       return id;
     },
     deleteSnippet: async (id) => void (snippets = snippets.filter((s) => s.id !== id)),
-    snippetUsed: async (id) => void used.set(id, (used.get(id) ?? 0) + 1),
+    snippetUsed: async (id) =>
+      void (snippets = snippets.map((s) => (s.id === id ? { ...s, used: s.used + 1, lastUsed: Math.floor(Date.now() / 1000) } : s))),
+    signatures: async () => signatures.map((s) => ({ ...s })),
+    saveSignature: async (signature) => {
+      if (signature.id) {
+        signatures = signatures.map((s) => (s.id === signature.id ? { ...s, name: signature.name, body: signature.body, html: signature.html } : s));
+        return signature.id;
+      }
+      const first = !signatures.some((s) => s.accountId === signature.accountId);
+      const id = Math.max(0, ...signatures.map((s) => s.id)) + 1;
+      signatures = [...signatures, { ...signature, id, forNew: first, forReply: first }];
+      return id;
+    },
+    setSignatureDefault: async (accountId, reply, id) =>
+      void (signatures = signatures.map((s) =>
+        s.accountId !== accountId ? s : reply ? { ...s, forReply: s.id === id } : { ...s, forNew: s.id === id },
+      )),
+    deleteSignature: async (id) => void (signatures = signatures.filter((s) => s.id !== id)),
     autostart: async () => false,
     setAutostart: async () => {},
     defaultMailApp: async () => false,

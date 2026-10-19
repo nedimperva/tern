@@ -1,5 +1,16 @@
-import { createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
-import { api, type Account, type Draft, type ForwardOf, type OutgoingAttachment, type SendOptions, type Snippet } from "../api";
+import { createResource, createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
+import type { EditorView } from "prosemirror-view";
+import {
+  api,
+  type Account,
+  type Draft,
+  type ForwardOf,
+  type OutgoingAttachment,
+  type SendOptions,
+  type Signature,
+  type Snippet,
+} from "../api";
+import { fillSnippet } from "../snippets";
 import { until } from "./ConversationRow";
 import { SnoozePicker } from "./SnoozePicker";
 import type { SnippetSource } from "./Editor";
@@ -34,31 +45,18 @@ export type ComposeInit = {
   forwardOf?: ForwardOf | null;
   /** Names and sizes of those, to show. */
   forwardFiles?: { name: string; size: number }[];
+  /** New mail and replies: the signature goes in after `body` and above `quote` (below it when `below`). `kind`
+   * says which of the account's signatures a change of From picks. A saved draft has none: its own text has it. */
+  signature?: { id: number | null; kind: "new" | "reply"; quote: string; below: boolean };
 };
 
-/** A snippet's text with its places filled: `{first_name}`, `{name}` and `{email}` of the first person it goes to,
- * `{subject}`, `{my_name}` and `{date}`. `{cursor}` stays for the editor; unknown places stay as typed. */
-export function fillSnippet(
-  body: string,
-  to: { email: string; name: string } | null,
-  subject: string,
-  myName: string,
-  now = new Date(),
-): string {
-  const name = to?.name.trim() ?? "";
-  // Without a name, a local part such as "ada" or "ada.lovelace" still gives a first name.
-  const local = to?.email.split("@")[0].split(/[._-]/)[0] ?? "";
-  const first = name.split(/\s+/)[0] || (/^\p{L}+$/u.test(local) ? local[0].toUpperCase() + local.slice(1) : "");
-  const values: Record<string, string> = {
-    first_name: first,
-    name: name || to?.email || "",
-    email: to?.email ?? "",
-    subject: subject.replace(/^((re|fwd?|aw|sv):\s*)+/i, ""),
-    my_name: myName,
-    date: now.toLocaleDateString(undefined, { dateStyle: "long" }),
-  };
-  return body.replace(/\{(\w+)\}/g, (place, key: string) => values[key] ?? place);
+/** The signature of `accountId` for new mail or for replies, if it has one. */
+export function defaultSignature(all: Signature[], accountId: number | undefined, kind: "new" | "reply") {
+  return all.find((s) => s.accountId === accountId && (kind === "new" ? s.forNew : s.forReply)) ?? null;
 }
+
+/** Signature work needs the editor's document model, so it loads with the editor, not with the app. */
+const signatureTools = () => import("../signature");
 
 /** Above this a message may bounce: many servers take 25 MB at most. */
 const LARGE_BYTES = 25_000_000;
@@ -76,6 +74,8 @@ const SAVE_AFTER_MS = 800;
  * conversation done; Ctrl+Shift+C / B add Cc / Bcc; Esc closes. */
 export function Compose(props: {
   accounts: Account[];
+  /** Every account's signatures. */
+  signatures: Signature[];
   init: ComposeInit;
   onSend: (accountId: number, draft: Draft, done: boolean, draftId: number | null, options: SendOptions) => void;
   /** Closed; `saved` is the draft id when what was written was kept as a draft. */
@@ -92,6 +92,59 @@ export function Compose(props: {
   const [subject, setSubject] = createSignal(props.init.subject ?? "");
   const [body, setBody] = createSignal(props.init.body ?? "");
   const [html, setHtml] = createSignal<string | null>(props.init.html ?? null);
+  // What the editor opens with: the text, signature and quote put together. The editor waits for it.
+  const [opening] = createResource(async () => {
+    const s = props.init.signature;
+    if (!s) return { body: body(), html: html() };
+    const sig = props.signatures.find((x) => x.id === s.id) ?? null;
+    const made = (await signatureTools()).withSignature(body(), s.quote, sig, s.below);
+    setBody(made.body);
+    setHtml(made.html);
+    return made;
+  });
+  // The signature in the text now (null: none, or one Tern can't find as written), and the editor showing it.
+  const [sigId, setSigId] = createSignal<number | null>(props.init.signature?.id ?? null);
+  const sigKind = props.init.signature?.kind ?? (props.init.inReplyTo ? "reply" : "new");
+  const accountSignatures = () => props.signatures.filter((s) => s.accountId === from());
+  let view: EditorView | undefined;
+  const editorReady = (v: EditorView) => {
+    view = v;
+    // A saved draft: find which of the account's signatures it holds, so switching replaces that one.
+    if (props.init.signature) return;
+    void signatureTools().then(({ findSignature }) => {
+      const held = accountSignatures().find((s) => findSignature(v.state.doc, s));
+      if (held) setSigId(held.id);
+    });
+  };
+  /** Puts `next` (or no signature) in place of the current one, where the current one is; else where one goes. */
+  const switchSignature = async (next: Signature | null) => {
+    if (!view) return;
+    const { findSignature, signatureDoc, signaturePlace } = await signatureTools();
+    const state = view.state;
+    const current = props.signatures.find((s) => s.id === sigId());
+    const at = current ? findSignature(state.doc, current) : null;
+    const blocks = next ? signatureDoc(next).content : null;
+    if (at) view.dispatch(blocks ? state.tr.replaceWith(at.from, at.to, blocks) : state.tr.delete(at.from, at.to));
+    else if (blocks) {
+      const below = props.init.signature?.below ?? false;
+      view.dispatch(state.tr.insert(signaturePlace(state.doc, below), blocks));
+    }
+    setSigId(next?.id ?? null);
+  };
+  /** Ctrl+Shift+S: the account's next signature, then none, then round again. */
+  const cycleSignature = () => {
+    const list = accountSignatures();
+    if (!list.length) return;
+    const i = list.findIndex((s) => s.id === sigId());
+    void switchSignature(i + 1 < list.length ? list[i + 1] : null);
+  };
+  /** Writing from another account brings its signature, when the one in the text was the old account's. */
+  const changeFrom = (accountId: number) => {
+    const old = props.signatures.find((s) => s.id === sigId());
+    setFrom(accountId);
+    if (old && old.accountId !== accountId) void switchSignature(defaultSignature(props.signatures, accountId, sigKind));
+    else if (!old && props.init.signature) void switchSignature(defaultSignature(props.signatures, accountId, sigKind));
+  };
   const [problem, setProblem] = createSignal("");
   // Remind me if no reply (Ctrl+Shift+H): when, if set. Send later (Ctrl+Shift+L) sends as soon as a time is picked.
   const [followUp, setFollowUp] = createSignal<number | null>(null);
@@ -165,15 +218,24 @@ export function Compose(props: {
 
   const [snippetList, setSnippetList] = createSignal<Snippet[]>([]);
   onMount(() => void api.snippets().then(setSnippetList, () => {}));
+  /** Fills a snippet's places for the first person it goes to. */
+  const fillFor = async (text: string) => {
+    const email = to()[0];
+    const known = email ? (await api.contacts(email).catch(() => [])).find((c) => c.email.toLowerCase() === email.toLowerCase()) : undefined;
+    const account = props.accounts.find((a) => a.id === from());
+    return fillSnippet(text, email ? { email, name: known?.name ?? "" } : null, subject(), account?.displayName ?? "");
+  };
   const snippets: SnippetSource = {
-    list: snippetList,
-    fill: async (s) => {
-      const email = to()[0];
-      const known = email ? (await api.contacts(email).catch(() => [])).find((c) => c.email.toLowerCase() === email.toLowerCase()) : undefined;
-      const account = props.accounts.find((a) => a.id === from());
-      return fillSnippet(s.body, email ? { email, name: known?.name ?? "" } : null, subject(), account?.displayName ?? "");
+    // A snippet kept to one account is offered only when writing from it.
+    list: () => snippetList().filter((s) => s.accountId == null || s.accountId === from()),
+    fill: (s) => fillFor(s.body),
+    used: (s) => {
+      void api.snippetUsed(s.id).catch(() => {});
+      // Its subject only where there is none yet; its Cc people join whoever is there.
+      if (s.subject && !subject().trim()) void fillFor(s.subject).then((text) => (setSubject(text), changed()));
+      const fresh = s.cc.filter((a) => ![...to(), ...cc()].some((b) => b.toLowerCase() === a.toLowerCase()));
+      if (fresh.length) (setCc([...cc(), ...fresh]), setShowCc(true), changed());
     },
-    used: (s) => void api.snippetUsed(s.id).catch(() => {}),
   };
 
   const bodyFirst = (props.init.focus ?? (props.init.to?.length ? "body" : "to")) === "body";
@@ -203,6 +265,7 @@ export function Compose(props: {
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "h") setPicking("followUp");
     else if (ctrl && e.shiftKey && (e.key === "," || e.key === "<")) discard();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "a") void pick();
+    else if (ctrl && e.shiftKey && e.key.toLowerCase() === "s") cycleSignature();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "c") {
       setShowCc(true);
       queueMicrotask(() => ccInput?.focus());
@@ -219,7 +282,7 @@ export function Compose(props: {
       <Show when={props.accounts.length > 1}>
         <label class="field">
           <span class="label">From</span>
-          <select value={from()} onChange={(e) => setFrom(Number(e.currentTarget.value))}>
+          <select value={from()} onChange={(e) => changeFrom(Number(e.currentTarget.value))}>
             <For each={props.accounts}>
               {(a) => <option value={a.id}>{a.displayName ? `${a.displayName} <${a.email}>` : a.email}</option>}
             </For>
@@ -240,14 +303,19 @@ export function Compose(props: {
         </label>
       </Show>
       <Suspense fallback={<div class="editor-body" />}>
-      <Editor
-        text={body()}
-        html={props.init.html}
-        autofocus={bodyFirst ? "start" : false}
-        snippets={snippets}
-        quoteOpen={props.init.quoteOpen}
-        onChange={(text, rich) => (setBody(text), setHtml(rich), changed())}
-      />
+        <Show when={opening()}>
+          {(start) => (
+            <Editor
+              text={start().body}
+              html={start().html}
+              autofocus={bodyFirst ? "start" : false}
+              snippets={snippets}
+              quoteOpen={props.init.quoteOpen}
+              ref={editorReady}
+              onChange={(text, rich) => (setBody(text), setHtml(rich), changed())}
+            />
+          )}
+        </Show>
       </Suspense>
       <Show when={files().length || forwardOf()}>
         <div class="attachments outgoing" aria-label="Attachments">
@@ -341,6 +409,23 @@ export function Compose(props: {
             </button>
           </Show>
         </span>
+        <Show when={accountSignatures().length}>
+          <label class="signature-pick" title="Signature (Ctrl+Shift+S)">
+            <Icon name="pen-line" size={13} />
+            <select
+              aria-label="Signature"
+              value={String(sigId() ?? "")}
+              onChange={(e) => {
+                const id = Number(e.currentTarget.value);
+                void switchSignature(accountSignatures().find((s) => s.id === id) ?? null);
+              }}
+            >
+              <For each={accountSignatures()}>{(s) => <option value={String(s.id)}>{s.name || "Untitled"}</option>}</For>
+              <option value="">None</option>
+            </select>
+            <Icon name="chevron-down" size={12} />
+          </label>
+        </Show>
         <button type="button" class="link discard" onClick={discard} title="Discard (Ctrl+Shift+,)">
           Discard
         </button>
