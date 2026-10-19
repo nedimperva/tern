@@ -286,7 +286,8 @@ export default function App() {
       reply: (m) => void replyToMail(m),
     });
     void api.takeMailto().then((m) => m && fromLink(m));
-    api.onUpdateReady(setUpdate);
+    // Said once as it arrives; the status strip keeps offering it after.
+    api.onUpdateReady((v) => (setUpdate(v), showToast(`Tern ${v} is ready. Restart to update from the status bar.`, [])));
     void api.updateReady().then((v) => v && setUpdate(v));
     // Fetch the compose editor while the person reads, so the first "c" opens at once.
     const warm = () => void import("./components/Editor");
@@ -1174,8 +1175,9 @@ export default function App() {
           </Show>
           <Show when={update()}>
             {(v) => (
-              <button class="link update-link" onClick={restartToUpdate}>
-                Restart to update to {v()}
+              <button class="update-link" onClick={restartToUpdate} title={`Tern ${v()} is downloaded and checked. Restart to install it.`}>
+                <Icon name="download" size={12} />
+                Update ready · Restart
               </button>
             )}
           </Show>

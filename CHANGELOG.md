@@ -31,6 +31,8 @@ mail database, so 0.3.4 and earlier can't open it afterwards.
 - Compose is tidier: From is a pill at the top beside "Saved", Cc and Bcc sit at the end of the To row,
   recipients show names and initials, Send has a menu for Send & Done, Send later and Remind, and the tools are
   icons.
+- A downloaded update is easier to see: "Update ready · Restart" is a button in the status bar, and a message
+  says so when the download finishes.
 
 ## [0.3.4] - 2026-10-19
 
