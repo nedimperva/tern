@@ -124,6 +124,9 @@ export default function App() {
     undo?: () => unknown;
   } | null>(null);
   const [compose, setCompose] = createSignal<ComposeInit | null>(null);
+  // New mail folded into a corner card while the person reads; a new compose always opens unfolded.
+  const [composeMin, setComposeMin] = createSignal(false);
+  createEffect(on(compose, () => setComposeMin(false), { defer: true }));
   const [palette, setPalette] = createSignal(false);
   // Opens the palette straight in one command's choices (g l → "Go to folder …").
   const [paletteStart, setPaletteStart] = createSignal<string | undefined>();
@@ -168,7 +171,7 @@ export default function App() {
   const current = () => rows()[focus()];
   const context = (): Context => (openRow() ? "conversation" : "list");
   const dialog = () =>
-    reviewing() || palette() || sheet() || settingsOpen() !== null || compose() !== null || setup() || rail() || snoozing() !== null ||
+    reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin()) || setup() || rail() || snoozing() !== null ||
     viewing() !== null;
   const searching = () => query().trim() !== "";
   // Some mail has headers only, so words in its body were not searched.
@@ -969,6 +972,11 @@ export default function App() {
     setIdle(false);
     clearTimeout(idleTimer);
     idleTimer = window.setTimeout(() => setIdle(true), 2000);
+    if (composeMin() && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "m") {
+      e.preventDefault();
+      setComposeMin(false);
+      return;
+    }
     handleKey(e);
   };
   onMount(() => {
@@ -1033,6 +1041,8 @@ export default function App() {
     const refused = inState("auth-failed");
     if (refused.length) {
       const who = several && refused.length === 1 && refused[0] ? refused[0].email : "The server";
+      if (refused.every((a) => a?.auth === "google"))
+        return { text: `Google sign-in ended${several ? ` for ${refused[0]?.email}` : ""}. Sign in again in Settings (Ctrl+,).`, tone: "danger" };
       return { text: `${who} refused the password. Open accounts with Ctrl+\\.`, tone: "danger" };
     }
     const unreachable = inState("offline");
@@ -1291,7 +1301,18 @@ export default function App() {
         />
       </Show>
       <Show when={compose() && !compose()!.inline ? compose() : null}>
-        {(init) => <Compose accounts={accounts()} signatures={signatures()} init={init()} onSend={send} onClose={composeClosed} onDiscard={composeDiscarded} />}
+        {(init) => (
+          <Compose
+            accounts={accounts()}
+            signatures={signatures()}
+            init={init()}
+            onSend={send}
+            onClose={composeClosed}
+            onDiscard={composeDiscarded}
+            minimized={composeMin()}
+            onMinimize={setComposeMin}
+          />
+        )}
       </Show>
       <Show when={setup() || (ready() && accounts().length === 0)}>
         <AccountSetup

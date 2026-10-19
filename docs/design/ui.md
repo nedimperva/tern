@@ -172,15 +172,32 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ### 4.4 Compose
 
 - New mail: a centred modal 720 × up to 80 % height, `--bg-1`. Reply: inline at the bottom of the conversation, same internals.
-- Field rows (36 px): `To`, then `Cc` `Bcc` appear only when used or via `Ctrl+Shift+C/B`; `From` only when > 1 identity; `Subject`. Labels are `--fg-2` on the left (64 px), values are chips (`--bg-2`, `--r-sm`, remove on `Backspace`).
+- Top row: the From pill (account colour dot, "From Name · address ▾") when > 1 identity; then, right-aligned,
+  "✓ Saved" / "Saving…" in `--fg-2`, and icon buttons Minimize (`Ctrl+Shift+M`), Focus (`Ctrl+Shift+F`) and Close
+  (`Esc`, keeps the draft). An inline reply has no Minimize or Focus.
+- Field rows: `To` (with `Cc` `Bcc` toggles at its right end, or `Ctrl+Shift+C/B`), then `Cc` `Bcc` when used,
+  `Subject`. Labels are `--fg-2` on the left (64 px). Recipients are chips (`--bg-2`, `--r-sm`): initials on
+  `--accent-soft`, the contact's name when known (address on hover), remove on `Backspace`. A chip outside the
+  sender's organisation (not for public mail services) is on `--warn-soft` with the domain after the name.
 - Editor body: `--t-rd`, min 160 px, grows with content. Formatting bar appears only on text selection, floating above the selection: B I U S · link · list · quote.
-- Footer: `Send  Ctrl↵` primary button, `Send & Done`, `Later`, `Remind`, attach icon, snippet icon, discard right-aligned in `--fg-2`.
-- Signature: a pill in the footer ("Signature: Full ▾") when the account has any; picking one, or `Ctrl+Shift+S`
+- Attachments: cards 132 px wide (picture thumbnail, else the file kind's icon; name and size; × on hover) and a
+  size bar against 25 MB, `--warn` from 70 %, `--danger` over. Files dragged over the window show a dashed
+  `--accent` drop zone over compose.
+- Checks before sending, one line each above the footer, never a dialog: "You wrote “u prilogu”, but nothing is
+  attached" (Attach… / Send anyway; words in many languages, src/attachmentWords.ts, plus the person's own) and
+  "There's no subject" on `--warn-soft`; "x is outside example.com" on `--bg-2` when outside people are mixed
+  with the sender's own, dismissible. Sending again while they show sends anyway.
+- Footer (above a `--line` rule): split `Send  Ctrl↵` button whose menu holds Send & Done, Send later…, Remind me
+  if no reply… with their keys; then attach, snippet and signature as icons; discard as a trash icon at the far end.
+- Signature: a pill in the footer ("✎ Full ▾") when the account has any; picking one, or `Ctrl+Shift+S`
   to step through them and None, swaps the signature in the text. Changing From brings the new account's.
+- Minimized: the dialog hides (its editor kept) and a 320 px card waits bottom right: subject, recipients, the
+  start of the text, Saved. Click or `Ctrl+Shift+M` opens it again; the app's keys work meanwhile.
+- Focus mode: compose fills the window, fields hidden behind a one-line summary, the text in a 640 px column at
+  16 / 1.7, every paragraph but the caret's at 45 % opacity; word count top right; `Esc` leaves.
 - Snippet picker (`;`): a 600 px popover, matches on the left (name, `;shortcut`, keys), and on `--soft` to the
   right the pointed snippet as it would go in, filled for the person written to.
 - Autocomplete: dropdown under the field, 5 rows, avatar initials + name + address; `Enter`/`Tab` picks.
-- Autosave indicator: "Saved" in `--fg-2` fades in after each save.
 
 ### 4.5 Pickers (snooze, send later, remind)
 

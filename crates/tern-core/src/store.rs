@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 20;
+const SCHEMA_VERSION: i64 = 21;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -353,6 +353,8 @@ fn migrate(conn: &Connection) -> Result<()> {
                      WHERE s.key = 'signatures' AND trim(j.value) != '';
                  DELETE FROM settings WHERE key = 'signatures';"
             }
+            // How each account signs in: a password (every account so far) or Google in the browser.
+            20 => "ALTER TABLE accounts ADD COLUMN auth TEXT NOT NULL DEFAULT 'password';",
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -613,8 +615,8 @@ impl Store {
         let conn = self.conn();
         conn.execute(
             "INSERT INTO accounts (email, display_name, username, imap_host, imap_port, imap_security,
-                                   smtp_host, smtp_port, smtp_security)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                                   smtp_host, smtp_port, smtp_security, auth)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 c.email,
                 c.display_name,
@@ -624,7 +626,8 @@ impl Store {
                 c.imap_security.as_str(),
                 c.smtp_host,
                 c.smtp_port,
-                c.smtp_security.as_str()
+                c.smtp_security.as_str(),
+                c.auth.as_str()
             ],
         )?;
         Ok(Account { id: conn.last_insert_rowid(), config: c.clone() })
@@ -635,6 +638,12 @@ impl Store {
     pub fn set_display_name(&self, id: i64, name: &str) -> Result<()> {
         self.conn()
             .execute("UPDATE accounts SET display_name = ?2 WHERE id = ?1", params![id, name.trim()])?;
+        Ok(())
+    }
+
+    /// Switches how the account signs in (an app-password Gmail account moving to Google sign-in).
+    pub fn set_auth(&self, id: i64, auth: Auth) -> Result<()> {
+        self.conn().execute("UPDATE accounts SET auth = ?2 WHERE id = ?1", params![id, auth.as_str()])?;
         Ok(())
     }
 
@@ -651,7 +660,7 @@ impl Store {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
             "SELECT id, email, display_name, username, imap_host, imap_port, imap_security,
-                    smtp_host, smtp_port, smtp_security
+                    smtp_host, smtp_port, smtp_security, auth
              FROM accounts ORDER BY id",
         )?;
         let accounts = stmt
@@ -668,6 +677,7 @@ impl Store {
                         smtp_host: r.get(7)?,
                         smtp_port: r.get(8)?,
                         smtp_security: security(r, 9)?,
+                        auth: if r.get::<_, String>(10)? == "google" { Auth::Google } else { Auth::Password },
                     },
                 })
             })?
@@ -3096,6 +3106,7 @@ mod tests {
             smtp_host: "smtp.example.com".into(),
             smtp_port: 465,
             smtp_security: Security::Tls,
+            auth: Default::default(),
         }
     }
 
@@ -4111,6 +4122,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                20 => "ALTER TABLE accounts DROP COLUMN auth;",
                 // A column with a REFERENCES clause can't be dropped: the table goes back to its step-16 shape.
                 19 => {
                     "DROP TABLE signatures; DROP TABLE snippets;
@@ -4307,6 +4319,17 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
             .query_row("SELECT count(*) FROM reminders WHERE kind = 'followup'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(left, 0, "an unsent message has nothing to wait for");
+    }
+
+    #[test]
+    fn migration_21_keeps_existing_accounts_on_passwords() {
+        let (store, account, ..) = setup();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 20);
+        let store = Store::init(conn).unwrap();
+        assert_eq!(store.account(account).unwrap().unwrap().config.auth, Auth::Password);
+        store.set_auth(account, Auth::Google).unwrap();
+        assert_eq!(store.account(account).unwrap().unwrap().config.auth, Auth::Google);
     }
 
     #[test]

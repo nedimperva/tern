@@ -55,6 +55,7 @@ pub fn generate(store: &Store, messages: u32) -> Result<i64> {
         smtp_host: "smtp.invalid".into(),
         smtp_port: 465,
         smtp_security: tern_core::Security::Tls,
+        auth: Default::default(),
     })?;
     let folders = [
         store.upsert_folder(account.id, "INBOX", "inbox")?,

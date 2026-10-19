@@ -1340,15 +1340,114 @@ button.fold {
 }
 
 .compose {
+  position: relative;
   width: min(720px, 92vw);
   max-height: 80vh;
   background: var(--bg-1);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow);
-  padding: var(--s-2) var(--s-4) var(--s-4);
+  padding: var(--s-2) var(--s-4) var(--s-3);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+}
+/* Compose's top row: who it is from, whether it is saved, and minimize / focus / close. */
+.compose-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 32px;
+  margin-bottom: var(--s-1);
+}
+.compose .spacer {
+  flex: 1;
+}
+.compose-head .saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+.compose-head .saved svg {
+  color: var(--ok);
+}
+.compose-head .summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.compose .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg-1);
+  cursor: pointer;
+}
+.compose .icon-button:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.compose .icon-button.discard:hover {
+  color: var(--danger);
+}
+.compose .exit-focus {
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  padding: 4px var(--s-2);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+/* The From pill: the account's colour, its name, a select over all of it. */
+.compose .from-pick {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  min-width: 0;
+}
+.compose .from-pick .dot {
+  position: absolute;
+  left: 9px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.compose .from-pick svg {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+}
+.compose .from-pick select {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 4px 24px 4px 23px;
+  max-width: 420px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  field-sizing: content;
+}
+.compose .from-pick:hover {
+  color: var(--fg-0);
 }
 /* A reply at the bottom of the conversation, in the page rather than over it. */
 .inline-reply {
@@ -1421,12 +1520,53 @@ button.fold {
 .compose .chip {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  height: 24px;
-  padding: 0 2px 0 var(--s-2);
+  gap: 6px;
+  height: 26px;
+  padding: 0 2px 0 3px;
   border-radius: var(--r-sm);
   background: var(--bg-2);
   font-size: var(--t-md);
+}
+.compose .chip .initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+}
+.compose .chip.outside {
+  background: var(--warn-soft);
+  box-shadow: inset 0 0 0 1px var(--warn);
+}
+.compose .chip.outside .initials {
+  background: transparent;
+  color: var(--warn-fg);
+}
+.compose .chip .domain {
+  font-size: var(--t-xs);
+  color: var(--warn-fg);
+}
+.compose .cc-toggles {
+  display: inline-flex;
+  gap: 2px;
+}
+.compose .cc-toggles button {
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.compose .cc-toggles button:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
 }
 .compose .chip.invalid {
   color: var(--danger);
@@ -1450,14 +1590,161 @@ button.fold {
   overflow: hidden;
   font: var(--t-rd) / 1.5 var(--font);
 }
-.attachments.outgoing {
+/* Files going with the message: picture thumbnails, else the file's kind. */
+.outgoing-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
   margin-top: var(--s-2);
-  align-items: center;
 }
-.attachments.outgoing button {
-  background: none;
+.file-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 132px;
+  border-radius: var(--r-md);
+  background: var(--soft);
+  overflow: hidden;
+}
+.file-card .thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 72px;
+  background: var(--bg-2);
+  color: var(--fg-2);
+}
+.file-card .thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.file-card .meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-1);
+  padding: 4px 6px;
+  font-size: var(--t-xs);
+  color: var(--fg-1);
+}
+.file-card .name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-card .size {
+  flex: none;
+  color: var(--fg-2);
+}
+.file-card .remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
   border: 0;
-  padding: 0 var(--s-1);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+.file-card:hover .remove,
+.file-card .remove:focus-visible {
+  opacity: 1;
+}
+.size-meter {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.size-meter .bar {
+  flex: none;
+  width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.size-meter .bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.size-meter.near {
+  color: var(--warn-fg);
+}
+.size-meter.near .bar span {
+  background: var(--warn);
+}
+.size-meter.over {
+  color: var(--danger);
+}
+.size-meter.over .bar span {
+  background: var(--danger);
+}
+/* Files dragged over the window: where they go. The window takes the drop; this only says so. */
+.drop-zone {
+  position: absolute;
+  inset: var(--s-2);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-1);
+  border: 2px dashed var(--accent);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--accent-soft) 94%, transparent);
+  color: var(--accent);
+  pointer-events: none;
+}
+/* Checks before sending: one line each, never a dialog. */
+.compose .checks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--s-2);
+}
+.compose .check {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 6px var(--s-2) 6px var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-md);
+}
+.compose .check.warn {
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+}
+.compose .check .text {
+  flex: 1;
+}
+.compose .check button {
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: inherit;
+  padding: 4px var(--s-2);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+.compose .check button.solid {
+  background: var(--bg-1);
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.compose .check .dismiss {
+  display: inline-flex;
   color: var(--fg-2);
 }
 .attachments .total {
@@ -1539,29 +1826,182 @@ button.fold {
   padding: var(--s-1) var(--s-2);
 }
 
-/* Only Send shows its key and Attach is an icon (ui.md 4.4), so the row fits the dialog. Wrapping is the
-   fallback for a narrow window, not the normal layout. */
+/* Send (its menu holds Send & Done, Send later and Remind), then the tools as icons, discard at the far end
+   (ui.md 4.4). Wrapping is the fallback for a narrow window, not the normal layout. */
 .compose footer {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s-2);
   margin-top: var(--s-2);
-}
-.compose footer .extras {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  margin-left: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--line);
 }
 .compose footer button {
   white-space: nowrap;
 }
-.compose footer .attach {
+.compose footer .hint {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.compose footer .tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.send-split {
+  position: relative;
   display: inline-flex;
 }
-.compose footer .discard {
-  margin-left: auto;
+.send-split > .primary:first-child {
+  border-radius: var(--r-md) 0 0 var(--r-md);
+}
+.send-split > .more {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  border-left: 1px solid color-mix(in srgb, var(--accent-fg) 30%, transparent);
+}
+.send-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 280px;
+  padding: var(--s-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow);
+}
+.send-menu button {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: 6px var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-0);
+  font-size: var(--t-md);
+  text-align: left;
+  cursor: pointer;
+}
+.send-menu button:hover,
+.send-menu button:focus-visible {
+  background: var(--bg-2);
+}
+.send-menu kbd {
+  color: var(--fg-2);
+}
+/* Folded: the dialog is hidden (its editor kept as it was) and a card waits in the corner. */
+.compose-overlay.minimized {
+  display: none;
+}
+.compose-card {
+  position: fixed;
+  right: var(--s-5);
+  bottom: 40px;
+  z-index: 30;
+  display: flex;
+  width: 320px;
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  box-shadow: var(--shadow);
+}
+.compose-card .open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px var(--s-3);
+  border: 0;
+  background: none;
+  color: var(--fg-1);
+  text-align: left;
+  cursor: pointer;
+}
+.compose-card .title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--fg-0);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+.compose-card .title svg {
+  color: var(--accent);
+}
+.compose-card .line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-sm);
+}
+.compose-card .faint {
+  color: var(--fg-2);
+}
+.compose-card .saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ok);
+}
+.compose-card .close {
+  align-self: flex-start;
+  margin: 6px;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg-2);
+  display: inline-flex;
+  cursor: pointer;
+}
+.compose-card .close:hover {
+  background: var(--bg-2);
+}
+/* Focus mode: the whole window, one narrow column, the paragraph being written in full colour. */
+.compose-overlay.focused {
+  padding: 0;
+}
+.compose.focus {
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: var(--s-3) var(--s-5);
+}
+.compose.focus .fields {
+  display: none;
+}
+.compose.focus .editor {
+  flex: 1;
+}
+.compose.focus .editor-body {
+  max-width: 640px;
+  margin: 0 auto;
+  padding-top: var(--s-6);
+  font-size: 16px;
+  line-height: 1.7;
+}
+.compose.focus .ProseMirror:focus > :not(.current) {
+  opacity: 0.45;
+  transition: opacity var(--d-base);
+}
+.compose.focus footer {
+  justify-content: center;
+  border-top: 0;
+}
+.compose.focus footer .tools,
+.compose.focus footer .spacer,
+.compose.focus footer .discard {
+  display: none;
 }
 
 .setup {
@@ -1608,6 +2048,11 @@ button.fold {
 }
 .setup .link {
   align-self: flex-start;
+}
+.setup .google {
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--t-rd);
+  font-weight: 600;
 }
 .note {
   margin: 0;

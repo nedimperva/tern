@@ -1,4 +1,4 @@
-import { createResource, createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
+import { createEffect, createResource, createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
 import type { EditorView } from "prosemirror-view";
 import {
   api,
@@ -11,6 +11,9 @@ import {
   type Snippet,
 } from "../api";
 import { fillSnippet } from "../snippets";
+import { attachmentWords, domainOf, mentionsAttachment, outside } from "../attachmentWords";
+import { colourOf } from "../colours";
+import { settings } from "../settings";
 import { until } from "./ConversationRow";
 import { SnoozePicker } from "./SnoozePicker";
 import type { SnippetSource } from "./Editor";
@@ -82,6 +85,9 @@ export function Compose(props: {
   onClose: (saved: number | null) => void;
   /** Discarded; the draft id when one had been saved (so it can be undone). */
   onDiscard: (draftId: number | null) => void;
+  /** Folded into a card in the corner while the person reads other mail (new mail only). */
+  minimized?: boolean;
+  onMinimize?: (on: boolean) => void;
 }) {
   const [from, setFrom] = createSignal(props.init.accountId ?? props.accounts[0]?.id);
   const [to, setTo] = createSignal(props.init.to ?? []);
@@ -165,7 +171,26 @@ export function Compose(props: {
     }
   };
   const pick = async () => attach(await api.pickFiles());
-  onMount(() => onCleanup(api.onFilesDropped((paths) => void attach(paths))));
+  // Files dragged over the window: the drop zone shows while they are.
+  const [dragging, setDragging] = createSignal(false);
+  onMount(() => onCleanup(api.onFilesDropped((paths) => void attach(paths), setDragging)));
+  // Pictures being attached, shown on their cards.
+  const [previews, setPreviews] = createSignal<Record<string, string>>({});
+  createEffect(() => {
+    for (const f of files()) {
+      if (!f.mime.startsWith("image/") || f.path in previews()) continue;
+      setPreviews({ ...previews(), [f.path]: "" });
+      void api.outgoingPreview(f.path).then((uri) => uri && setPreviews({ ...previews(), [f.path]: uri }));
+    }
+  });
+  const [saveState, setSaveState] = createSignal<"saving" | "saved" | null>(null);
+  const [focusMode, setFocusMode] = createSignal(false);
+  const [sendMenu, setSendMenu] = createSignal(false);
+  // Checks before sending (attachment mentioned but missing, no subject). Shown on the first try; sending again
+  // with them showing sends anyway. Any change takes them away, since it may have been the fix.
+  const [checks, setChecks] = createSignal<{ attachment: string | null; subject: boolean } | null>(null);
+  // An outside recipient among people from the sender's own organisation: said once, can be dismissed.
+  const [outsideDismissed, setOutsideDismissed] = createSignal(false);
   // The draft this compose saves to, once there is one, and whether anything changed since it opened.
   let draftId: number | null = props.init.draftId ?? null;
   // Reopened after undo-send, what is here may never have been saved.
@@ -187,11 +212,18 @@ export function Compose(props: {
   const save = async (uploadNow: boolean) => {
     clearTimeout(saveTimer);
     if (!dirty || from() == null) return;
-    draftId = await api.saveDraft(draftId, from()!, draft(), uploadNow);
+    setSaveState("saving");
+    try {
+      draftId = await api.saveDraft(draftId, from()!, draft(), uploadNow);
+      setSaveState("saved");
+    } catch {
+      setSaveState(null);
+    }
   };
   /** Something changed: save once typing pauses. */
   const changed = () => {
     dirty = true;
+    setChecks(null);
     clearTimeout(saveTimer);
     saveTimer = window.setTimeout(() => void save(false), SAVE_AFTER_MS);
   };
@@ -243,6 +275,31 @@ export function Compose(props: {
     if (!bodyFirst) toInput.focus();
   });
 
+  const sender = () => props.accounts.find((a) => a.id === from())?.email;
+  const isOutside = (address: string) => outside(address, sender());
+  /** Outside recipients, when they are mixed with people from the sender's own organisation. */
+  const outsiders = () => {
+    const everyone = [...to(), ...cc(), ...bcc()];
+    const out = everyone.filter(isOutside);
+    return out.length && out.length < everyone.length ? out : [];
+  };
+  /** What the person wrote themselves: not the quoted message, not the signature. */
+  const ownText = () => {
+    let text = body();
+    if (view) {
+      const parts: string[] = [];
+      // Line breaks as text too, or the signature's lines run together and are not found below.
+      view.state.doc.forEach(
+        (node) => void (node.type.name !== "blockquote" && parts.push(node.textBetween(0, node.content.size, "\n", "\n"))),
+      );
+      text = parts.join("\n");
+    }
+    // Compared with spaces collapsed: the editor and the saved signature break lines differently.
+    const flat = (t: string) => t.replace(/\s+/g, " ").trim();
+    const sig = props.signatures.find((s) => s.id === sigId());
+    return sig?.body.trim() ? flat(text).replace(flat(sig.body), "").trim() : flat(text);
+  };
+
   const send = (done: boolean, at: number | null = null) => {
     // Whatever is still typed in a field counts as entered.
     const all = (list: string[], input?: HTMLInputElement) => [...list, ...splitAddresses(input?.value ?? "")];
@@ -252,6 +309,12 @@ export function Compose(props: {
     const bad = everyone.filter((a) => !validAddress(a));
     if (bad.length) return setProblem(`${bad.join(", ")} does not look like an address.`);
     if (from() == null) return;
+    if (!checks()) {
+      const attached = files().length > 0 || forwardOf() != null;
+      const said = settings.attachmentCheck && !attached ? mentionsAttachment(ownText(), attachmentWords(settings.attachmentWords)) : null;
+      const noSubject = !subject().trim() && !props.init.inReplyTo;
+      if (said || noSubject) return setChecks({ attachment: said, subject: noSubject });
+    }
     clearTimeout(saveTimer);
     dirty = false;
     props.onSend(from()!, { ...draft(), ...recipients }, done, draftId, { at, followUp: followUp() });
@@ -259,7 +322,11 @@ export function Compose(props: {
 
   const onKeyDown = (e: KeyboardEvent) => {
     const ctrl = e.ctrlKey || e.metaKey;
-    if (e.key === "Escape") void close();
+    if (e.key === "Escape" && sendMenu()) setSendMenu(false);
+    else if (e.key === "Escape" && focusMode()) setFocusMode(false);
+    else if (e.key === "Escape") void close();
+    else if (ctrl && e.shiftKey && e.key.toLowerCase() === "f" && !props.init.inline) setFocusMode(!focusMode());
+    else if (ctrl && e.shiftKey && e.key.toLowerCase() === "m" && !props.init.inline) (setFocusMode(false), props.onMinimize?.(true));
     else if (ctrl && e.key === "Enter") send(e.shiftKey);
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "l") setPicking("later");
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "h") setPicking("followUp");
@@ -277,31 +344,101 @@ export function Compose(props: {
     e.stopPropagation();
   };
 
+  const words = () => (ownText().match(/\p{L}[\p{L}\p{N}'’-]*/gu) ?? []).length;
+  const iconButton = (icon: Parameters<typeof Icon>[0]["name"], label: string, run: () => void, cls = "") => (
+    <button type="button" class={`icon-button ${cls}`} title={label} aria-label={label} onClick={run}>
+      <Icon name={icon} size={16} />
+    </button>
+  );
+  /** The snippet picker, as if `;` was typed where the caret is. */
+  const openSnippets = () => {
+    if (!view) return;
+    view.focus();
+    view.dispatch(view.state.tr.insertText(";"));
+  };
+
   const form = (
-    <form class="compose" classList={{ inline: props.init.inline }} onKeyDown={onKeyDown} onSubmit={(e) => (e.preventDefault(), send(false))}>
-      <Show when={props.accounts.length > 1}>
-        <label class="field">
-          <span class="label">From</span>
-          <select value={from()} onChange={(e) => changeFrom(Number(e.currentTarget.value))}>
-            <For each={props.accounts}>
-              {(a) => <option value={a.id}>{a.displayName ? `${a.displayName} <${a.email}>` : a.email}</option>}
-            </For>
-          </select>
-        </label>
-      </Show>
-      <RecipientField label="To" value={to()} onChange={(v) => (setTo(v), changed())} ref={(el) => (toInput = el)} />
-      <Show when={showCc()}>
-        <RecipientField label="Cc" value={cc()} onChange={(v) => (setCc(v), changed())} ref={(el) => (ccInput = el)} />
-      </Show>
-      <Show when={showBcc()}>
-        <RecipientField label="Bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} />
-      </Show>
-      <Show when={!props.init.inline || !props.init.inReplyTo}>
-        <label class="field">
-          <span class="label">Subject</span>
-          <input value={subject()} onInput={(e) => (setSubject(e.currentTarget.value), changed())} />
-        </label>
-      </Show>
+    <form
+      class="compose"
+      classList={{ inline: props.init.inline, focus: focusMode() }}
+      onKeyDown={onKeyDown}
+      onSubmit={(e) => (e.preventDefault(), send(false))}
+    >
+      <div class="compose-head">
+        <Show when={props.accounts.length > 1}>
+          <label class="from-pick" title="Send from">
+            <span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />
+            <select aria-label="From" value={from()} onChange={(e) => changeFrom(Number(e.currentTarget.value))}>
+              <For each={props.accounts}>
+                {(a) => <option value={a.id}>{a.displayName ? `From ${a.displayName} · ${a.email}` : `From ${a.email}`}</option>}
+              </For>
+            </select>
+            <Icon name="chevron-down" size={12} />
+          </label>
+        </Show>
+        <Show when={focusMode()}>
+          <span class="summary">{[to().length ? `To ${to().join(", ")}` : "", subject()].filter(Boolean).join(" · ")}</span>
+        </Show>
+        <span class="spacer" />
+        <Show when={focusMode()}>
+          <span class="saved">{words()} words</span>
+        </Show>
+        <span class="saved" aria-live="polite">
+          <Show when={saveState() === "saved"}>
+            <Icon name="check" size={12} /> Saved
+          </Show>
+          <Show when={saveState() === "saving"}>Saving…</Show>
+        </span>
+        <Show when={!props.init.inline}>
+          <Show
+            when={!focusMode()}
+            fallback={
+              <button type="button" class="exit-focus" onClick={() => setFocusMode(false)}>
+                Exit focus <kbd>Esc</kbd>
+              </button>
+            }
+          >
+            {iconButton("minus", "Minimize (Ctrl+Shift+M)", () => props.onMinimize?.(true))}
+            {iconButton("maximize", "Focus mode (Ctrl+Shift+F)", () => setFocusMode(true))}
+          </Show>
+        </Show>
+        <Show when={!focusMode()}>{iconButton("x", "Close and keep the draft (Esc)", () => void close())}</Show>
+      </div>
+      <div class="fields">
+        <RecipientField
+          label="To"
+          value={to()}
+          onChange={(v) => (setTo(v), changed())}
+          ref={(el) => (toInput = el)}
+          outside={isOutside}
+          after={
+            <span class="cc-toggles">
+              <Show when={!showCc()}>
+                <button type="button" onClick={() => (setShowCc(true), queueMicrotask(() => ccInput?.focus()))} title="Cc (Ctrl+Shift+C)">
+                  Cc
+                </button>
+              </Show>
+              <Show when={!showBcc()}>
+                <button type="button" onClick={() => (setShowBcc(true), queueMicrotask(() => bccInput?.focus()))} title="Bcc (Ctrl+Shift+B)">
+                  Bcc
+                </button>
+              </Show>
+            </span>
+          }
+        />
+        <Show when={showCc()}>
+          <RecipientField label="Cc" value={cc()} onChange={(v) => (setCc(v), changed())} ref={(el) => (ccInput = el)} outside={isOutside} />
+        </Show>
+        <Show when={showBcc()}>
+          <RecipientField label="Bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} outside={isOutside} />
+        </Show>
+        <Show when={!props.init.inline || !props.init.inReplyTo}>
+          <label class="field subject">
+            <span class="label">Subject</span>
+            <input value={subject()} onInput={(e) => (setSubject(e.currentTarget.value), changed())} />
+          </label>
+        </Show>
+      </div>
       <Suspense fallback={<div class="editor-body" />}>
         <Show when={opening()}>
           {(start) => (
@@ -318,28 +455,39 @@ export function Compose(props: {
         </Show>
       </Suspense>
       <Show when={files().length || forwardOf()}>
-        <div class="attachments outgoing" aria-label="Attachments">
+        <div class="outgoing-files" aria-label="Attachments">
           <Show when={forwardOf()}>
-            <span class="file" title="Attached from the forwarded message when it is sent">
-              <Icon name="paperclip" size={13} />
-              <span class="name">
-                {props.init.forwardFiles?.length
-                  ? props.init.forwardFiles.map((f) => f.name).join(", ")
-                  : "Attachments of the forwarded message"}
+            <span class="file-card" title="Attached from the forwarded message when it is sent">
+              <span class="thumb">
+                <Icon name="paperclip" size={18} />
               </span>
-              <button type="button" aria-label="Do not forward the attachments" onClick={() => (setForwardOf(null), changed())}>
+              <span class="meta">
+                <span class="name">
+                  {props.init.forwardFiles?.length
+                    ? props.init.forwardFiles.map((f) => f.name).join(", ")
+                    : "Attachments of the forwarded message"}
+                </span>
+              </span>
+              <button type="button" class="remove" aria-label="Do not forward the attachments" onClick={() => (setForwardOf(null), changed())}>
                 ×
               </button>
             </span>
           </Show>
           <For each={files()}>
             {(f, i) => (
-              <span class="file" title={f.mime}>
-                <Icon name="paperclip" size={13} />
-                <span class="name">{f.name}</span>
-                <span class="size">{size(f.size)}</span>
+              <span class="file-card" title={f.mime}>
+                <span class="thumb">
+                  <Show when={previews()[f.path]} fallback={<Icon name={f.mime.startsWith("image/") ? "image" : "file"} size={18} />}>
+                    {(uri) => <img src={uri()} alt="" />}
+                  </Show>
+                </span>
+                <span class="meta">
+                  <span class="name">{f.name}</span>
+                  <span class="size">{size(f.size)}</span>
+                </span>
                 <button
                   type="button"
+                  class="remove"
                   aria-label={`Remove ${f.name}`}
                   onClick={() => (setFiles(files().filter((_, j) => j !== i())), changed())}
                 >
@@ -348,92 +496,163 @@ export function Compose(props: {
               </span>
             )}
           </For>
-          <span class="total" classList={{ large: total() > LARGE_BYTES }}>
-            {total() > LARGE_BYTES ? `${size(total())}: many servers refuse mail over 25 MB` : size(total())}
+        </div>
+        <div class="size-meter" classList={{ near: total() > LARGE_BYTES * 0.7, over: total() > LARGE_BYTES }}>
+          <span class="bar">
+            <span style={{ width: `${Math.min(100, (total() / LARGE_BYTES) * 100)}%` }} />
           </span>
+          <span>
+            {size(total())} of 25 MB
+            {total() > LARGE_BYTES
+              ? ". Many servers refuse mail this big; send a link instead."
+              : total() > LARGE_BYTES * 0.7
+                ? ". Bigger files are better sent as a link."
+                : ""}
+          </span>
+        </div>
+      </Show>
+      <Show when={dragging() && !props.minimized}>
+        <div class="drop-zone" aria-hidden="true">
+          <Icon name="download" size={28} />
+          <strong>Drop to attach</strong>
         </div>
       </Show>
       <Show when={problem()}>
         <p class="error">{problem()}</p>
       </Show>
-      <footer>
-        <button type="submit" class="primary">
-          Send <kbd>Ctrl ↵</kbd>
-        </button>
-        <button type="button" onClick={() => send(true)} title="Send & Done (Ctrl+Shift+Enter)">
-          Send & Done
-        </button>
-        <span class="extras">
-          <button type="button" class="link" onClick={() => setPicking("later")} title="Send later (Ctrl+Shift+L)">
-            Later
-          </button>
-          <Show
-            when={followUp()}
-            fallback={
-              <button type="button" class="link" onClick={() => setPicking("followUp")} title="Remind me if no reply (Ctrl+Shift+H)">
-                Remind
-              </button>
-            }
-          >
-            {(due) => (
-              <span
-                class="follow-up"
-                title="Remind me if no reply by then: the conversation comes back to the top of the inbox"
-                aria-label={`Remind me if no reply by ${until(due())}`}
-              >
-                <Icon name="clock" size={12} />
-                <span>{until(due())}</span>
-                <button type="button" aria-label="No reminder" onClick={() => setFollowUp(null)}>
-                  ×
+      <Show when={checks() || (outsiders().length && !outsideDismissed())}>
+        <div class="checks">
+          <Show when={checks()?.attachment}>
+            {(word) => (
+              <div class="check warn">
+                <Icon name="paperclip" size={16} />
+                <span class="text">You wrote “{word()}”, but nothing is attached.</span>
+                <button type="button" class="solid" onClick={() => void pick()}>
+                  Attach…
                 </button>
-              </span>
+                <button type="button" onClick={() => send(false)}>
+                  Send anyway
+                </button>
+              </div>
             )}
           </Show>
+          <Show when={checks()?.subject}>
+            <div class="check warn">
+              <Icon name="pen-line" size={16} />
+              <span class="text">There's no subject.</span>
+              <button type="button" onClick={() => send(false)}>
+                Send anyway
+              </button>
+            </div>
+          </Show>
+          <Show when={outsiders().length && !outsideDismissed()}>
+            <div class="check">
+              <Icon name="globe" size={16} />
+              <span class="text">
+                {outsiders().length === 1 ? outsiders()[0] : `${outsiders().length} people`} {outsiders().length === 1 ? "is" : "are"} outside{" "}
+                {sender() ? domainOf(sender()!) : "your organisation"}.
+              </span>
+              <button type="button" class="dismiss" aria-label="Dismiss" onClick={() => setOutsideDismissed(true)}>
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+          </Show>
+        </div>
+      </Show>
+      <footer>
+        <div class="send-split" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setSendMenu(false)}>
+          <button type="submit" class="primary">
+            Send <kbd>Ctrl ↵</kbd>
+          </button>
           <button
             type="button"
-            class="link attach"
-            onClick={() => void pick()}
-            title="Attach files (Ctrl+Shift+A), or drop them here"
-            aria-label="Attach files"
+            class="primary more"
+            aria-label="More ways to send"
+            aria-haspopup="menu"
+            aria-expanded={sendMenu()}
+            onClick={() => setSendMenu(!sendMenu())}
           >
-            <Icon name="paperclip" size={14} />
+            <Icon name="chevron-down" size={14} />
           </button>
-          <Show when={!showCc()}>
-            <button type="button" class="link" onClick={() => (setShowCc(true), queueMicrotask(() => ccInput?.focus()))}>
-              Cc
-            </button>
+          <Show when={sendMenu()}>
+            <div class="send-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), send(true))}>
+                Send & Done <kbd>Ctrl Shift ↵</kbd>
+              </button>
+              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), setPicking("later"))}>
+                Send later… <kbd>Ctrl Shift L</kbd>
+              </button>
+              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), setPicking("followUp"))}>
+                Remind me if no reply… <kbd>Ctrl Shift H</kbd>
+              </button>
+            </div>
           </Show>
-          <Show when={!showBcc()}>
-            <button type="button" class="link" onClick={() => (setShowBcc(true), queueMicrotask(() => bccInput?.focus()))}>
-              Bcc
-            </button>
+        </div>
+        <Show when={checks()}>
+          <span class="hint">Ctrl ↵ again sends anyway</span>
+        </Show>
+        <Show when={followUp()}>
+          {(due) => (
+            <span
+              class="follow-up"
+              title="Remind me if no reply by then: the conversation comes back to the top of the inbox"
+              aria-label={`Remind me if no reply by ${until(due())}`}
+            >
+              <Icon name="clock" size={12} />
+              <span>{until(due())}</span>
+              <button type="button" aria-label="No reminder" onClick={() => setFollowUp(null)}>
+                ×
+              </button>
+            </span>
+          )}
+        </Show>
+        <span class="tools">
+          {iconButton("paperclip", "Attach files (Ctrl+Shift+A), or drop them here", () => void pick())}
+          <Show when={snippetList().length}>{iconButton("file-text", "Snippet ( ; )", openSnippets)}</Show>
+          <Show when={accountSignatures().length}>
+            <label class="signature-pick" title="Signature (Ctrl+Shift+S)">
+              <Icon name="pen-line" size={14} />
+              <select
+                aria-label="Signature"
+                value={String(sigId() ?? "")}
+                onChange={(e) => {
+                  const id = Number(e.currentTarget.value);
+                  void switchSignature(accountSignatures().find((s) => s.id === id) ?? null);
+                }}
+              >
+                <For each={accountSignatures()}>{(s) => <option value={String(s.id)}>{s.name || "Untitled"}</option>}</For>
+                <option value="">None</option>
+              </select>
+              <Icon name="chevron-down" size={12} />
+            </label>
           </Show>
         </span>
-        <Show when={accountSignatures().length}>
-          <label class="signature-pick" title="Signature (Ctrl+Shift+S)">
-            <Icon name="pen-line" size={13} />
-            <select
-              aria-label="Signature"
-              value={String(sigId() ?? "")}
-              onChange={(e) => {
-                const id = Number(e.currentTarget.value);
-                void switchSignature(accountSignatures().find((s) => s.id === id) ?? null);
-              }}
-            >
-              <For each={accountSignatures()}>{(s) => <option value={String(s.id)}>{s.name || "Untitled"}</option>}</For>
-              <option value="">None</option>
-            </select>
-            <Icon name="chevron-down" size={12} />
-          </label>
-        </Show>
-        <button type="button" class="link discard" onClick={discard} title="Discard (Ctrl+Shift+,)">
-          Discard
-        </button>
-        <button type="button" class="link" onClick={() => void close()} title="Close and keep the draft (Esc)">
-          Close
-        </button>
+        <span class="spacer" />
+        {iconButton("trash", "Discard (Ctrl+Shift+,)", discard, "discard")}
       </footer>
     </form>
+  );
+
+  /** The folded compose: what it is and to whom, a click from opening again. */
+  const card = (
+    <div class="compose-card">
+      <button type="button" class="open" onClick={() => props.onMinimize?.(false)} title="Open (Ctrl+Shift+M)">
+        <span class="title">
+          <Icon name="pen-line" size={14} />
+          <span>{subject().trim() || "New message"}</span>
+        </span>
+        <span class="line">{to().length ? `To ${to().join(", ")}` : "No recipients yet"}</span>
+        <span class="line faint">{ownText() || " "}</span>
+        <Show when={saveState() === "saved"}>
+          <span class="line saved">
+            <Icon name="check" size={12} /> Saved
+          </span>
+        </Show>
+      </button>
+      <button type="button" class="close" aria-label="Close and keep the draft" title="Close and keep the draft" onClick={() => void close()}>
+        <Icon name="x" size={14} />
+      </button>
+    </div>
   );
 
   const picker = (
@@ -478,9 +697,14 @@ export function Compose(props: {
   return (
     <>
       <Show when={!props.init.inline} fallback={form}>
-        <div class="overlay" onMouseDown={(e) => e.target === e.currentTarget && void close()}>
+        <div
+          class="overlay compose-overlay"
+          classList={{ minimized: props.minimized, focused: focusMode() }}
+          onMouseDown={(e) => e.target === e.currentTarget && void close()}
+        >
           {form}
         </div>
+        <Show when={props.minimized}>{card}</Show>
       </Show>
       {picker}
     </>

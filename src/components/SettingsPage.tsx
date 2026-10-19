@@ -13,6 +13,7 @@ import {
   type JSX,
 } from "solid-js";
 import { api, type Account, type Signature, type Snippet } from "../api";
+import { colourOf } from "../colours";
 import { setSetting, settings, type Settings } from "../settings";
 import { fillSnippet, PLACES } from "../snippets";
 import { Icon } from "./Icon";
@@ -39,12 +40,6 @@ function Select<K extends keyof Settings>(props: { name: K; title: string; help:
   );
 }
 
-/** Account colours (docs/design/ui.md §2), in the order the accounts were added. */
-const ACCOUNT_COLOURS = ["#5b5bd6", "#2f9e6e", "#d0453f", "#c98a1b", "#0e9bb5", "#b24fb0", "#7a7f8a", "#e07a30"];
-const colourOf = (accounts: Account[], id: number) => {
-  const order = [...accounts].sort((a, b) => a.id - b.id).findIndex((a) => a.id === id);
-  return ACCOUNT_COLOURS[Math.max(0, order) % ACCOUNT_COLOURS.length];
-};
 const accountName = (a: Account) => a.displayName || a.email;
 
 /** A labelled part of an editor panel. */
@@ -178,6 +173,7 @@ function ReadingSettings() {
 
 function ComposeSettings() {
   return (
+    <>
     <Select
       name="sendDelay"
       title="Undo send"
@@ -189,6 +185,33 @@ function ComposeSettings() {
         { label: "20 seconds", value: 20 },
       ]}
     />
+    <Select
+      name="attachmentCheck"
+      title="Forgotten attachments"
+      help="Before sending, Tern checks whether you wrote that something is attached (“attached”, “u prilogu”, “im Anhang”…) when nothing is."
+      choices={[
+        { label: "Check", value: true },
+        { label: "Don't check", value: false },
+      ]}
+    />
+    <label class="setting">
+      <span class="title">Your own attachment words</span>
+      <input
+        value={settings.attachmentWords.join(", ")}
+        placeholder="evo fajla, šaljem ti"
+        onChange={(e) =>
+          setSetting(
+            "attachmentWords",
+            e.currentTarget.value.split(",").map((w) => w.trim()).filter(Boolean),
+          )
+        }
+      />
+      <span class="help">
+        Words or phrases that mean a file goes with the message, separated by commas. Tern already knows the usual ones in
+        English, Bosnian, Croatian, Serbian, German, French, Spanish, Italian, Portuguese, Dutch, Polish and Turkish.
+      </span>
+    </label>
+    </>
   );
 }
 
@@ -944,6 +967,22 @@ function AccountPage(props: { account: Account; onSignatures: () => void; onRena
       setError(String(e));
     }
   };
+  const [google, setGoogle] = createSignal(false);
+  void api.googleAvailable().then(setGoogle, () => setGoogle(false));
+  const [signing, setSigning] = createSignal(false);
+  const gmail = () => props.account.imapHost.toLowerCase() === "imap.gmail.com";
+  const signIn = async () => {
+    setError("");
+    setSigning(true);
+    try {
+      await api.googleSignIn(props.account.displayName, props.account.email);
+      props.onRenamed();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSigning(false);
+    }
+  };
   return (
     <>
       <label class="setting">
@@ -965,6 +1004,20 @@ function AccountPage(props: { account: Account; onSignatures: () => void; onRena
       <div class="setting">
         <span class="title">Address</span>
         <span>{props.account.email}</span>
+      </div>
+      <div class="setting">
+        <span class="title">Sign-in</span>
+        <span>{props.account.auth === "google" ? "With Google, in the browser" : gmail() ? "App password" : "Password"}</span>
+        <Show when={google() && (props.account.auth === "google" || gmail())}>
+          <button onClick={() => void signIn()} disabled={signing()}>
+            {signing() ? "Waiting for the browser…" : props.account.auth === "google" ? "Sign in again" : "Switch to Google sign-in"}
+          </button>
+          <span class="help">
+            {props.account.auth === "google"
+              ? "Opens Google in your browser. Use it if Tern says the sign-in expired or was removed."
+              : "Opens Google in your browser. Tern then forgets the app password; remove it in your Google account too."}
+          </span>
+        </Show>
       </div>
       <div class="setting">
         <span class="title">Incoming mail</span>
@@ -1017,7 +1070,7 @@ export function SettingsPage(props: {
     },
     { id: "Notifications", name: "Notifications", group: "General", words: "notify new mail quiet hours", body: () => <NotificationSettings /> },
     { id: "Desktop", name: "Desktop", group: "General", words: "background tray close login start email links mailto default", body: () => <DesktopSettings /> },
-    { id: "Compose", name: "Compose", group: "Writing", words: "undo send delay", body: () => <ComposeSettings /> },
+    { id: "Compose", name: "Compose", group: "Writing", words: "undo send delay attachment forgotten attached prilog anhang", body: () => <ComposeSettings /> },
     { id: "Snippets", name: "Snippets", group: "Writing", words: "saved replies templates shortcut text", body: () => <SnippetSettings accounts={props.accounts} /> },
     {
       id: "Signatures",

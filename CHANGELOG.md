@@ -7,8 +7,26 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Compose checks before sending: it says when you wrote that something is attached and nothing is (in English,
+  Bosnian, Croatian, Serbian, German, French, Spanish, Italian, Portuguese, Dutch, Polish and Turkish, plus your
+  own words in Settings → Compose), when there's no subject, and when someone outside your organisation is among
+  the recipients.
+- Minimize compose to a card in the corner (Ctrl+Shift+M) and keep reading mail; focus mode (Ctrl+Shift+F) gives
+  the text the whole window.
+- Pictures you attach show as thumbnails, with a size bar against the usual 25 MB limit, and a drop zone shows
+  when files are dragged over compose.
+- Google sign-in for Gmail and Google Workspace ("Continue with Google"), with no app password, in builds made
+  with your own Google client ([docs/gmail.md](docs/gmail.md)). Release builds don't include one yet, so Gmail
+  there keeps using an app password. This version upgrades the mail database, so 0.3.4 and earlier can't open it
+  afterwards.
+
 ### Changed
 
+- Compose is tidier: From is a pill at the top beside "Saved", Cc and Bcc sit at the end of the To row,
+  recipients show names and initials, Send has a menu for Send & Done, Send later and Remind, and the tools are
+  icons.
 - A downloaded update is easier to see: "Update ready · Restart" is a button in the status bar, and a message
   says so when the download finishes.
 

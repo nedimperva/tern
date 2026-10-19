@@ -166,10 +166,16 @@ CREATE TABLE signatures (id INTEGER PRIMARY KEY,
                          for_new INTEGER NOT NULL DEFAULT 0, for_reply INTEGER NOT NULL DEFAULT 0);
 ```
 
+## v21 — package 04, Google sign-in (implemented 2026-10-19)
+How an account signs in. `google` reads Google tokens from the keychain (`<email>/oauth`) and signs in to IMAP and
+SMTP with XOAUTH2; every account before this has a password. One column takes the planned `auth_kind` and
+`provider` together: a Microsoft sign-in would be another value.
+```sql
+ALTER TABLE accounts ADD COLUMN auth TEXT NOT NULL DEFAULT 'password';        -- 'password' | 'google'
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
-ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'
-ALTER TABLE accounts ADD COLUMN provider TEXT;                                 -- 'google' | 'microsoft' | NULL
 ALTER TABLE accounts ADD COLUMN caps TEXT NOT NULL DEFAULT '{}';               -- JSON: condstore, qresync, move, idle, gmail_ext
 ALTER TABLE accounts ADD COLUMN state TEXT NOT NULL DEFAULT 'ok';              -- 'ok' | 'auth-failed' | 'disabled'
 

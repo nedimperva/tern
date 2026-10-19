@@ -7,6 +7,8 @@ name: release
 # The updater artifacts (signed AppImage and NSIS installer, latest.json) need the TAURI_SIGNING_PRIVATE_KEY and
 # TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets. Installed copies look for latest.json on the newest release that
 # is neither a draft nor a pre-release, so a release reaches them when it is published.
+# "Continue with Google" needs the TERN_GOOGLE_CLIENT_ID and TERN_GOOGLE_CLIENT_SECRET secrets (the Google Cloud
+# desktop client; see src-tauri/build.rs). Without them the build still works and Gmail takes an app password.
 on:
   push:
     tags: ["v*"]
@@ -76,6 +78,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TERN_GOOGLE_CLIENT_ID: ${{ secrets.TERN_GOOGLE_CLIENT_ID }}
+          TERN_GOOGLE_CLIENT_SECRET: ${{ secrets.TERN_GOOGLE_CLIENT_SECRET }}
         with:
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && 'v__VERSION__' || '' }}
           releaseName: Tern v__VERSION__

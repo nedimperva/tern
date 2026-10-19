@@ -4,9 +4,9 @@ import { history, redo, undo } from "prosemirror-history";
 import { inputRules, wrappingInputRule, InputRule } from "prosemirror-inputrules";
 import { keymap } from "prosemirror-keymap";
 import { liftListItem, sinkListItem, splitListItem, wrapInList } from "prosemirror-schema-list";
-import { EditorState, TextSelection, type Command } from "prosemirror-state";
+import { EditorState, Plugin, TextSelection, type Command } from "prosemirror-state";
 import { Slice } from "prosemirror-model";
-import { EditorView } from "prosemirror-view";
+import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import { fromHtml, fromText, schema, toHtml, toText } from "../editor/schema";
 import type { Snippet } from "../api";
 
@@ -58,6 +58,18 @@ const lineBreak: Command = (state, dispatch) => {
   dispatch?.(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
   return true;
 };
+
+/** Marks the top-level block the caret is in (`current`), so compose's focus mode can dim the rest. */
+const currentBlock = new Plugin({
+  props: {
+    decorations(state) {
+      const { $from } = state.selection;
+      if ($from.depth < 1) return null;
+      const start = $from.before(1);
+      return DecorationSet.create(state.doc, [Decoration.node(start, start + $from.node(1).nodeSize, { class: "current" })]);
+    },
+  },
+});
 
 /** Compose's body: rich text that writes plain text and HTML (docs/design/ui.md §4.4). */
 export function Editor(props: {
@@ -198,6 +210,7 @@ export function Editor(props: {
         plugins: [
           history(),
           rules,
+          currentBlock,
           keymap({
             "Mod-z": undo,
             "Mod-Shift-z": redo,
