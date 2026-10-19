@@ -78,12 +78,24 @@ What this says:
   so a 50k mailbox is close to three hours. Newest first and visible progress (as Tern already does for IMAP) are
   required, and the backfill has to yield to the person's own actions.
 - Labels and conversations come back natively; the user labels include names that need exact handling.
-- IMAP column: the owner's main Gmail already syncs in Tern over IMAP with an app password (all folders, IDLE on
-  the inbox), but without labels or Gmail threads, since io-imap drops FETCH responses carrying X-GM-* items.
-  Its full download of this mailbox was not timed.
 
-Still missing before the gate closes: a measured IMAP first screen and full download for the same account, and a
-batched API first screen.
+The same main account over IMAP (`examples/gmail_imap_probe.rs`, app password, Tern's own IMAP code and header
+set, 500 messages a command as the sync does), on the same connection the same day:
+
+| IMAP, `[Gmail]/All Mail` | Owner's main Gmail |
+|---|---|
+| Sign-in (TCP, TLS, LOGIN) | 905 ms |
+| SELECT + UID SEARCH ALL | 487 ms, 9,782 messages |
+| First screen (100 messages with headers, one command) | **0.44 s** |
+| Full header download (20 commands of 500) | **41.8 s**, all 9,782, 4.3 MB |
+
+Side by side for this mailbox: the first screen is 0.44 s over IMAP against 23 s for the API one request at a time
+(batching would narrow that, not measured yet), and a full header download is 42 s against about 33 minutes of
+API quota. IMAP has no per-minute quota; Gmail caps IMAP downloads by daily bandwidth. What IMAP lacks in Tern
+today is labels and Gmail threads: io-imap drops FETCH responses carrying X-GM-* items, so those need a parser fix
+or a workaround before IMAP could give Gmail its labels.
+
+Still missing before the gate closes: a batched API first screen, and whether io-imap can be made to read X-GM-*.
 
 ## Decision gate
 
