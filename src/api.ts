@@ -250,7 +250,10 @@ export interface Api {
   /** A picture attachment as a data: URI for its card, if it is already on this computer; never downloads. */
   attachmentPreview(id: number, index: number): Promise<string | null>;
   /** Files dropped on the window from the file manager; returns the way to stop listening. */
-  onFilesDropped(f: (paths: string[]) => void): () => void;
+  /** Files dropped on the window; `hover` hears files being dragged over it (true) and leaving (false). */
+  onFilesDropped(f: (paths: string[]) => void, hover?: (over: boolean) => void): () => void;
+  /** A picture being attached, as a data: URI for its card; null for other files. */
+  outgoingPreview(path: string): Promise<string | null>;
   /** Runs `f` (and waits for it) before the window closes or Tern quits; returns the way to stop. */
   onCloseRequested(f: () => Promise<void>): () => void;
   /** Moves the senders of these messages to the inbox's Other split, or back to Important. */
@@ -388,6 +391,7 @@ const tauri: Api = {
   senderLogo: (addr) => invoke("sender_logo", { addr }),
   onLogo: (f) => void listen("logo", f),
   attachmentPreview: (id, index) => invoke("attachment_preview", { id, index }),
+  outgoingPreview: (path) => invoke("outgoing_preview", { path }),
   attachmentBytes: (id, index) => invoke("attachment_bytes", { id, index }),
   saveAttachment: async (id, index, name) => {
     const { save } = await import("@tauri-apps/plugin-dialog");
@@ -398,13 +402,15 @@ const tauri: Api = {
   },
   contacts: (query) => invoke("contacts", { query }),
   contactCard: (email) => invoke("contact_card", { email }),
-  onFilesDropped: (f) => {
+  onFilesDropped: (f, hover) => {
     let stop: (() => void) | undefined;
     let stopped = false;
     void import("@tauri-apps/api/webview").then(({ getCurrentWebview }) =>
       getCurrentWebview()
         .onDragDropEvent((e) => {
-          if (e.payload.type === "drop") f(e.payload.paths);
+          if (e.payload.type === "drop") (hover?.(false), f(e.payload.paths));
+          else if (e.payload.type === "enter") hover?.(true);
+          else if (e.payload.type === "leave") hover?.(false);
         })
         .then((unlisten) => (stopped ? unlisten() : (stop = unlisten))),
     );
@@ -752,6 +758,7 @@ function fake(): Api {
     addAttachments: async (paths) =>
       paths.map((p) => ({ path: p, name: p.split("/").pop()!, mime: "application/pdf", size: 1_234_567 })),
     onFilesDropped: () => () => {},
+    outgoingPreview: async () => null,
     contacts: async (query) => {
       const q = query.toLowerCase();
       const people = names.map((n) => ({ name: n, email: n.toLowerCase().replace(/\s/g, ".") + "@example.com" }));

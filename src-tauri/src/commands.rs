@@ -453,6 +453,32 @@ pub async fn attachment_preview(
     }
 }
 
+/// A picture being attached (in compose) as a data: URI for its card. Only files Tern copied in to attach, so the
+/// window can't read anything else on disk this way.
+#[tauri::command]
+pub async fn outgoing_preview(app: AppHandle, path: String) -> Reply<Option<String>> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?.join("attachments");
+    let file = std::path::PathBuf::from(&path);
+    let (Ok(base), Ok(file)) = (base.canonicalize(), file.canonicalize()) else { return Ok(None) };
+    if !file.starts_with(&base) {
+        return Ok(None);
+    }
+    let mime = match file.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).as_deref() {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        _ => return Ok(None),
+    };
+    match std::fs::metadata(&file) {
+        Ok(meta) if meta.len() <= PREVIEW_LIMIT => {
+            let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
+            Ok(Some(format!("data:{mime};base64,{}", mime::base64(&bytes))))
+        }
+        _ => Ok(None),
+    }
+}
+
 /// Most an inline-image cache holds for one message.
 const INLINE_LIMIT: usize = 20_000_000;
 
