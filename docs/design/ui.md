@@ -98,6 +98,8 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - **List**: full width when nothing is open. With the conversation open in split mode the list narrows to 40 % (min 360 px) and rows drop the snippet.
 - **Conversation pane**: opens with `Enter`, closes with `Esc`. Mode setting: `split` (beside the list) or `full` (over it). Default `split` ≥ 1200 px, else `full`.
 - **Status strip**: left = sync state sentence with a dot (`--ok/--warn/--danger`), right = the current undo toast or the three most useful keys for the current context, shown after 2 s of inactivity and hidden on the next keypress.
+  A downloaded update shows as a filled `--accent` pill ("Update ready · Restart"), the one control in the strip
+  that is a button; a toast says so once when it arrives.
 
 ## 4. Components
 

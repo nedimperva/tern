@@ -7,6 +7,11 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Changed
+
+- A downloaded update is easier to see: "Update ready · Restart" is a button in the status bar, and a message
+  says so when the download finishes.
+
 ## [0.3.4] - 2026-10-19
 
 Settings are redesigned, with several signatures per account and fuller snippets. This version upgrades the mail
