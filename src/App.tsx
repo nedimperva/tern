@@ -1249,7 +1249,12 @@ export default function App() {
       <Show when={settingsOpen()}>
         {(section) => (
           <Suspense>
-            <SettingsPage accounts={accounts()} section={section()} onClose={() => (setSettingsOpen(null), loadSignatures())} />
+            <SettingsPage
+              accounts={accounts()}
+              section={section()}
+              onClose={() => (setSettingsOpen(null), loadSignatures())}
+              onAccountsChanged={() => void api.accounts().then(setAccounts)}
+            />
           </Suspense>
         )}
       </Show>

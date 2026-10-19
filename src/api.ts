@@ -200,6 +200,8 @@ export type SendOptions = { at?: number | null; followUp?: number | null };
 
 export interface Api {
   accounts(): Promise<Account[]>;
+  /** The name on mail sent from the account; empty sends the address alone. */
+  setAccountName(id: number, name: string): Promise<void>;
   folders(): Promise<Folder[]>;
   preset(email: string): Promise<Preset | null>;
   addAccount(config: AccountConfig, password: string): Promise<Account>;
@@ -349,6 +351,7 @@ function installClose() {
 
 const tauri: Api = {
   accounts: () => invoke("accounts"),
+  setAccountName: (id, name) => invoke("set_account_name", { id, name }),
   folders: () => invoke("folders"),
   preset: (email) => invoke("preset", { email }),
   addAccount: (config, password) => invoke("add_account", { config, password }),
@@ -632,6 +635,7 @@ function fake(): Api {
 
   return {
     accounts: async () => [account],
+    setAccountName: async (_, name) => void (account.displayName = name.trim()),
     folders: async () =>
       folders.map((f) => ({ ...f, unread: messages.filter((m) => m.folderId === f.id && !m.seen).length })),
     preset: async () => ({

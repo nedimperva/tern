@@ -28,6 +28,12 @@ pub async fn accounts(state: State<'_, AppState>) -> Reply<Vec<Account>> {
     state.store.accounts().map_err(text)
 }
 
+/// The name on mail sent from the account; the sync worker picks it up on its next pass.
+#[tauri::command]
+pub async fn set_account_name(state: State<'_, AppState>, id: i64, name: String) -> Reply<()> {
+    state.store.set_display_name(id, &name).map_err(text)
+}
+
 #[tauri::command]
 pub async fn folders(state: State<'_, AppState>) -> Reply<Vec<Folder>> {
     state.store.folders().map_err(text)

@@ -630,6 +630,18 @@ impl Store {
         Ok(Account { id: conn.last_insert_rowid(), config: c.clone() })
     }
 
+    /// The name put on mail sent from the account (the From line's "Ada Lovelace <ada@…>"). Empty sends the
+    /// address alone.
+    pub fn set_display_name(&self, id: i64, name: &str) -> Result<()> {
+        self.conn()
+            .execute("UPDATE accounts SET display_name = ?2 WHERE id = ?1", params![id, name.trim()])?;
+        Ok(())
+    }
+
+    pub fn account(&self, id: i64) -> Result<Option<Account>> {
+        Ok(self.accounts()?.into_iter().find(|a| a.id == id))
+    }
+
     pub fn remove_account(&self, id: i64) -> Result<()> {
         self.conn().execute("DELETE FROM accounts WHERE id = ?1", [id])?;
         Ok(())
@@ -3247,6 +3259,14 @@ mod tests {
         assert_eq!(store.snippets().unwrap()[0].used, 1, "saving keeps the count");
         store.conn().execute("DELETE FROM accounts", []).unwrap();
         assert!(store.snippets().unwrap().is_empty(), "goes with its account");
+    }
+
+    #[test]
+    fn an_account_can_be_renamed() {
+        let (store, account, ..) = setup();
+        store.set_display_name(account, "  Ada L.  ").unwrap();
+        assert_eq!(store.account(account).unwrap().unwrap().config.display_name, "Ada L.");
+        assert!(store.account(account + 1).unwrap().is_none());
     }
 
     #[test]

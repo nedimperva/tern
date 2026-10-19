@@ -13,6 +13,7 @@ every release needs one here before it is tagged.
   replies and forwards; switch in compose from the footer or with Ctrl+Shift+S. Your existing signature is kept.
 - Snippets can be kept to one account, can fill in the subject and add people to Cc, and show how often they
   are used. The `;` picker shows what a snippet will insert before you pick it.
+- Rename an account (the name people see on your mail) on its page in Settings.
 
 ### Changed
 

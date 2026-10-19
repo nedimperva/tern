@@ -871,18 +871,41 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
   );
 }
 
-/** One account: what Tern knows of it, and a way to its signatures. */
-function AccountPage(props: { account: Account; onSignatures: () => void }) {
+/** One account: its name on sent mail, what else Tern knows of it, and a way to its signatures. */
+function AccountPage(props: { account: Account; onSignatures: () => void; onRenamed: () => void }) {
   const security = (s: string) => (s === "tls" ? "TLS" : "STARTTLS");
+  const [error, setError] = createSignal("");
+  const rename = async (name: string) => {
+    if (name.trim() === props.account.displayName) return;
+    setError("");
+    try {
+      await api.setAccountName(props.account.id, name);
+      props.onRenamed();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
   return (
     <>
+      <label class="setting">
+        <span class="title">Your name</span>
+        <input
+          value={props.account.displayName}
+          placeholder="Ada Lovelace"
+          onChange={(e) => void rename(e.currentTarget.value)}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        />
+        <span class="help">
+          What people see as the sender: “{props.account.displayName || "Your name"} &lt;{props.account.email}&gt;”. Also
+          the name in Settings and in the From picker.
+        </span>
+      </label>
+      <Show when={error()}>
+        <p class="setting-error">{error()}</p>
+      </Show>
       <div class="setting">
         <span class="title">Address</span>
         <span>{props.account.email}</span>
-      </div>
-      <div class="setting">
-        <span class="title">Name on sent mail</span>
-        <span>{props.account.displayName || "None"}</span>
       </div>
       <div class="setting">
         <span class="title">Incoming mail</span>
@@ -916,7 +939,13 @@ type Section = {
 };
 
 /** Ctrl+, : settings over the list (docs/design/ui.md §4.8). Changes apply and are saved at once. */
-export function SettingsPage(props: { accounts: Account[]; onClose: () => void; section?: string }) {
+export function SettingsPage(props: {
+  accounts: Account[];
+  onClose: () => void;
+  /** An account was changed here (renamed): read them again. */
+  onAccountsChanged: () => void;
+  section?: string;
+}) {
   const [signatureAccount, setSignatureAccount] = createSignal<number | null>(null);
   const sections = (): Section[] => [
     { id: "Appearance", name: "Appearance", group: "General", words: "theme dark light density rows", body: () => <AppearanceSettings /> },
@@ -945,7 +974,13 @@ export function SettingsPage(props: { accounts: Account[]; onClose: () => void; 
         group: "Accounts",
         words: `${a.email} server imap smtp account`,
         dot: colourOf(props.accounts, a.id),
-        body: () => <AccountPage account={a} onSignatures={() => (setSignatureAccount(a.id), setSection("Signatures"))} />,
+        body: () => (
+          <AccountPage
+            account={a}
+            onSignatures={() => (setSignatureAccount(a.id), setSection("Signatures"))}
+            onRenamed={props.onAccountsChanged}
+          />
+        ),
       }),
     ),
   ];
