@@ -5,6 +5,7 @@ import {
   moves,
   type Account,
   type Action,
+  type Applied,
   type Folder,
   type MessageRow,
   type OutboxProblem,
@@ -442,17 +443,27 @@ export default function App() {
     }
     try {
       let token: number[] = [];
+      let drafts: number[] = [];
+      const take = (applied: Applied) => ((token = token.concat(applied.token)), (drafts = drafts.concat(applied.drafts)));
       if (searching()) {
         // Search spans folders: each hit is acted on where it is.
-        for (const r of hit) token = token.concat((await api.applyConversations([r.id], action, { folder: r.folderId })).token);
+        for (const r of hit) take(await api.applyConversations([r.id], action, { folder: r.folderId }));
       } else {
-        token = (await api.applyConversations(hit.map((r) => r.id), action, target())).token;
+        take(await api.applyConversations(hit.map((r) => r.id), action, target()));
       }
       const done =
         typeof action === "object"
           ? `Moved to ${folderName(folders().find((f) => f.id === action.moveTo))}`
           : DONE[action];
-      if (announce) showToast(hit.length === 1 ? done : `${done} (${hit.length} conversations)`, token);
+      // Deleted drafts were discarded, not queued: undo brings them back alongside the queued work.
+      const undoDrafts = drafts.length
+        ? async () => {
+            if (token.length) await api.undo(token);
+            for (const id of drafts) await api.undoDiscard(id);
+            void load();
+          }
+        : undefined;
+      if (announce) showToast(hit.length === 1 ? done : `${done} (${hit.length} conversations)`, token, undefined, undoDrafts);
       return token;
     } catch (e) {
       showToast(String(e), []);
