@@ -9,9 +9,10 @@ every release needs one here before it is tagged.
 
 ### Added
 
-- Gmail and Google Workspace accounts can sign in with Google in the browser ("Continue with Google"), with no
-  app password. A Gmail account added with an app password can switch on its page in Settings. This version
-  upgrades the mail database, so 0.3.4 and earlier can't open it afterwards.
+- Google sign-in for Gmail and Google Workspace ("Continue with Google"), with no app password, in builds made
+  with your own Google client ([docs/gmail.md](docs/gmail.md)). Release builds don't include one yet, so Gmail
+  there keeps using an app password. This version upgrades the mail database, so 0.3.4 and earlier can't open it
+  afterwards.
 
 ## [0.3.4] - 2026-10-19
 
