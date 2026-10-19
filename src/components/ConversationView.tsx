@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { api, type Mailto, type ThreadMessage } from "../api";
+import { labelColour } from "../colours";
 import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
 import {
   darken,
@@ -561,7 +562,13 @@ export function ConversationView(props: {
           <h1 ref={title}>{subject()}</h1>
           <Show when={props.labels.length}>
             <div class="labels">
-              <For each={props.labels}>{(l) => <span class="label-chip">{l}</span>}</For>
+              <For each={props.labels}>
+                {(l) => (
+                  <span class="label-chip" style={{ "--label": labelColour(l) }}>
+                    {l}
+                  </span>
+                )}
+              </For>
             </div>
           </Show>
           <Show when={!stage()}>

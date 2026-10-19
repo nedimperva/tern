@@ -1,5 +1,6 @@
 import { For, onCleanup, onMount, Show } from "solid-js";
 import type { Account, Folder, SyncState, Target } from "../api";
+import { labelColour } from "../colours";
 
 export const ROLE_NAMES: Record<string, string> = {
   inbox: "Inbox",
@@ -83,7 +84,10 @@ export function Rail(props: {
                 <For each={props.folders.filter((f) => f.accountId === account.id && f.role === "label")}>
                   {(f) => (
                     <a classList={{ active: props.isTarget(targetOf(f)) }} onClick={() => go(targetOf(f))}>
-                      <span>{f.name}</span>
+                      <span class="label-name">
+                        <span class="label-dot" style={{ "--label": labelColour(f.name) }} />
+                        {f.name}
+                      </span>
                       <Show when={f.unread}>
                         <span class="count">{f.unread}</span>
                       </Show>

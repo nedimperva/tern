@@ -1,5 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import type { Folder } from "../api";
+import { labelColour } from "../colours";
 
 /** `l`: Gmail labels for the conversations in hand. Type to narrow; Enter puts the label on, or takes it off when
  * every one of them already has it. */
@@ -48,7 +49,10 @@ export function LabelPicker(props: {
           <For each={shown()} fallback={<li class="none">No label by that name</li>}>
             {(l, i) => (
               <li classList={{ active: i() === index() }} onMouseEnter={() => setIndex(i())} onMouseDown={() => pick(l)}>
-                <span>{l.name}</span>
+                <span class="label-name">
+                  <span class="label-dot" style={{ "--label": labelColour(l.name) }} />
+                  {l.name}
+                </span>
                 <Show when={has(l)}>
                   <span class="when">✓ Remove</span>
                 </Show>

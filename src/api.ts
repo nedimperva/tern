@@ -537,8 +537,9 @@ function fake(): Api {
     { id: 4, accountId: 1, name: "Trash", role: "trash", unread: 0 },
     { id: 5, accountId: 1, name: "Junk", role: "junk", unread: 0 },
     { id: 6, accountId: 1, name: "Receipts", role: "other", unread: 0 },
-    // A Gmail-style label: a third of the conversations carry it.
+    // Gmail-style labels: a third of the conversations are Work, a quarter Invoices.
     { id: 7, accountId: 1, name: "Work", role: "label", unread: 0 },
+    { id: 8, accountId: 1, name: "Invoices", role: "label", unread: 0 },
   ];
   const mutedThreads = new Set<string>();
   const drafts = new Map<number, DraftRecord>();
@@ -636,7 +637,10 @@ function fake(): Api {
   const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
   const snoozed = new Map<string, number>();
   const inInbox = (m: ThreadMessage) => folders.find((f) => f.id === m.folderId)?.role === "inbox";
-  const labelsOf = (m: ThreadMessage) => (Number(m.threadId.slice(1)) % 3 === 0 ? ["Work"] : []);
+  const labelsOf = (m: ThreadMessage) => {
+    const n = Number(m.threadId.slice(1));
+    return [...(n % 4 === 0 ? ["Invoices"] : []), ...(n % 3 === 0 ? ["Work"] : [])];
+  };
   const inTarget = (m: ThreadMessage, t: Target): boolean => {
     if ("folder" in t) return m.folderId === t.folder;
     if ("label" in t) return labelsOf(m).length > 0;

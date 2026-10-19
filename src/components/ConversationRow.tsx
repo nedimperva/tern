@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js";
 import { Icon } from "./Icon";
 import type { ThreadRow } from "../api";
+import { labelColour } from "../colours";
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -65,7 +66,13 @@ export function ConversationRow(props: {
         <span class="subject">{props.row.subject || "(no subject)"}</span>
         <Show when={props.row.labels?.length}>
           <span class="labels">
-            <For each={props.row.labels!.slice(0, 2)}>{(l) => <span class="label-chip">{l}</span>}</For>
+            <For each={props.row.labels!.slice(0, 2)}>
+              {(l) => (
+                <span class="label-chip" style={{ "--label": labelColour(l) }}>
+                  {l}
+                </span>
+              )}
+            </For>
             <Show when={props.row.labels!.length > 2}>
               <span class="label-chip" title={props.row.labels!.slice(2).join(", ")}>
                 +{props.row.labels!.length - 2}

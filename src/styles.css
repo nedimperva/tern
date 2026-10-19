@@ -334,13 +334,32 @@ button.primary kbd {
   vertical-align: 1px;
 }
 .label-chip {
-  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px 0 6px;
   border-radius: var(--r-sm);
-  background: var(--bg-2);
-  color: var(--fg-1);
+  /* The label's own colour, tinted: readable on light and dark alike. */
+  background: color-mix(in srgb, var(--label, var(--fg-2)) 16%, transparent);
+  color: color-mix(in srgb, var(--label, var(--fg-2)) 75%, var(--fg-0));
   font-size: var(--t-xs);
-  font-weight: 500;
-  line-height: 16px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.label-chip::before,
+.label-dot {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--label, var(--fg-2));
+}
+.label-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .crow.unread {
   color: var(--fg-0);
