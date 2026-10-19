@@ -28,7 +28,7 @@ body:
     id: version
     attributes:
       label: Tern version
-      description: Shown in Settings, or the release you installed.
+      description: Settings → About shows it; the form fills it in when opened from there.
       placeholder: 0.3.1
     validations:
       required: true
@@ -57,5 +57,5 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Logs or screenshots
-      description: Remove anything private first.
+      label: Details, logs or screenshots
+      description: Paste Settings → About → Details. For a failure, the end of the log (Settings → About → Log → Open folder, `tern.log`). Remove anything private first.

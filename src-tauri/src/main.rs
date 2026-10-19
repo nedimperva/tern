@@ -2,6 +2,7 @@
 
 mod commands;
 mod desktop;
+mod diagnostics;
 mod update;
 
 use std::collections::HashMap;
@@ -102,8 +103,6 @@ fn main() {
     {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
-    // Errors from the sync workers go to stderr; RUST_LOG=tern_core=debug shows each fetch as well.
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     tauri::Builder::default()
         // First, so a second start hands over its link (or just brings the window back) and exits.
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
@@ -123,6 +122,8 @@ fn main() {
         .manage(desktop::Desktop::new())
         .manage(update::Updates::default())
         .setup(|app| {
+            // First, so everything after it is in the log file too.
+            diagnostics::start_logging(&diagnostics::log_dir(app.handle()));
             use tauri_plugin_deep_link::DeepLinkExt;
             let links = app.deep_link().get_current().ok().flatten().unwrap_or_default();
             let mut links: Vec<String> = links.iter().map(|u| u.to_string()).collect();
@@ -223,6 +224,8 @@ fn main() {
             commands::take_mailto,
             commands::quit,
             commands::set_sync_paused,
+            commands::about,
+            commands::open_logs,
             commands::send_now,
             commands::update_ready,
             commands::restart_to_update,

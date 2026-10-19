@@ -1,6 +1,7 @@
 import {
   createEffect,
   createMemo,
+  createResource,
   createSignal,
   For,
   lazy,
@@ -212,6 +213,51 @@ function ComposeSettings() {
       </span>
     </label>
     </>
+  );
+}
+
+const ISSUES = "https://github.com/nedimperva/tern/issues/new?template=bug_report.yml";
+const BETA_GUIDE = "https://github.com/nedimperva/tern/blob/main/docs/beta.md";
+
+/** The version, and what a bug report needs: details without addresses, the log, the issue form. */
+function AboutSettings() {
+  const [about] = createResource(() => api.about());
+  const [copied, setCopied] = createSignal(false);
+  const copy = async () => {
+    await navigator.clipboard.writeText(about()?.details ?? "").catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <Show when={about()}>
+      {(a) => (
+        <>
+          <div class="setting">
+            <span class="title">Tern {a().version}</span>
+            <button class="link" onClick={() => api.openUrl(BETA_GUIDE)}>
+              Beta guide
+            </button>
+            <span class="help">What works, what doesn't yet, and how to go back to an earlier version.</span>
+          </div>
+          <div class="setting">
+            <span class="title">Report a problem</span>
+            <button onClick={() => api.openUrl(`${ISSUES}&version=${encodeURIComponent(a().version)}`)}>Open the form</button>
+            <span class="help">On GitHub. Paste the details below, and the end of the log if something failed.</span>
+          </div>
+          <div class="setting">
+            <span class="title">Details for a bug report</span>
+            <button onClick={() => void copy()}>{copied() ? "Copied" : "Copy"}</button>
+            <pre class="about-details">{a().details}</pre>
+            <span class="help">Your version, system and each account's provider. No addresses or server names of your own.</span>
+          </div>
+          <div class="setting">
+            <span class="title">Log</span>
+            <button onClick={() => void api.openLogs()}>Open folder</button>
+            <span class="help about-path">{a().logFile}</span>
+          </div>
+        </>
+      )}
+    </Show>
   );
 }
 
@@ -1070,6 +1116,7 @@ export function SettingsPage(props: {
     },
     { id: "Notifications", name: "Notifications", group: "General", words: "notify new mail quiet hours", body: () => <NotificationSettings /> },
     { id: "Desktop", name: "Desktop", group: "General", words: "background tray close login start email links mailto default", body: () => <DesktopSettings /> },
+    { id: "About", name: "About", group: "General", words: "version log bug report problem help beta", body: () => <AboutSettings /> },
     { id: "Compose", name: "Compose", group: "Writing", words: "undo send delay attachment forgotten attached prilog anhang", body: () => <ComposeSettings /> },
     { id: "Snippets", name: "Snippets", group: "Writing", words: "saved replies templates shortcut text", body: () => <SnippetSettings accounts={props.accounts} /> },
     {
