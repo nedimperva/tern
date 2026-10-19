@@ -157,7 +157,9 @@ and a narrower scope. The probe reversed it: with projects created from May 2026
 verification.
 
 Cost: Google charges nothing for IMAP, the API or the OAuth client. While the Cloud project is in Testing (up to 100
-listed test users, sign-in renewed every 7 days) there is no cost at all. A public release with a restricted scope
+listed test users, sign-in renewed every 7 days; still in Google's OAuth docs, updated 2026-10-16) there is no cost
+at all. Published as "In production" without verification, sign-ins last until revoked or unused for about six
+months, behind Google's "unverified app" warning and a 100-user cap for the project's whole life. A public release with a restricted scope
 needs Google's yearly security assessment by an approved assessor, which is paid; the API path needs the same one.
 
 ## Verification and optional AI
