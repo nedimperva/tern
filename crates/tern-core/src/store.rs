@@ -756,6 +756,7 @@ impl Store {
                     // A sent copy goes to whichever folder is Sent when it goes out (see sync::run_op).
                     OutboxOp::Append { .. } => {}
                     OutboxOp::Move { folder, dest, .. } => named.extend([folder, dest]),
+                    OutboxOp::Label { folder, label, .. } => named.extend([folder, label]),
                     OutboxOp::Send(draft) => named.extend(draft.forward_of.map(|f| f.folder)),
                 }
             }
@@ -839,6 +840,84 @@ impl Store {
             [account_id],
             |r| r.get(0),
         )?)
+    }
+
+    /// Adds a Gmail label to the conversations of these messages, or takes it off: here at once, on the server
+    /// after `delay` (undo takes it back). Gmail labels conversations, so every message of each one that All Mail
+    /// holds changes. Returns the undo token; empty when nothing changes.
+    pub fn label(&self, ids: &[i64], label_folder: i64, add: bool, delay: i64) -> Result<Applied> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let (account_id, label): (i64, String) = tx.query_row(
+            "SELECT account_id, name FROM folders WHERE id = ?1 AND role = 'label'",
+            [label_folder],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let (all, validity): (String, Option<u32>) = tx.query_row(
+            "SELECT name, uid_validity FROM folders WHERE account_id = ?1 AND role = 'all'",
+            [account_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let mut stmt = tx.prepare_cached(
+            "SELECT DISTINCT m.id, m.uid, m.message_id FROM messages m JOIN folders f ON f.id = m.folder_id
+             WHERE f.account_id = ?1 AND f.role = 'all' AND m.uid IS NOT NULL AND m.message_id IS NOT NULL
+               AND (m.account_id, m.thread_id) IN (SELECT account_id, thread_id FROM messages WHERE id = ?2)
+               AND EXISTS (SELECT 1 FROM message_labels l WHERE l.folder_id = ?3 AND l.message_id = m.message_id) = ?4",
+        )?;
+        let mut rows: Vec<(i64, u32, String)> = Vec::new();
+        for id in ids {
+            for row in stmt.query_map(params![account_id, id, label_folder, !add], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })? {
+                let row = row?;
+                if !rows.iter().any(|(_, _, m)| *m == row.2) {
+                    rows.push(row);
+                }
+            }
+        }
+        drop(stmt);
+        if rows.is_empty() {
+            return Ok(Applied { token: Vec::new(), accounts: Vec::new(), drafts: Vec::new() });
+        }
+        let op = OutboxOp::Label {
+            folder: all,
+            uids: rows.iter().map(|r| r.1).collect(),
+            label,
+            label_folder,
+            add,
+            message_ids: rows.iter().map(|r| r.2.clone()).collect(),
+            ids: rows.iter().map(|r| r.0).collect(),
+            validity,
+        };
+        // What the list shows changes now; `revert` puts it back.
+        let sql = if add {
+            "INSERT OR IGNORE INTO message_labels (folder_id, message_id) VALUES (?1, ?2)"
+        } else {
+            "DELETE FROM message_labels WHERE folder_id = ?1 AND message_id = ?2"
+        };
+        for (_, _, message_id) in &rows {
+            tx.execute(sql, params![label_folder, message_id])?;
+        }
+        let token = enqueue(&tx, account_id, &op, delay)?;
+        tx.commit()?;
+        Ok(Applied { token: vec![token], accounts: vec![account_id], drafts: Vec::new() })
+    }
+
+    /// Whether queued work changes this label: until it is sent, reading the label folder would undo it on screen.
+    pub fn label_pending(&self, account_id: i64, label_folder: i64) -> Result<bool> {
+        let conn = self.conn();
+        let mut stmt =
+            conn.prepare_cached("SELECT payload FROM outbox WHERE account_id = ?1 AND gave_up_at IS NULL")?;
+        let payloads =
+            stmt.query_map([account_id], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        for payload in payloads {
+            if let OutboxOp::Label { label_folder: f, .. } = serde_json::from_str(&payload)? {
+                if f == label_folder {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
     }
 
     /// Gmail's label folders, read for their members only.
@@ -1002,6 +1081,7 @@ impl Store {
             match op {
                 OutboxOp::Flags { revert, .. } => keep.extend(revert.iter().map(|r| r.0)),
                 OutboxOp::Move { revert, .. } => keep.extend(revert.iter().map(|r| r.0)),
+                OutboxOp::Label { ids, .. } => keep.extend(ids.iter().copied()),
                 OutboxOp::Send(_) | OutboxOp::Append { .. } => {}
             }
         }
@@ -3113,6 +3193,16 @@ fn take_back(tx: &Connection, id: i64, tried: bool) -> Result<bool> {
 
 fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
     match op {
+        OutboxOp::Label { label_folder, add, message_ids, .. } => {
+            let sql = if *add {
+                "DELETE FROM message_labels WHERE folder_id = ?1 AND message_id = ?2"
+            } else {
+                "INSERT OR IGNORE INTO message_labels (folder_id, message_id) VALUES (?1, ?2)"
+            };
+            for id in message_ids {
+                conn.execute(sql, params![label_folder, id])?;
+            }
+        }
         OutboxOp::Flags { revert, .. } => {
             for (mid, seen, flagged) in revert {
                 conn.execute(
@@ -3151,6 +3241,10 @@ fn describe(op: &OutboxOp) -> String {
         OutboxOp::Send(draft) => format!("Send “{}”", draft.subject),
         OutboxOp::Append { subject, folder, .. } => format!("Save “{subject}” to {folder}"),
         OutboxOp::Move { dest, uids, .. } => format!("Move {} to {dest}", count(uids.len())),
+        OutboxOp::Label { label, add: true, uids, .. } => format!("Label {} {label}", count(uids.len())),
+        OutboxOp::Label { label, add: false, uids, .. } => {
+            format!("Remove the label {label} from {}", count(uids.len()))
+        }
         OutboxOp::Flags { flag, add, uids, .. } => {
             let verb = match (flag.as_str(), add) {
                 ("\\Seen", true) => "Mark read",

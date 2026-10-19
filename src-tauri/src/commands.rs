@@ -176,6 +176,23 @@ pub async fn list_threads(
     state.store.list_threads(&target, before, limit).map_err(text)
 }
 
+/// Puts a Gmail label on these conversations, or takes it off (`label` is the label's folder id).
+#[tauri::command]
+pub async fn label_conversations(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    label: i64,
+    add: bool,
+) -> Reply<Applied> {
+    let applied = state.store.label(&ids, label, add, UNDO_SECONDS).map_err(text)?;
+    for account in &applied.accounts {
+        state.wake(*account);
+    }
+    let _ = app.emit("mail-changed", ());
+    Ok(applied)
+}
+
 /// An action on whole conversations (each id stands for its conversation); see `Store::conversation_ids`.
 #[tauri::command]
 pub async fn apply_conversations(

@@ -219,6 +219,8 @@ export interface Api {
   listThreads(target: Target, before: Cursor | null, limit: number): Promise<ThreadRow[]>;
   /** An action on whole conversations, each named by its row's message id. */
   applyConversations(ids: number[], action: Action, target: Target): Promise<Applied>;
+  /** Puts a Gmail label (its folder's id) on these conversations, or takes it off; undo like any action. */
+  labelConversations(ids: number[], label: number, add: boolean): Promise<Applied>;
   thread(id: number): Promise<ThreadMessage[]>;
   /** Search with filters (see crates/tern-core/src/query.rs). `partial`: words were not looked for in mail without its text. */
   search(query: string, limit: number): Promise<{ rows: MessageRow[]; partial: boolean }>;
@@ -372,6 +374,7 @@ const tauri: Api = {
   list: (target, before, limit) => invoke("list_messages", { target, before, limit }),
   listThreads: (target, before, limit) => invoke("list_threads", { target, before, limit }),
   applyConversations: (ids, action, target) => invoke("apply_conversations", { ids, action, target }),
+  labelConversations: (ids, label, add) => invoke("label_conversations", { ids, label, add }),
   thread: (id) => invoke("thread", { id }),
   search: (query, limit) => invoke("search", { query, limit }),
   apply: (ids, action) => invoke("apply", { ids, action }),
@@ -717,6 +720,7 @@ function fake(): Api {
       }
       return out;
     },
+    labelConversations: async () => ({ token: [nextToken++], accounts: [1], drafts: [] }),
     applyConversations: async (ids, action, target) => {
       const threads = new Set(messages.filter((m) => ids.includes(m.id)).map((m) => m.threadId));
       const members = (keep: (m: ThreadMessage) => boolean) =>

@@ -52,7 +52,7 @@ in Gmail, labelling in Gmail shows in Tern, a search like `from:alice has:attach
 - [ ] `X-GM-THRID` as the thread key; `X-GM-MSGID` stored for deep links (`https://mail.google.com/mail/u/0/#all/<hex>`).
 - [ ] Actions on Gmail become label ops: archive = `-X-GM-LABELS (\Inbox)`, star = `\Flagged`, trash = `COPY` to Trash (Gmail semantics), label = `+X-GM-LABELS (name)`.
 - [x] Trash and Spam are real folders in Gmail; sync them separately for `g #` / `g !`.
-- [ ] Label chips on rows and in the pane; `l` opens the label picker (palette in argument mode); `Cmd+Shift+L`... see key table.
+- [x] Label chips on rows and in the pane; `l` opens the label picker (palette in argument mode); `Cmd+Shift+L`... see key table.
 
 ### Gmail search (X-GM-RAW for IMAP; API q= when API selected)
 - [ ] Local FTS first (instant). When the query uses Gmail operators the FTS cannot answer (`older_than:`, `label:`, `is:important`, `category:`) or the user presses `Enter` on "Search Gmail", send `UID SEARCH X-GM-RAW "<query>"` on All Mail, fetch headers for unknown UIDs, show results.
@@ -109,6 +109,13 @@ Workspace MX detection and Gmail deep links. Preserve partial-result/sync-covera
   the row that move leaves without a uid is dropped once All Mail has synced the message and nothing is queued.
   Label colours and Gmail's thread ids are not available over IMAP without X-GM-*.
 
+- 2026-10-20 — **Label edits go through the outbox as label ops** (`OutboxOp::Label`). Adding copies the
+  conversation's All Mail messages into the label's folder (`UID COPY`, which in Gmail adds the label); removing
+  finds them in the label's folder by Message-ID and deletes them there (which in Gmail takes only the label off).
+  Membership changes here at once and reverts on undo or discard; the label folder isn't re-read while a change
+  to it is queued, so a chip doesn't flicker. Gmail labels conversations, so every message of the conversation
+  that All Mail holds changes. New labels are made in Gmail; Tern lists the ones that exist.
+
 ## Log
 
 - 2026-10-19 — OAuth core: `tern_core::oauth` (provider table with Google, PKCE, authorize URL, loopback listener
@@ -135,3 +142,7 @@ Workspace MX detection and Gmail deep links. Preserve partial-result/sync-covera
   target (the label query is skipped when no account has labels). Dev build against the owner's Gmail (copy of the
   database): 7,483 label-folder copies dropped, All Mail backfilled 9,788 messages in about three minutes, every
   label's members found in All Mail (781/781, 123/123, 75/75, 1/1). Next: slice B, adding and removing labels (`l`).
+- 2026-10-20 — Slice B (same PR, owner): `l` opens a label picker (type to narrow, Enter puts a label on or, when
+  every conversation in hand has it, takes it off); undo through the toast; label chips under the conversation's
+  subject. `Store::label`, `label_pending`, `OutboxOp::Label` with `UID COPY` / search + delete, revert. Tests
+  against the scripted server and for undo. Tried in `npm run dev` in headless Chromium; not yet against Gmail.

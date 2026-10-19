@@ -202,6 +202,7 @@ fn main() {
             commands::check_folder,
             commands::list_threads,
             commands::apply_conversations,
+            commands::label_conversations,
             commands::settings,
             commands::set_setting,
             commands::mute,

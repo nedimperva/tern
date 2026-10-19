@@ -396,6 +396,8 @@ function MessageBody(props: {
  * header says, as icons, what Tern blocked, how long the mail is and how to leave its list. */
 export function ConversationView(props: {
   messages: ThreadMessage[];
+  /** Gmail labels on the conversation, shown under its subject. */
+  labels: string[];
   focused: number;
   expanded: (id: number) => boolean;
   /** Whether an address is one of this person's accounts. */
@@ -557,6 +559,11 @@ export function ConversationView(props: {
       <header class="conversation-head">
         <div class="title">
           <h1 ref={title}>{subject()}</h1>
+          <Show when={props.labels.length}>
+            <div class="labels">
+              <For each={props.labels}>{(l) => <span class="label-chip">{l}</span>}</For>
+            </div>
+          </Show>
           <Show when={!stage()}>
             <div class="people">
               <span class="stack">

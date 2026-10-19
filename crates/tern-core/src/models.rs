@@ -407,6 +407,21 @@ pub enum OutboxOp {
         waiting: Vec<i64>,
     },
     Send(Draft),
+    /// A Gmail label added to messages (a COPY from All Mail into the label's folder) or taken off (deleting them
+    /// from the label's folder, which in Gmail removes only the label). `uids` are All Mail's.
+    Label {
+        folder: String,
+        uids: Vec<u32>,
+        label: String,
+        label_folder: i64,
+        add: bool,
+        /// Bare Message-IDs of the messages, which find them in the label's folder and put membership back on undo.
+        message_ids: Vec<String>,
+        /// The rows in All Mail, to find the messages again after a renumbering.
+        ids: Vec<i64>,
+        #[serde(default)]
+        validity: Option<u32>,
+    },
     /// A copy of a sent message for the Sent folder, exactly as it went out.
     Append {
         folder: String,

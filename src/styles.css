@@ -321,13 +321,19 @@ button.primary kbd {
   color: var(--fg-2);
   margin-left: var(--s-2);
 }
+.conversation-head .labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: var(--s-1);
+}
 .crow .labels {
   display: inline-flex;
   gap: 4px;
   margin-left: var(--s-2);
   vertical-align: 1px;
 }
-.crow .label-chip {
+.label-chip {
   padding: 0 6px;
   border-radius: var(--r-sm);
   background: var(--bg-2);
