@@ -32,6 +32,10 @@ decisions that aren't visible from the code.
 - TLS is rustls with the platform verifier for IMAP and SMTP; nothing links OpenSSL. The verifier honours
   `SSL_CERT_FILE`, which is how the dev server's test CA is trusted. Each account stores `imap_security` and
   `smtp_security` (tls or starttls); never infer them from the port in code.
+- **Debug builds use `<app data>/dev/mail.db`**, never the installed Tern's `mail.db`: migrations only go forward, so a
+  dev build on a newer schema would leave the installed version unable to open its mail. To test with real mail,
+  copy the installed database there first (SQLite backup API, Tern quit or not). Before running a *release* build
+  from a branch over the real database, back it up. The keyring is shared: a dev sign-in stores the same entries.
 - Schema changes go through `store::migrate()` (numbered steps on top of the v1 `SCHEMA`), each with a test that
   starts from the previous version. See `docs/research/data-model.md`.
 - Gotchas: IMAP sockets need `TCP_NODELAY` (about 40 ms per command without it); io-imap's `starttls()` reads the

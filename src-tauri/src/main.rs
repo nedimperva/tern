@@ -142,13 +142,16 @@ fn main() {
             if let Err(e) = desktop::tray(app.handle()) {
                 log::warn!("no tray: {e}");
             }
+            // Debug builds (`tauri dev`) keep their own store in `dev/`: a newer schema migrates the database
+            // forward only, and the installed Tern could not open its mail afterwards. TERN_DB opens another store,
+            // such as one from `gen_mailbox`.
             let dir = app.path().app_data_dir()?;
+            let dir = if cfg!(debug_assertions) { dir.join("dev") } else { dir };
             std::fs::create_dir_all(&dir)?;
+            let db = std::env::var_os("TERN_DB").map(std::path::PathBuf::from).unwrap_or(dir.join("mail.db"));
+            log::info!("mail database: {}", db.display());
             let state = AppState {
-                // TERN_DB opens another store, such as one from `gen_mailbox`, to try the app on a big mailbox.
-                store: Arc::new(Store::open(
-                    &std::env::var_os("TERN_DB").map(std::path::PathBuf::from).unwrap_or(dir.join("mail.db")),
-                )?),
+                store: Arc::new(Store::open(&db)?),
                 wakers: Default::default(),
                 states: Default::default(),
                 pause: tokio::sync::watch::channel(false).0,
