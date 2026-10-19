@@ -7,6 +7,7 @@ pub mod logo;
 pub mod mailto;
 pub mod mime;
 pub mod models;
+pub mod oauth;
 pub mod presets;
 pub mod query;
 #[cfg(test)]

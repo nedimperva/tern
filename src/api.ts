@@ -16,6 +16,8 @@ export type AccountConfig = {
   smtpHost: string;
   smtpPort: number;
   smtpSecurity: Security;
+  /** "google": signed in with Google in the browser, no password. Missing means a password. */
+  auth?: "password" | "google";
 };
 export type Account = AccountConfig & { id: number };
 /** What a `mailto:` link fills in. */
@@ -205,6 +207,10 @@ export interface Api {
   folders(): Promise<Folder[]>;
   preset(email: string): Promise<Preset | null>;
   addAccount(config: AccountConfig, password: string): Promise<Account>;
+  /** Whether this build has a Google client for "Continue with Google". */
+  googleAvailable(): Promise<boolean>;
+  /** Signs in with Google in the browser: adds the account, or switches an existing one (`hint`) to it. */
+  googleSignIn(name: string, hint?: string): Promise<Account>;
   list(target: Target, before: Cursor | null, limit: number): Promise<MessageRow[]>;
   /** Conversations with a message in `target`, newest first; `before` is the last row's (date, id). */
   listThreads(target: Target, before: Cursor | null, limit: number): Promise<ThreadRow[]>;
@@ -358,6 +364,8 @@ const tauri: Api = {
   folders: () => invoke("folders"),
   preset: (email) => invoke("preset", { email }),
   addAccount: (config, password) => invoke("add_account", { config, password }),
+  googleAvailable: () => invoke("google_available"),
+  googleSignIn: (name, hint) => invoke("google_sign_in", { name, hint: hint ?? null }),
   list: (target, before, limit) => invoke("list_messages", { target, before, limit }),
   listThreads: (target, before, limit) => invoke("list_threads", { target, before, limit }),
   applyConversations: (ids, action, target) => invoke("apply_conversations", { ids, action, target }),
@@ -654,6 +662,20 @@ function fake(): Api {
       note: null,
     }),
     addAccount: async (config) => ({ ...config, id: 1 }),
+    googleAvailable: async () => true,
+    googleSignIn: async (name, hint) => ({
+      email: hint ?? "ada@gmail.com",
+      displayName: name,
+      username: hint ?? "ada@gmail.com",
+      imapHost: "imap.gmail.com",
+      imapPort: 993,
+      imapSecurity: "tls",
+      smtpHost: "smtp.gmail.com",
+      smtpPort: 465,
+      smtpSecurity: "tls",
+      auth: "google",
+      id: 1,
+    }),
     list: async (target, before, limit) =>
       messages
         .filter((m) => inTarget(m, target) && (!before || m.date < before.date || (m.date === before.date && m.id < before.id)))

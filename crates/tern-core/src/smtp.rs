@@ -11,7 +11,9 @@ use anyhow::{bail, Context, Result};
 use lettre::address::Envelope;
 use lettre::message::header::ContentType;
 use lettre::message::{Attachment, Mailbox, MultiPart, SinglePart};
-use lettre::transport::smtp::authentication::{Credentials, DEFAULT_MECHANISMS};
+use lettre::transport::smtp::authentication::{Credentials, Mechanism, DEFAULT_MECHANISMS};
+
+use crate::secrets::Credential;
 use lettre::transport::smtp::client::{AsyncSmtpConnection, TlsParameters};
 use lettre::transport::smtp::commands::{Data, Mail, Rcpt};
 use lettre::transport::smtp::extension::{ClientId, Extension, MailBodyParameter, MailParameter};
@@ -49,7 +51,7 @@ pub type FileBytes = (String, String, Vec<u8>);
 /// TODO: HTML (with the rich editor).
 pub async fn send(
     config: &AccountConfig,
-    password: &str,
+    credential: &Credential,
     draft: &Draft,
     extra: &[FileBytes],
 ) -> Result<Vec<u8>> {
@@ -57,8 +59,12 @@ pub async fn send(
     let mut conn = tokio::time::timeout(COMMAND_TIMEOUT, connect(config))
         .await
         .with_context(|| format!("No answer from {}", config.smtp_host))??;
-    let credentials = Credentials::new(config.username.clone(), password.to_string());
-    within(conn.auth(DEFAULT_MECHANISMS, &credentials)).await.context("The server refused the sign-in")?;
+    let (secret, mechanisms) = match credential {
+        Credential::Password(p) => (p, DEFAULT_MECHANISMS),
+        Credential::Token(t) => (t, &[Mechanism::Xoauth2][..]),
+    };
+    let credentials = Credentials::new(config.username.clone(), secret.clone());
+    within(conn.auth(mechanisms, &credentials)).await.context("The server refused the sign-in")?;
     let raw = message.formatted();
     let sent = transmit(&mut conn, message.envelope(), &raw).await;
     conn.abort().await;
@@ -330,6 +336,7 @@ mod tests {
             smtp_host: String::new(),
             smtp_port: 465,
             smtp_security: Security::Tls,
+            auth: Default::default(),
         };
         let draft = Draft {
             html: None,
@@ -366,6 +373,7 @@ mod tests {
             smtp_host: String::new(),
             smtp_port: 465,
             smtp_security: Security::Tls,
+            auth: Default::default(),
         };
         let draft = Draft {
             html: None,
@@ -401,6 +409,7 @@ mod tests {
             smtp_host: String::new(),
             smtp_port: 465,
             smtp_security: Security::Tls,
+            auth: Default::default(),
         };
         let draft = Draft {
             html: None,
@@ -439,6 +448,7 @@ mod tests {
             smtp_host: String::new(),
             smtp_port: 465,
             smtp_security: Security::Tls,
+            auth: Default::default(),
         };
         let draft = Draft {
             html: None,
@@ -482,6 +492,7 @@ mod tests {
             smtp_host: String::new(),
             smtp_port: 465,
             smtp_security: Security::Tls,
+            auth: Default::default(),
         };
         let draft = Draft {
             html: Some("<p>Hello <strong>there</strong></p>".into()),
@@ -551,6 +562,7 @@ mod tests {
             smtp_host: "127.0.0.1".into(),
             smtp_port: port,
             smtp_security: Security::Tls,
+            auth: Default::default(),
         };
         let draft = Draft {
             html: None,
@@ -565,7 +577,7 @@ mod tests {
             forward_of: None,
             message_id: None,
         };
-        let e = send(&config, "pw", &draft, &[]).await.unwrap_err();
+        let e = send(&config, &Credential::Password("pw".into()), &draft, &[]).await.unwrap_err();
         assert!(!is_permanent(&e) && !maybe_sent(&e), "{e:#}");
     }
 }

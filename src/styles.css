@@ -2037,6 +2037,11 @@ button.fold {
 .setup .link {
   align-self: flex-start;
 }
+.setup .google {
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--t-rd);
+  font-weight: 600;
+}
 .note {
   margin: 0;
   font-size: var(--t-sm);

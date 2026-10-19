@@ -17,6 +17,10 @@ every release needs one here before it is tagged.
   the text the whole window.
 - Pictures you attach show as thumbnails, with a size bar against the usual 25 MB limit, and a drop zone shows
   when files are dragged over compose.
+- Google sign-in for Gmail and Google Workspace ("Continue with Google"), with no app password, in builds made
+  with your own Google client ([docs/gmail.md](docs/gmail.md)). Release builds don't include one yet, so Gmail
+  there keeps using an app password. This version upgrades the mail database, so 0.3.4 and earlier can't open it
+  afterwards.
 
 ### Changed
 

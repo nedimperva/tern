@@ -13,6 +13,29 @@ pub struct AccountConfig {
     pub smtp_host: String,
     pub smtp_port: u16,
     pub smtp_security: Security,
+    /// How the account signs in. Older callers and stores without it mean a password.
+    #[serde(default)]
+    pub auth: Auth,
+}
+
+/// How an account proves who it is. Either way the secret itself is in the keychain, never here.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Auth {
+    /// A password or app password.
+    #[default]
+    Password,
+    /// Signed in with Google in the browser (XOAUTH2 on IMAP and SMTP); no password exists.
+    Google,
+}
+
+impl Auth {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Password => "password",
+            Self::Google => "google",
+        }
+    }
 }
 
 /// How a connection is encrypted. There is no unencrypted option: passwords never cross the network in clear.

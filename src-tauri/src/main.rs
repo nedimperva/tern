@@ -49,16 +49,27 @@ impl AppState {
     }
 }
 
+/// The Google client baked in at build time (see build.rs), or None: then Gmail takes an app password.
+pub fn google() -> Option<tern_core::oauth::Provider> {
+    let id = option_env!("TERN_GOOGLE_CLIENT_ID")?;
+    let secret = option_env!("TERN_GOOGLE_CLIENT_SECRET").filter(|s| !s.is_empty());
+    Some(tern_core::oauth::Provider::google(id, secret, tern_core::oauth::GOOGLE_MAIL_SCOPES))
+}
+
+/// How the account signs in, read from the keychain at each connect.
+pub fn login(account: &Account) -> secrets::Login {
+    secrets::Login::keychain(&account.config.email, google())
+}
+
 /// Starts the account's sync worker, which runs for the life of the app.
 pub fn start_account(app: &AppHandle, state: &AppState, account: Account) {
-    let password = match secrets::password(&account.config.email) {
-        Ok(p) => p,
-        Err(e) => {
-            log::error!("{e:#}");
-            state.states.lock().unwrap().insert(account.id, SyncState::AuthFailed);
-            return;
-        }
-    };
+    let email = &account.config.email;
+    if secrets::password(email).is_err() && secrets::tokens(email).is_err() {
+        log::error!("{email}: no saved password or Google sign-in");
+        state.states.lock().unwrap().insert(account.id, SyncState::AuthFailed);
+        return;
+    }
+    let password = login(&account);
     let wake = Arc::new(Notify::new());
     state.wakers.lock().unwrap().insert(account.id, wake.clone());
     let handle = app.clone();
@@ -131,13 +142,16 @@ fn main() {
             if let Err(e) = desktop::tray(app.handle()) {
                 log::warn!("no tray: {e}");
             }
+            // Debug builds (`tauri dev`) keep their own store in `dev/`: a newer schema migrates the database
+            // forward only, and the installed Tern could not open its mail afterwards. TERN_DB opens another store,
+            // such as one from `gen_mailbox`.
             let dir = app.path().app_data_dir()?;
+            let dir = if cfg!(debug_assertions) { dir.join("dev") } else { dir };
             std::fs::create_dir_all(&dir)?;
+            let db = std::env::var_os("TERN_DB").map(std::path::PathBuf::from).unwrap_or(dir.join("mail.db"));
+            log::info!("mail database: {}", db.display());
             let state = AppState {
-                // TERN_DB opens another store, such as one from `gen_mailbox`, to try the app on a big mailbox.
-                store: Arc::new(Store::open(
-                    &std::env::var_os("TERN_DB").map(std::path::PathBuf::from).unwrap_or(dir.join("mail.db")),
-                )?),
+                store: Arc::new(Store::open(&db)?),
                 wakers: Default::default(),
                 states: Default::default(),
                 pause: tokio::sync::watch::channel(false).0,
@@ -168,6 +182,8 @@ fn main() {
             commands::folders,
             commands::preset,
             commands::add_account,
+            commands::google_available,
+            commands::google_sign_in,
             commands::list_messages,
             commands::thread,
             commands::sender_logo,

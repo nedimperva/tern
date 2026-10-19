@@ -967,6 +967,22 @@ function AccountPage(props: { account: Account; onSignatures: () => void; onRena
       setError(String(e));
     }
   };
+  const [google, setGoogle] = createSignal(false);
+  void api.googleAvailable().then(setGoogle, () => setGoogle(false));
+  const [signing, setSigning] = createSignal(false);
+  const gmail = () => props.account.imapHost.toLowerCase() === "imap.gmail.com";
+  const signIn = async () => {
+    setError("");
+    setSigning(true);
+    try {
+      await api.googleSignIn(props.account.displayName, props.account.email);
+      props.onRenamed();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSigning(false);
+    }
+  };
   return (
     <>
       <label class="setting">
@@ -988,6 +1004,20 @@ function AccountPage(props: { account: Account; onSignatures: () => void; onRena
       <div class="setting">
         <span class="title">Address</span>
         <span>{props.account.email}</span>
+      </div>
+      <div class="setting">
+        <span class="title">Sign-in</span>
+        <span>{props.account.auth === "google" ? "With Google, in the browser" : gmail() ? "App password" : "Password"}</span>
+        <Show when={google() && (props.account.auth === "google" || gmail())}>
+          <button onClick={() => void signIn()} disabled={signing()}>
+            {signing() ? "Waiting for the browser…" : props.account.auth === "google" ? "Sign in again" : "Switch to Google sign-in"}
+          </button>
+          <span class="help">
+            {props.account.auth === "google"
+              ? "Opens Google in your browser. Use it if Tern says the sign-in expired or was removed."
+              : "Opens Google in your browser. Tern then forgets the app password; remove it in your Google account too."}
+          </span>
+        </Show>
       </div>
       <div class="setting">
         <span class="title">Incoming mail</span>
