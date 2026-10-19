@@ -387,6 +387,10 @@ async fn pass(
     let s = session.as_mut().expect("connected above");
 
     if drain_outbox(s, store, account, login).await? {
+        // A move into a Gmail label leaves its row in the label folder, which keeps none: All Mail has the message.
+        if store.is_gmail(account.id)? {
+            store.retire_label_rows(account.id)?;
+        }
         on_change();
     }
     if sync_drafts(s, store, account).await? {
@@ -1504,6 +1508,11 @@ mod tests {
             assert_eq!(inbox_row.labels, ["Work"], "the inbox shows the label too");
             let unread = store.folders().unwrap().into_iter().find(|f| f.name == "Work").unwrap().unread;
             assert_eq!(unread, 2, "a label counts All Mail's unread members");
+            // Download progress counts All Mail, not labels (which keep no rows) or hidden folders.
+            store.set_server_count(all, 3).unwrap();
+            store.set_server_count(inbox, 1).unwrap();
+            let p = &store.sync_progress().unwrap()[0];
+            assert_eq!((p.have, p.total, p.unchecked), (4, 4, 0), "{p:?}");
         }
     }
 

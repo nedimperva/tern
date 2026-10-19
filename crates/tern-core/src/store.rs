@@ -939,7 +939,8 @@ impl Store {
     }
 
     /// How far each account's download has come: messages here against the server's counts (only folders checked
-    /// at least once), and how many of the messages here have their text, which is what search reads.
+    /// at least once), and how many of the messages here have their text, which is what search reads. The folders
+    /// counted are the ones sync stores rows for (`folders_to_sync`): on Gmail All Mail, never labels or hidden ones.
     pub fn sync_progress(&self) -> Result<Vec<SyncProgress>> {
         let conn = self.conn();
         // Both counts per folder read an index: `messages_list` for all rows, the partial `messages_bodyless` for
@@ -948,7 +949,9 @@ impl Store {
             "SELECT f.account_id, f.server_count,
                     (SELECT count(*) FROM messages m WHERE m.folder_id = f.id),
                     (SELECT count(*) FROM messages m WHERE m.folder_id = f.id AND m.body_state != 'full')
-             FROM folders f WHERE f.role != 'all' ORDER BY f.account_id",
+             FROM folders f JOIN accounts a ON a.id = f.account_id
+             WHERE f.role NOT IN ('label', 'hidden') AND (f.role != 'all' OR a.imap_host = 'imap.gmail.com')
+             ORDER BY f.account_id",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?))
