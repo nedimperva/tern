@@ -423,6 +423,7 @@ export function Compose(props: {
               <For each={accountSignatures()}>{(s) => <option value={String(s.id)}>{s.name || "Untitled"}</option>}</For>
               <option value="">None</option>
             </select>
+            <Icon name="chevron-down" size={12} />
           </label>
         </Show>
         <button type="button" class="link discard" onClick={discard} title="Discard (Ctrl+Shift+,)">
