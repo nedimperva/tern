@@ -67,10 +67,28 @@ pub async fn send(
 
 /// The message as it would be sent, for the server copy of a draft.
 pub fn draft_bytes(config: &AccountConfig, draft: &Draft) -> Result<Vec<u8>> {
-    Ok(build(config, draft, &[])?.formatted())
+    Ok(build_as(config, draft, &[], true)?.formatted())
 }
 
 fn build(config: &AccountConfig, draft: &Draft, extra: &[FileBytes]) -> Result<Message> {
+    build_as(config, draft, extra, false)
+}
+
+/// The addresses in `list`. A draft is unfinished: a recipient still being typed ("nedim") cannot be a header, so
+/// its server copy leaves it out, and Tern's own copy keeps it. A send takes every one or fails.
+fn mailboxes(list: &[String], draft: bool) -> Result<Vec<Mailbox>> {
+    let mut out = Vec::new();
+    for address in list {
+        match address.parse::<Mailbox>() {
+            Ok(mailbox) => out.push(mailbox),
+            Err(_) if draft => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(out)
+}
+
+fn build_as(config: &AccountConfig, draft: &Draft, extra: &[FileBytes], for_draft: bool) -> Result<Message> {
     let name = Some(config.display_name.clone()).filter(|n| !n.is_empty());
     let from: lettre::Address = config.email.parse()?;
     let mut builder = Message::builder()
@@ -80,21 +98,24 @@ fn build(config: &AccountConfig, draft: &Draft, extra: &[FileBytes]) -> Result<M
         }))
         .from(Mailbox::new(name, from))
         .subject(draft.subject.clone());
-    for to in &draft.to {
-        builder = builder.to(to.parse()?);
-    }
+    let to = mailboxes(&draft.to, for_draft)?;
+    let cc = mailboxes(&draft.cc, for_draft)?;
+    let bcc = mailboxes(&draft.bcc, for_draft)?;
     // A draft may have no recipients yet. lettre wants someone in the envelope to build a message at all; the
     // envelope is never used for a draft (it is only stored), and no header changes.
-    if draft.to.is_empty() && draft.cc.is_empty() && draft.bcc.is_empty() {
+    if to.is_empty() && cc.is_empty() && bcc.is_empty() {
         let me: lettre::Address = config.email.parse()?;
         builder = builder.envelope(Envelope::new(Some(me.clone()), vec![me])?);
     }
-    for cc in &draft.cc {
-        builder = builder.cc(cc.parse()?);
+    for mailbox in to {
+        builder = builder.to(mailbox);
+    }
+    for mailbox in cc {
+        builder = builder.cc(mailbox);
     }
     // lettre puts Bcc in the envelope and leaves it out of the formatted message.
-    for bcc in &draft.bcc {
-        builder = builder.bcc(bcc.parse()?);
+    for mailbox in bcc {
+        builder = builder.bcc(mailbox);
     }
     let bracket = |id: &str| format!("<{}>", id.trim_matches(|c| c == '<' || c == '>'));
     if let Some(parent) = &draft.in_reply_to {
@@ -366,6 +387,40 @@ mod tests {
         assert!(!raw.to_lowercase().contains("secret@"), "no Bcc in the message: {raw}");
         let envelope: Vec<String> = message.envelope().to().iter().map(|a| a.to_string()).collect();
         assert!(envelope.contains(&"secret@example.com".to_string()), "but it is delivered to");
+    }
+
+    #[test]
+    fn a_draft_copy_leaves_out_a_recipient_still_being_typed() {
+        let config = AccountConfig {
+            email: "ada@example.com".into(),
+            display_name: "Ada".into(),
+            username: "ada".into(),
+            imap_host: String::new(),
+            imap_port: 993,
+            imap_security: Security::Tls,
+            smtp_host: String::new(),
+            smtp_port: 465,
+            smtp_security: Security::Tls,
+        };
+        let draft = Draft {
+            html: None,
+            to: vec!["nedim".into()],
+            cc: vec!["b@example.com".into()],
+            bcc: vec![],
+            subject: "Half done".into(),
+            body: "y".into(),
+            in_reply_to: None,
+            references: vec![],
+            attachments: vec![],
+            forward_of: None,
+            message_id: Some("<1@example.com>".into()),
+        };
+        let raw = String::from_utf8(draft_bytes(&config, &draft).unwrap()).unwrap();
+        assert!(raw.contains("Cc: b@example.com"), "{raw}");
+        assert!(!raw.contains("nedim"), "{raw}");
+        let alone = Draft { cc: vec![], ..draft.clone() };
+        assert!(draft_bytes(&config, &alone).is_ok(), "no usable recipient at all is fine for a draft");
+        assert!(build(&config, &draft, &[]).is_err(), "a send still refuses it");
     }
 
     #[test]

@@ -65,7 +65,9 @@ marks done. Drafts land in the server's Drafts folder.
 
 ### Signatures and identity
 - [x] Per-account signature (ProseMirror doc), inserted above the quote; setting to place below.
-      Done as plain text until the editor lands (settings `signatures`, `signatureBelow`).
+      Done as plain text until the editor lands (settings `signatures`, `signatureBelow`). Schema v20
+      (2026-10-19) moved them to a `signatures` table: several per account, formatted with compose's editor,
+      one for new mail and one for replies, switched in compose (`Ctrl+Shift+S`).
 - [ ] Aliases per account (`identities` table): name, address, signature; "From" picker lists them.
       Cut for M1, as the delivery scope allows (aliases, image paste and pop-out are deferred).
 

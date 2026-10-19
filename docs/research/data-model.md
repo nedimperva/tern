@@ -150,6 +150,22 @@ ALTER TABLE reminders ADD COLUMN message_id TEXT;
 ALTER TABLE reminders ADD COLUMN fired INTEGER NOT NULL DEFAULT 0;
 ```
 
+## v20 — packages 03 and 07, signatures and fuller snippets (implemented 2026-10-19)
+A snippet can be kept to one account, can set the subject (when compose has none) and add people to Cc, and keeps
+when it was last used. Signatures leave the `signatures` setting for a table: several per account, plain text with
+`html` when formatted, at most one for new mail and one for replies (`Store::set_signature_default`). Each
+account's old plain-text signature becomes one named "Signature" used for both.
+```sql
+ALTER TABLE snippets ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE;
+ALTER TABLE snippets ADD COLUMN subject TEXT;
+ALTER TABLE snippets ADD COLUMN cc TEXT NOT NULL DEFAULT '[]';                -- JSON array of addresses
+ALTER TABLE snippets ADD COLUMN last_used INTEGER;
+CREATE TABLE signatures (id INTEGER PRIMARY KEY,
+                         account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                         name TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', html TEXT,
+                         for_new INTEGER NOT NULL DEFAULT 0, for_reply INTEGER NOT NULL DEFAULT 0);
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN auth_kind TEXT NOT NULL DEFAULT 'password';   -- 'password' | 'oauth'

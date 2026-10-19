@@ -79,6 +79,7 @@ export function AccountSetup(props: { onAdded: (a: Account) => void; onClose?: (
   return (
     <div class="overlay">
       <form class="setup" onSubmit={submit}>
+        <img class="logo" src="/tern.svg" alt="" width="48" height="48" />
         <h2>Add an account</h2>
         <label>
           Email

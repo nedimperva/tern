@@ -164,6 +164,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::accounts,
+            commands::set_account_name,
             commands::folders,
             commands::preset,
             commands::add_account,
@@ -223,6 +224,10 @@ fn main() {
             commands::save_snippet,
             commands::delete_snippet,
             commands::snippet_used,
+            commands::signatures,
+            commands::save_signature,
+            commands::set_signature_default,
+            commands::delete_signature,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tern");

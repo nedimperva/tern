@@ -38,11 +38,13 @@ CardDAV; snippets expand with `;`; Instant Intro does the reply-all-and-bcc danc
 
 ### Snippets
 - [x] `snippets` table: `shortcut, name, body (ProseMirror doc), subject?, to?, cc?, bcc?, attachments?`.
-      Built with a plain-text body and no subject, recipients or files (see Decisions).
+      Built with a plain-text body and no subject, recipients or files (see Decisions). Schema v20 added a
+      subject, Cc, an account to keep it to and when it was last used; no To, Bcc or files.
 - [x] `;` in compose opens a fuzzy snippet picker; `;shortcut` + `Space` expands inline; `Cmd+;` from anywhere opens the palette in snippet mode.
       The palette mode is not built.
 - [x] Variables: `{first_name}`, `{name}`, `{email}`, `{subject}`, `{my_name}`, `{date}` filled from the thread; `{cursor}` places the caret.
 - [x] Snippet manager in Settings (`g ;`) with import/export JSON. Import/export is not built.
+      Redesigned 2026-10-19 (docs/design/ui.md §4.8): list and editor, places as chips, a preview, use counts.
 
 ### Instant Intro (`Cmd+Shift+I`)
 - [ ] Reply-all where the sender who introduced you moves to Bcc, with the first line "Thanks {first_name}, moving you to bcc." inserted. One key.
@@ -89,6 +91,11 @@ Google Contacts via CardDAV (keep Fastmail), attachments browser, drag out.
   VIP" waits: the Important split already learns from "Move sender to Important". `Shift+I` is left for
   Instant Intro's family of keys.
 
+- 2026-10-19 — **Snippets fill in more, and only where they belong.** From the owner-approved settings design: a
+  snippet can be kept to one account (others don't offer it), can set the subject (only when compose's is empty)
+  and add Cc people (those not already on the message), and settings show how often and when it was last used.
+  The text stays plain; the places show as chips above it rather than inside it.
+
 ## Log
 
 - 2026-10-15 — Received attachments open and save (see Decisions). Engine checks: `mime` tests for matching and
@@ -114,3 +121,6 @@ Google Contacts via CardDAV (keep Fastmail), attachments browser, drag out.
   PDF, a spreadsheet (shown as "Open with system"), a picture and a CSV table; `V`; the menu's items and Esc;
   the card on hover and gone after; a selection quoted by `r`. Not yet tried in the Tauri window (PDF in
   WebKitGTK especially).
+- 2026-10-19 — Settings redesign (snippets and signatures; see Decisions here and in package 03). Schema v20 with
+  `store` tests for the migration, signature defaults and the new snippet fields. Checked with `tsc` and
+  `vite build`; see the PR for how it was tried.

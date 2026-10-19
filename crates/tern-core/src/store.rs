@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 19;
+const SCHEMA_VERSION: i64 = 20;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -335,6 +335,24 @@ fn migrate(conn: &Connection) -> Result<()> {
                  ALTER TABLE reminders ADD COLUMN message_id TEXT;
                  ALTER TABLE reminders ADD COLUMN fired INTEGER NOT NULL DEFAULT 0;"
             }
+            // Snippets for one account only, that can also fill in the subject and Cc, and when each was last used.
+            // Signatures move out of settings into their own table: several per account, one for new mail and one
+            // for replies. The plain-text one each account had becomes both.
+            19 => {
+                "ALTER TABLE snippets ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE;
+                 ALTER TABLE snippets ADD COLUMN subject TEXT;
+                 ALTER TABLE snippets ADD COLUMN cc TEXT NOT NULL DEFAULT '[]';
+                 ALTER TABLE snippets ADD COLUMN last_used INTEGER;
+                 CREATE TABLE signatures (id INTEGER PRIMARY KEY,
+                                          account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                          name TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', html TEXT,
+                                          for_new INTEGER NOT NULL DEFAULT 0, for_reply INTEGER NOT NULL DEFAULT 0);
+                 INSERT INTO signatures (account_id, name, body, for_new, for_reply)
+                     SELECT a.id, 'Signature', trim(j.value), 1, 1
+                     FROM settings s JOIN json_each(s.value) j JOIN accounts a ON a.id = CAST(j.key AS INTEGER)
+                     WHERE s.key = 'signatures' AND trim(j.value) != '';
+                 DELETE FROM settings WHERE key = 'signatures';"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -610,6 +628,18 @@ impl Store {
             ],
         )?;
         Ok(Account { id: conn.last_insert_rowid(), config: c.clone() })
+    }
+
+    /// The name put on mail sent from the account (the From line's "Ada Lovelace <ada@…>"). Empty sends the
+    /// address alone.
+    pub fn set_display_name(&self, id: i64, name: &str) -> Result<()> {
+        self.conn()
+            .execute("UPDATE accounts SET display_name = ?2 WHERE id = ?1", params![id, name.trim()])?;
+        Ok(())
+    }
+
+    pub fn account(&self, id: i64) -> Result<Option<Account>> {
+        Ok(self.accounts()?.into_iter().find(|a| a.id == id))
     }
 
     pub fn remove_account(&self, id: i64) -> Result<()> {
@@ -1476,17 +1506,33 @@ impl Store {
     /// Every snippet, the most used first.
     pub fn snippets(&self) -> Result<Vec<Snippet>> {
         let conn = self.conn();
-        let mut stmt = conn
-            .prepare_cached("SELECT id, shortcut, name, body FROM snippets ORDER BY used DESC, shortcut")?;
-        let all = stmt
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, shortcut, name, body, account_id, subject, cc, used, last_used
+             FROM snippets ORDER BY used DESC, shortcut",
+        )?;
+        let rows = stmt
             .query_map([], |r| {
-                Ok(Snippet { id: r.get(0)?, shortcut: r.get(1)?, name: r.get(2)?, body: r.get(3)? })
+                Ok((
+                    Snippet {
+                        id: r.get(0)?,
+                        shortcut: r.get(1)?,
+                        name: r.get(2)?,
+                        body: r.get(3)?,
+                        account_id: r.get(4)?,
+                        subject: r.get(5)?,
+                        cc: Vec::new(),
+                        used: r.get(7)?,
+                        last_used: r.get(8)?,
+                    },
+                    r.get::<_, String>(6)?,
+                ))
             })?
-            .collect::<rusqlite::Result<_>>()?;
-        Ok(all)
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.into_iter().map(|(s, cc)| Ok(Snippet { cc: serde_json::from_str(&cc)?, ..s })).collect()
     }
 
-    /// Adds the snippet (id 0) or changes it. Shortcuts are one word, unique whatever their case.
+    /// Adds the snippet (id 0) or changes it. Shortcuts are one word, unique whatever their case. An empty subject
+    /// is none; the use count is the store's own and stays as it was.
     pub fn save_snippet(&self, snippet: &Snippet) -> Result<i64> {
         let shortcut = snippet.shortcut.trim().trim_start_matches(';');
         if shortcut.is_empty() || shortcut.chars().any(char::is_whitespace) {
@@ -1503,16 +1549,20 @@ impl Store {
         if taken.is_some() {
             bail!("Another snippet already uses ;{shortcut}.");
         }
+        let subject = snippet.subject.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        let cc: Vec<&str> = snippet.cc.iter().map(|a| a.trim()).filter(|a| !a.is_empty()).collect();
+        let cc = serde_json::to_string(&cc)?;
         if snippet.id == 0 {
             conn.execute(
-                "INSERT INTO snippets (shortcut, name, body) VALUES (?1, ?2, ?3)",
-                params![shortcut, snippet.name.trim(), snippet.body],
+                "INSERT INTO snippets (shortcut, name, body, account_id, subject, cc) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![shortcut, snippet.name.trim(), snippet.body, snippet.account_id, subject, cc],
             )?;
             Ok(conn.last_insert_rowid())
         } else {
             conn.execute(
-                "UPDATE snippets SET shortcut = ?1, name = ?2, body = ?3 WHERE id = ?4",
-                params![shortcut, snippet.name.trim(), snippet.body, snippet.id],
+                "UPDATE snippets SET shortcut = ?1, name = ?2, body = ?3, account_id = ?4, subject = ?5, cc = ?6
+                 WHERE id = ?7",
+                params![shortcut, snippet.name.trim(), snippet.body, snippet.account_id, subject, cc, snippet.id],
             )?;
             Ok(snippet.id)
         }
@@ -1523,9 +1573,77 @@ impl Store {
         Ok(())
     }
 
-    /// Counts a use, so the snippets used most come first in the picker.
+    /// Counts a use, so the snippets used most come first in the picker, and settings can say when it was last.
     pub fn snippet_used(&self, id: i64) -> Result<()> {
-        self.conn().execute("UPDATE snippets SET used = used + 1 WHERE id = ?1", [id])?;
+        self.conn().execute(
+            "UPDATE snippets SET used = used + 1, last_used = ?2 WHERE id = ?1",
+            params![id, now()],
+        )?;
+        Ok(())
+    }
+
+    // MARK: Signatures
+
+    /// Every account's signatures, each account's in the order they were made.
+    pub fn signatures(&self) -> Result<Vec<Signature>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, account_id, name, body, html, for_new, for_reply FROM signatures ORDER BY account_id, id",
+        )?;
+        let all = stmt
+            .query_map([], |r| {
+                Ok(Signature {
+                    id: r.get(0)?,
+                    account_id: r.get(1)?,
+                    name: r.get(2)?,
+                    body: r.get(3)?,
+                    html: r.get(4)?,
+                    for_new: r.get(5)?,
+                    for_reply: r.get(6)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(all)
+    }
+
+    /// Adds the signature (id 0) or changes its name and text. Which mail it goes on is `set_signature_default`'s;
+    /// an account's first signature goes on both new mail and replies.
+    pub fn save_signature(&self, signature: &Signature) -> Result<i64> {
+        let conn = self.conn();
+        let name = signature.name.trim();
+        if signature.id == 0 {
+            let first: bool = conn.query_row(
+                "SELECT NOT EXISTS (SELECT 1 FROM signatures WHERE account_id = ?1)",
+                [signature.account_id],
+                |r| r.get(0),
+            )?;
+            conn.execute(
+                "INSERT INTO signatures (account_id, name, body, html, for_new, for_reply)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+                params![signature.account_id, name, signature.body, signature.html, first],
+            )?;
+            Ok(conn.last_insert_rowid())
+        } else {
+            conn.execute(
+                "UPDATE signatures SET name = ?2, body = ?3, html = ?4 WHERE id = ?1",
+                params![signature.id, name, signature.body, signature.html],
+            )?;
+            Ok(signature.id)
+        }
+    }
+
+    /// The account's signature for new mail (or, with `reply`, for replies and forwards): `id`, or none.
+    pub fn set_signature_default(&self, account_id: i64, reply: bool, id: Option<i64>) -> Result<()> {
+        let column = if reply { "for_reply" } else { "for_new" };
+        self.conn().execute(
+            &format!("UPDATE signatures SET {column} = (id IS ?2) WHERE account_id = ?1"),
+            params![account_id, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_signature(&self, id: i64) -> Result<()> {
+        self.conn().execute("DELETE FROM signatures WHERE id = ?1", [id])?;
         Ok(())
     }
 
@@ -2079,6 +2197,9 @@ impl Store {
     // MARK: Changes and the outbox
 
     /// Applies an action here at once and queues it for the server after `delay` seconds (the undo window).
+    ///
+    /// A draft being written in Tern is kept on the server by the draft sync, not the outbox; until its first copy
+    /// is uploaded the server has nothing to act on. So deleting one discards it, and other actions leave it be.
     pub fn apply(&self, ids: &[i64], action: Action, delay: i64) -> Result<Applied> {
         struct Hit {
             id: i64,
@@ -2093,10 +2214,15 @@ impl Store {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         let mut groups: BTreeMap<(i64, i64), Vec<Hit>> = BTreeMap::new();
+        let mut drafts = Vec::new();
         for id in ids {
             let hit = tx
                 .query_row(
-                    "SELECT m.id, m.account_id, m.folder_id, f.name, m.uid, m.seen, m.flagged, f.uid_validity
+                    "SELECT m.id, m.account_id, m.folder_id, f.name, m.uid, m.seen, m.flagged, f.uid_validity,
+                            CASE WHEN f.role = 'drafts' THEN
+                                (SELECT d.id FROM drafts d WHERE d.account_id = m.account_id
+                                 AND d.message_id = m.message_id AND d.discarded_at IS NULL AND d.sent_at IS NULL)
+                            END
                      FROM messages m JOIN folders f ON f.id = m.folder_id WHERE m.id = ?1",
                     [id],
                     |r| {
@@ -2111,13 +2237,26 @@ impl Store {
                                 flagged: r.get(6)?,
                                 validity: r.get(7)?,
                             },
+                            r.get::<_, Option<i64>>(8)?,
                         ))
                     },
                 )
                 .optional()?;
-            if let Some((account_id, hit)) = hit {
-                groups.entry((account_id, hit.folder_id)).or_default().push(hit);
+            match hit {
+                Some((_, _, Some(draft))) => {
+                    if matches!(action, Action::Trash) {
+                        drafts.push(draft);
+                    }
+                }
+                Some((account_id, hit, None)) => {
+                    groups.entry((account_id, hit.folder_id)).or_default().push(hit)
+                }
+                None => {}
             }
+        }
+        for draft in &drafts {
+            tx.execute("UPDATE drafts SET discarded_at = ?2 WHERE id = ?1", params![draft, now()])?;
+            unmirror_draft(&tx, *draft)?;
         }
 
         let mut token = Vec::new();
@@ -2208,7 +2347,7 @@ impl Store {
             accounts.insert(account_id);
         }
         tx.commit()?;
-        Ok(Applied { token, accounts: accounts.into_iter().collect() })
+        Ok(Applied { token, accounts: accounts.into_iter().collect(), drafts })
     }
 
     pub fn queue_send(&self, account_id: i64, draft: Draft, delay: i64) -> Result<i64> {
@@ -3105,11 +3244,79 @@ mod tests {
         assert!(store.save_snippet(&Snippet { shortcut: "two words".into(), ..Default::default() }).is_err());
         store.snippet_used(id).unwrap();
         let all = store.snippets().unwrap();
-        assert_eq!(all[0], Snippet { id, shortcut: "thanks".into(), ..thanks });
+        assert!(all[0].last_used.is_some());
+        assert_eq!(
+            all[0],
+            Snippet { id, shortcut: "thanks".into(), used: 1, last_used: all[0].last_used, ..thanks }
+        );
         store.save_snippet(&Snippet { id: later, shortcut: "soon".into(), ..Default::default() }).unwrap();
         store.delete_snippet(id).unwrap();
         let left: Vec<String> = store.snippets().unwrap().into_iter().map(|s| s.shortcut).collect();
         assert_eq!(left, ["soon"]);
+    }
+
+    #[test]
+    fn a_snippet_can_belong_to_one_account_and_fill_in_subject_and_cc() {
+        let (store, account, ..) = setup();
+        let offer = Snippet {
+            shortcut: "offer".into(),
+            body: "Attached.".into(),
+            account_id: Some(account),
+            subject: Some("  ".into()),
+            cc: vec!["sales@x.com".into(), " ".into()],
+            ..Default::default()
+        };
+        let id = store.save_snippet(&offer).unwrap();
+        let saved = &store.snippets().unwrap()[0];
+        assert_eq!(
+            (saved.account_id, saved.subject.as_deref()),
+            (Some(account), None),
+            "a blank subject is none"
+        );
+        assert_eq!(saved.cc, ["sales@x.com"]);
+        store.snippet_used(id).unwrap();
+        let resaved = Snippet { id, subject: Some("Offer".into()), ..offer };
+        store.save_snippet(&resaved).unwrap();
+        assert_eq!(store.snippets().unwrap()[0].used, 1, "saving keeps the count");
+        store.conn().execute("DELETE FROM accounts", []).unwrap();
+        assert!(store.snippets().unwrap().is_empty(), "goes with its account");
+    }
+
+    #[test]
+    fn an_account_can_be_renamed() {
+        let (store, account, ..) = setup();
+        store.set_display_name(account, "  Ada L.  ").unwrap();
+        assert_eq!(store.account(account).unwrap().unwrap().config.display_name, "Ada L.");
+        assert!(store.account(account + 1).unwrap().is_none());
+    }
+
+    #[test]
+    fn signatures_have_one_for_new_mail_and_one_for_replies() {
+        let (store, account, ..) = setup();
+        let sig = |name: &str| Signature {
+            account_id: account,
+            name: name.into(),
+            body: name.into(),
+            ..Default::default()
+        };
+        let full = store.save_signature(&sig("Full")).unwrap();
+        let short = store.save_signature(&sig("Short")).unwrap();
+        let flags =
+            || store.signatures().unwrap().iter().map(|s| (s.id, s.for_new, s.for_reply)).collect::<Vec<_>>();
+        assert_eq!(flags(), [(full, true, true), (short, false, false)], "the first one goes on both");
+
+        store.set_signature_default(account, true, Some(short)).unwrap();
+        assert_eq!(flags(), [(full, true, false), (short, false, true)]);
+        store.set_signature_default(account, false, None).unwrap();
+        assert_eq!(flags(), [(full, false, false), (short, false, true)]);
+
+        let rich = Signature { id: short, html: Some("<p><b>Short</b></p>".into()), ..sig("Brief") };
+        store.save_signature(&rich).unwrap();
+        let saved = store.signatures().unwrap().pop().unwrap();
+        assert_eq!((saved.name.as_str(), saved.for_reply), ("Brief", true), "saving keeps where it goes");
+        assert_eq!(saved.html, rich.html);
+        store.delete_signature(full).unwrap();
+        assert_eq!(store.signatures().unwrap().len(), 1);
     }
 
     #[test]
@@ -3646,6 +3853,27 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     }
 
     #[test]
+    fn deleting_a_draft_from_drafts_discards_it_instead_of_queueing_server_work() {
+        let (store, account, _, _) = setup();
+        let drafts = store.upsert_folder(account, "Drafts", "drafts").unwrap();
+        let id = store.save_draft(None, account, draft_to("hi"), false).unwrap();
+        let row = store.list(&ListTarget::Folder(drafts), None, 9).unwrap()[0].id;
+
+        let starred = store.apply(&[row], Action::Star, 5).unwrap();
+        let archived = store.apply(&[row], Action::Archive, 5).unwrap();
+        assert!(starred.token.is_empty() && archived.token.is_empty(), "the server has no copy to act on");
+        assert_eq!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().len(), 1, "left where it is");
+
+        let trashed = store.apply(&[row], Action::Trash, 5).unwrap();
+        assert!(trashed.token.is_empty());
+        assert_eq!(trashed.drafts, [id]);
+        assert!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().is_empty());
+        assert!(store.outbox_waiting().unwrap().is_empty());
+        assert!(store.undo_discard(id).unwrap());
+        assert_eq!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().len(), 1, "undo brings it back");
+    }
+
+    #[test]
     fn undoing_a_send_makes_it_a_draft_again() {
         let (store, account, _, _) = setup();
         let drafts = store.upsert_folder(account, "Drafts", "drafts").unwrap();
@@ -3883,6 +4111,13 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                // A column with a REFERENCES clause can't be dropped: the table goes back to its step-16 shape.
+                19 => {
+                    "DROP TABLE signatures; DROP TABLE snippets;
+                     CREATE TABLE snippets (id INTEGER PRIMARY KEY, shortcut TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                                            name TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '',
+                                            used INTEGER NOT NULL DEFAULT 0);"
+                }
                 18 => {
                     "ALTER TABLE outbox DROP COLUMN scheduled; ALTER TABLE outbox DROP COLUMN held;
                      ALTER TABLE reminders DROP COLUMN message_id; ALTER TABLE reminders DROP COLUMN fired;"
@@ -4072,6 +4307,32 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
             .query_row("SELECT count(*) FROM reminders WHERE kind = 'followup'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(left, 0, "an unsent message has nothing to wait for");
+    }
+
+    #[test]
+    fn migration_20_moves_signatures_out_of_settings() {
+        let (store, account, ..) = setup();
+        let thanks = Snippet { shortcut: "thanks".into(), body: "Thanks!".into(), ..Default::default() };
+        store.save_snippet(&thanks).unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 19);
+        conn.execute("INSERT INTO snippets (shortcut, body) VALUES ('thanks', 'Thanks!')", []).unwrap();
+        let old = serde_json::json!({ account.to_string(): "Ada\nEngines", "999": "gone", "2": "  " });
+        conn.execute("INSERT INTO settings (key, value) VALUES ('signatures', ?1)", [old.to_string()])
+            .unwrap();
+        let store = Store::init(conn).unwrap();
+
+        let all = store.signatures().unwrap();
+        assert_eq!(all.len(), 1, "only accounts that exist, with a signature");
+        assert_eq!((all[0].account_id, all[0].body.as_str()), (account, "Ada\nEngines"));
+        assert!(all[0].for_new && all[0].for_reply);
+        assert!(!store.settings().unwrap().contains_key("signatures"));
+        let kept = &store.snippets().unwrap()[0];
+        assert_eq!(
+            (kept.account_id, kept.cc.len(), kept.last_used),
+            (None, 0, None),
+            "snippets keep working"
+        );
     }
 
     #[test]

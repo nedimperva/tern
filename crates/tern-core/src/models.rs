@@ -455,12 +455,14 @@ pub enum Failure {
     MaybeSent,
 }
 
-/// What `Store::apply` did: hand `token` to `Store::undo` to take it back.
+/// What `Store::apply` did: hand `token` to `Store::undo` to take it back, and each of `drafts` (drafts deleted
+/// from a Drafts folder, which are discarded rather than queued) to `Store::undo_discard`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Applied {
     pub token: Vec<i64>,
     pub accounts: Vec<i64>,
+    pub drafts: Vec<i64>,
 }
 
 /// How far one account's download has come (`Store::sync_progress`).
@@ -501,4 +503,36 @@ pub struct Snippet {
     pub shortcut: String,
     pub name: String,
     pub body: String,
+    /// Offered only when writing from this account; none for every account.
+    #[serde(default)]
+    pub account_id: Option<i64>,
+    /// Becomes the subject when compose has none yet.
+    #[serde(default)]
+    pub subject: Option<String>,
+    /// Added to Cc.
+    #[serde(default)]
+    pub cc: Vec<String>,
+    /// How often it was used, and when last (Unix seconds). Counted by the store; saving leaves them be.
+    #[serde(default)]
+    pub used: i64,
+    #[serde(default)]
+    pub last_used: Option<i64>,
+}
+
+/// One of an account's signatures. An account has at most one for new mail and one for replies and forwards.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Signature {
+    /// 0 for one not saved yet.
+    pub id: i64,
+    pub account_id: i64,
+    pub name: String,
+    /// The plain text; `html` too when it has formatting.
+    pub body: String,
+    #[serde(default)]
+    pub html: Option<String>,
+    #[serde(default)]
+    pub for_new: bool,
+    #[serde(default)]
+    pub for_reply: bool,
 }

@@ -7,6 +7,47 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-19
+
+Settings are redesigned, with several signatures per account and fuller snippets. This version upgrades the mail
+database, so 0.3.3 and earlier can't open it afterwards.
+
+### Added
+
+- Several signatures per account, with formatting (bold, italic, links). Pick one for new mail and one for
+  replies and forwards; switch in compose from the footer or with Ctrl+Shift+S. Your existing signature is kept.
+- Snippets can be kept to one account, can fill in the subject and add people to Cc, and show how often they
+  are used. The `;` picker shows what a snippet will insert before you pick it.
+- Rename an account (the name people see on your mail) on its page in Settings.
+
+### Changed
+
+- Settings are grouped into General, Writing and Accounts, with a search field. Snippets and signatures each
+  have a list and an editor with a live preview; each account has a page with its server details.
+
+### Fixed
+
+- A draft with a recipient that isn't a full address yet now reaches the server's Drafts folder; the server copy
+  leaves that recipient out, and Tern keeps it.
+- Deleting a draft from the Drafts list discards it (undo brings it back) instead of failing with "The messages
+  are no longer in Drafts on the server". Other actions leave drafts where they are.
+
+## [0.3.3] - 2026-10-19
+
+### Added
+
+- Send later (Ctrl+Shift+L, or Later in compose): the message waits in the outbox until its time. A send whose
+  time passed while Tern was closed waits for you to confirm it.
+- Remind me (Ctrl+Shift+H): if nobody replies by the time you pick, the conversation is pinned at the top of the
+  inbox with "No reply yet" and a notification. Done dismisses it; a reply cancels it.
+
+### Changed
+
+- A new app icon: a tern, replacing the old kite, in the launcher, taskbar, installers, tray and Linux
+  notifications.
+- The compose footer fits on one line: only Send keeps its key hint and Attach is a paperclip; the other
+  shortcuts are in tooltips.
+
 ## [0.3.2] - 2026-10-18
 
 The first release that updates itself (AppImage and Windows); 0.3.1 and earlier need this one installed by hand.
@@ -73,7 +114,9 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/nedimperva/tern/compare/v0.3.3...v0.3.4
+[0.3.3]: https://github.com/nedimperva/tern/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/nedimperva/tern/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/nedimperva/tern/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/nedimperva/tern/compare/v0.2.0...v0.3.0
