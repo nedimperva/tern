@@ -7,6 +7,11 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-19
+
+Settings are redesigned, with several signatures per account and fuller snippets. This version upgrades the mail
+database, so 0.3.3 and earlier can't open it afterwards.
+
 ### Added
 
 - Several signatures per account, with formatting (bold, italic, links). Pick one for new mail and one for
@@ -109,7 +114,8 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/nedimperva/tern/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/nedimperva/tern/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/nedimperva/tern/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/nedimperva/tern/compare/v0.3.0...v0.3.1
