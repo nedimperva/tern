@@ -140,7 +140,7 @@ export type Preset = {
   smtpSecurity: Security;
   note: string | null;
 };
-export type Applied = { token: number[]; accounts: number[] };
+export type Applied = { token: number[]; accounts: number[]; drafts: number[] };
 /** Queued work Tern stopped retrying: it waits for the person to retry or discard it. */
 export type OutboxProblem = {
   id: number;
@@ -678,7 +678,7 @@ function fake(): Api {
       pending.set(token, () => (messages = before));
       setTimeout(() => pending.delete(token), 5000);
       changed();
-      return { token: [token], accounts: [1] };
+      return { token: [token], accounts: [1], drafts: [] };
     },
     undo: async (token) => {
       const revert = pending.get(token[0]);

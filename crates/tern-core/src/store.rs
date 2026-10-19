@@ -2079,6 +2079,9 @@ impl Store {
     // MARK: Changes and the outbox
 
     /// Applies an action here at once and queues it for the server after `delay` seconds (the undo window).
+    ///
+    /// A draft being written in Tern is kept on the server by the draft sync, not the outbox; until its first copy
+    /// is uploaded the server has nothing to act on. So deleting one discards it, and other actions leave it be.
     pub fn apply(&self, ids: &[i64], action: Action, delay: i64) -> Result<Applied> {
         struct Hit {
             id: i64,
@@ -2093,10 +2096,15 @@ impl Store {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         let mut groups: BTreeMap<(i64, i64), Vec<Hit>> = BTreeMap::new();
+        let mut drafts = Vec::new();
         for id in ids {
             let hit = tx
                 .query_row(
-                    "SELECT m.id, m.account_id, m.folder_id, f.name, m.uid, m.seen, m.flagged, f.uid_validity
+                    "SELECT m.id, m.account_id, m.folder_id, f.name, m.uid, m.seen, m.flagged, f.uid_validity,
+                            CASE WHEN f.role = 'drafts' THEN
+                                (SELECT d.id FROM drafts d WHERE d.account_id = m.account_id
+                                 AND d.message_id = m.message_id AND d.discarded_at IS NULL AND d.sent_at IS NULL)
+                            END
                      FROM messages m JOIN folders f ON f.id = m.folder_id WHERE m.id = ?1",
                     [id],
                     |r| {
@@ -2111,13 +2119,24 @@ impl Store {
                                 flagged: r.get(6)?,
                                 validity: r.get(7)?,
                             },
+                            r.get::<_, Option<i64>>(8)?,
                         ))
                     },
                 )
                 .optional()?;
-            if let Some((account_id, hit)) = hit {
-                groups.entry((account_id, hit.folder_id)).or_default().push(hit);
+            match hit {
+                Some((_, _, Some(draft))) => {
+                    if matches!(action, Action::Trash) {
+                        drafts.push(draft);
+                    }
+                }
+                Some((account_id, hit, None)) => groups.entry((account_id, hit.folder_id)).or_default().push(hit),
+                None => {}
             }
+        }
+        for draft in &drafts {
+            tx.execute("UPDATE drafts SET discarded_at = ?2 WHERE id = ?1", params![draft, now()])?;
+            unmirror_draft(&tx, *draft)?;
         }
 
         let mut token = Vec::new();
@@ -2208,7 +2227,7 @@ impl Store {
             accounts.insert(account_id);
         }
         tx.commit()?;
-        Ok(Applied { token, accounts: accounts.into_iter().collect() })
+        Ok(Applied { token, accounts: accounts.into_iter().collect(), drafts })
     }
 
     pub fn queue_send(&self, account_id: i64, draft: Draft, delay: i64) -> Result<i64> {
@@ -3643,6 +3662,27 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         store.conn().execute("DELETE FROM outbox", []).unwrap();
         let due = store.drafts_due(account).unwrap();
         assert!(matches!(&due[0], DraftSync::Remove { copy: Some((7, 41)), .. }), "{due:?}");
+    }
+
+    #[test]
+    fn deleting_a_draft_from_drafts_discards_it_instead_of_queueing_server_work() {
+        let (store, account, _, _) = setup();
+        let drafts = store.upsert_folder(account, "Drafts", "drafts").unwrap();
+        let id = store.save_draft(None, account, draft_to("hi"), false).unwrap();
+        let row = store.list(&ListTarget::Folder(drafts), None, 9).unwrap()[0].id;
+
+        let starred = store.apply(&[row], Action::Star, 5).unwrap();
+        let archived = store.apply(&[row], Action::Archive, 5).unwrap();
+        assert!(starred.token.is_empty() && archived.token.is_empty(), "the server has no copy to act on");
+        assert_eq!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().len(), 1, "left where it is");
+
+        let trashed = store.apply(&[row], Action::Trash, 5).unwrap();
+        assert!(trashed.token.is_empty());
+        assert_eq!(trashed.drafts, [id]);
+        assert!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().is_empty());
+        assert!(store.outbox_waiting().unwrap().is_empty());
+        assert!(store.undo_discard(id).unwrap());
+        assert_eq!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().len(), 1, "undo brings it back");
     }
 
     #[test]
