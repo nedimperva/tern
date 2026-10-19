@@ -162,6 +162,18 @@ at all. Published as "In production" without verification, sign-ins last until r
 months, behind Google's "unverified app" warning and a 100-user cap for the project's whole life. A public release with a restricted scope
 needs Google's yearly security assessment by an approved assessor, which is paid; the API path needs the same one.
 
+2026-10-19 — **Releases ship without a Google client** (owner). The owner will not put the Google client in the
+repository's secrets, so release builds offer Gmail through an app password only; "Continue with Google" is for
+builds made with one's own client (docs/gmail.md). Tern's releases never ask for Gmail scopes under the owner's
+project, so Google's verification and its security assessment are not needed. Revisit if testers can't use app
+passwords (a Workspace admin can turn them off).
+
+2026-10-19 — **Gmail model: All Mail plus label membership** (owner). All Mail syncs as Gmail's archive, so every
+message is stored once and archived mail without a label is visible. A label folder is read for its Message-IDs
+only (`message_labels`), not stored as rows; a label's view lists All Mail's messages with that label.
+`[Gmail]/Important` and `[Gmail]/Starred` stop syncing (Gmail's importance, and stars are `\Flagged`). Threads stay
+Tern's own (References and subject); X-GM-* waits for imap-codec.
+
 ## Verification and optional AI
 
 Begin scope inventory, domain/homepage/privacy preparation and test-user setup during M0. Submit verification

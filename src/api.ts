@@ -103,6 +103,8 @@ export type ThreadRow = MessageRow & {
   snoozedUntil: number | null;
   /** A follow-up on a sent message came due with no reply: pinned at the top of the inbox until done. */
   followUp?: boolean;
+  /** Gmail labels on any of its messages. */
+  labels?: string[];
 };
 /** Where an account's sync stands. */
 export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed" | "paused";
@@ -119,7 +121,8 @@ export type Action =
   | "unstar";
 /** Whether the action moves mail to another folder, so the list it is in loses it. */
 export const moves = (a: Action) => typeof a === "object" || a === "archive" || a === "trash" || a === "junk" || a === "inbox";
-export type Target = { folder: number } | { role: string };
+/** A folder, every folder with a role (the unified inbox), or a Gmail label (its folder's id). */
+export type Target = { folder: number } | { role: string } | { label: number };
 export type Cursor = { date: number; id: number };
 /** A file attached to a draft (Tern's own copy). */
 export type OutgoingAttachment = { path: string; name: string; mime: string; size: number };
@@ -216,6 +219,8 @@ export interface Api {
   listThreads(target: Target, before: Cursor | null, limit: number): Promise<ThreadRow[]>;
   /** An action on whole conversations, each named by its row's message id. */
   applyConversations(ids: number[], action: Action, target: Target): Promise<Applied>;
+  /** Puts a Gmail label (its folder's id) on these conversations, or takes it off; undo like any action. */
+  labelConversations(ids: number[], label: number, add: boolean): Promise<Applied>;
   thread(id: number): Promise<ThreadMessage[]>;
   /** Search with filters (see crates/tern-core/src/query.rs). `partial`: words were not looked for in mail without its text. */
   search(query: string, limit: number): Promise<{ rows: MessageRow[]; partial: boolean }>;
@@ -369,6 +374,7 @@ const tauri: Api = {
   list: (target, before, limit) => invoke("list_messages", { target, before, limit }),
   listThreads: (target, before, limit) => invoke("list_threads", { target, before, limit }),
   applyConversations: (ids, action, target) => invoke("apply_conversations", { ids, action, target }),
+  labelConversations: (ids, label, add) => invoke("label_conversations", { ids, label, add }),
   thread: (id) => invoke("thread", { id }),
   search: (query, limit) => invoke("search", { query, limit }),
   apply: (ids, action) => invoke("apply", { ids, action }),
@@ -531,6 +537,9 @@ function fake(): Api {
     { id: 4, accountId: 1, name: "Trash", role: "trash", unread: 0 },
     { id: 5, accountId: 1, name: "Junk", role: "junk", unread: 0 },
     { id: 6, accountId: 1, name: "Receipts", role: "other", unread: 0 },
+    // Gmail-style labels: a third of the conversations are Work, a quarter Invoices.
+    { id: 7, accountId: 1, name: "Work", role: "label", unread: 0 },
+    { id: 8, accountId: 1, name: "Invoices", role: "label", unread: 0 },
   ];
   const mutedThreads = new Set<string>();
   const drafts = new Map<number, DraftRecord>();
@@ -628,8 +637,13 @@ function fake(): Api {
   const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
   const snoozed = new Map<string, number>();
   const inInbox = (m: ThreadMessage) => folders.find((f) => f.id === m.folderId)?.role === "inbox";
+  const labelsOf = (m: ThreadMessage) => {
+    const n = Number(m.threadId.slice(1));
+    return [...(n % 4 === 0 ? ["Invoices"] : []), ...(n % 3 === 0 ? ["Work"] : [])];
+  };
   const inTarget = (m: ThreadMessage, t: Target): boolean => {
     if ("folder" in t) return m.folderId === t.folder;
+    if ("label" in t) return labelsOf(m).length > 0;
     const asleep = snoozed.has(m.threadId);
     switch (t.role) {
       case "inbox":
@@ -705,10 +719,12 @@ function fake(): Api {
           snoozedUntil: snoozed.get(m.threadId) ?? null,
           // Open the page with #followup to see a follow-up that came due, pinned at the top.
           followUp: location.hash === "#followup" && out.length === 0 && !before,
+          labels: labelsOf(m),
         });
       }
       return out;
     },
+    labelConversations: async () => ({ token: [nextToken++], accounts: [1], drafts: [] }),
     applyConversations: async (ids, action, target) => {
       const threads = new Set(messages.filter((m) => ids.includes(m.id)).map((m) => m.threadId));
       const members = (keep: (m: ThreadMessage) => boolean) =>

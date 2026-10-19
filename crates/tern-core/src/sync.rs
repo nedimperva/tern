@@ -387,6 +387,10 @@ async fn pass(
     let s = session.as_mut().expect("connected above");
 
     if drain_outbox(s, store, account, login).await? {
+        // A move into a Gmail label leaves its row in the label folder, which keeps none: All Mail has the message.
+        if store.is_gmail(account.id)? {
+            store.retire_label_rows(account.id)?;
+        }
         on_change();
     }
     if sync_drafts(s, store, account).await? {
@@ -432,10 +436,33 @@ async fn pass(
                 }
             };
         schedule.done(folder_id, unfinished);
+        // A message archived here moved into All Mail, which also had it; once sent, that copy goes.
+        if store.drop_moved_duplicates(folder_id)? > 0 {
+            on_change();
+        }
         if changed {
             on_change();
         }
         more |= unfinished;
+    }
+    for (folder_id, name) in store.label_folders(account.id)? {
+        // A label change still queued would vanish from the screen until it is sent.
+        if !schedule.due(folder_id, &name) || store.label_pending(account.id, folder_id)? {
+            continue;
+        }
+        match sync_label(s, store, folder_id, &name).await {
+            Ok(changed) => {
+                schedule.done(folder_id, false);
+                if changed {
+                    on_change();
+                }
+            }
+            Err(e) if connection_broke(&e) => return Err(e),
+            Err(e) => {
+                log::warn!("{}: {e:#}", account.config.email);
+                refused = true;
+            }
+        }
     }
     if refused {
         discover_folders(s, store, account.id).await?;
@@ -474,12 +501,24 @@ async fn discover_folders<S: Stream>(s: &mut Imap<S>, store: &Store, account_id:
     // next to the server's \Sent "Sent Items" could get the sent copies.
     let marked: HashSet<&str> =
         selectable.iter().flat_map(|f| f.attributes.iter()).filter_map(|a| special_use(a)).collect();
+    let gmail = store.is_gmail(account_id)?;
     for folder in &selectable {
         let mut role = role(&folder.name, &folder.attributes);
         if marked.contains(role) && !folder.attributes.iter().any(|a| special_use(a) == Some(role)) {
             role = "other";
         }
+        if gmail {
+            role = gmail_role(&folder.name, &folder.attributes, role);
+        }
         store.upsert_folder(account_id, &folder.name, role)?;
+    }
+    if gmail {
+        let gone = store.retire_label_rows(account_id)?;
+        if gone > 0 {
+            log::info!(
+                "{account_id}: dropped {gone} copies kept in Gmail label folders; All Mail holds them"
+            );
+        }
     }
     // An empty answer (or one without the inbox) is more likely a server hiccup than every folder gone.
     if selectable.iter().any(|f| f.name.eq_ignore_ascii_case("INBOX")) {
@@ -489,6 +528,18 @@ async fn discover_folders<S: Stream>(s: &mut Imap<S>, store: &Store, account_id:
         }
     }
     Ok(())
+}
+
+/// On Gmail, every folder that isn't a special one is a label, read for its members only (All Mail holds the
+/// messages). Gmail's own Important and Starred are not synced: stars are `\Flagged`, and Important is Gmail's guess.
+fn gmail_role(name: &str, attrs: &[String], role: &'static str) -> &'static str {
+    if role != "other" {
+        role
+    } else if attrs.iter().any(|a| a == "important" || a == "flagged") || name.starts_with("[Gmail]/") {
+        "hidden"
+    } else {
+        "label"
+    }
 }
 
 /// The role a SPECIAL-USE attribute stands for.
@@ -692,6 +743,40 @@ async fn sync_folder<S: Stream>(
     };
     store.set_folder_state(folder_id, &state)?;
     Ok((changed, more))
+}
+
+/// A Gmail label folder: which messages carry the label, by Message-ID, read again only when the folder changed.
+/// Returns whether it did.
+async fn sync_label<S: Stream>(s: &mut Imap<S>, store: &Store, folder_id: i64, name: &str) -> Result<bool> {
+    let known = store.folder_state(folder_id)?;
+    let mailbox = within(s.select(name)).await.with_context(|| format!("Could not open {name}"))?;
+    let same = known.uid_validity.is_some()
+        && known.uid_validity == mailbox.uid_validity
+        && known.uid_next == mailbox.uid_next
+        && known.highest_modseq.is_some()
+        && known.highest_modseq == mailbox.highest_modseq.map(|m| m as i64);
+    if same {
+        return Ok(false);
+    }
+    let members: Vec<String> = if mailbox.exists == 0 {
+        Vec::new()
+    } else {
+        within(s.message_ids("1:*"))
+            .await
+            .with_context(|| format!("Could not read {name}"))?
+            .into_iter()
+            .map(|(_, id)| id)
+            .collect()
+    };
+    store.set_label_members(folder_id, &members)?;
+    store.set_server_count(folder_id, mailbox.exists)?;
+    let state = FolderState {
+        uid_validity: mailbox.uid_validity,
+        uid_next: mailbox.uid_next,
+        highest_modseq: mailbox.highest_modseq.map(|m| m as i64),
+    };
+    store.set_folder_state(folder_id, &state)?;
+    Ok(true)
 }
 
 /// Reads snippets for headers-only rows from the first bytes of their text part, newest first, until `deadline`,
@@ -1010,6 +1095,24 @@ async fn run_op<S: Stream>(
             // Later work on these messages may be waiting to learn where they went.
             store.moved(account.id, dest, &placed)?;
         }
+        OutboxOp::Label { folder, uids, label, add: true, ids, validity, .. } => {
+            let found = locate(s, store, folder, uids, *validity, &[], ids).await?;
+            if !found.is_empty() {
+                let set = uid_set(&found.keys().copied().collect::<Vec<_>>());
+                within(s.copy_to(&set, label)).await?;
+            }
+        }
+        // Deleting from a label's folder takes only that label off in Gmail; All Mail keeps the message.
+        OutboxOp::Label { label, add: false, message_ids, .. } => {
+            within(s.select(label)).await?;
+            let mut uids = Vec::new();
+            for id in message_ids {
+                uids.extend(within(s.find_message_id(id)).await?);
+            }
+            if !uids.is_empty() {
+                within(s.delete(&uid_set(&uids))).await?;
+            }
+        }
         OutboxOp::Send(draft) => {
             let extra = match &draft.forward_of {
                 Some(original) => forwarded_files(s, original).await?,
@@ -1290,6 +1393,265 @@ mod tests {
     }
 
     /// Queued work run against a scripted server: the cases a real server rarely produces on demand.
+    mod gmail {
+        use super::super::{discover_folders, gmail_role, sync_label};
+        use crate::imap::Imap;
+        use crate::models::{AccountConfig, ListTarget, NewMessage, Security};
+        use crate::scripted::signed_in;
+        use crate::store::Store;
+
+        const SIGNED_IN: &str = "{tag} OK [CAPABILITY IMAP4rev1 MOVE UIDPLUS CONDSTORE] in\r\n";
+        const SELECT_WORK: &str = "* 2 EXISTS\r\n* OK [UIDVALIDITY 5] v\r\n* OK [UIDNEXT 3] n\r\n\
+                                   * OK [HIGHESTMODSEQ 9] m\r\n{tag} OK [READ-WRITE] s\r\n";
+
+        fn gmail() -> (Store, i64) {
+            let store = Store::open_in_memory().unwrap();
+            let account = store
+                .add_account(&AccountConfig {
+                    email: "ada@gmail.com".into(),
+                    display_name: String::new(),
+                    username: "ada@gmail.com".into(),
+                    imap_host: "imap.gmail.com".into(),
+                    imap_port: 993,
+                    imap_security: Security::Tls,
+                    smtp_host: "smtp.gmail.com".into(),
+                    smtp_port: 465,
+                    smtp_security: Security::Tls,
+                    auth: Default::default(),
+                })
+                .unwrap();
+            (store, account.id)
+        }
+
+        #[test]
+        fn gmail_folders_are_labels_unless_special() {
+            let attrs = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            assert_eq!(gmail_role("Work", &attrs(&["hasnochildren"]), "other"), "label");
+            assert_eq!(gmail_role("Parent/Child", &[], "other"), "label");
+            assert_eq!(gmail_role("[Notion]", &[], "other"), "label", "a user label may have brackets");
+            assert_eq!(gmail_role("[Gmail]/Important", &attrs(&["important"]), "other"), "hidden");
+            assert_eq!(gmail_role("[Gmail]/Starred", &attrs(&["flagged"]), "other"), "hidden");
+            assert_eq!(gmail_role("[Gmail]/All Mail", &attrs(&["all"]), "all"), "all");
+            assert_eq!(gmail_role("[Gmail]/Sent Mail", &attrs(&["sent"]), "sent"), "sent");
+        }
+
+        #[tokio::test]
+        async fn labels_are_read_for_membership_and_listed_from_all_mail() {
+            let (store, account) = gmail();
+            // From before labels: a copy kept in the label folder itself.
+            let work = store.upsert_folder(account, "Work", "other").unwrap();
+            let copy = NewMessage {
+                uid: 1,
+                message_id: Some("a@x".into()),
+                subject: "plan".into(),
+                date: 1,
+                ..Default::default()
+            };
+            store.insert_messages(account, work, &[copy]).unwrap();
+            let (stream, _) = signed_in(
+                SIGNED_IN,
+                vec![(
+                    "LIST",
+                    "* LIST (\\HasNoChildren) \"/\" INBOX\r\n\
+                     * LIST (\\HasNoChildren \\All) \"/\" \"[Gmail]/All Mail\"\r\n\
+                     * LIST (\\HasNoChildren \\Important) \"/\" \"[Gmail]/Important\"\r\n\
+                     * LIST (\\HasNoChildren \\Flagged) \"/\" \"[Gmail]/Starred\"\r\n\
+                     * LIST (\\HasNoChildren) \"/\" Work\r\n{tag} OK done\r\n",
+                )],
+            );
+            let mut s = Imap::open(stream, "ada", "x").await.unwrap();
+            discover_folders(&mut s, &store, account).await.unwrap();
+            let roles: Vec<(String, String)> =
+                store.folders().unwrap().into_iter().map(|f| (f.name, f.role)).collect();
+            assert!(roles.contains(&("Work".into(), "label".into())));
+            assert!(
+                !roles.iter().any(|(n, _)| n.contains("Important") || n.contains("Starred")),
+                "hidden: {roles:?}"
+            );
+            assert!(
+                store.list(&ListTarget::Folder(work), None, 10).unwrap().is_empty(),
+                "the old copy is gone"
+            );
+            let synced: Vec<String> =
+                store.folders_to_sync(account).unwrap().into_iter().map(|(_, n)| n).collect();
+            assert_eq!(
+                synced,
+                ["INBOX", "[Gmail]/All Mail"],
+                "All Mail syncs on Gmail; labels and hidden don't"
+            );
+
+            // The label's members, by Message-ID.
+            let (stream, _) = signed_in(
+                SIGNED_IN,
+                vec![
+                    ("SELECT Work", SELECT_WORK),
+                    (
+                        "UID FETCH 1:* (UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])",
+                        "* 1 FETCH (UID 1 BODY[HEADER.FIELDS (MESSAGE-ID)] {21}\r\nMessage-ID: <a@x>\r\n\r\n)\r\n\
+                         * 2 FETCH (UID 2 BODY[HEADER.FIELDS (MESSAGE-ID)] {21}\r\nMessage-ID: <b@x>\r\n\r\n)\r\n\
+                         {tag} OK done\r\n",
+                    ),
+                    // Unchanged on the next look: no FETCH.
+                    ("SELECT Work", SELECT_WORK),
+                ],
+            );
+            let mut s = Imap::open(stream, "ada", "x").await.unwrap();
+            assert!(sync_label(&mut s, &store, work, "Work").await.unwrap());
+            assert!(
+                !sync_label(&mut s, &store, work, "Work").await.unwrap(),
+                "read again only when it changed"
+            );
+
+            let all = store.folders().unwrap().into_iter().find(|f| f.role == "all").unwrap().id;
+            let inbox = store.folders().unwrap().into_iter().find(|f| f.role == "inbox").unwrap().id;
+            let mail = |uid, id: &str, subject: &str| NewMessage {
+                uid,
+                message_id: Some(id.into()),
+                subject: subject.into(),
+                date: uid as i64,
+                ..Default::default()
+            };
+            store
+                .insert_messages(
+                    account,
+                    all,
+                    &[mail(1, "a@x", "plan"), mail(2, "b@x", "budget"), mail(3, "c@x", "other")],
+                )
+                .unwrap();
+            store.insert_messages(account, inbox, &[mail(9, "a@x", "plan")]).unwrap();
+            let listed = store.list_threads(&ListTarget::Label(work), None, 10).unwrap();
+            let subjects: Vec<&str> = listed.iter().map(|t| t.latest.subject.as_str()).collect();
+            assert_eq!(subjects, ["budget", "plan"]);
+            assert!(listed.iter().all(|t| t.labels == ["Work"]));
+            let inbox_row = &store.list_threads(&ListTarget::Role("inbox".into()), None, 10).unwrap()[0];
+            assert_eq!(inbox_row.labels, ["Work"], "the inbox shows the label too");
+            let unread = store.folders().unwrap().into_iter().find(|f| f.name == "Work").unwrap().unread;
+            assert_eq!(unread, 2, "a label counts All Mail's unread members");
+            // Download progress counts All Mail, not labels (which keep no rows) or hidden folders.
+            store.set_server_count(all, 3).unwrap();
+            store.set_server_count(inbox, 1).unwrap();
+            let p = &store.sync_progress().unwrap()[0];
+            assert_eq!((p.have, p.total, p.unchecked), (4, 4, 0), "{p:?}");
+        }
+    }
+
+    mod labels {
+        use super::super::drain_outbox;
+        use crate::imap::Imap;
+        use crate::models::{Account, AccountConfig, ListTarget, NewMessage, Security};
+        use crate::scripted::signed_in;
+        use crate::store::Store;
+
+        const SIGNED_IN: &str = "{tag} OK [CAPABILITY IMAP4rev1 MOVE UIDPLUS] in\r\n";
+
+        /// A Gmail account whose All Mail holds "plan" (uid 4, validity 7) and a label folder Work.
+        fn mailbox() -> (Store, Account, i64, i64) {
+            let store = Store::open_in_memory().unwrap();
+            let account = store
+                .add_account(&AccountConfig {
+                    email: "ada@gmail.com".into(),
+                    display_name: String::new(),
+                    username: "ada@gmail.com".into(),
+                    imap_host: "imap.gmail.com".into(),
+                    imap_port: 993,
+                    imap_security: Security::Tls,
+                    smtp_host: "smtp.gmail.com".into(),
+                    smtp_port: 465,
+                    smtp_security: Security::Tls,
+                    auth: Default::default(),
+                })
+                .unwrap();
+            let all = store.upsert_folder(account.id, "[Gmail]/All Mail", "all").unwrap();
+            let work = store.upsert_folder(account.id, "Work", "label").unwrap();
+            let state =
+                crate::models::FolderState { uid_validity: Some(7), uid_next: Some(5), highest_modseq: None };
+            store.set_folder_state(all, &state).unwrap();
+            let m = NewMessage {
+                uid: 4,
+                message_id: Some("plan@x".into()),
+                subject: "plan".into(),
+                date: 1,
+                ..Default::default()
+            };
+            store.insert_messages(account.id, all, &[m]).unwrap();
+            let id = store.list(&ListTarget::Folder(all), None, 1).unwrap()[0].id;
+            (store, account, work, id)
+        }
+
+        async fn drain(store: &Store, account: &Account, script: crate::scripted::Script) -> Vec<String> {
+            let (stream, sent) = signed_in(SIGNED_IN, script);
+            let mut s = Imap::open(stream, "ada", "x").await.unwrap();
+            drain_outbox(&mut s, store, account, &crate::secrets::Login::Password(String::new()))
+                .await
+                .unwrap();
+            let sent = sent.lock().unwrap()[2..].to_vec();
+            sent
+        }
+
+        #[tokio::test]
+        async fn a_label_goes_on_by_copy_and_comes_off_by_delete_from_its_folder() {
+            let (store, account, work, id) = mailbox();
+            let labels = |store: &Store| store.list_threads(&ListTarget::Label(work), None, 5).unwrap().len();
+
+            let applied = store.label(&[id], work, true, 0).unwrap();
+            assert_eq!(labels(&store), 1, "on at once here");
+            assert!(store.label_pending(account.id, work).unwrap(), "the label folder waits for it");
+            assert!(store.label(&[id], work, true, 0).unwrap().token.is_empty(), "already labelled");
+            let sent = drain(
+                &store,
+                &account,
+                vec![
+                    (
+                        "SELECT \"[Gmail]/All Mail\"",
+                        "* 1 EXISTS\r\n* OK [UIDVALIDITY 7] v\r\n{tag} OK [READ-WRITE] s\r\n",
+                    ),
+                    ("UID COPY 4 Work", "{tag} OK done\r\n"),
+                ],
+            )
+            .await;
+            assert!(sent.iter().any(|c| c.starts_with("UID COPY 4 Work")), "{sent:?}");
+            assert!(!store.label_pending(account.id, work).unwrap());
+            assert!(!applied.token.is_empty());
+
+            store.label(&[id], work, false, 0).unwrap();
+            assert_eq!(labels(&store), 0, "off at once here");
+            let sent = drain(
+                &store,
+                &account,
+                vec![
+                    ("SELECT Work", "* 1 EXISTS\r\n* OK [UIDVALIDITY 3] v\r\n{tag} OK [READ-WRITE] s\r\n"),
+                    ("UID SEARCH HEADER Message-ID", "* SEARCH 12\r\n{tag} OK done\r\n"),
+                    ("UID STORE 12 +FLAGS (\\Deleted)", "{tag} OK done\r\n"),
+                    ("UID EXPUNGE 12", "* 1 EXPUNGE\r\n{tag} OK done\r\n"),
+                ],
+            )
+            .await;
+            assert!(sent.iter().any(|c| c.starts_with("UID EXPUNGE 12")), "{sent:?}");
+        }
+
+        #[test]
+        fn undo_puts_a_label_back_as_it_was() {
+            let (store, _, work, id) = mailbox();
+            let applied = store.label(&[id], work, true, 5).unwrap();
+            assert_eq!(
+                store.list_threads(&ListTarget::Role("all".into()), None, 5).unwrap()[0].labels,
+                ["Work"]
+            );
+            let waiting = store.outbox_waiting().unwrap();
+            assert_eq!(waiting[0].what, "Label 1 message Work");
+            assert!(store.undo(&applied.token).unwrap());
+            assert!(store.list_threads(&ListTarget::Role("all".into()), None, 5).unwrap()[0]
+                .labels
+                .is_empty());
+
+            store.set_label_members(work, &["plan@x".into()]).unwrap();
+            let applied = store.label(&[id], work, false, 5).unwrap();
+            assert!(store.list_threads(&ListTarget::Label(work), None, 5).unwrap().is_empty());
+            assert!(store.undo(&applied.token).unwrap());
+            assert_eq!(store.list_threads(&ListTarget::Label(work), None, 5).unwrap().len(), 1);
+        }
+    }
+
     mod outbox {
         use super::super::{discover_folders, drain_outbox};
         use crate::imap::Imap;

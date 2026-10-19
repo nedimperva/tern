@@ -321,6 +321,46 @@ button.primary kbd {
   color: var(--fg-2);
   margin-left: var(--s-2);
 }
+.conversation-head .labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: var(--s-1);
+}
+.crow .labels {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: var(--s-2);
+  vertical-align: 1px;
+}
+.label-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px 0 6px;
+  border-radius: var(--r-sm);
+  /* The label's own colour, tinted: readable on light and dark alike. */
+  background: color-mix(in srgb, var(--label, var(--fg-2)) 16%, transparent);
+  color: color-mix(in srgb, var(--label, var(--fg-2)) 75%, var(--fg-0));
+  font-size: var(--t-xs);
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.label-chip::before,
+.label-dot {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--label, var(--fg-2));
+}
+.label-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .crow.unread {
   color: var(--fg-0);
 }
@@ -499,6 +539,12 @@ button.primary kbd {
   color: var(--fg-2);
   margin: var(--s-4) var(--s-2) var(--s-1);
   white-space: nowrap;
+}
+.rail h4 {
+  font-size: var(--t-xs);
+  font-weight: 500;
+  color: var(--fg-2);
+  margin: var(--s-2) var(--s-2) var(--s-1);
 }
 .rail h3 > span:first-child {
   overflow: hidden;

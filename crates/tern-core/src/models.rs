@@ -79,7 +79,8 @@ pub struct Folder {
     pub id: i64,
     pub account_id: i64,
     pub name: String,
-    /// inbox, archive, all, sent, drafts, trash, junk or other.
+    /// inbox, archive, all, sent, drafts, trash, junk or other; on Gmail also `label` (a label, read for its
+    /// membership only).
     pub role: String,
     pub unread: i64,
 }
@@ -120,6 +121,8 @@ pub struct ThreadRow {
     pub snoozed_until: Option<i64>,
     /// A follow-up reminder on a sent message came due with no reply: pinned at the top of the inbox until done.
     pub follow_up: bool,
+    /// Gmail labels on any of its messages, by name.
+    pub labels: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -234,12 +237,14 @@ impl Action {
     }
 }
 
-/// Which list to show: one folder, or every folder with a role (`{"role": "inbox"}` is the unified inbox).
+/// Which list to show: one folder, every folder with a role (`{"role": "inbox"}` is the unified inbox), or a Gmail
+/// label (`{"label": folder id}`: All Mail's messages that the label folder holds).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ListTarget {
     Folder(i64),
     Role(String),
+    Label(i64),
 }
 
 /// Where the previous page ended, for keyset paging (no OFFSET, so page 500 costs what page 1 does).
@@ -402,6 +407,21 @@ pub enum OutboxOp {
         waiting: Vec<i64>,
     },
     Send(Draft),
+    /// A Gmail label added to messages (a COPY from All Mail into the label's folder) or taken off (deleting them
+    /// from the label's folder, which in Gmail removes only the label). `uids` are All Mail's.
+    Label {
+        folder: String,
+        uids: Vec<u32>,
+        label: String,
+        label_folder: i64,
+        add: bool,
+        /// Bare Message-IDs of the messages, which find them in the label's folder and put membership back on undo.
+        message_ids: Vec<String>,
+        /// The rows in All Mail, to find the messages again after a renumbering.
+        ids: Vec<i64>,
+        #[serde(default)]
+        validity: Option<u32>,
+    },
     /// A copy of a sent message for the Sent folder, exactly as it went out.
     Append {
         folder: String,

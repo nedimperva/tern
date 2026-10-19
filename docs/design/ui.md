@@ -114,7 +114,7 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 
 - One line. Participants column is fixed at 180 px (dense) and ellipsised; subject + snippet share the rest, subject never truncates below 40 % of its container.
 - Participant names: first names when there are ≥ 2; "me" for our addresses; sender of the last unread message first; count badge (`3`) only when > 1.
-- Label chips after the subject: max 2, `--t-xs`, `--bg-2`, label colour as a 6 px dot; a `+2` chip for the rest. Chips never push the date.
+- Label chips after the subject: max 2, `--t-xs` 600, the label's colour tinted to 16 % as the background and mixed 75 % into `--fg-0` for the text, with a 6 px dot in the full colour; a `+2` chip for the rest. Chips never push the date. Gmail's colours don't come over IMAP, so a label's colour comes from its name (`labelColour`, the account palette): the same label, the same colour in rows, the conversation, the rail and the picker.
 - States: `focused` → `--bg-3` + focus bar; `selected` (`x`) → `--accent-soft` background + checkbox replaces the account dot; `hover` → `--bg-2` (no focus bar); `unread` → `--fg-0` weight 600 for participants and subject, otherwise `--fg-1` and 400.
 - Snoozed shows a small clock + due text instead of the date; scheduled drafts likewise.
 - Row removal (archive, snooze): 120 ms height collapse; focus moves to the next row immediately.

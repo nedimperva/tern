@@ -1,6 +1,6 @@
 # Sprint 4 — Gmail OAuth and selected transport
 
-**Status:** in progress (OAuth core and Gmail probe; Gmail backend waits on the owner setup) · started 2026-10-19
+**Status:** in progress (Gmail labels: All Mail and label membership) · started 2026-10-19
 
 ## Delivery scope
 
@@ -45,14 +45,14 @@ in Gmail, labelling in Gmail shows in Tern, a search like `from:alice has:attach
 - [ ] Error copy for the usual cases: unverified app warning (link to "Advanced → Go to Tern"), test-user missing, IMAP disabled in Gmail settings.
 
 ### Labels model (shared identity/membership; transport-specific operations below)
-- [ ] Tables `labels (id, account_id, name, role, color, sort)` and `message_labels (message_id, label_id)`.
+- [x] Tables `labels (id, account_id, name, role, color, sort)` and `message_labels (message_id, label_id)`.
       Use the next available migration version. Preserve stable local message identity and per-folder remote locations; Gmail membership is many-to-many. Do not assume RFC Message-ID is a universal remote key.
 - [ ] Gmail: `[Gmail]/All Mail` is the source of truth. Sync **All Mail** for messages and `X-GM-LABELS` for membership;
       do not sync the other `[Gmail]/*` folders as folders. `\Inbox`, `\Starred`, `\Important`, `\Sent`, `\Draft`, `\Trash`, `\Spam` map to roles.
 - [ ] `X-GM-THRID` as the thread key; `X-GM-MSGID` stored for deep links (`https://mail.google.com/mail/u/0/#all/<hex>`).
 - [ ] Actions on Gmail become label ops: archive = `-X-GM-LABELS (\Inbox)`, star = `\Flagged`, trash = `COPY` to Trash (Gmail semantics), label = `+X-GM-LABELS (name)`.
-- [ ] Trash and Spam are real folders in Gmail; sync them separately for `g #` / `g !`.
-- [ ] Label chips on rows and in the pane; `l` opens the label picker (palette in argument mode); `Cmd+Shift+L`... see key table.
+- [x] Trash and Spam are real folders in Gmail; sync them separately for `g #` / `g !`.
+- [x] Label chips on rows and in the pane; `l` opens the label picker (palette in argument mode); `Cmd+Shift+L`... see key table.
 
 ### Gmail search (X-GM-RAW for IMAP; API q= when API selected)
 - [ ] Local FTS first (instant). When the query uses Gmail operators the FTS cannot answer (`older_than:`, `label:`, `is:important`, `category:`) or the user presses `Enter` on "Search Gmail", send `UID SEARCH X-GM-RAW "<query>"` on All Mail, fetch headers for unknown UIDs, show results.
@@ -99,6 +99,23 @@ Workspace MX detection and Gmail deep links. Preserve partial-result/sync-covera
   label folders matched by Message-ID, threads from Tern's threading, server search from plain IMAP SEARCH.
   The package 12 API slice stays inactive.
 
+- 2026-10-20 — **Labels are folders, membership by Message-ID.** Planned: a `labels` table and `X-GM-LABELS`. Built:
+  a label is its folder (role `label`, so no second list to keep in step) and `message_labels (folder_id,
+  message_id)` holds its members by bare Message-ID, read with one `FETCH 1:* BODY.PEEK[HEADER.FIELDS
+  (MESSAGE-ID)]` only when the folder's UIDVALIDITY, UIDNEXT or HIGHESTMODSEQ moved. A label view
+  (`ListTarget::Label`) lists All Mail's rows with that label; chips come from the same table. `[Gmail]/*` folders
+  without a special use, and those marked `\Important`/`\Flagged`, are `hidden`: not synced, not listed. Copies a
+  label folder held from before are dropped once the account's queue is empty. Archive still moves to All Mail;
+  the row that move leaves without a uid is dropped once All Mail has synced the message and nothing is queued.
+  Label colours and Gmail's thread ids are not available over IMAP without X-GM-*.
+
+- 2026-10-20 — **Label edits go through the outbox as label ops** (`OutboxOp::Label`). Adding copies the
+  conversation's All Mail messages into the label's folder (`UID COPY`, which in Gmail adds the label); removing
+  finds them in the label's folder by Message-ID and deletes them there (which in Gmail takes only the label off).
+  Membership changes here at once and reverts on undo or discard; the label folder isn't re-read while a change
+  to it is queued, so a chip doesn't flicker. Gmail labels conversations, so every message of the conversation
+  that All Mail holds changes. New labels are made in Gmail; Tern lists the ones that exist.
+
 ## Log
 
 - 2026-10-19 — OAuth core: `tern_core::oauth` (provider table with Google, PKCE, authorize URL, loopback listener
@@ -118,3 +135,14 @@ Workspace MX detection and Gmail deep links. Preserve partial-result/sync-covera
   client is baked in at build time (`src-tauri/build.rs`: `TERN_GOOGLE_CLIENT_ID`/`_SECRET`, else
   `secrets/google-client.json`); a build without it offers passwords only. Startup does not refresh on its own:
   the first connect does, which is the same moment.
+- 2026-10-20 — Gmail labels, slice A (owner chose All Mail plus membership). Schema v22 (`message_labels`);
+  `gmail_role`, `retire_label_rows`, `sync_label`, `drop_moved_duplicates`, `ListTarget::Label`, label chips on
+  conversation rows (`ThreadRow.labels`, at most two and "+N" per docs/design/ui.md), a Labels section in the rail,
+  label unread counts, search results de-duplicated by Message-ID. Tests for each. `store_bench` meets every
+  target (the label query is skipped when no account has labels). Dev build against the owner's Gmail (copy of the
+  database): 7,483 label-folder copies dropped, All Mail backfilled 9,788 messages in about three minutes, every
+  label's members found in All Mail (781/781, 123/123, 75/75, 1/1). Next: slice B, adding and removing labels (`l`).
+- 2026-10-20 — Slice B (same PR, owner): `l` opens a label picker (type to narrow, Enter puts a label on or, when
+  every conversation in hand has it, takes it off); undo through the toast; label chips under the conversation's
+  subject. `Store::label`, `label_pending`, `OutboxOp::Label` with `UID COPY` / search + delete, revert. Tests
+  against the scripted server and for undo. Tried in `npm run dev` in headless Chromium; not yet against Gmail.

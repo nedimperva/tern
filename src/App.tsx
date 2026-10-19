@@ -31,8 +31,9 @@ import type { MenuItem } from "./components/ActionMenu";
 import type { PersonActions } from "./components/PersonCard";
 import { ConversationView, takeQuote } from "./components/ConversationView";
 import { ProblemsDialog } from "./components/Problems";
-import { Rail, ROLE_NAMES } from "./components/Rail";
+import { Rail, ROLE_NAMES, targetOf } from "./components/Rail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
+import { LabelPicker } from "./components/LabelPicker";
 import { SnoozePicker } from "./components/SnoozePicker";
 import { AttachmentViewer } from "./components/AttachmentViewer";
 import { until } from "./components/ConversationRow";
@@ -160,6 +161,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = createSignal<string | null>(null);
   /** The conversations the snooze picker is choosing a time for. */
   const [snoozing, setSnoozing] = createSignal<ThreadRow[] | null>(null);
+  // `l`: the conversations a Gmail label goes on or comes off.
+  const [labeling, setLabeling] = createSignal<ThreadRow[] | null>(null);
   const [splitUnread, setSplitUnread] = createSignal<[number, number]>([0, 0]);
   const [perf, setPerf] = createSignal(false);
   // A few useful keys in the status strip once the keyboard has been still for a moment.
@@ -171,7 +174,7 @@ export default function App() {
   const current = () => rows()[focus()];
   const context = (): Context => (openRow() ? "conversation" : "list");
   const dialog = () =>
-    reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin()) || setup() || rail() || snoozing() !== null ||
+    reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin()) || setup() || rail() || snoozing() !== null || labeling() !== null ||
     viewing() !== null;
   const searching = () => query().trim() !== "";
   // Some mail has headers only, so words in its body were not searched.
@@ -496,6 +499,36 @@ export default function App() {
   }
 
   let toastTimer: number | undefined;
+  /** The labels of a Gmail account (their folders); other accounts have none. */
+  const labelsOf = (accountId: number) => folders().filter((f) => f.accountId === accountId && f.role === "label");
+
+  function startLabel() {
+    const hit = targets();
+    if (!hit.length) return;
+    if (!labelsOf(hit[0].accountId).length) return showToast("Labels are for Gmail accounts", []);
+    setLabeling(hit);
+  }
+
+  async function label(hit: ThreadRow[], f: Folder, add: boolean) {
+    setLabeling(null);
+    // Only the conversations of the label's account; the picker shows one account's labels.
+    const mine = hit.filter((r) => r.accountId === f.accountId);
+    const keys = new Set(mine.map(keyOf));
+    const patch = (r: ThreadRow) => {
+      const now = (r.labels ?? []).filter((l) => l !== f.name);
+      return { ...r, labels: add ? [...now, f.name].sort() : now };
+    };
+    setRows(rows().map((r) => (keys.has(keyOf(r)) ? patch(r) : r)));
+    try {
+      const applied = await api.labelConversations(mine.map((r) => r.id), f.id, add);
+      const what = mine.length === 1 ? "" : ` (${mine.length} conversations)`;
+      showToast(add ? `Labelled ${f.name}${what}` : `Removed ${f.name}${what}`, applied.token, () => void refresh());
+    } catch (e) {
+      showToast(String(e), []);
+      void refresh();
+    }
+  }
+
   function showToast(text: string, token: number[], after?: () => unknown, undoAction?: () => unknown) {
     clearTimeout(toastTimer);
     setToast({ text, token, after, undo: undoAction });
@@ -775,6 +808,7 @@ export default function App() {
   const go = (t: Target) => {
     batch(() => (setQuery(""), setTarget(t)));
     if ("folder" in t) void api.checkFolder(t.folder);
+    else if ("label" in t) void api.checkFolder(t.label);
   };
 
   // MARK: Focus and selection
@@ -852,6 +886,7 @@ export default function App() {
     { keys: "F", name: focusMode() ? "Show the list again" : "Focus mode (hide the list)", context: "conversation", run: () => setFocusMode(!focusMode()) },
     { keys: "z", name: "Undo", run: undo },
     { keys: "h", name: "Snooze", run: () => targets().length > 0 && setSnoozing(targets()) },
+    { keys: "l", name: "Label", run: startLabel },
     { keys: "H", name: "Back from snooze now", run: () => void wake() },
     { keys: "c", name: "Compose", run: newMessage },
     { keys: "/", name: "Search", run: () => searchInput.focus() },
@@ -934,7 +969,7 @@ export default function App() {
       args: () =>
         folders().map((f) => ({
           name: accounts().length > 1 ? `${folderName(f)} — ${accountOf(f.accountId)}` : folderName(f),
-          run: () => go({ folder: f.id }),
+          run: () => go(targetOf(f)),
         })),
     },
     {
@@ -1010,7 +1045,8 @@ export default function App() {
     if (searching()) return `Search: ${query()}`;
     const t = target();
     if ("role" in t) return t.role === "inbox" ? "Inbox" : t.role === "starred" ? "Starred" : ROLE_NAMES[t.role] ?? t.role;
-    const f = folders().find((f) => f.id === t.folder);
+    const id = "folder" in t ? t.folder : t.label;
+    const f = folders().find((f) => f.id === id);
     return f ? ROLE_NAMES[f.role] ?? f.name : "";
   };
   const roomForSplit = () =>
@@ -1215,6 +1251,7 @@ export default function App() {
         <section class="conversation-pane">
           <ConversationView
             messages={messages}
+            labels={rows().find((r) => keyOf(r) === keyOf(openRow()!))?.labels ?? openRow()?.labels ?? []}
             focused={messageFocus()}
             expanded={(id) => expanded().has(id)}
             mine={(addr) => accounts().some((a) => a.email.toLowerCase() === addr.toLowerCase())}
@@ -1292,6 +1329,17 @@ export default function App() {
       </Show>
       <Show when={snoozing()}>
         {(hit) => <SnoozePicker count={hit().length} onPick={(due) => void snoozeUntil(due)} onClose={() => setSnoozing(null)} />}
+      </Show>
+      <Show when={labeling()}>
+        {(hit) => (
+          <LabelPicker
+            labels={labelsOf(hit()[0].accountId)}
+            applied={(hit()[0].labels ?? []).filter((l) => hit().every((r) => r.labels?.includes(l)))}
+            count={hit().length}
+            onPick={(f, add) => void label(hit(), f, add)}
+            onClose={() => setLabeling(null)}
+          />
+        )}
       </Show>
       <Show when={palette()}>
         <CommandBar

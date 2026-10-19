@@ -513,6 +513,13 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
         Ok(copyuid.map(|(_, from, to)| from.into_iter().zip(to).collect()).unwrap_or_default())
     }
 
+    /// Copies `uids` from the selected folder to `dest` (on Gmail: adds that label).
+    pub async fn copy_to(&mut self, uids: &str, dest: &str) -> Result<()> {
+        let set = SequenceSet::try_from(uids)?;
+        self.conn.copy(set, mailbox(dest)?, ImapMessageCopyOptions { uid: true }).await?;
+        Ok(())
+    }
+
     /// Adds `message` to `folder`, marked read (a copy of sent mail for Sent), and also `\Draft` with `draft`.
     /// Returns (UIDVALIDITY, uid) of the new copy when the server says (APPENDUID, RFC 4315).
     pub async fn append(&mut self, folder: &str, message: &[u8], draft: bool) -> Result<Option<(u32, u32)>> {

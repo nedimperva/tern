@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 21;
+const SCHEMA_VERSION: i64 = 22;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -169,6 +169,20 @@ fn conversations(conn: &Connection, latests: Vec<MessageRow>) -> Result<Vec<Thre
             s.participants.push(who);
         }
     }
+    let mut labels: HashMap<(i64, String), Vec<String>> = HashMap::new();
+    // Only Gmail has labels; a store without any skips the query.
+    let any: bool =
+        conn.prepare_cached("SELECT EXISTS (SELECT 1 FROM message_labels)")?.query_row([], |r| r.get(0))?;
+    let mut named = conn.prepare_cached(&format!(
+        "SELECT DISTINCT m.account_id, m.thread_id, f.name FROM messages m
+         JOIN message_labels l ON l.message_id = m.message_id
+         JOIN folders f ON f.id = l.folder_id AND f.account_id = m.account_id
+         WHERE (m.account_id, m.thread_id) IN {page} ORDER BY f.name"
+    ))?;
+    let mut rows = named.query([if any { keys.as_str() } else { "[]" }])?;
+    while let Some(r) = rows.next()? {
+        labels.entry((r.get(0)?, r.get(1)?)).or_default().push(r.get(2)?);
+    }
     let mut snoozes = conn.prepare_cached(&format!(
         "SELECT account_id, thread_id, due FROM reminders WHERE kind = 'snooze' AND (account_id, thread_id) IN {page}"
     ))?;
@@ -181,12 +195,22 @@ fn conversations(conn: &Connection, latests: Vec<MessageRow>) -> Result<Vec<Thre
     Ok(latests
         .into_iter()
         .map(|latest| {
-            let s = sums.remove(&(latest.account_id, latest.thread_id.clone()));
-            let (count, unread, flagged, participants, snoozed_until) = match s {
+            let key = (latest.account_id, latest.thread_id.clone());
+            let labels = labels.remove(&key).unwrap_or_default();
+            let (count, unread, flagged, participants, snoozed_until) = match sums.remove(&key) {
                 Some(s) => (s.ids.len() as i64, s.unread, s.flagged, s.participants, s.snoozed_until),
                 None => (1, i64::from(!latest.seen), latest.flagged, Vec::new(), None),
             };
-            ThreadRow { latest, count, unread, flagged, participants, snoozed_until, follow_up: false }
+            ThreadRow {
+                latest,
+                count,
+                unread,
+                flagged,
+                participants,
+                snoozed_until,
+                follow_up: false,
+                labels,
+            }
         })
         .collect())
 }
@@ -355,6 +379,14 @@ fn migrate(conn: &Connection) -> Result<()> {
             }
             // How each account signs in: a password (every account so far) or Google in the browser.
             20 => "ALTER TABLE accounts ADD COLUMN auth TEXT NOT NULL DEFAULT 'password';",
+            // Gmail labels: which messages (by bare Message-ID) a label folder holds. Label folders keep no message
+            // rows of their own; their messages are All Mail's.
+            21 => {
+                "CREATE TABLE message_labels (folder_id INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+                                              message_id TEXT NOT NULL, PRIMARY KEY (folder_id, message_id))
+                     WITHOUT ROWID;
+                 CREATE INDEX message_labels_message ON message_labels (message_id);"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -533,6 +565,17 @@ fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
     let inbox = format!("m.folder_id IN (SELECT id FROM folders WHERE role = ?{n})");
     let role = match target {
         ListTarget::Folder(id) => return (format!("m.folder_id = ?{n}"), Value::Integer(*id)),
+        // A Gmail label: All Mail's copies of the messages the label folder holds.
+        ListTarget::Label(id) => {
+            return (
+                format!(
+                    "m.folder_id IN (SELECT a.id FROM folders a JOIN folders l ON l.account_id = a.account_id
+                                     WHERE l.id = ?{n} AND a.role = 'all')
+                     AND m.message_id IN (SELECT message_id FROM message_labels WHERE folder_id = ?{n})"
+                ),
+                Value::Integer(*id),
+            )
+        }
         ListTarget::Role(role) => role.as_str(),
     };
     // Snoozed conversations stay in the inbox folder (snoozing is Tern's alone) but out of its lists.
@@ -713,6 +756,7 @@ impl Store {
                     // A sent copy goes to whichever folder is Sent when it goes out (see sync::run_op).
                     OutboxOp::Append { .. } => {}
                     OutboxOp::Move { folder, dest, .. } => named.extend([folder, dest]),
+                    OutboxOp::Label { folder, label, .. } => named.extend([folder, label]),
                     OutboxOp::Send(draft) => named.extend(draft.forward_of.map(|f| f.folder)),
                 }
             }
@@ -747,8 +791,13 @@ impl Store {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
             "SELECT f.id, f.account_id, f.name, f.role,
-                    (SELECT COUNT(*) FROM messages m WHERE m.folder_id = f.id AND m.seen = 0)
-             FROM folders f
+                    CASE f.role WHEN 'label' THEN
+                        (SELECT COUNT(*) FROM message_labels l
+                         JOIN messages m ON m.account_id = f.account_id AND m.message_id = l.message_id
+                         JOIN folders a ON a.id = m.folder_id AND a.role = 'all'
+                         WHERE l.folder_id = f.id AND m.seen = 0)
+                    ELSE (SELECT COUNT(*) FROM messages m WHERE m.folder_id = f.id AND m.seen = 0) END
+             FROM folders f WHERE f.role != 'hidden'
              ORDER BY f.account_id,
                       CASE f.role WHEN 'inbox' THEN 0 WHEN 'archive' THEN 1 WHEN 'all' THEN 1 WHEN 'sent' THEN 2
                                   WHEN 'drafts' THEN 3 WHEN 'junk' THEN 4 WHEN 'trash' THEN 5 ELSE 6 END,
@@ -768,17 +817,180 @@ impl Store {
         Ok(folders)
     }
 
-    /// The folders sync keeps, inbox first. Gmail's All Mail is left out: it repeats every other folder.
+    /// The folders sync keeps, inbox first. An All Mail folder repeats every other folder and is left out, except on
+    /// Gmail, where it is the archive and its labels are only read for membership (`label_folders`). Gmail's
+    /// Important and Starred (`hidden`) are not synced at all.
     pub fn folders_to_sync(&self, account_id: i64) -> Result<Vec<(i64, String)>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
-            "SELECT id, name FROM folders WHERE account_id = ?1 AND role != 'all'
-             ORDER BY role = 'inbox' DESC, name",
+            "SELECT id, name FROM folders WHERE account_id = ?1 AND role NOT IN ('label', 'hidden')
+               AND (role != 'all' OR (SELECT imap_host FROM accounts WHERE id = ?1) = 'imap.gmail.com')
+             ORDER BY role = 'inbox' DESC, role = 'all' DESC, name",
         )?;
         let folders = stmt
             .query_map([account_id], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(folders)
+    }
+
+    /// Gmail: whether the account is one (Workspace accounts share the host).
+    pub fn is_gmail(&self, account_id: i64) -> Result<bool> {
+        Ok(self.conn().query_row(
+            "SELECT imap_host = 'imap.gmail.com' FROM accounts WHERE id = ?1",
+            [account_id],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Adds a Gmail label to the conversations of these messages, or takes it off: here at once, on the server
+    /// after `delay` (undo takes it back). Gmail labels conversations, so every message of each one that All Mail
+    /// holds changes. Returns the undo token; empty when nothing changes.
+    pub fn label(&self, ids: &[i64], label_folder: i64, add: bool, delay: i64) -> Result<Applied> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let (account_id, label): (i64, String) = tx.query_row(
+            "SELECT account_id, name FROM folders WHERE id = ?1 AND role = 'label'",
+            [label_folder],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let (all, validity): (String, Option<u32>) = tx.query_row(
+            "SELECT name, uid_validity FROM folders WHERE account_id = ?1 AND role = 'all'",
+            [account_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let mut stmt = tx.prepare_cached(
+            "SELECT DISTINCT m.id, m.uid, m.message_id FROM messages m JOIN folders f ON f.id = m.folder_id
+             WHERE f.account_id = ?1 AND f.role = 'all' AND m.uid IS NOT NULL AND m.message_id IS NOT NULL
+               AND (m.account_id, m.thread_id) IN (SELECT account_id, thread_id FROM messages WHERE id = ?2)
+               AND EXISTS (SELECT 1 FROM message_labels l WHERE l.folder_id = ?3 AND l.message_id = m.message_id) = ?4",
+        )?;
+        let mut rows: Vec<(i64, u32, String)> = Vec::new();
+        for id in ids {
+            for row in stmt.query_map(params![account_id, id, label_folder, !add], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })? {
+                let row = row?;
+                if !rows.iter().any(|(_, _, m)| *m == row.2) {
+                    rows.push(row);
+                }
+            }
+        }
+        drop(stmt);
+        if rows.is_empty() {
+            return Ok(Applied { token: Vec::new(), accounts: Vec::new(), drafts: Vec::new() });
+        }
+        let op = OutboxOp::Label {
+            folder: all,
+            uids: rows.iter().map(|r| r.1).collect(),
+            label,
+            label_folder,
+            add,
+            message_ids: rows.iter().map(|r| r.2.clone()).collect(),
+            ids: rows.iter().map(|r| r.0).collect(),
+            validity,
+        };
+        // What the list shows changes now; `revert` puts it back.
+        let sql = if add {
+            "INSERT OR IGNORE INTO message_labels (folder_id, message_id) VALUES (?1, ?2)"
+        } else {
+            "DELETE FROM message_labels WHERE folder_id = ?1 AND message_id = ?2"
+        };
+        for (_, _, message_id) in &rows {
+            tx.execute(sql, params![label_folder, message_id])?;
+        }
+        let token = enqueue(&tx, account_id, &op, delay)?;
+        tx.commit()?;
+        Ok(Applied { token: vec![token], accounts: vec![account_id], drafts: Vec::new() })
+    }
+
+    /// Whether queued work changes this label: until it is sent, reading the label folder would undo it on screen.
+    pub fn label_pending(&self, account_id: i64, label_folder: i64) -> Result<bool> {
+        let conn = self.conn();
+        let mut stmt =
+            conn.prepare_cached("SELECT payload FROM outbox WHERE account_id = ?1 AND gave_up_at IS NULL")?;
+        let payloads =
+            stmt.query_map([account_id], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        for payload in payloads {
+            if let OutboxOp::Label { label_folder: f, .. } = serde_json::from_str(&payload)? {
+                if f == label_folder {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    /// Gmail's label folders, read for their members only.
+    pub fn label_folders(&self, account_id: i64) -> Result<Vec<(i64, String)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, name FROM folders WHERE account_id = ?1 AND role = 'label' ORDER BY name",
+        )?;
+        let folders =
+            stmt.query_map([account_id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+        Ok(folders)
+    }
+
+    /// What a label folder holds now, by bare Message-ID; replaces what it held.
+    pub fn set_label_members(&self, folder_id: i64, message_ids: &[String]) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM message_labels WHERE folder_id = ?1", [folder_id])?;
+        {
+            let mut add = tx.prepare_cached(
+                "INSERT OR IGNORE INTO message_labels (folder_id, message_id) VALUES (?1, ?2)",
+            )?;
+            for id in message_ids {
+                add.execute(params![folder_id, id])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Drops the message rows of folders that keep none (Gmail labels and hidden folders), from before they were
+    /// recognised as such, and resets them so their membership is read afresh. Waits while the account has queued
+    /// work, which may name those rows. Returns how many rows went.
+    pub fn retire_label_rows(&self, account_id: i64) -> Result<usize> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let busy: bool = tx.query_row(
+            "SELECT EXISTS (SELECT 1 FROM outbox WHERE account_id = ?1 AND gave_up_at IS NULL)",
+            [account_id],
+            |r| r.get(0),
+        )?;
+        if busy {
+            return Ok(0);
+        }
+        let folders = "SELECT id FROM folders WHERE account_id = ?1 AND role IN ('label', 'hidden')";
+        let gone = tx.execute(
+            &format!("DELETE FROM messages WHERE folder_id IN ({folders}) AND uid IS NOT NULL"),
+            [account_id],
+        )?;
+        if gone > 0 {
+            tx.execute(
+                &format!(
+                    "UPDATE folders SET uid_validity = NULL, uid_next = NULL, highest_modseq = NULL, server_count = NULL
+                     WHERE id IN ({folders})"
+                ),
+                [account_id],
+            )?;
+        }
+        tx.commit()?;
+        Ok(gone)
+    }
+
+    /// After All Mail syncs: a message archived here moved its row into All Mail without a uid, while All Mail
+    /// already had the message. Once nothing is queued, that moved copy is a duplicate and goes. Returns how many.
+    pub fn drop_moved_duplicates(&self, folder_id: i64) -> Result<usize> {
+        Ok(self.conn().execute(
+            "DELETE FROM messages AS d WHERE d.folder_id = ?1 AND d.uid IS NULL AND d.message_id IS NOT NULL
+               AND (SELECT role FROM folders WHERE id = ?1) = 'all'
+               AND EXISTS (SELECT 1 FROM messages o WHERE o.folder_id = ?1 AND o.uid IS NOT NULL
+                           AND o.message_id = d.message_id)
+               AND NOT EXISTS (SELECT 1 FROM outbox WHERE account_id = d.account_id AND gave_up_at IS NULL)",
+            [folder_id],
+        )?)
     }
 
     /// What the last sync left behind for a folder.
@@ -806,7 +1018,8 @@ impl Store {
     }
 
     /// How far each account's download has come: messages here against the server's counts (only folders checked
-    /// at least once), and how many of the messages here have their text, which is what search reads.
+    /// at least once), and how many of the messages here have their text, which is what search reads. The folders
+    /// counted are the ones sync stores rows for (`folders_to_sync`): on Gmail All Mail, never labels or hidden ones.
     pub fn sync_progress(&self) -> Result<Vec<SyncProgress>> {
         let conn = self.conn();
         // Both counts per folder read an index: `messages_list` for all rows, the partial `messages_bodyless` for
@@ -815,7 +1028,9 @@ impl Store {
             "SELECT f.account_id, f.server_count,
                     (SELECT count(*) FROM messages m WHERE m.folder_id = f.id),
                     (SELECT count(*) FROM messages m WHERE m.folder_id = f.id AND m.body_state != 'full')
-             FROM folders f WHERE f.role != 'all' ORDER BY f.account_id",
+             FROM folders f JOIN accounts a ON a.id = f.account_id
+             WHERE f.role NOT IN ('label', 'hidden') AND (f.role != 'all' OR a.imap_host = 'imap.gmail.com')
+             ORDER BY f.account_id",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?))
@@ -866,6 +1081,7 @@ impl Store {
             match op {
                 OutboxOp::Flags { revert, .. } => keep.extend(revert.iter().map(|r| r.0)),
                 OutboxOp::Move { revert, .. } => keep.extend(revert.iter().map(|r| r.0)),
+                OutboxOp::Label { ids, .. } => keep.extend(ids.iter().copied()),
                 OutboxOp::Send(_) | OutboxOp::Append { .. } => {}
             }
         }
@@ -2149,7 +2365,17 @@ impl Store {
                 [],
                 |r| r.get(0),
             )?;
-        Ok(SearchResult { rows, partial })
+        // One message kept in several folders (Gmail's inbox and All Mail, a copy in Sent) is one result.
+        let mut ids = conn.prepare_cached("SELECT message_id FROM messages WHERE id = ?1")?;
+        let mut seen = HashSet::new();
+        let mut kept = Vec::with_capacity(rows.len());
+        for r in rows {
+            let message_id: Option<String> = ids.query_row([r.id], |x| x.get(0))?;
+            if message_id.is_none_or(|m| seen.insert((r.account_id, m))) {
+                kept.push(r);
+            }
+        }
+        Ok(SearchResult { rows: kept, partial })
     }
 
     /// Search words found in much of the mailbox. Joining every match and sorting them by date took 70 ms when a
@@ -2967,6 +3193,16 @@ fn take_back(tx: &Connection, id: i64, tried: bool) -> Result<bool> {
 
 fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
     match op {
+        OutboxOp::Label { label_folder, add, message_ids, .. } => {
+            let sql = if *add {
+                "DELETE FROM message_labels WHERE folder_id = ?1 AND message_id = ?2"
+            } else {
+                "INSERT OR IGNORE INTO message_labels (folder_id, message_id) VALUES (?1, ?2)"
+            };
+            for id in message_ids {
+                conn.execute(sql, params![label_folder, id])?;
+            }
+        }
         OutboxOp::Flags { revert, .. } => {
             for (mid, seen, flagged) in revert {
                 conn.execute(
@@ -3005,6 +3241,10 @@ fn describe(op: &OutboxOp) -> String {
         OutboxOp::Send(draft) => format!("Send “{}”", draft.subject),
         OutboxOp::Append { subject, folder, .. } => format!("Save “{subject}” to {folder}"),
         OutboxOp::Move { dest, uids, .. } => format!("Move {} to {dest}", count(uids.len())),
+        OutboxOp::Label { label, add: true, uids, .. } => format!("Label {} {label}", count(uids.len())),
+        OutboxOp::Label { label, add: false, uids, .. } => {
+            format!("Remove the label {label} from {}", count(uids.len()))
+        }
         OutboxOp::Flags { flag, add, uids, .. } => {
             let verb = match (flag.as_str(), add) {
                 ("\\Seen", true) => "Mark read",
@@ -4122,6 +4362,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                21 => "DROP TABLE message_labels;",
                 20 => "ALTER TABLE accounts DROP COLUMN auth;",
                 // A column with a REFERENCES clause can't be dropped: the table goes back to its step-16 shape.
                 19 => {
@@ -4356,6 +4597,47 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
             (None, 0, None),
             "snippets keep working"
         );
+    }
+
+    #[test]
+    fn an_archived_gmail_message_leaves_no_copy_behind_in_all_mail() {
+        // Gmail has no Archive folder: archiving moves to All Mail.
+        let store = Store::open_in_memory().unwrap();
+        let account = store.add_account(&config()).unwrap().id;
+        let inbox = store.upsert_folder(account, "INBOX", "inbox").unwrap();
+        let all = store.upsert_folder(account, "[Gmail]/All Mail", "all").unwrap();
+        let same = |uid| NewMessage { message_id: Some("hi@x".into()), ..message(uid, "hi", 1) };
+        store.insert_messages(account, inbox, &[same(1)]).unwrap();
+        store.insert_messages(account, all, &[same(7)]).unwrap();
+        let id = store.list(&ListTarget::Folder(inbox), None, 1).unwrap()[0].id;
+        store.apply(&[id], Action::Archive, 0).unwrap();
+        assert_eq!(store.list(&ListTarget::Folder(all), None, 9).unwrap().len(), 2, "moved, not yet sent");
+        assert_eq!(store.drop_moved_duplicates(all).unwrap(), 0, "kept while the move is queued");
+        let (op, _) = store.claim_due(account).unwrap().remove(0);
+        store.outbox_done(op).unwrap();
+        assert_eq!(store.drop_moved_duplicates(all).unwrap(), 1);
+        assert_eq!(store.list(&ListTarget::Folder(all), None, 9).unwrap().len(), 1);
+        assert_eq!(store.drop_moved_duplicates(inbox).unwrap(), 0, "only All Mail");
+    }
+
+    #[test]
+    fn search_shows_a_message_kept_in_two_folders_once() {
+        let (store, account, inbox, archive) = setup();
+        let same = |uid| NewMessage { message_id: Some("q@x".into()), ..message(uid, "quarterly", 1) };
+        store.insert_messages(account, inbox, &[same(1)]).unwrap();
+        store.insert_messages(account, archive, &[same(2)]).unwrap();
+        assert_eq!(store.search("quarterly", 10).unwrap().rows.len(), 1);
+    }
+
+    #[test]
+    fn migration_22_adds_label_membership() {
+        let (store, account, _, _) = setup();
+        let label = store.upsert_folder(account, "Work", "label").unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 21);
+        let store = Store::init(conn).unwrap();
+        store.set_label_members(label, &["a@x".into()]).unwrap();
+        assert!(store.list_threads(&ListTarget::Label(label), None, 5).unwrap().is_empty());
     }
 
     #[test]

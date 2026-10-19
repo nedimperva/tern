@@ -1,5 +1,6 @@
 import { For, onCleanup, onMount, Show } from "solid-js";
 import type { Account, Folder, SyncState, Target } from "../api";
+import { labelColour } from "../colours";
 
 export const ROLE_NAMES: Record<string, string> = {
   inbox: "Inbox",
@@ -14,6 +15,9 @@ export const ROLE_NAMES: Record<string, string> = {
   snoozed: "Snoozed",
   starred: "Starred",
 };
+
+/** Where a folder in the rail or the palette goes: a Gmail label lists All Mail's messages with it. */
+export const targetOf = (f: Folder): Target => (f.role === "label" ? { label: f.id } : { folder: f.id });
 
 /** Said next to the account only when it is not simply working: up to date or syncing shows nothing. */
 const SYNC_LABELS: Partial<Record<SyncState, string>> = {
@@ -65,9 +69,9 @@ export function Rail(props: {
                   {(label) => <span class={`sync-state ${props.syncStates[account.id]}`}>{label()}</span>}
                 </Show>
               </h3>
-              <For each={props.folders.filter((f) => f.accountId === account.id)}>
+              <For each={props.folders.filter((f) => f.accountId === account.id && f.role !== "label")}>
                 {(f) => (
-                  <a classList={{ active: props.isTarget({ folder: f.id }) }} onClick={() => go({ folder: f.id })}>
+                  <a classList={{ active: props.isTarget(targetOf(f)) }} onClick={() => go(targetOf(f))}>
                     <span>{ROLE_NAMES[f.role] ?? f.name}</span>
                     <Show when={f.unread && f.role !== "trash" && f.role !== "junk"}>
                       <span class="count">{f.unread}</span>
@@ -75,6 +79,22 @@ export function Rail(props: {
                   </a>
                 )}
               </For>
+              <Show when={props.folders.some((f) => f.accountId === account.id && f.role === "label")}>
+                <h4>Labels</h4>
+                <For each={props.folders.filter((f) => f.accountId === account.id && f.role === "label")}>
+                  {(f) => (
+                    <a classList={{ active: props.isTarget(targetOf(f)) }} onClick={() => go(targetOf(f))}>
+                      <span class="label-name">
+                        <span class="label-dot" style={{ "--label": labelColour(f.name) }} />
+                        {f.name}
+                      </span>
+                      <Show when={f.unread}>
+                        <span class="count">{f.unread}</span>
+                      </Show>
+                    </a>
+                  )}
+                </For>
+              </Show>
             </section>
           )}
         </For>
