@@ -1642,6 +1642,25 @@ mod tests {
             assert!(sent.lock().unwrap().iter().any(|c| c.starts_with("UID EXPUNGE 3")), "the old copy went");
         }
 
+        #[tokio::test]
+        async fn a_draft_with_a_half_typed_recipient_still_goes_up() {
+            let m = mailbox();
+            m.store.upsert_folder(m.account.id, "Drafts", "drafts").unwrap();
+            let half = crate::models::Draft { to: vec!["nedim".into()], ..draft() };
+            let id = m.store.save_draft(None, m.account.id, half, true).unwrap();
+            let (stream, _) = signed_in(
+                SIGNED_IN,
+                vec![
+                    ("APPEND Drafts (\\Seen \\Draft)", "+ go\r\n"),
+                    ("", "{tag} OK [APPENDUID 9 3] done\r\n"),
+                ],
+            );
+            let mut s = Imap::open(stream, "ada", "x").await.unwrap();
+            assert!(super::super::sync_drafts(&mut s, &m.store, &m.account).await.unwrap());
+            assert!(m.store.drafts_due(m.account.id).unwrap().is_empty(), "uploaded, not retried");
+            assert_eq!(m.store.draft(id).unwrap().unwrap().draft.to, ["nedim"], "Tern keeps what was typed");
+        }
+
         #[test]
         fn undo_is_refused_while_later_work_counts_on_the_move() {
             let m = mailbox();

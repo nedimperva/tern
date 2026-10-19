@@ -20,6 +20,13 @@ every release needs one here before it is tagged.
 - Settings are grouped into General, Writing and Accounts, with a search field. Snippets and signatures each
   have a list and an editor with a live preview; each account has a page with its server details.
 
+### Fixed
+
+- A draft with a recipient that isn't a full address yet now reaches the server's Drafts folder; the server copy
+  leaves that recipient out, and Tern keeps it.
+- Deleting a draft from the Drafts list discards it (undo brings it back) instead of failing with "The messages
+  are no longer in Drafts on the server". Other actions leave drafts where they are.
+
 ## [0.3.3] - 2026-10-19
 
 ### Added

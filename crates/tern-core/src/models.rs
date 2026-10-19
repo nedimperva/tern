@@ -455,12 +455,14 @@ pub enum Failure {
     MaybeSent,
 }
 
-/// What `Store::apply` did: hand `token` to `Store::undo` to take it back.
+/// What `Store::apply` did: hand `token` to `Store::undo` to take it back, and each of `drafts` (drafts deleted
+/// from a Drafts folder, which are discarded rather than queued) to `Store::undo_discard`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Applied {
     pub token: Vec<i64>,
     pub accounts: Vec<i64>,
+    pub drafts: Vec<i64>,
 }
 
 /// How far one account's download has come (`Store::sync_progress`).
