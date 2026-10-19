@@ -292,8 +292,8 @@ export function Compose(props: {
         <button type="submit" class="primary">
           Send <kbd>Ctrl ↵</kbd>
         </button>
-        <button type="button" onClick={() => send(true)}>
-          Send & Done <kbd>Ctrl Shift ↵</kbd>
+        <button type="button" onClick={() => send(true)} title="Send & Done (Ctrl+Shift+Enter)">
+          Send & Done
         </button>
         <span class="extras">
           <button type="button" class="link" onClick={() => setPicking("later")} title="Send later (Ctrl+Shift+L)">
@@ -321,8 +321,14 @@ export function Compose(props: {
               </span>
             )}
           </Show>
-          <button type="button" class="link" onClick={() => void pick()} title="Attach files (Ctrl+Shift+A), or drop them here">
-            Attach
+          <button
+            type="button"
+            class="link attach"
+            onClick={() => void pick()}
+            title="Attach files (Ctrl+Shift+A), or drop them here"
+            aria-label="Attach files"
+          >
+            <Icon name="paperclip" size={14} />
           </button>
           <Show when={!showCc()}>
             <button type="button" class="link" onClick={() => (setShowCc(true), queueMicrotask(() => ccInput?.focus()))}>
@@ -338,8 +344,8 @@ export function Compose(props: {
         <button type="button" class="link discard" onClick={discard} title="Discard (Ctrl+Shift+,)">
           Discard
         </button>
-        <button type="button" class="link" onClick={() => void close()} title="Close and keep the draft">
-          Close <kbd>Esc</kbd>
+        <button type="button" class="link" onClick={() => void close()} title="Close and keep the draft (Esc)">
+          Close
         </button>
       </footer>
     </form>
