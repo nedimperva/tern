@@ -7,6 +7,11 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-10-19
+
+A redesigned compose, and Google sign-in for builds made with your own Google client. This version upgrades the
+mail database, so 0.3.4 and earlier can't open it afterwards.
+
 ### Added
 
 - Compose checks before sending: it says when you wrote that something is attached and nothing is (in English,
@@ -19,8 +24,7 @@ every release needs one here before it is tagged.
   when files are dragged over compose.
 - Google sign-in for Gmail and Google Workspace ("Continue with Google"), with no app password, in builds made
   with your own Google client ([docs/gmail.md](docs/gmail.md)). Release builds don't include one yet, so Gmail
-  there keeps using an app password. This version upgrades the mail database, so 0.3.4 and earlier can't open it
-  afterwards.
+  there keeps using an app password.
 
 ### Changed
 
@@ -137,7 +141,8 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/nedimperva/tern/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/nedimperva/tern/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/nedimperva/tern/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/nedimperva/tern/compare/v0.3.1...v0.3.2
