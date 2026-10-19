@@ -27,7 +27,8 @@ decisions that aren't visible from the code.
   `store_bench` exits non-zero on a missed target and runs in CI with `TERN_BENCH_SLACK=3`.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
-  responses that carry Gmail X-GM-* items, so Gmail goes through the Gmail API (also provisional), not IMAP.
+  responses that carry Gmail X-GM-* items. Gmail still goes through IMAP, signed in with Google (XOAUTH2), with labels
+  read from label folders (owner decision 2026-10-19, `docs/research/gmail-backend-decision.md`).
 - TLS is rustls with the platform verifier for IMAP and SMTP; nothing links OpenSSL. The verifier honours
   `SSL_CERT_FILE`, which is how the dev server's test CA is trusted. Each account stores `imap_security` and
   `smtp_security` (tls or starttls); never infer them from the port in code.
@@ -50,7 +51,7 @@ safe foundation → Linux private alpha → focused Linux beta → Windows relea
 Existing sprint numbers are work-package IDs, not weeks. Read each package's Delivery scope before its
 checkboxes; deferred work does not automatically block a milestone. Keep Windows compiling/tested and
 perform an early WebView2/keyring smoke test in M0; release polish is M3, not gated on calendar or AI.
-Run the early Gmail IMAP/API comparison in M0 and choose one Gmail path for M2. No choice has been made.
+The early Gmail IMAP/API comparison ran in M0; the owner chose IMAP with Google sign-in (2026-10-19).
 Optional AI remains wanted, off by default, in expansion; remote transfers need accurate privacy/Google
 policy review. No implementation or real-provider acceptance was completed by this documentation revision.
 
