@@ -171,7 +171,8 @@ fn conversations(conn: &Connection, latests: Vec<MessageRow>) -> Result<Vec<Thre
     }
     let mut labels: HashMap<(i64, String), Vec<String>> = HashMap::new();
     // Only Gmail has labels; a store without any skips the query.
-    let any: bool = conn.prepare_cached("SELECT EXISTS (SELECT 1 FROM message_labels)")?.query_row([], |r| r.get(0))?;
+    let any: bool =
+        conn.prepare_cached("SELECT EXISTS (SELECT 1 FROM message_labels)")?.query_row([], |r| r.get(0))?;
     let mut named = conn.prepare_cached(&format!(
         "SELECT DISTINCT m.account_id, m.thread_id, f.name FROM messages m
          JOIN message_labels l ON l.message_id = m.message_id
