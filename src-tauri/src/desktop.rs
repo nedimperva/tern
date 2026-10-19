@@ -27,6 +27,9 @@ const QUIET_AFTER_FIRST_MAIL: Duration = Duration::from_secs(60);
 const TRAY: &[u8] = include_bytes!("../icons/tray.png");
 /// The same icon with a dot: unread mail in an inbox.
 const TRAY_UNREAD: &[u8] = include_bytes!("../icons/tray-unread.png");
+/// The app icon for notifications. Only a .deb or .rpm installs it under the icon theme, so it goes in as a file.
+#[cfg(target_os = "linux")]
+const NOTICE_ICON: &[u8] = include_bytes!("../icons/128x128.png");
 
 pub struct Desktop {
     tray: Mutex<Option<TrayIcon<Wry>>>,
@@ -352,6 +355,20 @@ fn notify(app: &AppHandle, mail: &[NewMail], why: Notice) {
     show_notice(app, summary, body, one, latest);
 }
 
+/// Writes the app icon to the cache once a run, so the notification daemon can read it by path.
+#[cfg(target_os = "linux")]
+fn notice_icon(app: &AppHandle) -> Option<String> {
+    static PATH: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    PATH.get_or_init(|| {
+        let dir = app.path().app_cache_dir().ok()?;
+        std::fs::create_dir_all(&dir).ok()?;
+        let path = dir.join("tern.png");
+        std::fs::write(&path, NOTICE_ICON).ok()?;
+        path.to_str().map(str::to_owned)
+    })
+    .clone()
+}
+
 /// Shows one notification; a click opens the conversation, and one conversation also gets Archive and Reply.
 /// Windows notifications can't report clicks yet (M3), so there only the text is used.
 #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
@@ -360,7 +377,11 @@ fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest
     note.summary(&summary).body(&body).appname("Tern");
     #[cfg(target_os = "linux")]
     {
-        note.icon("mail-unread").action("default", "Open");
+        match notice_icon(app) {
+            Some(path) => note.icon(&path),
+            None => note.icon("mail-unread"),
+        };
+        note.action("default", "Open");
         // One conversation can be dealt with from the notification itself.
         if one {
             note.action("archive", "Archive").action("reply", "Reply");

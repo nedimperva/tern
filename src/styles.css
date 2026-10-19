@@ -1559,6 +1559,9 @@ button.fold {
   display: flex;
   gap: var(--s-2);
 }
+.setup .logo {
+  display: block;
+}
 .setup h2 {
   margin: 0 0 var(--s-2);
   font-size: var(--t-lg);

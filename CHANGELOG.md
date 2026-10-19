@@ -7,6 +7,11 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Changed
+
+- A new app icon: a tern, replacing the old kite, in the launcher, taskbar, installers, tray and Linux
+  notifications.
+
 ## [0.3.2] - 2026-10-18
 
 The first release that updates itself (AppImage and Windows); 0.3.1 and earlier need this one installed by hand.
