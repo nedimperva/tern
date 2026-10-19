@@ -1527,19 +1527,26 @@ button.fold {
   padding: var(--s-1) var(--s-2);
 }
 
+/* Only Send shows its key and Attach is an icon (ui.md 4.4), so the row fits the dialog. Wrapping is the
+   fallback for a narrow window, not the normal layout. */
 .compose footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s-2);
   margin-top: var(--s-2);
 }
 .compose footer .extras {
   display: flex;
+  align-items: center;
   gap: var(--s-3);
   margin-left: var(--s-2);
 }
 .compose footer button {
   white-space: nowrap;
+}
+.compose footer .attach {
+  display: inline-flex;
 }
 .compose footer .discard {
   margin-left: auto;
@@ -1558,6 +1565,9 @@ button.fold {
 .setup footer {
   display: flex;
   gap: var(--s-2);
+}
+.setup .logo {
+  display: block;
 }
 .setup h2 {
   margin: 0 0 var(--s-2);

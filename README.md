@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="src-tauri/icons/icon.svg" alt="" width="96" height="96">
+
 # Tern
 
 **A fast, local-first, keyboard-first mail client for any IMAP account.**
