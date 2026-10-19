@@ -31,7 +31,7 @@ import type { MenuItem } from "./components/ActionMenu";
 import type { PersonActions } from "./components/PersonCard";
 import { ConversationView, takeQuote } from "./components/ConversationView";
 import { ProblemsDialog } from "./components/Problems";
-import { Rail, ROLE_NAMES } from "./components/Rail";
+import { Rail, ROLE_NAMES, targetOf } from "./components/Rail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { SnoozePicker } from "./components/SnoozePicker";
 import { AttachmentViewer } from "./components/AttachmentViewer";
@@ -775,6 +775,7 @@ export default function App() {
   const go = (t: Target) => {
     batch(() => (setQuery(""), setTarget(t)));
     if ("folder" in t) void api.checkFolder(t.folder);
+    else if ("label" in t) void api.checkFolder(t.label);
   };
 
   // MARK: Focus and selection
@@ -934,7 +935,7 @@ export default function App() {
       args: () =>
         folders().map((f) => ({
           name: accounts().length > 1 ? `${folderName(f)} — ${accountOf(f.accountId)}` : folderName(f),
-          run: () => go({ folder: f.id }),
+          run: () => go(targetOf(f)),
         })),
     },
     {
@@ -1010,7 +1011,8 @@ export default function App() {
     if (searching()) return `Search: ${query()}`;
     const t = target();
     if ("role" in t) return t.role === "inbox" ? "Inbox" : t.role === "starred" ? "Starred" : ROLE_NAMES[t.role] ?? t.role;
-    const f = folders().find((f) => f.id === t.folder);
+    const id = "folder" in t ? t.folder : t.label;
+    const f = folders().find((f) => f.id === id);
     return f ? ROLE_NAMES[f.role] ?? f.name : "";
   };
   const roomForSplit = () =>

@@ -103,6 +103,8 @@ export type ThreadRow = MessageRow & {
   snoozedUntil: number | null;
   /** A follow-up on a sent message came due with no reply: pinned at the top of the inbox until done. */
   followUp?: boolean;
+  /** Gmail labels on any of its messages. */
+  labels?: string[];
 };
 /** Where an account's sync stands. */
 export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed" | "paused";
@@ -119,7 +121,8 @@ export type Action =
   | "unstar";
 /** Whether the action moves mail to another folder, so the list it is in loses it. */
 export const moves = (a: Action) => typeof a === "object" || a === "archive" || a === "trash" || a === "junk" || a === "inbox";
-export type Target = { folder: number } | { role: string };
+/** A folder, every folder with a role (the unified inbox), or a Gmail label (its folder's id). */
+export type Target = { folder: number } | { role: string } | { label: number };
 export type Cursor = { date: number; id: number };
 /** A file attached to a draft (Tern's own copy). */
 export type OutgoingAttachment = { path: string; name: string; mime: string; size: number };
@@ -531,6 +534,8 @@ function fake(): Api {
     { id: 4, accountId: 1, name: "Trash", role: "trash", unread: 0 },
     { id: 5, accountId: 1, name: "Junk", role: "junk", unread: 0 },
     { id: 6, accountId: 1, name: "Receipts", role: "other", unread: 0 },
+    // A Gmail-style label: a third of the conversations carry it.
+    { id: 7, accountId: 1, name: "Work", role: "label", unread: 0 },
   ];
   const mutedThreads = new Set<string>();
   const drafts = new Map<number, DraftRecord>();
@@ -628,8 +633,10 @@ function fake(): Api {
   const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
   const snoozed = new Map<string, number>();
   const inInbox = (m: ThreadMessage) => folders.find((f) => f.id === m.folderId)?.role === "inbox";
+  const labelsOf = (m: ThreadMessage) => (Number(m.threadId.slice(1)) % 3 === 0 ? ["Work"] : []);
   const inTarget = (m: ThreadMessage, t: Target): boolean => {
     if ("folder" in t) return m.folderId === t.folder;
+    if ("label" in t) return labelsOf(m).length > 0;
     const asleep = snoozed.has(m.threadId);
     switch (t.role) {
       case "inbox":
@@ -705,6 +712,7 @@ function fake(): Api {
           snoozedUntil: snoozed.get(m.threadId) ?? null,
           // Open the page with #followup to see a follow-up that came due, pinned at the top.
           followUp: location.hash === "#followup" && out.length === 0 && !before,
+          labels: labelsOf(m),
         });
       }
       return out;

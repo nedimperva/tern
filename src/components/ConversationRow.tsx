@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { For, Show } from "solid-js";
 import { Icon } from "./Icon";
 import type { ThreadRow } from "../api";
 
@@ -63,6 +63,16 @@ export function ConversationRow(props: {
       </span>
       <span class="what">
         <span class="subject">{props.row.subject || "(no subject)"}</span>
+        <Show when={props.row.labels?.length}>
+          <span class="labels">
+            <For each={props.row.labels!.slice(0, 2)}>{(l) => <span class="label-chip">{l}</span>}</For>
+            <Show when={props.row.labels!.length > 2}>
+              <span class="label-chip" title={props.row.labels!.slice(2).join(", ")}>
+                +{props.row.labels!.length - 2}
+              </span>
+            </Show>
+          </span>
+        </Show>
         <Show when={!props.narrow && props.row.snippet}>
           <span class="snippet">{props.row.snippet}</span>
         </Show>

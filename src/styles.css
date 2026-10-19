@@ -321,6 +321,21 @@ button.primary kbd {
   color: var(--fg-2);
   margin-left: var(--s-2);
 }
+.crow .labels {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: var(--s-2);
+  vertical-align: 1px;
+}
+.crow .label-chip {
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  line-height: 16px;
+}
 .crow.unread {
   color: var(--fg-0);
 }
@@ -499,6 +514,12 @@ button.primary kbd {
   color: var(--fg-2);
   margin: var(--s-4) var(--s-2) var(--s-1);
   white-space: nowrap;
+}
+.rail h4 {
+  font-size: var(--t-xs);
+  font-weight: 500;
+  color: var(--fg-2);
+  margin: var(--s-2) var(--s-2) var(--s-1);
 }
 .rail h3 > span:first-child {
   overflow: hidden;

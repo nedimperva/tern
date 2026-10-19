@@ -15,6 +15,9 @@ export const ROLE_NAMES: Record<string, string> = {
   starred: "Starred",
 };
 
+/** Where a folder in the rail or the palette goes: a Gmail label lists All Mail's messages with it. */
+export const targetOf = (f: Folder): Target => (f.role === "label" ? { label: f.id } : { folder: f.id });
+
 /** Said next to the account only when it is not simply working: up to date or syncing shows nothing. */
 const SYNC_LABELS: Partial<Record<SyncState, string>> = {
   connecting: "Connecting…",
@@ -65,9 +68,9 @@ export function Rail(props: {
                   {(label) => <span class={`sync-state ${props.syncStates[account.id]}`}>{label()}</span>}
                 </Show>
               </h3>
-              <For each={props.folders.filter((f) => f.accountId === account.id)}>
+              <For each={props.folders.filter((f) => f.accountId === account.id && f.role !== "label")}>
                 {(f) => (
-                  <a classList={{ active: props.isTarget({ folder: f.id }) }} onClick={() => go({ folder: f.id })}>
+                  <a classList={{ active: props.isTarget(targetOf(f)) }} onClick={() => go(targetOf(f))}>
                     <span>{ROLE_NAMES[f.role] ?? f.name}</span>
                     <Show when={f.unread && f.role !== "trash" && f.role !== "junk"}>
                       <span class="count">{f.unread}</span>
@@ -75,6 +78,19 @@ export function Rail(props: {
                   </a>
                 )}
               </For>
+              <Show when={props.folders.some((f) => f.accountId === account.id && f.role === "label")}>
+                <h4>Labels</h4>
+                <For each={props.folders.filter((f) => f.accountId === account.id && f.role === "label")}>
+                  {(f) => (
+                    <a classList={{ active: props.isTarget(targetOf(f)) }} onClick={() => go(targetOf(f))}>
+                      <span>{f.name}</span>
+                      <Show when={f.unread}>
+                        <span class="count">{f.unread}</span>
+                      </Show>
+                    </a>
+                  )}
+                </For>
+              </Show>
             </section>
           )}
         </For>
