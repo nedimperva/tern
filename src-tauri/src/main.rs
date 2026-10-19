@@ -235,6 +235,7 @@ fn main() {
             commands::unsnooze,
             commands::parse_when,
             commands::attachment_preview,
+            commands::outgoing_preview,
             commands::attachment_bytes,
             commands::snippets,
             commands::save_snippet,

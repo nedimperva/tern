@@ -154,4 +154,11 @@ Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
   after 0.8 s (the server copy keeps its own debounce) and once more when the window closes (Tauri
   `onCloseRequested`, which needs `core:window:allow-destroy`). Esc straight after undo-send dropped a message
   that had never been saved as a draft: compose reopened by undo starts as unsaved, so Esc keeps it.
-
+- 2026-10-19 — Compose redesign from the owner-approved mockups (ui.md §4.4): From pill, Saved state and
+  minimize / focus / close in a top row; Cc/Bcc toggles on the To row; chips with initials, contact names and an
+  outside-organisation mark; split Send with Send & Done, Send later and Remind; icon tools; attachment cards with
+  picture thumbnails (`outgoing_preview`, which reads only files Tern copied in to attach) and a 25 MB size bar;
+  a drop zone while files are dragged over the window; checks before sending (attachment mentioned but missing,
+  in twelve languages plus the person's own words; no subject; outside recipients mixed with inside ones);
+  minimize to a corner card (App keeps its keys meanwhile) and focus mode (the caret's paragraph in full colour,
+  via an editor decoration). Public mail domains never count as an organisation.

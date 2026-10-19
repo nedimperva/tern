@@ -35,6 +35,10 @@ export type Settings = {
   darkMail: "darken" | "original";
   /** Company logos in place of initials, fetched from each sender's own website. Off: it tells them you read. */
   senderLogos: boolean;
+  /** Before sending, warn when the text says something is attached and nothing is. */
+  attachmentCheck: boolean;
+  /** The person's own words for that, besides the built-in ones (src/attachmentWords.ts). */
+  attachmentWords: string[];
 };
 
 export const DEFAULTS: Settings = {
@@ -54,6 +58,8 @@ export const DEFAULTS: Settings = {
   splitInbox: true,
   darkMail: "darken",
   senderLogos: false,
+  attachmentCheck: true,
+  attachmentWords: [],
 };
 
 export const ROW_HEIGHTS: Record<Settings["density"], number> = { dense: 36, comfortable: 44, spacious: 52 };

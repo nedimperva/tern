@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createResource, createSignal, For, Show, type JSX } from "solid-js";
 import { api } from "../api";
 
 /** A plausible address: something@something.tld. The server has the last word; this only flags typos. */
@@ -15,12 +15,60 @@ export function splitAddresses(text: string): string[] {
     .filter(Boolean);
 }
 
+/** Names Tern knows for addresses (from contacts), asked once per address while the app runs. */
+const names = new Map<string, Promise<string>>();
+function nameFor(address: string): Promise<string> {
+  const key = address.toLowerCase();
+  let found = names.get(key);
+  if (!found) {
+    found = api
+      .contacts(address)
+      .then((list) => list.find((c) => c.email.toLowerCase() === key)?.name ?? "")
+      .catch(() => "");
+    names.set(key, found);
+  }
+  return found;
+}
+
+/** Two letters for a chip: the name's first and last word, else the address. */
+function initials(name: string, address: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length > 1) return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+  return (words[0] ?? address).slice(0, 2).toUpperCase();
+}
+
+/** One address as a chip: initials and the name when Tern knows one, the address on hover. */
+function Chip(props: { address: string; outside: boolean; onRemove: () => void }) {
+  const [name] = createResource(() => props.address, nameFor);
+  const valid = () => validAddress(props.address);
+  const title = () =>
+    !valid() ? `${props.address} does not look like an address` : props.outside ? `${props.address}, outside your organisation` : props.address;
+  return (
+    <span class="chip" classList={{ invalid: !valid(), outside: valid() && props.outside }} title={title()}>
+      <span class="initials" aria-hidden="true">
+        {initials(name() ?? "", props.address)}
+      </span>
+      <span class="who">{name() || props.address}</span>
+      <Show when={valid() && props.outside}>
+        <span class="domain">{props.address.slice(props.address.lastIndexOf("@") + 1)}</span>
+      </Show>
+      <button type="button" tabIndex={-1} aria-label={`Remove ${props.address}`} onClick={props.onRemove}>
+        ×
+      </button>
+    </span>
+  );
+}
+
 /** A To/Cc/Bcc row: addresses as chips, typed into a field at the end (docs/design/ui.md §4.4). */
 export function RecipientField(props: {
   label: string;
   value: string[];
   onChange: (v: string[]) => void;
   ref?: (el: HTMLInputElement) => void;
+  /** Whether an address is outside the sender's organisation; its chip says so. */
+  outside?: (address: string) => boolean;
+  /** At the end of the row (To's Cc and Bcc buttons). */
+  after?: JSX.Element;
 }) {
   const [text, setText] = createSignal("");
   // Suggestions for what is being typed, and which one ↑/↓ points at.
@@ -92,17 +140,7 @@ export function RecipientField(props: {
       <span class="label">{props.label}</span>
       <For each={props.value}>
         {(a, i) => (
-          <span class="chip" classList={{ invalid: !validAddress(a) }} title={validAddress(a) ? a : `${a} does not look like an address`}>
-            {a}
-            <button
-              type="button"
-              tabIndex={-1}
-              aria-label={`Remove ${a}`}
-              onClick={() => props.onChange(props.value.filter((_, j) => j !== i()))}
-            >
-              ×
-            </button>
-          </span>
+          <Chip address={a} outside={props.outside?.(a) ?? false} onRemove={() => props.onChange(props.value.filter((_, j) => j !== i()))} />
         )}
       </For>
       <input
@@ -115,6 +153,7 @@ export function RecipientField(props: {
         aria-label={props.label}
         aria-autocomplete="list"
       />
+      {props.after}
       <Show when={people().length}>
         <ul class="suggestions" role="listbox">
           <For each={people()}>
