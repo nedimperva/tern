@@ -1,6 +1,6 @@
 # Sprint 4 — Gmail OAuth and selected transport
 
-**Status:** in progress (OAuth core and Gmail probe; Gmail backend waits on the owner setup) · started 2026-10-19
+**Status:** in progress (Gmail labels: All Mail and label membership) · started 2026-10-19
 
 ## Delivery scope
 
