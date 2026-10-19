@@ -1032,6 +1032,8 @@ export default function App() {
     const refused = inState("auth-failed");
     if (refused.length) {
       const who = several && refused.length === 1 && refused[0] ? refused[0].email : "The server";
+      if (refused.every((a) => a?.auth === "google"))
+        return { text: `Google sign-in ended${several ? ` for ${refused[0]?.email}` : ""}. Sign in again in Settings (Ctrl+,).`, tone: "danger" };
       return { text: `${who} refused the password. Open accounts with Ctrl+\\.`, tone: "danger" };
     }
     const unreachable = inState("offline");

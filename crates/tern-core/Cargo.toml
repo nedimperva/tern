@@ -9,6 +9,8 @@ description = "Local-first mail engine: SQLite store, IMAP sync, SMTP send, outb
 # Mail HTML is cleaned when stored (scripts, forms, frames out; styles kept). See mime::sanitize_html.
 ammonia = "4"
 anyhow = "1"
+# OAuth: PKCE and ID-token payloads.
+base64 = "0.23"
 # Jitter for reconnect waits.
 fastrand = "2"
 # Exact pin: io-imap is young (0.7) and sits on a pre-release parser (imap-codec 2.0 alpha). See
@@ -23,6 +25,8 @@ mail-parser = "0.11"
 # `alloc` back on. Enabling it here is the workaround; drop it once io-imap or imap-codec fixes it.
 nom = { version = "7", default-features = false, features = ["alloc"] }
 # Bundled SQLite is new enough for FTS5 contentless-delete and RETURNING, on every platform.
+# OAuth's PKCE: system randomness and SHA-256 (already here through rustls).
+ring = "0.17"
 rusqlite = { version = "0.40", features = ["bundled"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-platform-verifier = "0.7"
@@ -30,5 +34,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+# OAuth's authorize URL and the browser's redirect.
+url = "2"
 # Sender logos only (src/logo.rs, opt-in): a small blocking HTTPS client on the same rustls and platform verifier.
 ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }

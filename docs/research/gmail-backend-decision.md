@@ -1,6 +1,6 @@
 # Initial Gmail backend decision
 
-**Status:** provisional owner decision: **Gmail API** (2026-10-13). Confirm with the comparison below before Gmail-specific implementation.
+**Status:** owner decision: **IMAP with Google sign-in (XOAUTH2)** (2026-10-19), replacing the provisional API choice of 2026-10-13. See Decision below.
 
 The initial release gets one Gmail backend, not an IMAP implementation followed automatically by an API
 rewrite. Fastmail remains the first supported IMAP provider. This comparison does not block unrelated
@@ -46,20 +46,121 @@ per-user quota at the published new-project rate, excluding other calls. This is
 about exact burst behavior. Fetch the newest useful page first and backfill visibly. The previous
 20,000-message/30-second complete-list target is withdrawn.
 
+## Probe (2026-10-19)
+
+`crates/tern-core/examples/gmail_probe.rs` collects the API column: mailbox and label counts, the first screen
+(100 inbox messages with headers, one request each), an empty `history.list`, quota used, and a full-backfill
+estimate at the published per-user rate. It runs once `secrets/google-client.json` exists (setup step 4).
+The IMAP column comes from the owner's existing app-password Gmail account and the package 01 probe: io-imap
+drops FETCH responses with X-GM-* items, so labels and Gmail threads are not available over IMAP in Tern today.
+
+### Results (2026-10-19)
+
+Two consumer accounts, project in Testing; the probe made its requests one at a time over the owner's
+connection. Sign-in (loopback, PKCE, code exchange, refresh) worked for both on the first try. Both inboxes were
+empty (kept at zero), so the first screen was measured on the newest 100 messages of All Mail, which costs the same.
+
+| Gmail API | Second account | Owner's main Gmail |
+|---|---|---|
+| Mailbox | 182 messages, 176 conversations | 9,782 messages, 8,158 conversations |
+| Labels | 14, none of the user's | 22, 7 user (one with a zero-width character in its name) |
+| First list call (100 ids) | 282 ms (inbox, empty) | 245 ms |
+| First screen (100 messages with headers, one `messages.get` each) | not measured | **23.0 s**, 90 conversations |
+| `history.list`, no changes | 217 ms | 223–442 ms |
+| Quota for the run | 9 units | 2,014 units |
+| Full metadata backfill (estimate) | 3,645 units, about 1 min | **195,740 units, about 33 min** at 6,000 units/min |
+
+What this says:
+
+- **The first screen cannot be one request per message.** About 230 ms each, in sequence, is 23 s for 100. Batch
+  HTTP (up to 100 calls in one request) or several in flight is required; it cuts the wait, not the 2,000 units.
+- **A full backfill is quota-bound, not network-bound.** About 33 minutes for 9.8k messages before any other call,
+  so a 50k mailbox is close to three hours. Newest first and visible progress (as Tern already does for IMAP) are
+  required, and the backfill has to yield to the person's own actions.
+- Labels and conversations come back natively; the user labels include names that need exact handling.
+
+The same main account over IMAP (`examples/gmail_imap_probe.rs`, app password, Tern's own IMAP code and header
+set, 500 messages a command as the sync does), on the same connection the same day:
+
+| IMAP, `[Gmail]/All Mail` | Owner's main Gmail |
+|---|---|
+| Sign-in (TCP, TLS, LOGIN) | 905 ms |
+| SELECT + UID SEARCH ALL | 487 ms, 9,782 messages |
+| First screen (100 messages with headers, one command) | **0.44 s** |
+| Full header download (20 commands of 500) | **41.8 s**, all 9,782, 4.3 MB |
+
+A later run kept 10 API requests in flight: the same 100 messages took **4.5 s** (28.8 s one at a time in that
+run), with nothing refused. That run used 4,014 of the 6,000 units a minute allows.
+
+| Main Gmail, 9.8k messages | IMAP | Gmail API |
+|---|---|---|
+| First screen, 100 messages | 0.44 s, one command | 4.5 s with 10 in flight (23–29 s one at a time) |
+| Every message's headers | 42 s | about 33 min, set by quota |
+| Limit | daily download bandwidth | 6,000 units a minute per user; 20 units a message |
+| Labels, Gmail threads | not read by Tern today | native |
+
+### Why the API looks this slow (checked 2026-10-19)
+
+- **The rules changed on May 1, 2026.** Google's [usage limits page](https://developers.google.com/workspace/gmail/api/reference/quota)
+  lists 6,000 units a minute per user per project and 20 units per `messages.get` (60 for `full`/`raw`) for
+  projects created from that date. Before, it was 15,000 a minute and 5 units, so a full sync was about ten times
+  cheaper; projects that used the API between November 2025 and April 2026 keep their old limits. `tern-mail` is
+  new, so the new rules apply. Per-user limits cannot be raised ([report](https://github.com/ronboger/mishmail/issues/16),
+  [Nylas notes](https://developer.nylas.com/docs/cookbook/email/gmail-api-quotas/)). Clients built on the API
+  before May were designed against the old budget.
+- **Nothing cheaper gives headers.** `messages.list` (5 units per 500 ids) and `threads.list` (10 units) return
+  ids and at most a snippet; From, Subject and Date need `messages.get` (20) or `threads.get` (40 per thread).
+  [Batching](https://developers.google.com/workspace/gmail/api/guides/batch) (at most 100 a batch, 50 advised)
+  counts every call separately and saves only round trips. Google's own [sync guide](https://developers.google.com/workspace/gmail/api/guides/sync)
+  is list, then a batched get per message.
+- **Freshness** through the API is polling `history.list` (2 units) or push through Cloud Pub/Sub, which needs a
+  server; IMAP has IDLE today.
+- **Labels over IMAP without X-GM-*:** Gmail exposes every label as a folder, and Tern already syncs folders. A
+  label's members are that folder's Message-IDs matched to All Mail, as Tern already matches moved messages. That
+  gives exact labels with no parser change; only Gmail's own thread ids stay out of reach (Tern threads by
+  References and subject). Reading X-GM-* directly needs imap-codec support: no release has it (alpha.9, July
+  2026) and its search keys cannot carry `X-GM-RAW` or `X-GM-LABELS` either, so that would be a fork or an
+  upstream patch.
+- **Verification:** `gmail.modify` (API) and `https://mail.google.com/` (IMAP over OAuth) are both restricted
+  scopes, so a public release needs the same security assessment on either path.
+
+### Options
+
+1. **IMAP for Gmail** (what already syncs the owner's account), with labels read from label folders by
+   Message-ID, Tern's own threading, and XOAUTH2 instead of app passwords for release. Fast, no quota.
+2. **IMAP plus a patched imap-codec** for X-GM-MSGID/THRID/LABELS: option 1 with Gmail's exact ids and threads.
+   Costs a fork or an upstream contribution.
+3. **API**: native labels, threads and history, at about 33 minutes of quota per 10k messages for the first full
+   download, and a first screen of seconds, not a fraction of one.
+4. **Hybrid** (IMAP for mail, API for labels/history): two protocols and two auth paths for one account; the API
+   ids cannot be matched to IMAP messages without X-GM-MSGID, so it gains little over option 1.
+
 ## Decision gate
 
-- [ ] Fill the comparison with probe results and known limitations.
-- [ ] Recommend one path, including realistic freshness, backfill, search-coverage and verification behavior.
-- [ ] Owner records **IMAP** or **API** below before provider-specific implementation starts.
+- [x] Fill the comparison with probe results and known limitations.
+- [x] Recommend one path, including realistic freshness, backfill, search-coverage and verification behavior.
+- [x] Owner records **IMAP** or **API** below before provider-specific implementation starts.
 - [ ] Update package 04 and, if API is chosen, activate the selected slice of package 12 for M2.
 - [ ] Specify supported scopes, message identity/location mapping and required production adapter boundary.
 - [ ] Keep a second Gmail backend and user-facing switching out of initial-release scope.
 
-Decision: **API, provisional** (owner, 2026-10-13). Reasons given: the API is Google's long-term interface for
-Gmail (labels, threads and history natively), it allows a narrower scope than IMAP's full-mail scope, verification
-cost is the same on both paths, and it lets the IMAP library (io-imap) ignore Gmail's X-GM-* extensions it cannot
-parse. Evidence: **not yet collected**. The comparison still runs once the test account and Cloud project exist;
-a surprise there (for example quotas far worse than estimated) reopens the decision before any Gmail code exists.
+Decision: **IMAP with Google sign-in** (owner, 2026-10-19; option 1). IMAP already syncs the owner's Gmail, gives
+the first screen in under half a second and every header in under a minute, and has no per-minute quota. The one
+thing the owner disliked was the app password; XOAUTH2 replaces it with the browser sign-in `tern_core::oauth`
+already does (io-imap 0.7.1 and lettre both support XOAUTH2). Scope: `https://mail.google.com/`. Labels come from
+Gmail's label folders matched by Message-ID; threads from Tern's own threading. The X-GM-* tasks in package 04 stay
+out until imap-codec can parse them.
+
+The provisional choice before the evidence was **API** (owner, 2026-10-13), for native labels, threads and history
+and a narrower scope. The probe reversed it: with projects created from May 2026 a full download is quota-bound
+(about 33 minutes for 9.8k messages), and `gmail.modify` is as restricted as IMAP's scope, so it gained nothing in
+verification.
+
+Cost: Google charges nothing for IMAP, the API or the OAuth client. While the Cloud project is in Testing (up to 100
+listed test users, sign-in renewed every 7 days; still in Google's OAuth docs, updated 2026-10-16) there is no cost
+at all. Published as "In production" without verification, sign-ins last until revoked or unused for about six
+months, behind Google's "unverified app" warning and a 100-user cap for the project's whole life. A public release with a restricted scope
+needs Google's yearly security assessment by an approved assessor, which is paid; the API path needs the same one.
 
 ## Verification and optional AI
 

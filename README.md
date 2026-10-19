@@ -28,7 +28,7 @@ a 5-second undo window. If you're offline, it goes once you're back.
 ## Features
 
 - **Any IMAP/SMTP account.** IDLE for new mail, QRESYNC for fast resyncs, headers first so the inbox fills quickly.
-  Gmail works over IMAP with an app password; Gmail sign-in (OAuth) is planned.
+  Gmail and Google Workspace sign in with Google in the browser, or with an app password. See [Gmail](#gmail).
 - **Keyboard first.** Gmail-style keys and a command bar (`Ctrl K`) for every action. See [Keys](#keys).
 - **Undo everything.** Archive, move, star and send wait 5 seconds before reaching the server; `z` takes them back.
   A send that may already have gone out is never retried on its own.
@@ -66,10 +66,26 @@ On Linux, passwords are kept by the Secret Service, so a keyring such as gnome-k
 and unlocked. On Windows, SmartScreen warns on first run because the installer is not signed yet; choose
 "More info" → "Run anyway".
 
+## Gmail
+
+Gmail syncs over IMAP like any other account, with no Gmail API quotas in the way. To add one, either:
+
+- choose **Continue with Google** and sign in in your browser. Tern stores no password, only a Google token in
+  the system keyring; or
+- use an [app password](https://myaccount.google.com/apppasswords) (needs 2-Step Verification).
+
+An account on an app password can switch to Google sign-in later in Settings.
+
+"Continue with Google" needs a Google OAuth client built into the app. The source doesn't ship one: if you build
+Tern yourself, create your own (free, about ten minutes) and put it in `secrets/google-client.json`. Without one,
+Gmail works with an app password. Step-by-step setup, the Testing and production limits, and troubleshooting are
+in [docs/gmail.md](docs/gmail.md).
+
 ## Security and privacy
 
-- Passwords live only in the OS keyring (Credential Manager, Secret Service or Keychain), never in the database or
-  in files.
+- Passwords and Google sign-in tokens live only in the OS keyring (Credential Manager, Secret Service or
+  Keychain), never in the database or in files.
+- Google sign-in runs in your own browser with PKCE, so Tern never sees your Google password.
 - IMAP and SMTP use TLS (rustls with the platform's certificate verifier). Nothing links OpenSSL.
 - Mail HTML is untrusted: it renders in a sandboxed frame with no scripts, under a content security policy that
   blocks remote content until you choose "Load images". Links open in your browser.
@@ -114,6 +130,9 @@ npm install
 npm run tauri dev       # the app, with hot reload for the UI
 npm run tauri build     # an installer: .msi/.exe on Windows, .deb/.rpm/.AppImage on Linux
 ```
+
+For "Continue with Google", add your own Google OAuth client first: see
+[Building Tern with Google sign-in](docs/gmail.md#building-tern-with-google-sign-in).
 
 To work on the UI alone, run `npm run dev` and open http://localhost:1420. With no Tauri around, the UI runs
 against a fake mailbox of 5,000 messages.
@@ -197,7 +216,7 @@ src/                     the UI (SolidJS): virtualized list, thread view, compos
 ## Roadmap
 
 Delivery follows milestones: safe foundation → Linux private alpha → focused Linux beta → Windows release →
-expansion. Tern is in the Linux beta now. Next up are Gmail sign-in, wider provider testing and Linux packaging.
+expansion. Tern is in the Linux beta now. Next up are Gmail labels, wider provider testing and Linux packaging.
 Optional AI (off by default), calendar and more providers come later. See [docs/PLAN.md](docs/PLAN.md).
 
 ## Contributing
