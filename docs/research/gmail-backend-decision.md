@@ -56,7 +56,7 @@ drops FETCH responses with X-GM-* items, so labels and Gmail threads are not ava
 
 ### Results (2026-10-19)
 
-Two consumer accounts, project in Testing; the probe made its requests one at a time from Sarajevo on the owner's
+Two consumer accounts, project in Testing; the probe made its requests one at a time over the owner's
 connection. Sign-in (loopback, PKCE, code exchange, refresh) worked for both on the first try. Both inboxes were
 empty (kept at zero), so the first screen was measured on the newest 100 messages of All Mail, which costs the same.
 
