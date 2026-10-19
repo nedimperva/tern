@@ -47,6 +47,35 @@ const colourOf = (accounts: Account[], id: number) => {
 };
 const accountName = (a: Account) => a.displayName || a.email;
 
+/** A labelled part of an editor panel. */
+function Group(props: { title: string; children: JSX.Element }) {
+  return (
+    <section class="group">
+      <h2 class="group-title">{props.title}</h2>
+      {props.children}
+    </section>
+  );
+}
+
+/** A message as the person written to sees it: its header lines, then its text. */
+function MailPreview(props: { head: [string, string][]; children: JSX.Element }) {
+  return (
+    <div class="mail-preview">
+      <dl class="mail-head">
+        <For each={props.head}>
+          {([name, value]) => (
+            <div>
+              <dt>{name}</dt>
+              <dd>{value}</dd>
+            </div>
+          )}
+        </For>
+      </dl>
+      <div class="mail-body">{props.children}</div>
+    </div>
+  );
+}
+
 /** When something was last done, as a short day: "today", "yesterday", "on Friday", "on 3 Oct". */
 function lastDay(seconds: number): string {
   const then = new Date(seconds * 1000);
@@ -438,7 +467,10 @@ function SnippetSettings(props: { accounts: Account[] }) {
         }
       >
         <div class="master-detail">
-          <section class="master" aria-label="Your snippets">
+          <section class="master panel" aria-label="Your snippets">
+            <span class="panel-head">
+              {list().length} {list().length === 1 ? "snippet" : "snippets"}
+            </span>
             <input
               type="search"
               class="find"
@@ -483,7 +515,8 @@ function SnippetSettings(props: { accounts: Account[] }) {
 
           <Show when={current()}>
             {(s) => (
-              <section class="detail snippet-editor" aria-label="Edit snippet">
+              <section class="detail panel snippet-editor" aria-label="Edit snippet">
+                <Group title="Snippet">
                 <div class="pair">
                   <label class="field">
                     <span class="title">Name</span>
@@ -539,7 +572,9 @@ function SnippetSettings(props: { accounts: Account[] }) {
                     />
                   </div>
                 </div>
+                </Group>
 
+                <Group title="When it's used">
                 <div class="pair">
                   <Show when={props.accounts.length > 1}>
                     <label class="field">
@@ -595,18 +630,22 @@ function SnippetSettings(props: { accounts: Account[] }) {
                   </div>
                 </Show>
 
-                <div class="preview">
-                  <span class="preview-head">
-                    <span class="label">Preview</span>
-                    <span>Writing to Ana Rossi · “Q4 offer”</span>
-                  </span>
-                  <Show when={sample(s()).subject}>{(subject) => <p class="preview-subject">Subject: {subject()}</p>}</Show>
-                  <p class="preview-text">
-                    {sample(s()).before}
-                    <span class="caret" aria-label="The cursor goes here" />
-                    {sample(s()).after}
-                  </p>
-                </div>
+                </Group>
+
+                <Group title="Preview">
+                  <MailPreview
+                    head={[
+                      ["To", "Ana Rossi <ana.rossi@example.com>"],
+                      ["Subject", sample(s()).subject ?? "Q4 offer"],
+                    ]}
+                  >
+                    <p class="preview-text">
+                      {sample(s()).before}
+                      <span class="caret" aria-label="The cursor goes here" />
+                      {sample(s()).after}
+                    </p>
+                  </MailPreview>
+                </Group>
 
                 <footer class="detail-foot">
                   <span class="meta">
@@ -706,15 +745,24 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
     await api.setSignatureDefault(id, reply, value ? Number(value) : null);
     await load();
   };
+  const from = () => {
+    const a = props.accounts.find((x) => x.id === account());
+    return a ? (a.displayName ? `${a.displayName} <${a.email}>` : a.email) : "";
+  };
   const forNew = () => mine().find((s) => s.forNew)?.id ?? null;
   const forReply = () => mine().find((s) => s.forReply)?.id ?? null;
 
   return (
     <div class="signatures-settings">
-      <p class="help section-lead">
-        Each account can have several. Pick one for new mail and one for replies; switch in compose with{" "}
-        <kbd>Ctrl Shift S</kbd>.
-      </p>
+      <div class="section-intro">
+        <p class="help">
+          Each account can have several. Pick one for new mail and one for replies; switch in compose with{" "}
+          <kbd>Ctrl Shift S</kbd>.
+        </p>
+        <button class="primary" onClick={() => void add()}>
+          <Icon name="plus" size={14} /> New signature
+        </button>
+      </div>
       <Show when={props.accounts.length > 1}>
         <div class="tabs" role="tablist" aria-label="Account">
           <For each={props.accounts}>
@@ -731,7 +779,10 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
         <p class="setting-error">{error()}</p>
       </Show>
       <div class="master-detail">
-        <section class="master" aria-label="Signatures for this account">
+        <section class="master panel" aria-label="Signatures for this account">
+          <span class="panel-head">
+            {mine().length} {mine().length === 1 ? "signature" : "signatures"}
+          </span>
           <ul class="master-list">
             <For each={mine()}>
               {(s) => (
@@ -754,50 +805,51 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
               )}
             </For>
           </ul>
-          <button class="add-row" onClick={() => void add()}>
-            <Icon name="plus" size={14} /> New signature
-          </button>
         </section>
 
         <Show
           when={current()}
           fallback={
             <div class="settings-empty">
-              <p>No signature for this account yet.</p>
+              <p>No signature for this account yet. New signature starts one.</p>
             </div>
           }
         >
           {(s) => (
-            <section class="detail signature-editor" aria-label="Edit signature">
-              <label class="field narrow">
-                <span class="title">Name</span>
-                <input value={s().name} onInput={(e) => edit({ name: e.currentTarget.value })} />
-              </label>
-              <div class="field">
-                <span class="field-head">
-                  <span class="title">Signature</span>
-                  <span class="hint">Select text to make it bold, italic or a link</span>
-                </span>
-                <div class="textbox">
-                  <Suspense fallback={<div class="editor-body" />}>
-                    <Show when={version()} keyed>
-                      {(_) => (
-                        <Editor
-                          text={s().body}
-                          html={s().html}
-                          onChange={(text, html) => edit({ body: text, html: formatted(html) ? html : null })}
-                        />
-                      )}
+            <section class="detail panel signature-editor" aria-label="Edit signature">
+              <Group title="Signature">
+                <label class="field narrow">
+                  <span class="title">Name</span>
+                  <input value={s().name} onInput={(e) => edit({ name: e.currentTarget.value })} />
+                </label>
+                <div class="field">
+                  <span class="field-head">
+                    <span class="title">Text</span>
+                    <Show when={s().html}>
+                      <button class="link plain" onClick={() => (edit({ html: null }), setVersion(version() + 1))}>
+                        Take off the formatting
+                      </button>
                     </Show>
-                  </Suspense>
+                  </span>
+                  <div class="textbox">
+                    <Suspense fallback={<div class="editor-body" />}>
+                      <Show when={version()} keyed>
+                        {(_) => (
+                          <Editor
+                            text={s().body}
+                            html={s().html}
+                            toolbar
+                            lineBreaks
+                            onChange={(text, html) => edit({ body: text, html: formatted(html) ? html : null })}
+                          />
+                        )}
+                      </Show>
+                    </Suspense>
+                  </div>
                 </div>
-                <Show when={s().html}>
-                  <button class="link plain" onClick={() => (edit({ html: null }), setVersion(version() + 1))}>
-                    Take off the formatting
-                  </button>
-                </Show>
-              </div>
+              </Group>
 
+              <Group title="When it's used">
               <div class="pair">
                 <label class="field">
                   <span class="title">New messages</span>
@@ -843,19 +895,26 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
                 </span>
               </fieldset>
 
-              <div class="preview">
-                <span class="preview-head">
-                  <span class="label">As a reply looks</span>
-                </span>
-                <p class="preview-text">Thanks, the offer follows tomorrow.</p>
-                <Show when={settings.signatureBelow}>
-                  <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
-                </Show>
-                <p class="preview-text preview-signature">{`-- \n${s().body.trim() || "(empty)"}`}</p>
-                <Show when={!settings.signatureBelow}>
-                  <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
-                </Show>
-              </div>
+              </Group>
+
+              <Group title="Preview">
+                <MailPreview
+                  head={[
+                    ["From", from()],
+                    ["To", "Ana Rossi <ana.rossi@example.com>"],
+                    ["Subject", "Re: Q4 offer"],
+                  ]}
+                >
+                  <p class="preview-text">Thanks, the offer follows tomorrow.</p>
+                  <Show when={settings.signatureBelow}>
+                    <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
+                  </Show>
+                  <p class="preview-text preview-signature">{`-- \n${s().body.trim() || "(empty)"}`}</p>
+                  <Show when={!settings.signatureBelow}>
+                    <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
+                  </Show>
+                </MailPreview>
+              </Group>
 
               <footer class="detail-foot">
                 <span class="meta">Changes save as you type.</span>
@@ -1044,9 +1103,11 @@ export function SettingsPage(props: {
           Close settings <kbd>Esc</kbd>
         </button>
       </nav>
-      <div class="settings-body" classList={{ wide: open().id === "Snippets" || open().id === "Signatures" }}>
-        <h1>{open().name}</h1>
-        {open().body()}
+      <div class="settings-body">
+        <div class="settings-content" classList={{ wide: open().id === "Snippets" || open().id === "Signatures" }}>
+          <h1>{open().name}</h1>
+          {open().body()}
+        </div>
       </div>
     </div>
   );

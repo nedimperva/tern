@@ -1734,14 +1734,18 @@ button.fold {
   border-radius: 50%;
   flex: none;
 }
+/* The whole area right of the list scrolls, so its scrollbar sits at the window's edge; the column inside keeps
+   lines readable. Snippets and signatures take the room they have. */
 .settings-body {
-  width: min(640px, 100%);
-  box-sizing: border-box;
-  padding: var(--s-5) var(--s-6);
+  min-width: 0;
   overflow-y: auto;
+  padding: var(--s-5) var(--s-6) var(--s-6);
 }
-.settings-body.wide {
-  width: min(1040px, 100%);
+.settings-content {
+  max-width: 640px;
+}
+.settings-content.wide {
+  max-width: 1280px;
 }
 .settings-body h1 {
   font-size: var(--t-xl);
@@ -1776,6 +1780,49 @@ button.fold {
 .settings-body h1 + .signatures-settings {
   margin-top: calc(-1 * var(--s-4));
 }
+/* Snippets and signatures: the list and the editor as two panels. */
+.panel {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-0);
+}
+.master.panel {
+  padding: var(--s-3);
+  position: sticky;
+  top: 0;
+}
+.panel-head {
+  padding: 0 var(--s-1) var(--s-1);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.detail.panel {
+  gap: 0;
+  overflow: hidden;
+}
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-5);
+  border-bottom: 1px solid var(--line);
+}
+.group-title {
+  margin: 0;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.detail.panel .detail-foot {
+  padding: var(--s-3) var(--s-5);
+  border-top: none;
+  background: var(--bg-1);
+}
 .section-intro {
   display: flex;
   align-items: center;
@@ -1790,8 +1837,7 @@ button.fold {
 .section-lead {
   margin-bottom: var(--s-4);
 }
-.section-intro button.primary,
-.signatures-settings .add-row {
+.section-intro button.primary {
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
@@ -1834,7 +1880,7 @@ button.fold {
   gap: var(--s-2);
 }
 .signatures-settings .master {
-  width: 240px;
+  width: 260px;
 }
 .filters {
   display: flex;
@@ -1933,14 +1979,6 @@ button.pill[aria-pressed="true"] {
   font-size: var(--t-xs);
   font-weight: 500;
   line-height: 16px;
-}
-.signatures-settings .add-row {
-  justify-content: center;
-  height: 36px;
-  margin-top: 6px;
-  border: 1px dashed var(--line);
-  background: none;
-  color: var(--fg-1);
 }
 .detail {
   flex: 1;
@@ -2066,26 +2104,88 @@ button.place.muted {
   min-height: 110px;
   padding: var(--s-3) var(--s-4);
 }
+.detail .textbox .editor-body .ProseMirror {
+  min-height: 86px;
+}
+/* The signature editor's bar: always there, over the text. */
+.format-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--s-1) 6px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+}
+.format-toolbar button {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 var(--s-2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-1);
+  font-weight: 600;
+}
+.format-toolbar button:nth-child(2) {
+  font-style: italic;
+}
+.format-toolbar button:nth-child(3) {
+  text-decoration: underline;
+}
+.format-toolbar button:hover:not(:disabled),
+.format-toolbar button.on {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.format-toolbar .hint {
+  margin-left: auto;
+  padding-right: var(--s-1);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.format-toolbar button:not(:disabled) ~ .hint {
+  visibility: hidden;
+}
 .detail .plain {
   align-self: flex-start;
   font-size: var(--t-sm);
 }
-.preview {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  padding: 14px var(--s-4);
+/* A message as the person written to sees it. */
+.mail-preview {
   border-radius: var(--r-lg);
   background: var(--soft);
+  overflow: hidden;
 }
-.preview-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+.mail-head {
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--line);
   font-size: var(--t-sm);
+}
+.mail-head div {
+  display: flex;
+  gap: var(--s-3);
+  line-height: 20px;
+}
+.mail-head dt {
+  width: 56px;
+  flex: none;
   color: var(--fg-2);
 }
-.preview .label,
+.mail-head dd {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg-1);
+}
+.mail-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
 .snippet-preview .label {
   font-size: var(--t-xs);
   font-weight: 500;
@@ -2093,12 +2193,8 @@ button.place.muted {
   text-transform: uppercase;
   color: var(--fg-2);
 }
-.preview p {
+.mail-body p {
   margin: 0;
-}
-.preview-subject {
-  font-size: var(--t-sm);
-  color: var(--fg-1);
 }
 .preview-text {
   font-size: var(--t-rd);
@@ -2113,7 +2209,7 @@ button.place.muted {
   border-left: 3px solid var(--line);
   color: var(--fg-2);
 }
-.preview .caret {
+.mail-body .caret {
   display: inline-block;
   width: 2px;
   height: 1.1em;

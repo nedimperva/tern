@@ -54,6 +54,10 @@ const toggleList =
   (state, dispatch) =>
     wrapInList(type)(state, dispatch) || liftListItem(list_item)(state, dispatch);
 const toggleQuote: Command = (state, dispatch) => wrapIn(blockquote)(state, dispatch) || lift(state, dispatch);
+const lineBreak: Command = (state, dispatch) => {
+  dispatch?.(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
+  return true;
+};
 
 /** Compose's body: rich text that writes plain text and HTML (docs/design/ui.md §4.4). */
 export function Editor(props: {
@@ -68,6 +72,10 @@ export function Editor(props: {
   snippets?: SnippetSource;
   /** The quote starts open: a quick quote is short, and what the person picked to answer. */
   quoteOpen?: boolean;
+  /** A formatting bar always above the text, not only over a selection (the signature editor). */
+  toolbar?: boolean;
+  /** Enter starts a new line rather than a paragraph: a signature's lines sit together. */
+  lineBreaks?: boolean;
 }) {
   let host!: HTMLDivElement;
   let view!: EditorView;
@@ -98,6 +106,7 @@ export function Editor(props: {
 
   const openLink = () => {
     setLinking(true);
+    if (props.toolbar) refresh(view.state);
     queueMicrotask(() => linkInput?.focus());
     return true;
   };
@@ -107,8 +116,16 @@ export function Editor(props: {
     const marks = state.storedMarks ?? sel.$from.marks();
     const has = (t: typeof strong) =>
       sel.empty ? marks.some((m) => m.type === t) : state.doc.rangeHasMark(sel.from, sel.to, t);
-    setActive({ strong: has(strong), em: has(em), underline: has(underline), strike: has(strike), link: has(link) });
-    if (sel.empty || !view?.hasFocus()) {
+    setActive({
+      strong: has(strong),
+      em: has(em),
+      underline: has(underline),
+      strike: has(strike),
+      link: has(link),
+      selected: !sel.empty,
+    });
+    // With the toolbar there, the floating bar only comes up to take a link's address.
+    if (sel.empty || !view?.hasFocus() || (props.toolbar && !linking())) {
       if (!linking()) setBar(null);
     } else {
       const start = view.coordsAtPos(sel.from);
@@ -196,11 +213,8 @@ export function Editor(props: {
             "Mod-Shift-9": toggleQuote,
             "Mod-]": sinkListItem(list_item),
             "Mod-[": liftListItem(list_item),
-            Enter: splitListItem(list_item),
-            "Shift-Enter": (state, dispatch) => {
-              dispatch?.(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
-              return true;
-            },
+            Enter: props.lineBreaks ? lineBreak : splitListItem(list_item),
+            "Shift-Enter": lineBreak,
           }),
           keymap(baseKeymap),
         ],
@@ -257,6 +271,24 @@ export function Editor(props: {
 
   return (
     <div class="editor" classList={{ "quote-folded": hasQuote() && !quoteOpen() }}>
+      <Show when={props.toolbar}>
+        <div class="format-toolbar" role="toolbar" aria-label="Formatting" onMouseDown={(e) => e.preventDefault()}>
+          {button("B", "Bold (Ctrl+B)", !!active().strong, toggleMark(strong))}
+          {button("I", "Italic (Ctrl+I)", !!active().em, toggleMark(em))}
+          {button("U", "Underline (Ctrl+U)", !!active().underline, toggleMark(underline))}
+          <button
+            type="button"
+            classList={{ on: !!active().link }}
+            title={active().selected ? "Link (Ctrl+K)" : "Select text to make it a link"}
+            aria-label="Link"
+            disabled={!active().selected}
+            onMouseDown={(e) => (e.preventDefault(), openLink())}
+          >
+            Link
+          </button>
+          <span class="hint">Select text first to make it a link</span>
+        </div>
+      </Show>
       <div ref={host} class="editor-body" />
       <Show when={hasQuote()}>
         <button
