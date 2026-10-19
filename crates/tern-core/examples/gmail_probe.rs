@@ -27,22 +27,28 @@ struct Probe {
     units: u64,
 }
 
+/// Requests in flight at once for the parallel first screen.
+const IN_FLIGHT: usize = 10;
+
+fn fetch(agent: &ureq::Agent, token: &str, path: &str) -> Result<Value> {
+    let url = format!("{API}{path}");
+    let mut response = agent
+        .get(&url)
+        .header("Authorization", &format!("Bearer {token}"))
+        .call()
+        .with_context(|| format!("GET {path}"))?;
+    let status = response.status();
+    let text = response.body_mut().read_to_string()?;
+    if !status.is_success() {
+        bail!("GET {path}: {status}: {text}");
+    }
+    Ok(serde_json::from_str(&text)?)
+}
+
 impl Probe {
     fn get(&mut self, path: &str, units: u64) -> Result<Value> {
         self.units += units;
-        let url = format!("{API}{path}");
-        let mut response = self
-            .agent
-            .get(&url)
-            .header("Authorization", &format!("Bearer {}", self.token))
-            .call()
-            .with_context(|| format!("GET {path}"))?;
-        let status = response.status();
-        let text = response.body_mut().read_to_string()?;
-        if !status.is_success() {
-            bail!("GET {path}: {status}: {text}");
-        }
-        Ok(serde_json::from_str(&text)?)
+        fetch(&self.agent, &self.token, path)
     }
 }
 
@@ -106,8 +112,8 @@ fn main() -> Result<()> {
     let user: Vec<&str> =
         labels.iter().filter(|l| l["type"] == "user").filter_map(|l| l["name"].as_str()).collect();
 
-    // The first screen: newest inbox ids, then each one's headers (what Tern's list shows). An inbox kept at zero
-    // has nothing to show, so then it is the newest mail anywhere (All Mail), which costs the same.
+    // The first screen: newest inbox ids, then each one's headers (what Tern's list shows). An inbox kept near zero
+    // has too few to measure, so then it is the newest mail anywhere (All Mail), which costs the same.
     let ids_of = |list: &Value| -> Vec<String> {
         list["messages"]
             .as_array()
@@ -117,10 +123,10 @@ fn main() -> Result<()> {
     let mut first = Instant::now();
     let mut ids = ids_of(&p.get(&format!("/messages?labelIds=INBOX&maxResults={PAGE}"), 5)?);
     let mut source = "inbox";
-    if ids.is_empty() {
+    if ids.len() < PAGE {
         first = Instant::now();
         ids = ids_of(&p.get(&format!("/messages?maxResults={PAGE}"), 5)?);
-        source = "All Mail (the inbox is empty)";
+        source = "All Mail (the inbox holds fewer)";
     }
     let listed = first.elapsed();
     let fields =
@@ -137,6 +143,30 @@ fn main() -> Result<()> {
         }
     }
     let page = first.elapsed();
+
+    // The same messages again with IN_FLIGHT requests at a time: how much of the wait was the requests' order.
+    let parallel = Instant::now();
+    let chunks: Vec<&[String]> = ids.chunks(ids.len().div_ceil(IN_FLIGHT).max(1)).collect();
+    let errors = std::thread::scope(|scope| {
+        let workers: Vec<_> = chunks
+            .into_iter()
+            .map(|chunk| {
+                let (agent, token) = (p.agent.clone(), p.token.clone());
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .filter(|id| {
+                            fetch(&agent, &token, &format!("/messages/{id}?format=metadata&{fields}"))
+                                .is_err()
+                        })
+                        .count()
+                })
+            })
+            .collect();
+        workers.into_iter().map(|w| w.join().unwrap_or(0)).sum::<usize>()
+    });
+    let parallel = parallel.elapsed();
+    p.units += 20 * ids.len() as u64;
 
     // Incremental sync: what changed since the profile's historyId (nothing, a moment later).
     let changes = Instant::now();
@@ -155,6 +185,10 @@ fn main() -> Result<()> {
         page.as_secs_f64(),
         thread_ids.len()
     );
+    println!(
+        "| First screen again, {IN_FLIGHT} requests in flight | {:.1} s, {errors} refused |",
+        parallel.as_secs_f64()
+    );
     println!("| history.list, no changes | {:.0} ms |", changes.as_secs_f64() * 1000.0);
     println!(
         "| history answer | {} |",
@@ -165,6 +199,9 @@ fn main() -> Result<()> {
         "| Full metadata backfill (estimate) | {backfill_units:.0} units = {:.0} min at {UNITS_PER_MINUTE:.0} units/min, before any other use |",
         backfill_units / UNITS_PER_MINUTE
     );
-    println!("\nRequests were made one at a time; batch HTTP would cut round trips, not quota units.");
+    println!(
+        "\nThe first pass made its requests one at a time, the second {IN_FLIGHT} at once; batch HTTP cuts round \
+         trips, not quota units."
+    );
     Ok(())
 }

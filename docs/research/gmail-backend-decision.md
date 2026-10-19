@@ -89,13 +89,51 @@ set, 500 messages a command as the sync does), on the same connection the same d
 | First screen (100 messages with headers, one command) | **0.44 s** |
 | Full header download (20 commands of 500) | **41.8 s**, all 9,782, 4.3 MB |
 
-Side by side for this mailbox: the first screen is 0.44 s over IMAP against 23 s for the API one request at a time
-(batching would narrow that, not measured yet), and a full header download is 42 s against about 33 minutes of
-API quota. IMAP has no per-minute quota; Gmail caps IMAP downloads by daily bandwidth. What IMAP lacks in Tern
-today is labels and Gmail threads: io-imap drops FETCH responses carrying X-GM-* items, so those need a parser fix
-or a workaround before IMAP could give Gmail its labels.
+A later run kept 10 API requests in flight: the same 100 messages took **4.5 s** (28.8 s one at a time in that
+run), with nothing refused. That run used 4,014 of the 6,000 units a minute allows.
 
-Still missing before the gate closes: a batched API first screen, and whether io-imap can be made to read X-GM-*.
+| Main Gmail, 9.8k messages | IMAP | Gmail API |
+|---|---|---|
+| First screen, 100 messages | 0.44 s, one command | 4.5 s with 10 in flight (23–29 s one at a time) |
+| Every message's headers | 42 s | about 33 min, set by quota |
+| Limit | daily download bandwidth | 6,000 units a minute per user; 20 units a message |
+| Labels, Gmail threads | not read by Tern today | native |
+
+### Why the API looks this slow (checked 2026-10-19)
+
+- **The rules changed on May 1, 2026.** Google's [usage limits page](https://developers.google.com/workspace/gmail/api/reference/quota)
+  lists 6,000 units a minute per user per project and 20 units per `messages.get` (60 for `full`/`raw`) for
+  projects created from that date. Before, it was 15,000 a minute and 5 units, so a full sync was about ten times
+  cheaper; projects that used the API between November 2025 and April 2026 keep their old limits. `tern-mail` is
+  new, so the new rules apply. Per-user limits cannot be raised ([report](https://github.com/ronboger/mishmail/issues/16),
+  [Nylas notes](https://developer.nylas.com/docs/cookbook/email/gmail-api-quotas/)). Clients built on the API
+  before May were designed against the old budget.
+- **Nothing cheaper gives headers.** `messages.list` (5 units per 500 ids) and `threads.list` (10 units) return
+  ids and at most a snippet; From, Subject and Date need `messages.get` (20) or `threads.get` (40 per thread).
+  [Batching](https://developers.google.com/workspace/gmail/api/guides/batch) (at most 100 a batch, 50 advised)
+  counts every call separately and saves only round trips. Google's own [sync guide](https://developers.google.com/workspace/gmail/api/guides/sync)
+  is list, then a batched get per message.
+- **Freshness** through the API is polling `history.list` (2 units) or push through Cloud Pub/Sub, which needs a
+  server; IMAP has IDLE today.
+- **Labels over IMAP without X-GM-*:** Gmail exposes every label as a folder, and Tern already syncs folders. A
+  label's members are that folder's Message-IDs matched to All Mail, as Tern already matches moved messages. That
+  gives exact labels with no parser change; only Gmail's own thread ids stay out of reach (Tern threads by
+  References and subject). Reading X-GM-* directly needs imap-codec support: no release has it (alpha.9, July
+  2026) and its search keys cannot carry `X-GM-RAW` or `X-GM-LABELS` either, so that would be a fork or an
+  upstream patch.
+- **Verification:** `gmail.modify` (API) and `https://mail.google.com/` (IMAP over OAuth) are both restricted
+  scopes, so a public release needs the same security assessment on either path.
+
+### Options
+
+1. **IMAP for Gmail** (what already syncs the owner's account), with labels read from label folders by
+   Message-ID, Tern's own threading, and XOAUTH2 instead of app passwords for release. Fast, no quota.
+2. **IMAP plus a patched imap-codec** for X-GM-MSGID/THRID/LABELS: option 1 with Gmail's exact ids and threads.
+   Costs a fork or an upstream contribution.
+3. **API**: native labels, threads and history, at about 33 minutes of quota per 10k messages for the first full
+   download, and a first screen of seconds, not a fraction of one.
+4. **Hybrid** (IMAP for mail, API for labels/history): two protocols and two auth paths for one account; the API
+   ids cannot be matched to IMAP messages without X-GM-MSGID, so it gains little over option 1.
 
 ## Decision gate
 
