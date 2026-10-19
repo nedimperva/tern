@@ -106,13 +106,22 @@ fn main() -> Result<()> {
     let user: Vec<&str> =
         labels.iter().filter(|l| l["type"] == "user").filter_map(|l| l["name"].as_str()).collect();
 
-    // The first screen: newest inbox ids, then each one's headers (what Tern's list shows).
-    let first = Instant::now();
-    let list = p.get(&format!("/messages?labelIds=INBOX&maxResults={PAGE}"), 5)?;
-    let ids: Vec<String> = list["messages"]
-        .as_array()
-        .map(|m| m.iter().filter_map(|m| m["id"].as_str().map(Into::into)).collect())
-        .unwrap_or_default();
+    // The first screen: newest inbox ids, then each one's headers (what Tern's list shows). An inbox kept at zero
+    // has nothing to show, so then it is the newest mail anywhere (All Mail), which costs the same.
+    let ids_of = |list: &Value| -> Vec<String> {
+        list["messages"]
+            .as_array()
+            .map(|m| m.iter().filter_map(|m| m["id"].as_str().map(Into::into)).collect())
+            .unwrap_or_default()
+    };
+    let mut first = Instant::now();
+    let mut ids = ids_of(&p.get(&format!("/messages?labelIds=INBOX&maxResults={PAGE}"), 5)?);
+    let mut source = "inbox";
+    if ids.is_empty() {
+        first = Instant::now();
+        ids = ids_of(&p.get(&format!("/messages?maxResults={PAGE}"), 5)?);
+        source = "All Mail (the inbox is empty)";
+    }
     let listed = first.elapsed();
     let fields =
         "metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Message-ID";
@@ -139,7 +148,7 @@ fn main() -> Result<()> {
     println!("|---|---|");
     println!("| Mailbox | {total} messages, {threads} conversations |");
     println!("| Labels | {} in all, {} user: {} |", labels.len(), user.len(), user.join(", "));
-    println!("| First list call ({PAGE} inbox ids) | {:.0} ms |", listed.as_secs_f64() * 1000.0);
+    println!("| First list call ({PAGE} ids from {source}) | {:.0} ms |", listed.as_secs_f64() * 1000.0);
     println!(
         "| First screen ({} messages with headers, one request each) | {:.1} s, {} conversations, {multi_label} with 2+ user labels |",
         ids.len(),

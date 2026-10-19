@@ -54,6 +54,37 @@ estimate at the published per-user rate. It runs once `secrets/google-client.jso
 The IMAP column comes from the owner's existing app-password Gmail account and the package 01 probe: io-imap
 drops FETCH responses with X-GM-* items, so labels and Gmail threads are not available over IMAP in Tern today.
 
+### Results (2026-10-19)
+
+Two consumer accounts, project in Testing; the probe made its requests one at a time from Sarajevo on the owner's
+connection. Sign-in (loopback, PKCE, code exchange, refresh) worked for both on the first try. Both inboxes were
+empty (kept at zero), so the first screen was measured on the newest 100 messages of All Mail, which costs the same.
+
+| Gmail API | Second account | Owner's main Gmail |
+|---|---|---|
+| Mailbox | 182 messages, 176 conversations | 9,782 messages, 8,158 conversations |
+| Labels | 14, none of the user's | 22, 7 user (one with a zero-width character in its name) |
+| First list call (100 ids) | 282 ms (inbox, empty) | 245 ms |
+| First screen (100 messages with headers, one `messages.get` each) | not measured | **23.0 s**, 90 conversations |
+| `history.list`, no changes | 217 ms | 223–442 ms |
+| Quota for the run | 9 units | 2,014 units |
+| Full metadata backfill (estimate) | 3,645 units, about 1 min | **195,740 units, about 33 min** at 6,000 units/min |
+
+What this says:
+
+- **The first screen cannot be one request per message.** About 230 ms each, in sequence, is 23 s for 100. Batch
+  HTTP (up to 100 calls in one request) or several in flight is required; it cuts the wait, not the 2,000 units.
+- **A full backfill is quota-bound, not network-bound.** About 33 minutes for 9.8k messages before any other call,
+  so a 50k mailbox is close to three hours. Newest first and visible progress (as Tern already does for IMAP) are
+  required, and the backfill has to yield to the person's own actions.
+- Labels and conversations come back natively; the user labels include names that need exact handling.
+- IMAP column: the owner's main Gmail already syncs in Tern over IMAP with an app password (all folders, IDLE on
+  the inbox), but without labels or Gmail threads, since io-imap drops FETCH responses carrying X-GM-* items.
+  Its full download of this mailbox was not timed.
+
+Still missing before the gate closes: a measured IMAP first screen and full download for the same account, and a
+batched API first screen.
+
 ## Decision gate
 
 - [ ] Fill the comparison with probe results and known limitations.
@@ -66,7 +97,7 @@ drops FETCH responses with X-GM-* items, so labels and Gmail threads are not ava
 Decision: **API, provisional** (owner, 2026-10-13). Reasons given: the API is Google's long-term interface for
 Gmail (labels, threads and history natively), it allows a narrower scope than IMAP's full-mail scope, verification
 cost is the same on both paths, and it lets the IMAP library (io-imap) ignore Gmail's X-GM-* extensions it cannot
-parse. Evidence: **not yet collected**. The comparison still runs once the test account and Cloud project exist;
+parse. Evidence: **API side collected 2026-10-19** (see Results); IMAP timing and a batched first screen to come. The comparison still runs once the test account and Cloud project exist;
 a surprise there (for example quotas far worse than estimated) reopens the decision before any Gmail code exists.
 
 ## Verification and optional AI
