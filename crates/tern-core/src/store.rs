@@ -2130,7 +2130,9 @@ impl Store {
                         drafts.push(draft);
                     }
                 }
-                Some((account_id, hit, None)) => groups.entry((account_id, hit.folder_id)).or_default().push(hit),
+                Some((account_id, hit, None)) => {
+                    groups.entry((account_id, hit.folder_id)).or_default().push(hit)
+                }
                 None => {}
             }
         }

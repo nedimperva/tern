@@ -1648,7 +1648,10 @@ mod tests {
             let id = m.store.save_draft(None, m.account.id, half, true).unwrap();
             let (stream, _) = signed_in(
                 SIGNED_IN,
-                vec![("APPEND Drafts (\\Seen \\Draft)", "+ go\r\n"), ("", "{tag} OK [APPENDUID 9 3] done\r\n")],
+                vec![
+                    ("APPEND Drafts (\\Seen \\Draft)", "+ go\r\n"),
+                    ("", "{tag} OK [APPENDUID 9 3] done\r\n"),
+                ],
             );
             let mut s = Imap::open(stream, "ada", "x").await.unwrap();
             assert!(super::super::sync_drafts(&mut s, &m.store, &m.account).await.unwrap());
