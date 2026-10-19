@@ -52,6 +52,10 @@ impl Provider {
     }
 }
 
+/// What Tern asks Google for: mail over IMAP and SMTP (the only scope XOAUTH2 accepts), and the address that
+/// signed in.
+pub const GOOGLE_MAIL_SCOPES: &[&str] = &["https://mail.google.com/", "openid", "email"];
+
 /// What signing in gives: an access token for about an hour, and a refresh token for the next one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Tokens {

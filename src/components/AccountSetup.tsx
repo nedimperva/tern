@@ -21,6 +21,23 @@ export function AccountSetup(props: { onAdded: (a: Account) => void; onClose?: (
   const [error, setError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [advanced, setAdvanced] = createSignal(false);
+  const [google, setGoogle] = createSignal(false);
+  void api.googleAvailable().then(setGoogle, () => setGoogle(false));
+  const [waiting, setWaiting] = createSignal(false);
+  const gmail = () => /@(gmail|googlemail)\.com$/i.test(config().email.trim());
+
+  // The browser does the signing in; Tern never sees a password.
+  const withGoogle = async () => {
+    setWaiting(true);
+    setError(null);
+    try {
+      props.onAdded(await api.googleSignIn(config().displayName));
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setWaiting(false);
+    }
+  };
 
   const set = <K extends keyof AccountConfig>(key: K, value: AccountConfig[K]) => {
     const next = { ...config(), [key]: value };
@@ -81,6 +98,12 @@ export function AccountSetup(props: { onAdded: (a: Account) => void; onClose?: (
       <form class="setup" onSubmit={submit}>
         <img class="logo" src="/tern.svg" alt="" width="48" height="48" />
         <h2>Add an account</h2>
+        <Show when={google()}>
+          <button type="button" class="google" onClick={() => void withGoogle()} disabled={waiting()}>
+            {waiting() ? "Finish signing in in your browser…" : "Continue with Google"}
+          </button>
+          <p class="note">For Gmail and Google Workspace. Or add any account with its password below.</p>
+        </Show>
         <label>
           Email
           <input type="email" autofocus value={config().email} onInput={(e) => onEmail(e.currentTarget.value)} />
@@ -90,8 +113,11 @@ export function AccountSetup(props: { onAdded: (a: Account) => void; onClose?: (
           Password or app password
           <input type="password" value={password()} onInput={(e) => setPassword(e.currentTarget.value)} />
         </label>
-        <Show when={note()}>
+        <Show when={note() && !(google() && gmail())}>
           <p class="note">{note()}</p>
+        </Show>
+        <Show when={google() && gmail()}>
+          <p class="note">Gmail is easier with Continue with Google above. An app password works too.</p>
         </Show>
         <button type="button" class="link" onClick={() => setAdvanced(!advanced())}>
           {advanced() ? "Hide" : "Show"} server settings

@@ -13,6 +13,8 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
+
+pub use crate::secrets::Credential;
 use io_imap::client::{ImapClientAsync, ImapClientError};
 use io_imap::codec::fragmentizer::Fragmentizer;
 use io_imap::coroutine::{ImapCoroutine, ImapCoroutineState, ImapYield};
@@ -27,6 +29,7 @@ use io_imap::rfc3501::select::{ImapMailboxSelectData, ImapMailboxSelectOptions};
 use io_imap::rfc3501::store::ImapMessageStoreOptions;
 use io_imap::rfc6851::r#move::ImapMessageMoveOptions;
 use io_imap::sasl::auth_plain::ImapAuthPlainOptions;
+use io_imap::sasl::auth_xoauth2::ImapAuthXoauth2Options;
 use io_imap::types::body::{BodyStructure, SpecificFields};
 use io_imap::types::command::FetchModifier;
 use io_imap::types::core::{AString, IString, NString, Vec1};
@@ -126,13 +129,24 @@ pub struct Imap<S> {
 
 pub type TlsImap = Imap<TlsStream<TcpStream>>;
 
-/// Connects, encrypts the connection as `security` says, and signs in.
+/// Connects, encrypts the connection as `security` says, and signs in with a password.
 pub async fn connect(
     host: &str,
     port: u16,
     security: Security,
     username: &str,
     password: &str,
+) -> Result<TlsImap> {
+    connect_with(host, port, security, username, &Credential::Password(password.into())).await
+}
+
+/// As `connect`, with a password or an OAuth access token.
+pub async fn connect_with(
+    host: &str,
+    port: u16,
+    security: Security,
+    username: &str,
+    credential: &Credential,
 ) -> Result<TlsImap> {
     let tcp = open_tcp(host, port).await?;
     let name =
@@ -141,7 +155,7 @@ pub async fn connect(
         Security::Tls => {
             let tls =
                 tls_connector()?.connect(name, tcp).await.context("Could not make a secure connection")?;
-            Imap::open(tls, username, password).await
+            Imap::open_with(tls, username, credential).await
         }
         Security::Starttls => {
             let mut plain = Conn::new(tcp);
@@ -160,7 +174,7 @@ pub async fn connect(
             let mut conn = Conn { stream: tls, fragmentizer: plain.fragmentizer };
             // Capabilities from before TLS cannot be trusted; ask again.
             let capabilities = conn.capability().await?;
-            Imap::sign_in(conn, &capabilities, username, password).await
+            Imap::sign_in(conn, &capabilities, username, credential).await
         }
     }
 }
@@ -190,17 +204,34 @@ fn tls_connector() -> Result<TlsConnector> {
 impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
     /// Reads the greeting and signs in on a stream that is already connected (and encrypted).
     pub async fn open(stream: S, username: &str, password: &str) -> Result<Self> {
+        Self::open_with(stream, username, &Credential::Password(password.into())).await
+    }
+
+    pub async fn open_with(stream: S, username: &str, credential: &Credential) -> Result<Self> {
         let mut conn = Conn::new(stream);
         let greeting = conn.greeting().await.context("Could not read the server's greeting")?;
-        Self::sign_in(conn, &greeting.capability, username, password).await
+        Self::sign_in(conn, &greeting.capability, username, credential).await
     }
 
     async fn sign_in(
         mut conn: Conn<S>,
         offered: &[Capability<'static>],
         username: &str,
-        password: &str,
+        credential: &Credential,
     ) -> Result<Self> {
+        let password = match credential {
+            Credential::Password(p) => p.as_str(),
+            // Google's mechanism; Gmail takes it as an initial response (SASL-IR), in one round trip.
+            Credential::Token(token) => {
+                let opts = ImapAuthXoauth2Options {
+                    initial_request: true,
+                    ensure_capabilities: true,
+                    auto_id: None,
+                };
+                let capabilities = conn.auth_xoauth2(username, token, opts).await.map_err(refusal)?;
+                return Self::signed_in(conn, capabilities).await;
+            }
+        };
         // AUTHENTICATE PLAIN sends the password base64-encoded, so no server has to unquote it; some
         // (SmarterMail) reject LOGIN's quoted string when the password holds quotes, backslashes or non-ASCII
         // letters. LOGIN is only for servers that do not offer PLAIN.
@@ -212,13 +243,11 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
             let opts = ImapLoginOptions { ensure_capabilities: true, ..Default::default() };
             conn.login(username, password, opts).await
         }
-        .map_err(|e| match e {
-            // The connection broke while signing in: that says nothing about the password.
-            ImapClientError::Io(io) => {
-                anyhow::Error::new(io).context("The connection broke while signing in")
-            }
-            refused => anyhow::Error::new(refused).context(SignInRefused),
-        })?;
+        .map_err(refusal)?;
+        Self::signed_in(conn, capabilities).await
+    }
+
+    async fn signed_in(conn: Conn<S>, capabilities: Vec<Capability<'static>>) -> Result<Self> {
         let mut imap = Self { conn, capabilities, qresync: false, condstore: false };
         // Some servers (Gmail) ask clients to say who they are. Nothing depends on the answer.
         if imap.has("ID") {
@@ -545,6 +574,14 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
     }
 }
 
+/// A failed sign-in as an error: refused, unless the connection itself broke, which says nothing about the password.
+fn refusal(e: ImapClientError) -> anyhow::Error {
+    match e {
+        ImapClientError::Io(io) => anyhow::Error::new(io).context("The connection broke while signing in"),
+        refused => anyhow::Error::new(refused).context(SignInRefused),
+    }
+}
+
 /// The server said no to the user name and password (or token). Trying again with the same ones will not help and
 /// may lock the account, so callers wait for new ones.
 #[derive(Debug)]
@@ -772,6 +809,35 @@ mod tests {
         assert_eq!(sent[0], "AUTHENTICATE PLAIN");
         // The password travels base64-encoded, so its quote needs no escaping.
         assert_eq!(sent[1], "AGFkYUBleGFtcGxlLmNvbQBwYSJzcw==");
+    }
+
+    #[tokio::test]
+    async fn signs_in_to_gmail_with_a_token() {
+        let (stream, sent) = server(
+            "* OK [CAPABILITY IMAP4rev1 SASL-IR AUTH=XOAUTH2 AUTH=PLAIN] ready\r\n",
+            vec![("AUTHENTICATE XOAUTH2", "{tag} OK [CAPABILITY IMAP4rev1 MOVE] in\r\n")],
+        );
+        let imap = Imap::open_with(stream, "ada@gmail.com", &Credential::Token("tok".into())).await.unwrap();
+        assert!(imap.has("MOVE"));
+        use base64::Engine;
+        let expected =
+            base64::engine::general_purpose::STANDARD.encode("user=ada@gmail.com\x01auth=Bearer tok\x01\x01");
+        assert_eq!(sent.lock().unwrap()[0], format!("AUTHENTICATE XOAUTH2 {expected}"));
+    }
+
+    #[tokio::test]
+    async fn a_refused_token_is_a_refused_sign_in() {
+        // Gmail answers a bad token with a JSON challenge first; the client sends an empty line, then gets NO.
+        let (stream, _) = server(
+            "* OK [CAPABILITY IMAP4rev1 SASL-IR AUTH=XOAUTH2] ready\r\n",
+            vec![
+                ("AUTHENTICATE XOAUTH2", "+ eyJzdGF0dXMiOiI0MDAifQ==\r\n"),
+                ("", "{tag} NO [AUTHENTICATIONFAILED] Invalid credentials (Failure)\r\n"),
+            ],
+        );
+        let err =
+            Imap::open_with(stream, "ada@gmail.com", &Credential::Token("old".into())).await.err().unwrap();
+        assert!(sign_in_refused(&err), "{err:#}");
     }
 
     #[tokio::test]

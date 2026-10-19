@@ -13,8 +13,9 @@ use tokio::sync::Notify;
 
 use crate::imap::{self, Idled, Imap, TlsImap};
 use crate::models::{Account, AccountConfig, DraftSync, Failure, FolderState, NewMessage, OutboxOp};
+use crate::secrets::{Credential, Login};
 use crate::store::{now, Store};
-use crate::{mime, presets, smtp};
+use crate::{mime, oauth, presets, smtp};
 
 pub type Session = TlsImap;
 
@@ -59,13 +60,33 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
 /// Longest one whole-message fetch may take when its size is not known first (forwarding, opening attachments).
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
-pub async fn connect(config: &AccountConfig, password: &str) -> Result<Session> {
-    imap::connect(&config.imap_host, config.imap_port, config.imap_security, &config.username, password).await
+pub async fn connect(config: &AccountConfig, login: &Login) -> Result<Session> {
+    let credential = login.credential().await?;
+    let signed_in = connect_as(config, &credential).await;
+    match signed_in {
+        // Google can end an access token before its time; one refresh and one more try before calling it refused.
+        Err(e) if imap::sign_in_refused(&e) && matches!(credential, Credential::Token(_)) => {
+            login.token_refused();
+            connect_as(config, &login.credential().await?).await
+        }
+        other => other,
+    }
+}
+
+async fn connect_as(config: &AccountConfig, credential: &Credential) -> Result<Session> {
+    imap::connect_with(
+        &config.imap_host,
+        config.imap_port,
+        config.imap_security,
+        &config.username,
+        credential,
+    )
+    .await
 }
 
 /// Signs in and out, to check settings before an account is saved.
-pub async fn check_login(config: &AccountConfig, password: &str) -> Result<()> {
-    let session = connect(config, password).await?;
+pub async fn check_login(config: &AccountConfig, credential: &Credential) -> Result<()> {
+    let session = connect_as(config, credential).await?;
     session.logout().await?;
     Ok(())
 }
@@ -121,8 +142,8 @@ pub enum SyncState {
     Idle,
     /// The server cannot be reached; trying again with backoff.
     Offline,
-    /// The server refused the password. Not retried until the app starts again or is woken (window focus), so a
-    /// wrong password does not lock the account.
+    /// The server refused the password, or Google no longer accepts the sign-in. Not retried until the app starts
+    /// again or is woken (window focus), so a wrong password does not lock the account.
     AuthFailed,
     /// Sync is paused: signed out, nothing fetched or sent until it resumes. Changes wait in the outbox.
     Paused,
@@ -141,20 +162,14 @@ const SLEPT: Duration = Duration::from_secs(30);
 pub async fn run_account(
     store: Arc<Store>,
     account: Account,
-    password: String,
+    login: Login,
     wake: Arc<Notify>,
     mut paused: tokio::sync::watch::Receiver<bool>,
     on_change: Arc<dyn Fn() + Send + Sync>,
     on_state: Arc<dyn Fn(SyncState) + Send + Sync>,
 ) {
     let mut resumed = watch_clock();
-    tokio::spawn(watch_inbox(
-        account.clone(),
-        password.clone(),
-        wake.clone(),
-        resumed.clone(),
-        paused.clone(),
-    ));
+    tokio::spawn(watch_inbox(account.clone(), login.clone(), wake.clone(), resumed.clone(), paused.clone()));
     let mut session: Option<Session> = None;
     let mut schedule = Schedule::default();
     let mut failures: u32 = 0;
@@ -193,13 +208,13 @@ pub async fn run_account(
                 if !quiet {
                     report(SyncState::Connecting);
                 }
-                session = Some(open(&store, &account, &password, &*on_change).await?);
+                session = Some(open(&store, &account, &login, &*on_change).await?);
                 connected = true;
             }
             report(SyncState::Syncing);
             // The name on sent mail can change in settings while this runs: each pass reads it again.
             let current = store.account(account.id)?.unwrap_or_else(|| account.clone());
-            pass(&store, &current, &password, &mut session, &mut schedule, &*on_change).await
+            pass(&store, &current, &login, &mut session, &mut schedule, &*on_change).await
         }
         .await;
         let wait = match result {
@@ -217,7 +232,7 @@ pub async fn run_account(
                 log::warn!("{}: {e:#}", account.config.email);
                 session = None;
                 failures += 1;
-                if imap::sign_in_refused(&e) {
+                if imap::sign_in_refused(&e) || oauth::is_revoked(&e) {
                     report(SyncState::AuthFailed);
                     AUTH_RETRY
                 } else {
@@ -279,7 +294,7 @@ fn watch_clock() -> tokio::sync::watch::Receiver<u64> {
 /// on the server it stops, and the worker's poll is what finds new mail.
 async fn watch_inbox(
     account: Account,
-    password: String,
+    login: Login,
     wake: Arc<Notify>,
     mut resumed: tokio::sync::watch::Receiver<u64>,
     mut paused: tokio::sync::watch::Receiver<bool>,
@@ -290,12 +305,16 @@ async fn watch_inbox(
         if paused.wait_for(|p| !*p).await.is_err() {
             return;
         }
-        let mut s = match within(connect(&account.config, &password)).await {
+        let mut s = match within(connect(&account.config, &login)).await {
             Ok(s) => s,
             Err(e) => {
                 failures += 1;
                 log::warn!("{email}: inbox watch could not connect: {e:#}");
-                let wait = if imap::sign_in_refused(&e) { AUTH_RETRY } else { backoff(failures) };
+                let wait = if imap::sign_in_refused(&e) || oauth::is_revoked(&e) {
+                    AUTH_RETRY
+                } else {
+                    backoff(failures)
+                };
                 tokio::select! {
                     _ = tokio::time::sleep(wait) => {}
                     _ = resumed.changed() => {}
@@ -357,17 +376,17 @@ fn outbox_due(store: &Store, account_id: i64) -> Result<bool> {
 async fn pass(
     store: &Store,
     account: &Account,
-    password: &str,
+    login: &Login,
     session: &mut Option<Session>,
     schedule: &mut Schedule,
     on_change: &(dyn Fn() + Send + Sync),
 ) -> Result<bool> {
     if session.is_none() {
-        *session = Some(open(store, account, password, on_change).await?);
+        *session = Some(open(store, account, login, on_change).await?);
     }
     let s = session.as_mut().expect("connected above");
 
-    if drain_outbox(s, store, account, password).await? {
+    if drain_outbox(s, store, account, login).await? {
         on_change();
     }
     if sync_drafts(s, store, account).await? {
@@ -397,7 +416,7 @@ async fn pass(
         if !schedule.due(folder_id, &name) {
             continue;
         }
-        if outbox_due(store, account.id)? && drain_outbox(s, store, account, password).await? {
+        if outbox_due(store, account.id)? && drain_outbox(s, store, account, login).await? {
             on_change();
         }
         let (changed, unfinished) =
@@ -429,10 +448,10 @@ async fn pass(
 async fn open(
     store: &Store,
     account: &Account,
-    password: &str,
+    login: &Login,
     on_change: &(dyn Fn() + Send + Sync),
 ) -> Result<Session> {
-    let mut fresh = tokio::time::timeout(COMMAND_TIMEOUT, connect(&account.config, password))
+    let mut fresh = tokio::time::timeout(COMMAND_TIMEOUT, connect(&account.config, login))
         .await
         .with_context(|| format!("No answer from {}", account.config.imap_host))??;
     // Folders then report their changes as part of SELECT (sync_folder).
@@ -788,7 +807,7 @@ async fn drain_outbox<S: Stream>(
     s: &mut Imap<S>,
     store: &Store,
     account: &Account,
-    password: &str,
+    login: &Login,
 ) -> Result<bool> {
     let due = store.claim_due(account.id)?;
     let any = !due.is_empty();
@@ -797,7 +816,7 @@ async fn drain_outbox<S: Stream>(
         if matches!(op, OutboxOp::Send(_)) {
             store.outbox_sending(id)?;
         }
-        let sent = match run_op(s, store, account, password, &op).await {
+        let sent = match run_op(s, store, account, login, &op).await {
             Ok(sent) => sent,
             Err(e) => {
                 let failure = failure(&e);
@@ -956,7 +975,7 @@ async fn run_op<S: Stream>(
     s: &mut Imap<S>,
     store: &Store,
     account: &Account,
-    password: &str,
+    login: &Login,
     op: &OutboxOp,
 ) -> Result<Vec<u8>> {
     match op {
@@ -996,7 +1015,7 @@ async fn run_op<S: Stream>(
                 Some(original) => forwarded_files(s, original).await?,
                 None => Vec::new(),
             };
-            return smtp::send(&account.config, password, draft, &extra).await;
+            return smtp::send(&account.config, &login.credential().await?, draft, &extra).await;
         }
         OutboxOp::Append { folder, message, .. } => {
             // Sent may have changed since the copy was queued (a duplicate removed, a folder renamed).
@@ -1060,10 +1079,10 @@ async fn message_source<S: Stream>(s: &mut Imap<S>, at: &crate::models::ForwardO
 /// worker nor holds it up. The one read the UI starts on the network: the bytes are not kept in the store.
 pub async fn download(
     config: &AccountConfig,
-    password: &str,
+    login: &Login,
     at: &crate::models::ForwardOf,
 ) -> Result<Vec<u8>> {
-    let mut s = within(connect(config, password)).await?;
+    let mut s = within(connect(config, login)).await?;
     let raw = message_source(&mut s, at).await;
     let _ = within(s.logout()).await;
     raw
@@ -1197,6 +1216,7 @@ mod tests {
                 smtp_host: "127.0.0.1".into(),
                 smtp_port: 1,
                 smtp_security: Security::Tls,
+                auth: Default::default(),
             })
             .unwrap();
         let (pause, paused) = tokio::sync::watch::channel(true);
@@ -1205,7 +1225,7 @@ mod tests {
         tokio::spawn(super::run_account(
             store,
             account,
-            String::new(),
+            crate::secrets::Login::Password(String::new()),
             wake.clone(),
             paused,
             Arc::new(|| {}),
@@ -1306,6 +1326,7 @@ mod tests {
                     smtp_host: "smtp.example.com".into(),
                     smtp_port: 465,
                     smtp_security: Security::Tls,
+                    auth: Default::default(),
                 })
                 .unwrap();
             let inbox = store.upsert_folder(account.id, "INBOX", "inbox").unwrap();
@@ -1329,7 +1350,9 @@ mod tests {
         async fn drain(m: &Mailbox, script: Script) -> (anyhow::Result<bool>, Vec<String>) {
             let (stream, sent) = signed_in(SIGNED_IN, script);
             let mut s = Imap::open(stream, "ada", "x").await.unwrap();
-            let result = drain_outbox(&mut s, &m.store, &m.account, "").await;
+            let result =
+                drain_outbox(&mut s, &m.store, &m.account, &crate::secrets::Login::Password(String::new()))
+                    .await;
             let sent = sent.lock().unwrap()[2..].to_vec();
             (result, sent)
         }
@@ -1674,7 +1697,7 @@ mod tests {
     }
 
     /// The dev mail server's test account and its password.
-    fn dev_account() -> (crate::models::AccountConfig, String) {
+    fn dev_account() -> (crate::models::AccountConfig, crate::secrets::Login) {
         use crate::models::{AccountConfig, Security};
         let dir =
             std::path::PathBuf::from(std::env::var_os("HOME").unwrap()).join(".local/share/tern-devmail");
@@ -1689,8 +1712,9 @@ mod tests {
             smtp_host: "localhost".into(),
             smtp_port: 1465,
             smtp_security: Security::Tls,
+            auth: Default::default(),
         };
-        (config, password)
+        (config, crate::secrets::Login::Password(password))
     }
 
     /// A send through the outbox against the dev mail server ends with a copy in Sent Items (Stalwart does not file
@@ -2045,7 +2069,7 @@ mod tests {
             forward_of: None,
             message_id: None,
         };
-        crate::smtp::send(&config, &password, &draft, &[]).await.unwrap();
+        crate::smtp::send(&config, &password.credential().await.unwrap(), &draft, &[]).await.unwrap();
         let mut row = None;
         for _ in 0..20 {
             while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing)

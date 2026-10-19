@@ -4,9 +4,9 @@
 use tauri::{AppHandle, Emitter, Manager, State};
 use tern_core::presets::{self, Preset};
 use tern_core::{
-    logo, mime, secrets, sync, Account, AccountConfig, Action, Applied, Contact, ContactCard, Cursor, Draft,
-    DraftRecord, Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting, OutgoingAttachment, ReplyInit,
-    ReplyKind, SearchResult, ThreadMessage, ThreadRow,
+    logo, mime, secrets, sync, Account, AccountConfig, Action, Applied, Auth, Contact, ContactCard, Cursor,
+    Draft, DraftRecord, Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting, OutgoingAttachment,
+    ReplyInit, ReplyKind, SearchResult, ThreadMessage, ThreadRow,
 };
 
 use std::collections::{HashMap, HashSet};
@@ -52,11 +52,89 @@ pub async fn add_account(
     config: AccountConfig,
     password: String,
 ) -> Reply<Account> {
-    sync::check_login(&config, &password).await.map_err(text)?;
+    sync::check_login(&config, &secrets::Credential::Password(password.clone())).await.map_err(text)?;
     secrets::set_password(&config.email, &password).map_err(text)?;
     let account = state.store.add_account(&config).map_err(text)?;
     start_account(&app, &state, account.clone());
     Ok(account)
+}
+
+/// Whether this build can sign in with Google (it has a Google client; see build.rs).
+#[tauri::command]
+pub fn google_available() -> bool {
+    crate::google().is_some()
+}
+
+/// Signs in with Google in the browser. A new address becomes a new account; an account already here (signed in
+/// with Google before, or with an app password) switches to the new sign-in, and its app password is forgotten.
+/// `hint` is the address expected, when signing an existing account in again.
+#[tauri::command]
+pub async fn google_sign_in(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    hint: Option<String>,
+) -> Reply<Account> {
+    use tauri_plugin_opener::OpenerExt;
+    let google = crate::google().ok_or("This build of Tern has no Google sign-in")?;
+    let open = |url: &str| app.opener().open_url(url, None::<&str>).map_err(anyhow::Error::from);
+    let tokens = tern_core::oauth::sign_in(&google, hint.as_deref(), open, Duration::from_secs(5 * 60))
+        .await
+        .map_err(text)?;
+    let email = tokens.email.clone().ok_or("Google did not say which account signed in")?;
+    if let Some(hint) = hint.filter(|h| !h.eq_ignore_ascii_case(&email)) {
+        return Err(format!("You signed in as {email}, not {hint}. Try again and pick {hint}."));
+    }
+    let existing = state
+        .store
+        .accounts()
+        .map_err(text)?
+        .into_iter()
+        .find(|a| a.config.email.eq_ignore_ascii_case(&email));
+    let preset = presets::for_email(&email).ok_or("Not an email address")?;
+    let config = match &existing {
+        Some(a) => AccountConfig { auth: Auth::Google, ..a.config.clone() },
+        None => AccountConfig {
+            email: email.clone(),
+            display_name: name.trim().to_string(),
+            username: email.clone(),
+            imap_host: preset.imap_host,
+            imap_port: preset.imap_port,
+            imap_security: preset.imap_security,
+            smtp_host: preset.smtp_host,
+            smtp_port: preset.smtp_port,
+            smtp_security: preset.smtp_security,
+            auth: Auth::Google,
+        },
+    };
+    let token = secrets::Credential::Token(tokens.access_token.clone());
+    sync::check_login(&config, &token).await.map_err(|e| {
+        if tern_core::imap::sign_in_refused(&e) {
+            format!("Gmail refused the sign-in. Check that IMAP is on in Gmail's settings. ({e:#})")
+        } else {
+            text(e)
+        }
+    })?;
+    secrets::set_tokens(&config.email, &tokens).map_err(text)?;
+    match existing {
+        Some(account) => {
+            state.store.set_auth(account.id, Auth::Google).map_err(text)?;
+            // Only Tern's copy: the app password itself stays valid until it is removed in the Google account.
+            let _ = secrets::delete_password(&config.email);
+            if state.wakers.lock().unwrap().contains_key(&account.id) {
+                // The worker reads the keychain at each connect, so waking it is enough.
+                state.wake(account.id);
+            } else {
+                start_account(&app, &state, account.clone());
+            }
+            Ok(Account { config, ..account })
+        }
+        None => {
+            let account = state.store.add_account(&config).map_err(text)?;
+            start_account(&app, &state, account.clone());
+            Ok(account)
+        }
+    }
 }
 
 #[tauri::command]
@@ -395,8 +473,7 @@ async fn received_file(
         .into_iter()
         .find(|a| a.id == account_id)
         .ok_or("The account of this message is gone")?;
-    let password = secrets::password(&account.config.email).map_err(text)?;
-    let raw = sync::download(&account.config, &password, &at).await.map_err(text)?;
+    let raw = sync::download(&account.config, &crate::login(&account), &at).await.map_err(text)?;
     let files = mime::attachment_files(&raw);
     for i in 0..listed.len() {
         let Some(found) = mime::pick_attachment(&files, &listed, i) else { continue };
@@ -481,8 +558,7 @@ pub async fn inline_images(
         .into_iter()
         .find(|a| a.id == account_id)
         .ok_or("The account of this message is gone")?;
-    let password = secrets::password(&account.config.email).map_err(text)?;
-    let raw = sync::download(&account.config, &password, &at).await.map_err(text)?;
+    let raw = sync::download(&account.config, &crate::login(&account), &at).await.map_err(text)?;
     let images: HashMap<String, String> = mime::inline_images(&raw, INLINE_LIMIT).into_iter().collect();
     // Cached whole or not at all, as attachments are.
     std::fs::create_dir_all(&cache).map_err(|e| e.to_string())?;

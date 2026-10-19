@@ -28,19 +28,19 @@ in Gmail, labelling in Gmail shows in Tern, a search like `from:alice has:attach
 - [x] `oauth2` crate, authorization code + PKCE (S256). Loopback redirect: bind `127.0.0.1:0` with a tiny
       `tokio` HTTP listener (no framework; read the first line, reply with a "You can close this tab" page,
       shut down). State parameter checked.
-- [ ] Open the system browser with `tauri-plugin-opener`. Time out after 5 minutes.
+- [x] Open the system browser with `tauri-plugin-opener`. Time out after 5 minutes.
 - [x] Tokens (refresh + access + expiry) in the keyring as JSON under `tern-mail/<email>/oauth`. Never in SQLite.
-- [ ] Refresh 5 minutes before expiry, on demand when a server rejects a token, and once at startup. One refresh in flight per account.
-- [ ] `invalid_grant` (user revoked) → account state `auth-failed`, UI banner with "Sign in again".
+- [x] Refresh 5 minutes before expiry, on demand when a server rejects a token, and once at startup. One refresh in flight per account.
+- [x] `invalid_grant` (user revoked) → account state `auth-failed`, UI banner with "Sign in again".
 - [x] Provider table: `google` now; `microsoft` in Sprint 11. Each has `auth_url`, `token_url`, `scopes`, `client_id`, `client_secret?`.
 
 ### XOAUTH2 (IMAP choice only)
-- [ ] SASL initial response `base64("user=" email "\x01auth=Bearer " token "\x01\x01")` for IMAP `AUTHENTICATE XOAUTH2` and SMTP `AUTH XOAUTH2`.
-- [ ] Parse the base64 JSON error challenge on failure (`status 400/401`) and map to refresh-and-retry once, then `auth-failed`.
-- [ ] Account `auth_kind` column: `password | oauth`. `secrets.rs` gets `get_credential(account) -> Password | AccessToken`.
+- [x] SASL initial response `base64("user=" email "\x01auth=Bearer " token "\x01\x01")` for IMAP `AUTHENTICATE XOAUTH2` and SMTP `AUTH XOAUTH2`.
+- [x] Parse the base64 JSON error challenge on failure (`status 400/401`) and map to refresh-and-retry once, then `auth-failed`.
+- [x] Account `auth_kind` column: `password | oauth`. `secrets.rs` gets `get_credential(account) -> Password | AccessToken`.
 
 ### Account setup UI
-- [ ] Email entry → preset lookup → for Gmail/Google Workspace show "Continue with Google"; for others the password form as today.
+- [x] Email entry → preset lookup → for Gmail/Google Workspace show "Continue with Google"; for others the password form as today.
 - [ ] Progress states: waiting for browser → exchanging → checking selected backend → syncing first page → background backfill. Cancel at every step.
 - [ ] Error copy for the usual cases: unverified app warning (link to "Advanced → Go to Tern"), test-user missing, IMAP disabled in Gmail settings.
 
@@ -108,3 +108,13 @@ Workspace MX detection and Gmail deep links. Preserve partial-result/sync-covera
   table (mailbox size, labels, first screen of 100 inbox messages, history.list, quota used, full-backfill
   estimate). Not run yet: it needs `secrets/google-client.json`. Not wired into the app: sign-in UI, refresh
   scheduling, `auth-failed` banner (they follow the decision).
+- 2026-10-19 — Google sign-in for IMAP and SMTP. `secrets::Login` asks the keychain at every connect: Google
+  tokens when the address signed in with Google (refreshed under a per-account lock when under five minutes are
+  left), else the password, so a fresh sign-in reaches a running worker without a restart. `imap::connect_with`
+  sends `AUTHENTICATE XOAUTH2` with SASL-IR; SMTP uses lettre's XOAUTH2. A refused token is refreshed and tried
+  once more before the account shows as refused; `invalid_grant` shows as refused too. Schema 21 adds
+  `accounts.auth` (`password` | `google`). The app's `google_sign_in` adds a new account or switches an existing
+  one (Settings → account → "Switch to Google sign-in" / "Sign in again") and forgets its app password. The Google
+  client is baked in at build time (`src-tauri/build.rs`: `TERN_GOOGLE_CLIENT_ID`/`_SECRET`, else
+  `secrets/google-client.json`); a build without it offers passwords only. Startup does not refresh on its own:
+  the first connect does, which is the same moment.

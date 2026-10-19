@@ -49,16 +49,27 @@ impl AppState {
     }
 }
 
+/// The Google client baked in at build time (see build.rs), or None: then Gmail takes an app password.
+pub fn google() -> Option<tern_core::oauth::Provider> {
+    let id = option_env!("TERN_GOOGLE_CLIENT_ID")?;
+    let secret = option_env!("TERN_GOOGLE_CLIENT_SECRET").filter(|s| !s.is_empty());
+    Some(tern_core::oauth::Provider::google(id, secret, tern_core::oauth::GOOGLE_MAIL_SCOPES))
+}
+
+/// How the account signs in, read from the keychain at each connect.
+pub fn login(account: &Account) -> secrets::Login {
+    secrets::Login::keychain(&account.config.email, google())
+}
+
 /// Starts the account's sync worker, which runs for the life of the app.
 pub fn start_account(app: &AppHandle, state: &AppState, account: Account) {
-    let password = match secrets::password(&account.config.email) {
-        Ok(p) => p,
-        Err(e) => {
-            log::error!("{e:#}");
-            state.states.lock().unwrap().insert(account.id, SyncState::AuthFailed);
-            return;
-        }
-    };
+    let email = &account.config.email;
+    if secrets::password(email).is_err() && secrets::tokens(email).is_err() {
+        log::error!("{email}: no saved password or Google sign-in");
+        state.states.lock().unwrap().insert(account.id, SyncState::AuthFailed);
+        return;
+    }
+    let password = login(&account);
     let wake = Arc::new(Notify::new());
     state.wakers.lock().unwrap().insert(account.id, wake.clone());
     let handle = app.clone();
@@ -168,6 +179,8 @@ fn main() {
             commands::folders,
             commands::preset,
             commands::add_account,
+            commands::google_available,
+            commands::google_sign_in,
             commands::list_messages,
             commands::thread,
             commands::sender_logo,

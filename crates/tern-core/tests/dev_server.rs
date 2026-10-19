@@ -91,6 +91,7 @@ fn account(smtp_port: u16, smtp_security: Security) -> AccountConfig {
         smtp_host: "localhost".into(),
         smtp_port,
         smtp_security,
+        auth: Default::default(),
     }
 }
 
@@ -113,7 +114,9 @@ async fn send_and_find(config: &AccountConfig) {
     let mut s = sign_in().await;
     s.select("INBOX").await.unwrap();
     let before = s.uids().await.unwrap();
-    tern_core::smtp::send(config, &password(), &draft, &[]).await.unwrap();
+    tern_core::smtp::send(config, &tern_core::secrets::Credential::Password(password()), &draft, &[])
+        .await
+        .unwrap();
 
     // Other checks deliver mail at the same time: look at everything that arrived since, not just the newest.
     for _ in 0..20 {
@@ -159,8 +162,15 @@ async fn unknown_recipient_is_a_permanent_failure() {
         forward_of: None,
         message_id: None,
     };
-    let err =
-        tern_core::smtp::send(&account(1465, Security::Tls), &password(), &draft, &[]).await.err().unwrap();
+    let err = tern_core::smtp::send(
+        &account(1465, Security::Tls),
+        &tern_core::secrets::Credential::Password(password()),
+        &draft,
+        &[],
+    )
+    .await
+    .err()
+    .unwrap();
     assert!(tern_core::smtp::is_permanent(&err), "{err:#}");
 }
 
@@ -185,7 +195,14 @@ async fn idle_wakes_on_new_mail() {
             forward_of: None,
             message_id: None,
         };
-        tern_core::smtp::send(&account(1465, Security::Tls), &password(), &draft, &[]).await.unwrap();
+        tern_core::smtp::send(
+            &account(1465, Security::Tls),
+            &tern_core::secrets::Credential::Password(password()),
+            &draft,
+            &[],
+        )
+        .await
+        .unwrap();
     });
     let outcome = s.idle(std::time::Duration::from_secs(10)).await.unwrap();
     deliver.await.unwrap();
