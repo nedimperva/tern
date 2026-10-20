@@ -7,6 +7,12 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-10-20
+
+Gmail labels, drafts that behave, and what beta testers need: About, a log file and a guide. This version
+upgrades the mail database. It saves a copy first, so going back to 0.3.5 keeps your mail
+([docs/beta.md](docs/beta.md)).
+
 ### Added
 
 - Gmail labels: All Mail is now Tern's archive for Gmail, so archived mail shows even without a label; labels are
@@ -164,7 +170,8 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.5...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.6...HEAD
+[0.3.6]: https://github.com/nedimperva/tern/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/nedimperva/tern/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/nedimperva/tern/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/nedimperva/tern/compare/v0.3.2...v0.3.3
