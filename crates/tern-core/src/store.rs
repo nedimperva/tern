@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 22;
+const SCHEMA_VERSION: i64 = 23;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -419,6 +419,8 @@ fn migrate(conn: &Connection) -> Result<()> {
                      WITHOUT ROWID;
                  CREATE INDEX message_labels_message ON message_labels (message_id);"
             }
+            // A signature's HTML can be the person's own, pasted from another mail app (Signature::custom).
+            22 => "ALTER TABLE signatures ADD COLUMN custom INTEGER NOT NULL DEFAULT 0;",
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -1848,7 +1850,8 @@ impl Store {
     pub fn signatures(&self) -> Result<Vec<Signature>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
-            "SELECT id, account_id, name, body, html, for_new, for_reply FROM signatures ORDER BY account_id, id",
+            "SELECT id, account_id, name, body, html, custom, for_new, for_reply FROM signatures
+             ORDER BY account_id, id",
         )?;
         let all = stmt
             .query_map([], |r| {
@@ -1858,8 +1861,9 @@ impl Store {
                     name: r.get(2)?,
                     body: r.get(3)?,
                     html: r.get(4)?,
-                    for_new: r.get(5)?,
-                    for_reply: r.get(6)?,
+                    custom: r.get(5)?,
+                    for_new: r.get(6)?,
+                    for_reply: r.get(7)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -1871,6 +1875,11 @@ impl Store {
     pub fn save_signature(&self, signature: &Signature) -> Result<i64> {
         let conn = self.conn();
         let name = signature.name.trim();
+        // The person's own HTML is cleaned like any mail: it shows in Tern, and it goes to everyone written to.
+        let html = match (&signature.html, signature.custom) {
+            (Some(html), true) => Some(crate::mime::sanitize_html(html)),
+            (html, _) => html.clone(),
+        };
         if signature.id == 0 {
             let first: bool = conn.query_row(
                 "SELECT NOT EXISTS (SELECT 1 FROM signatures WHERE account_id = ?1)",
@@ -1878,15 +1887,15 @@ impl Store {
                 |r| r.get(0),
             )?;
             conn.execute(
-                "INSERT INTO signatures (account_id, name, body, html, for_new, for_reply)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-                params![signature.account_id, name, signature.body, signature.html, first],
+                "INSERT INTO signatures (account_id, name, body, html, custom, for_new, for_reply)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+                params![signature.account_id, name, signature.body, html, signature.custom, first],
             )?;
             Ok(conn.last_insert_rowid())
         } else {
             conn.execute(
-                "UPDATE signatures SET name = ?2, body = ?3, html = ?4 WHERE id = ?1",
-                params![signature.id, name, signature.body, signature.html],
+                "UPDATE signatures SET name = ?2, body = ?3, html = ?4, custom = ?5 WHERE id = ?1",
+                params![signature.id, name, signature.body, html, signature.custom],
             )?;
             Ok(signature.id)
         }
@@ -3174,7 +3183,8 @@ fn mirror_draft(tx: &Connection, account_id: i64, draft: &Draft) -> Result<()> {
         tx.query_row("SELECT email, display_name FROM accounts WHERE id = ?1", [account_id], |r| {
             Ok((r.get(0)?, r.get(1)?))
         })?;
-    let snippet = crate::mime::snippet(&draft.body);
+    let (body, out_html) = draft.outgoing();
+    let snippet = crate::mime::snippet(body);
     let to = draft.to.join(", ");
     let existing: Option<i64> = tx
         .query_row(
@@ -3216,10 +3226,10 @@ fn mirror_draft(tx: &Connection, account_id: i64, draft: &Draft) -> Result<()> {
         }
     };
     // The editor's HTML is Tern's own, but it can hold pasted markup: cleaned like any mail before it is shown.
-    let html = draft.html.as_deref().map(crate::mime::sanitize_html);
+    let html = out_html.map(crate::mime::sanitize_html);
     tx.execute(
         "INSERT OR REPLACE INTO bodies (message_id, text, html) VALUES (?1, ?2, ?3)",
-        params![id, draft.body, html],
+        params![id, body, html],
     )?;
     Ok(())
 }
@@ -3684,6 +3694,44 @@ mod tests {
         assert_eq!(saved.html, rich.html);
         store.delete_signature(full).unwrap();
         assert_eq!(store.signatures().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_pasted_html_signature_is_kept_with_its_layout_and_cleaned() {
+        let (store, account, ..) = setup();
+        let pasted = r#"<table style="color:#1a4d8f"><tr><td><img src="https://example.com/logo.png" width="80"></td>
+            <td><b>Ada Lovelace</b><br>Engines Ltd</td></tr></table><script>alert(1)</script>"#;
+        let id = store
+            .save_signature(&Signature {
+                account_id: account,
+                name: "Work".into(),
+                body: "Ada Lovelace
+Engines Ltd"
+                    .into(),
+                html: Some(pasted.into()),
+                custom: true,
+                ..Default::default()
+            })
+            .unwrap();
+        let saved = store.signatures().unwrap().into_iter().find(|s| s.id == id).unwrap();
+        let html = saved.html.unwrap();
+        assert!(saved.custom);
+        assert!(html.contains("<table") && html.contains("color:#1a4d8f"), "layout and colour stay: {html}");
+        assert!(html.contains("https://example.com/logo.png"), "the logo stays: {html}");
+        assert!(!html.contains("script"), "nothing that runs: {html}");
+    }
+
+    #[test]
+    fn migration_23_keeps_signatures_as_they_were() {
+        let (store, account, ..) = setup();
+        let sig =
+            Signature { account_id: account, name: "Full".into(), body: "Ada".into(), ..Default::default() };
+        let id = store.save_signature(&sig).unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 22);
+        let store = Store::init(conn).unwrap();
+        let kept = store.signatures().unwrap().into_iter().find(|s| s.id == id).unwrap();
+        assert_eq!((kept.body.as_str(), kept.custom), ("Ada", false));
     }
 
     #[test]
@@ -4164,6 +4212,9 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
             attachments: vec![],
             forward_of: None,
             message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         }
     }
 
@@ -4457,6 +4508,9 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
             attachments: vec![],
             forward_of: None,
             message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         }
     }
 
@@ -4537,6 +4591,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                22 => "ALTER TABLE signatures DROP COLUMN custom;",
                 21 => "DROP TABLE message_labels;",
                 20 => "ALTER TABLE accounts DROP COLUMN auth;",
                 // A column with a REFERENCES clause can't be dropped: the table goes back to its step-16 shape.

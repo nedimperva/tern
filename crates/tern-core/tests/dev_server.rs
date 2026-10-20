@@ -110,6 +110,9 @@ async fn send_and_find(config: &AccountConfig) {
         attachments: vec![],
         forward_of: None,
         message_id: None,
+        html_signature: None,
+        out_body: None,
+        out_html: None,
     };
     let mut s = sign_in().await;
     s.select("INBOX").await.unwrap();
@@ -161,6 +164,9 @@ async fn unknown_recipient_is_a_permanent_failure() {
         attachments: vec![],
         forward_of: None,
         message_id: None,
+        html_signature: None,
+        out_body: None,
+        out_html: None,
     };
     let err = tern_core::smtp::send(
         &account(1465, Security::Tls),
@@ -194,6 +200,9 @@ async fn idle_wakes_on_new_mail() {
             attachments: vec![],
             forward_of: None,
             message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         };
         tern_core::smtp::send(
             &account(1465, Security::Tls),

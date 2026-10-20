@@ -283,6 +283,25 @@ pub struct Draft {
     /// recipient (and to Tern, matching the copy in Sent).
     #[serde(default)]
     pub message_id: Option<String>,
+    /// The HTML signature (`Signature::custom`) compose shows under the text, so a reopened draft shows it again.
+    #[serde(default)]
+    pub html_signature: Option<i64>,
+    /// With such a signature, what goes out: the text and HTML with the signature in its place. `body` and `html`
+    /// stay what the editor holds.
+    #[serde(default)]
+    pub out_body: Option<String>,
+    #[serde(default)]
+    pub out_html: Option<String>,
+}
+
+impl Draft {
+    /// The text and HTML that go out.
+    pub fn outgoing(&self) -> (&str, Option<&str>) {
+        match (&self.out_body, &self.out_html) {
+            (Some(body), Some(html)) => (body, Some(html)),
+            _ => (&self.body, self.html.as_deref()),
+        }
+    }
 }
 
 /// Someone to suggest as a recipient.
@@ -380,6 +399,8 @@ pub struct ReplyInit {
 /// renumbered the folder since, the messages are found again by Message-ID. `waiting` are messages whose uid in
 /// `folder` was not known yet because an earlier move there had not finished: that move fills them in when the
 /// server says where the messages went (COPYUID), or they are found by Message-ID when this work runs.
+// A few at a time, read from SQLite and gone once done: a Send's size is no cost worth boxing it for.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum OutboxOp {
@@ -574,6 +595,10 @@ pub struct Signature {
     pub body: String,
     #[serde(default)]
     pub html: Option<String>,
+    /// `html` is the person's own (pasted from another mail app, with pictures and layout the compose editor can't
+    /// hold): it goes out as it is, beside the text rather than in it.
+    #[serde(default)]
+    pub custom: bool,
     #[serde(default)]
     pub for_new: bool,
     #[serde(default)]

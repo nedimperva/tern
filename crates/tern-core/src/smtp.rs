@@ -133,19 +133,20 @@ fn build_as(config: &AccountConfig, draft: &Draft, extra: &[FileBytes], for_draf
         builder = builder.references(chain.join(" "));
     }
     // Rich text goes as text/plain and text/html alternatives: every client reads one of them.
-    let text = || match &draft.html {
-        Some(html) => MultiPart::alternative_plain_html(draft.body.clone(), html.clone()),
-        None => MultiPart::mixed().singlepart(SinglePart::plain(draft.body.clone())),
+    let (body, html) = draft.outgoing();
+    let text = || match html {
+        Some(html) => MultiPart::alternative_plain_html(body.to_string(), html.to_string()),
+        None => MultiPart::mixed().singlepart(SinglePart::plain(body.to_string())),
     };
     if draft.attachments.is_empty() && extra.is_empty() {
-        return Ok(match &draft.html {
+        return Ok(match html {
             Some(_) => builder.multipart(text())?,
-            None => builder.header(ContentType::TEXT_PLAIN).body(draft.body.clone())?,
+            None => builder.header(ContentType::TEXT_PLAIN).body(body.to_string())?,
         });
     }
-    let mut parts = match &draft.html {
+    let mut parts = match html {
         Some(_) => MultiPart::mixed().multipart(text()),
-        None => MultiPart::mixed().singlepart(SinglePart::plain(draft.body.clone())),
+        None => MultiPart::mixed().singlepart(SinglePart::plain(body.to_string())),
     };
     for file in &draft.attachments {
         let bytes = std::fs::read(&file.path)
@@ -350,6 +351,9 @@ mod tests {
             attachments: vec![],
             forward_of: None,
             message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         };
         let raw = String::from_utf8(build(&config, &draft, &[]).unwrap().formatted()).unwrap();
         let line = raw.lines().find(|l| l.starts_with("Message-ID: <")).expect("a Message-ID");
@@ -359,6 +363,41 @@ mod tests {
         let fixed = Draft { message_id: Some("<kept@example.com>".into()), ..draft };
         let raw = String::from_utf8(build(&config, &fixed, &[]).unwrap().formatted()).unwrap();
         assert!(raw.contains("Message-ID: <kept@example.com>"), "a queued send keeps its id");
+    }
+
+    #[test]
+    fn an_html_signature_goes_out_in_its_place() {
+        let config = AccountConfig {
+            email: "ada@example.com".into(),
+            display_name: String::new(),
+            username: String::new(),
+            imap_host: String::new(),
+            imap_port: 993,
+            imap_security: Security::Tls,
+            smtp_host: String::new(),
+            smtp_port: 465,
+            smtp_security: Security::Tls,
+            auth: Default::default(),
+        };
+        let draft = Draft {
+            to: vec!["b@example.com".into()],
+            subject: "x".into(),
+            body: "Hello".into(),
+            html: None,
+            html_signature: Some(3),
+            out_body: Some(
+                "Hello
+
+-- 
+Ada"
+                .into(),
+            ),
+            out_html: Some("<p>Hello</p><table><tr><td>Ada</td></tr></table>".into()),
+            ..Default::default()
+        };
+        let raw = String::from_utf8(build(&config, &draft, &[]).unwrap().formatted()).unwrap();
+        assert!(raw.contains("text/html") && raw.contains("<table>"), "{raw}");
+        assert!(raw.contains("-- "), "the text part has it too: {raw}");
     }
 
     #[test]
@@ -387,6 +426,9 @@ mod tests {
             attachments: vec![],
             forward_of: None,
             message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         };
         let message = build(&config, &draft, &[]).unwrap();
         let raw = String::from_utf8(message.formatted()).unwrap();
@@ -423,6 +465,9 @@ mod tests {
             attachments: vec![],
             forward_of: None,
             message_id: Some("<1@example.com>".into()),
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         };
         let raw = String::from_utf8(draft_bytes(&config, &draft).unwrap()).unwrap();
         assert!(raw.contains("Cc: b@example.com"), "{raw}");
@@ -467,6 +512,9 @@ mod tests {
             }],
             forward_of: None,
             message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         };
         let extra = vec![("notes.txt".to_string(), "text/plain".to_string(), b"forwarded along".to_vec())];
         let raw = build(&config, &draft, &extra).unwrap().formatted();
@@ -506,6 +554,9 @@ mod tests {
             attachments: vec![],
             forward_of: None,
             message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         };
         let raw = build(&config, &draft, &[]).unwrap().formatted();
         let text = String::from_utf8_lossy(&raw);
@@ -576,6 +627,9 @@ mod tests {
             attachments: vec![],
             forward_of: None,
             message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         };
         let e = send(&config, &Credential::Password("pw".into()), &draft, &[]).await.unwrap_err();
         assert!(!is_permanent(&e) && !maybe_sent(&e), "{e:#}");

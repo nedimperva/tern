@@ -124,3 +124,9 @@ Google Contacts via CardDAV (keep Fastmail), attachments browser, drag out.
 - 2026-10-19 — Settings redesign (snippets and signatures; see Decisions here and in package 03). Schema v20 with
   `store` tests for the migration, signature defaults and the new snippet fields. Checked with `tsc` and
   `vite build`; see the PR for how it was tried.
+
+- 2026-10-20 — HTML signatures (owner's request: the same signature as on the work and Gmail accounts). Schema v23
+  (`signatures.custom`); the HTML is cleaned with `sanitize_html` on save; the draft carries what goes out
+  (`out_body`, `out_html`, with the signature where one goes) beside what the editor holds, so sends, the server's
+  draft copy and the Drafts list all have it. Engine tests for cleaning, the migration and sending; the settings
+  editor, compose block, Ctrl+Shift+S switching and the outgoing HTML checked in the browser with sample data.

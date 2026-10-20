@@ -689,6 +689,7 @@ export default function App() {
       draftId: record.id,
       attachments: d.attachments ?? [],
       forwardOf: d.forwardOf ?? null,
+      htmlSignature: d.htmlSignature ?? null,
       focus: d.to.length ? "body" : "to",
       inline,
     });

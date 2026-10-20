@@ -7,6 +7,16 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- HTML signatures: copy your signature from Gmail's or Outlook's settings and paste it in Settings → Signatures,
+  logo, colours and layout included. It shows under the message in compose and goes out exactly as it is.
+
+### Fixed
+
+- The "New messages" and "Replies and forwards" choices in Settings → Signatures no longer show the wrong signature
+  after an edit.
+
 ## [0.3.7] - 2026-10-20
 
 Two fixes from using 0.3.6.

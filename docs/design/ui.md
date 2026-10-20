@@ -225,7 +225,10 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   use" in `--ok`, "Taken by …" in `--danger`), the places as `--accent-soft` chips that insert at the cursor,
   "Available in" (an account) and "Also fill in" (subject, Cc), and a preview written to a made-up person.
   Signatures: a tab per account, the signature in compose's editor (select text to format it), which one goes on
-  new mail and which on replies, and above or below the quote as a segmented control.
+  new mail and which on replies, and above or below the quote as a segmented control. "Made: Here / In another mail
+  app (HTML)" switches the editor for a paste box (a dashed `--line` border; Ctrl+V keeps the copied formatting),
+  the HTML source in `--mono`, a `--warn-fg` note when a picture has no web address, and the preview shows it in a
+  white frame. In compose an HTML signature sits under the text in the same white frame, not in the editor.
 
 ### 4.9 Account setup
 

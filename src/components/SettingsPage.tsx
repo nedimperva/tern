@@ -4,6 +4,7 @@ import {
   createResource,
   createSignal,
   For,
+  Index,
   lazy,
   on,
   onCleanup,
@@ -18,6 +19,8 @@ import { colourOf } from "../colours";
 import { setSetting, settings, type Settings } from "../settings";
 import { fillSnippet, PLACES } from "../snippets";
 import { Icon } from "./Icon";
+import { HtmlFrame } from "./HtmlFrame";
+import { htmlText, localPictures, pastedHtml } from "../htmlSignature";
 // The signature editor is compose's, a chunk of its own.
 const Editor = lazy(() => import("./Editor").then((m) => ({ default: m.Editor })));
 
@@ -779,6 +782,8 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
     if (!ids.includes(picked() ?? -1)) (setPicked(ids[0] ?? null), setVersion(version() + 1));
   });
   const pick = (id: number) => (setPicked(id), setVersion(version() + 1));
+  // An HTML signature's text part is read from it.
+  const setHtml = (html: string) => edit({ html, body: htmlText(html) });
   const change = (id: number, patch: Partial<Signature>) => setList(list().map((s) => (s.id === id ? { ...s, ...patch } : s)));
   let timer: number | undefined;
   let pending: number | null = null;
@@ -901,6 +906,65 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
                   <span class="title">Name</span>
                   <input value={s().name} onInput={(e) => edit({ name: e.currentTarget.value })} />
                 </label>
+                <fieldset class="field">
+                  <legend class="title">Made</legend>
+                  <span class="segmented">
+                    <label classList={{ on: !s().custom }}>
+                      <input
+                        type="radio"
+                        name="signature-kind"
+                        checked={!s().custom}
+                        onChange={() => (edit({ custom: false, html: null }), setVersion(version() + 1))}
+                      />
+                      Here
+                    </label>
+                    <label classList={{ on: !!s().custom }}>
+                      <input type="radio" name="signature-kind" checked={!!s().custom} onChange={() => edit({ custom: true })} />
+                      In another mail app (HTML)
+                    </label>
+                  </span>
+                  <span class="help">
+                    For one with a logo, colours or a layout of its own: copy it from Gmail's or Outlook's settings and
+                    paste it here. It goes out exactly as it is.
+                  </span>
+                </fieldset>
+                <Show when={s().custom}>
+                  <div class="field">
+                    <span class="title">Paste it</span>
+                    <div
+                      class="paste-box"
+                      contentEditable
+                      role="textbox"
+                      aria-label="Paste the signature here"
+                      onBeforeInput={(e) => e.preventDefault()}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        if (e.clipboardData) setHtml(pastedHtml(e.clipboardData));
+                      }}
+                    >
+                      Click here and press Ctrl+V
+                    </div>
+                  </div>
+                  <label class="field">
+                    <span class="title">HTML</span>
+                    <textarea
+                      class="html-source"
+                      rows={8}
+                      spellcheck={false}
+                      value={s().html ?? ""}
+                      onInput={(e) => setHtml(e.currentTarget.value)}
+                    />
+                    <Show when={localPictures(s().html ?? "")}>
+                      {(n) => (
+                        <span class="help warn">
+                          {n() === 1 ? "A picture is" : `${n()} pictures are`} only on this computer, so the people you write
+                          to won't see {n() === 1 ? "it" : "them"}. Use pictures with a web address (https://…).
+                        </span>
+                      )}
+                    </Show>
+                  </label>
+                </Show>
+                <Show when={!s().custom}>
                 <div class="field">
                   <span class="field-head">
                     <span class="title">Text</span>
@@ -926,6 +990,7 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
                     </Suspense>
                   </div>
                 </div>
+                </Show>
               </Group>
 
               <Group title="When it's used">
@@ -933,14 +998,14 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
                 <label class="field">
                   <span class="title">New messages</span>
                   <select value={String(forNew() ?? "")} onChange={(e) => void setDefault(false, e.currentTarget.value)}>
-                    <For each={mine()}>{(x) => <option value={String(x.id)}>{x.name || "Untitled"}</option>}</For>
+                    <Index each={mine()}>{(x) => <option value={String(x().id)}>{x().name || "Untitled"}</option>}</Index>
                     <option value="">None</option>
                   </select>
                 </label>
                 <label class="field">
                   <span class="title">Replies and forwards</span>
                   <select value={String(forReply() ?? "")} onChange={(e) => void setDefault(true, e.currentTarget.value)}>
-                    <For each={mine()}>{(x) => <option value={String(x.id)}>{x.name || "Untitled"}</option>}</For>
+                    <Index each={mine()}>{(x) => <option value={String(x().id)}>{x().name || "Untitled"}</option>}</Index>
                     <option value="">None</option>
                   </select>
                 </label>
@@ -988,7 +1053,12 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
                   <Show when={settings.signatureBelow}>
                     <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
                   </Show>
-                  <p class="preview-text preview-signature">{`-- \n${s().body.trim() || "(empty)"}`}</p>
+                  <Show
+                    when={s().custom && s().html}
+                    fallback={<p class="preview-text preview-signature">{`-- \n${s().body.trim() || "(empty)"}`}</p>}
+                  >
+                    {(html) => <HtmlFrame html={html()} title="The signature as it goes out" />}
+                  </Show>
                   <Show when={!settings.signatureBelow}>
                     <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
                   </Show>

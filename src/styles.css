@@ -2587,6 +2587,43 @@ button.pill[aria-pressed="true"] {
 .detail .textbox:focus-within {
   border-color: var(--accent);
 }
+
+/* An HTML signature (pasted from another mail app): where it is pasted, its source, and how it looks. */
+.detail .paste-box {
+  padding: var(--s-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-2);
+  cursor: text;
+}
+.detail .paste-box:focus {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--fg-1);
+}
+.detail .html-source {
+  width: 100%;
+  resize: vertical;
+  font: var(--t-xs) / 1.5 var(--mono);
+}
+.help.warn {
+  color: var(--warn-fg);
+}
+.html-frame {
+  display: block;
+  width: 100%;
+  height: 0;
+  border: 0;
+  background: #fff;
+}
+.compose .html-signature {
+  margin: 0 var(--s-4) var(--s-3);
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
 .detail .places {
   display: flex;
   flex-wrap: wrap;
