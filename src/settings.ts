@@ -39,6 +39,10 @@ export type Settings = {
   attachmentCheck: boolean;
   /** The person's own words for that, besides the built-in ones (src/attachmentWords.ts). */
   attachmentWords: string[];
+  /** Inbox Zero's scene: a different one each day, always the same one, or only the time (src/zero.ts). */
+  zeroScene: string;
+  /** Per local day ("2026-10-20"): conversations cleared from the inbox in Tern, and whether it reached zero. */
+  zeroLog: Record<string, { cleared: number; zero: boolean }>;
 };
 
 export const DEFAULTS: Settings = {
@@ -60,6 +64,8 @@ export const DEFAULTS: Settings = {
   senderLogos: false,
   attachmentCheck: true,
   attachmentWords: [],
+  zeroScene: "rotate",
+  zeroLog: {},
 };
 
 export const ROW_HEIGHTS: Record<Settings["density"], number> = { dense: 36, comfortable: 44, spacious: 52 };
