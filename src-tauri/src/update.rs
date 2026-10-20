@@ -22,7 +22,9 @@ pub struct Updates(Mutex<Option<(Update, Vec<u8>)>>);
 
 /// Whether this copy of Tern installs its own updates.
 fn self_updating() -> bool {
-    if cfg!(debug_assertions) {
+    // A build handed out by hand (`TERN_NO_UPDATES=1 npm run tauri build`, say with its own Google client) stays as
+    // it is: the releases would replace it with a build that lacks what it was made with.
+    if cfg!(debug_assertions) || option_env!("TERN_NO_UPDATES").is_some() {
         return false;
     }
     // The AppImage runtime sets APPIMAGE to the file it started from; the updater replaces that file.
