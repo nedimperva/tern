@@ -114,12 +114,22 @@ export function CommandBar(props: { commands: Command[]; onClose: () => void; /*
     c.run?.();
   };
 
+  let rowsEl!: HTMLUListElement;
+  /** The highlighted row in sight after an arrow key, its group's heading too when it is the group's first. */
+  const reveal = () =>
+    queueMicrotask(() => {
+      const row = rowsEl.querySelector<HTMLElement>("li.active");
+      const head = row?.previousElementSibling;
+      if (head?.classList.contains("group")) head.scrollIntoView({ block: "nearest" });
+      row?.scrollIntoView({ block: "nearest" });
+    });
+
   const onKeyDown = (e: KeyboardEvent) => {
     // Esc steps back out of a command's choices before it closes the palette.
     if (e.key === "Escape") parent() && !props.start ? batch(() => (setParent(null), setQuery(""), setIndex(0))) : props.onClose();
     else if (e.key === "Tab" && matches()[index()]?.c.args) enter(matches()[index()].c);
-    else if (e.key === "ArrowDown" || (e.key === "n" && e.ctrlKey)) setIndex(Math.min(index() + 1, matches().length - 1));
-    else if (e.key === "ArrowUp" || (e.key === "p" && e.ctrlKey)) setIndex(Math.max(index() - 1, 0));
+    else if (e.key === "ArrowDown" || (e.key === "n" && e.ctrlKey)) (setIndex(Math.min(index() + 1, matches().length - 1)), reveal());
+    else if (e.key === "ArrowUp" || (e.key === "p" && e.ctrlKey)) (setIndex(Math.max(index() - 1, 0)), reveal());
     else if (e.key === "Enter") run(matches()[index()]?.c);
     else return;
     e.preventDefault();
@@ -141,7 +151,7 @@ export function CommandBar(props: { commands: Command[]; onClose: () => void; /*
             onKeyDown={onKeyDown}
           />
         </div>
-        <ul>
+        <ul ref={rowsEl}>
           <For each={matches()} fallback={<li class="none">No command matches</li>}>
             {(m, i) => (
               <>

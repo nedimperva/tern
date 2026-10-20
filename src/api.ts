@@ -352,6 +352,8 @@ export interface Api {
   about(): Promise<About>;
   /** Opens the folder with the log file. */
   openLogs(): Promise<void>;
+  /** The window's own frame (the title bar on Windows) in Tern's theme; null follows the system. */
+  setWindowTheme(theme: "light" | "dark" | null): void;
 }
 
 // Everything that must be saved before the window goes (an open compose), and whether closing only hides it. One
@@ -501,6 +503,8 @@ const tauri: Api = {
   openUrl: (url) => void import("@tauri-apps/plugin-opener").then((m) => m.openUrl(url)),
   about: () => invoke("about"),
   openLogs: () => invoke("open_logs"),
+  setWindowTheme: (theme) =>
+    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => getCurrentWindow().setTheme(theme).catch(() => {})),
 };
 
 // MARK: A fake mailbox for the browser
@@ -1010,6 +1014,7 @@ function fake(): Api {
       details: "Tern 0.3.6 (release build, AppImage)\nSystem: linux x86_64, Arch Linux, Hyprland, Wayland\nAccount 1: Gmail, password sign-in, up to date\nMail here: 5000 messages, 5000 with their text",
     }),
     openLogs: async () => {},
+    setWindowTheme: () => {},
   };
 }
 

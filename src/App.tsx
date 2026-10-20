@@ -774,7 +774,9 @@ export default function App() {
 
   /** A clicked notification: the inbox, with that conversation open. False when it is no longer there. */
   async function openMail(m: NewMail) {
-    batch(() => (close(), setQuery(""), setTarget(home())));
+    // Whatever was over the list goes, or the conversation opens out of sight behind it.
+    if (settingsOpen() != null) (setSettingsOpen(null), loadSignatures());
+    batch(() => (close(), setQuery(""), setTarget(home()), setPalette(false), setReviewing(false), setSheet(false)));
     await load();
     const i = rows().findIndex((r) => r.accountId === m.accountId && r.threadId === m.threadId);
     if (i < 0) return false;
