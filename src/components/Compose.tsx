@@ -330,7 +330,8 @@ export function Compose(props: {
     else if (ctrl && e.key === "Enter") send(e.shiftKey);
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "l") setPicking("later");
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "h") setPicking("followUp");
-    else if (ctrl && e.shiftKey && (e.key === "," || e.key === "<")) discard();
+    // By the key, not the character: Shift+, types "<" on US keyboards and ";" on Bosnian ones.
+    else if (ctrl && e.shiftKey && e.code === "Comma") discard();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "a") void pick();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "s") cycleSignature();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "c") {
