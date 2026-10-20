@@ -42,6 +42,8 @@ import { timeKey, timeQuery } from "./perf";
 import { loadSettings, ROW_HEIGHTS, setSetting, settings } from "./settings";
 import { Icon } from "./components/Icon";
 import { VirtualList } from "./components/VirtualList";
+import { InboxZero } from "./components/InboxZero";
+import { countCleared, markZero } from "./zero";
 import { keyHandler, keyLabel, type Binding, type Context } from "./keys";
 // Settings open seldom: their page is a chunk of its own.
 const SettingsPage = lazy(() => import("./components/SettingsPage").then((m) => ({ default: m.SettingsPage })));
@@ -476,7 +478,12 @@ export default function App() {
             void load();
           }
         : undefined;
-      if (announce) showToast(hit.length === 1 ? done : `${done} (${hit.length} conversations)`, token, undefined, undoDrafts);
+      // What leaves the inbox counts for Inbox Zero's Flock and Your migration; an undo takes it off again.
+      const role = "role" in target() ? (target() as { role: string }).role : "";
+      const cleared = !searching() && moves(action) && action !== "inbox" && ["inbox", "important", "bulk"].includes(role) ? hit.length : 0;
+      countCleared(cleared);
+      const uncount = cleared ? () => countCleared(-cleared) : undefined;
+      if (announce) showToast(hit.length === 1 ? done : `${done} (${hit.length} conversations)`, token, uncount, undoDrafts);
       return token;
     } catch (e) {
       showToast(String(e), []);
@@ -1063,13 +1070,11 @@ export default function App() {
     const role = "role" in t ? t.role : "";
     return role === "important" ? splitUnread()[0] : role === "bulk" ? splitUnread()[1] : role === "inbox" ? inboxUnread() : 0;
   };
-  /** Inbox Zero's colour changes with the day, so it stays a small reward. */
-  const zeroHue = () => {
-    const now = new Date();
-    const day = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86_400_000);
-    return (day * 47) % 360;
-  };
-  const inboxZero = () => ready() && !searching() && rows().length === 0 && "role" in target() && (target() as { role: string }).role === "inbox";
+  /** The inbox empty, or its Important split (what Tern opens on); Other has its own tab count. */
+  const inboxZero = () =>
+    ready() && !searching() && rows().length === 0 && "role" in target() && ["inbox", "important"].includes((target() as { role: string }).role);
+  // Today counts towards the streak once the inbox is empty.
+  createEffect(() => inboxZero() && markZero());
 
   /** One sentence for every account together, naming the account when only some are in trouble. */
   const syncSentence = () => {
@@ -1158,10 +1163,7 @@ export default function App() {
                 </Show>
               }
             >
-              <div class="zero" style={{ "--zero-hue": String(zeroHue()) }}>
-                <div class="zero-time">{new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</div>
-                <div>You're done.</div>
-              </div>
+              <InboxZero accounts={accounts()} />
             </Show>
           }
         >

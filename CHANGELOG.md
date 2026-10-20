@@ -9,6 +9,10 @@ every release needs one here before it is tagged.
 
 ### Added
 
+- Inbox Zero has a tern scene a day: the tern's migration from pole to pole, a flock with a bird for each
+  conversation you cleared today, two summers, to the Moon and back, your streak this week, the horizon by day and
+  by night, the colony (a tern per account), your migration this year, the dive and the seasons on the coast; after
+  10 pm a sleeping colony says "Go to sleep". Settings → Appearance keeps the rotation or picks one.
 - Windows: clicking a notification opens that conversation, and a notification for one conversation has Archive
   and Reply, as on Linux.
 - HTML signatures: copy your signature from Gmail's or Outlook's settings and paste it in Settings → Signatures,

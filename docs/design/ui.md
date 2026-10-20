@@ -209,7 +209,20 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 
 ### 4.7 Empty state
 
-- Full-bleed background image (`src/assets/zero/*.jpg`, 4 curated, cycles daily; a setting to pick or disable), a soft bottom gradient, the time in `--t-xl` and one line ("You're done. Next: Standup at 15:00" when calendar is on). No buttons. `C` still composes.
+- Built (2026-10-20): a tern scene a day, drawn in SVG from the app icon's facets (no photos, nothing to licence),
+  over the inbox when it is empty (or its Important split). Ten rotate by the day, never one two days running: Pole to
+  pole (the migration route, the bird where the day of the year puts it), Flock (one tern per conversation cleared
+  today), Two summers, To the Moon and back, Streak (this week, a tern on each Inbox Zero day), Horizon (sun by day,
+  moon and stars after 19:00), Colony (a nesting tern per account, in its colour), Your migration (conversations
+  cleared this year), The dive (the only animation; still with reduced motion) and Seasons (the coast by month).
+  From 22:00 to 05:00 Night shift: a sleeping colony, "Go to sleep." The facts in the lines are the Arctic tern's
+  commonly given figures (about 70,000 km a year, 2.4 million km a life, the most daylight of any animal).
+- Layout: "side" scenes put the words left (kicker in `--z-kicker`, the time or a count at 56 px, one line) and the
+  picture right; "center" ones put the words at the bottom over a full picture. Under 760 px wide the picture steps
+  back to 35 % behind centred words. Colours are `--z-*` and `--t1…8` tokens on `.zero`, light and dark.
+- Settings → Appearance → Inbox Zero: a different tern each day (default) or one scene. The counts
+  are kept with the settings (`zeroLog`), on this computer: what is cleared in another app isn't in them. No buttons.
+  `C` still composes.
 
 ### 4.8 Settings (`Ctrl+,`)
 

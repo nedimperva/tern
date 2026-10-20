@@ -19,6 +19,7 @@ import { colourOf } from "../colours";
 import { setSetting, settings, type Settings } from "../settings";
 import { fillSnippet, PLACES } from "../snippets";
 import { Icon } from "./Icon";
+import { NIGHT_SHIFT, SCENES } from "../zero";
 import { HtmlFrame } from "./HtmlFrame";
 import { htmlText, localPictures, pastedHtml } from "../htmlSignature";
 // The signature editor is compose's, a chunk of its own.
@@ -106,6 +107,15 @@ function AppearanceSettings() {
           { label: "Dense", value: "dense" },
           { label: "Comfortable", value: "comfortable" },
           { label: "Spacious", value: "spacious" },
+        ]}
+      />
+      <Select
+        name="zeroScene"
+        title="Inbox Zero"
+        help="What an empty inbox shows. Flock, Streak and Your migration count what you clear in Tern on this computer."
+        choices={[
+          { label: "A different tern each day", value: "rotate" },
+          ...[...SCENES, NIGHT_SHIFT].map((s) => ({ label: s.name, value: s.id as string })),
         ]}
       />
     </>
@@ -1225,7 +1235,13 @@ export function SettingsPage(props: {
 }) {
   const [signatureAccount, setSignatureAccount] = createSignal<number | null>(null);
   const sections = (): Section[] => [
-    { id: "Appearance", name: "Appearance", group: "General", words: "theme dark light density rows", body: () => <AppearanceSettings /> },
+    {
+      id: "Appearance",
+      name: "Appearance",
+      group: "General",
+      words: "theme dark light density rows inbox zero empty tern scene",
+      body: () => <AppearanceSettings />,
+    },
     {
       id: "Reading",
       name: "Reading",
