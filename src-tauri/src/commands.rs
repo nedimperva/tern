@@ -323,7 +323,11 @@ pub async fn save_draft(
 
 #[tauri::command]
 pub async fn draft_for_message(state: State<'_, AppState>, id: i64) -> Reply<Option<DraftRecord>> {
-    state.store.draft_for_message(id).map_err(text)
+    match state.store.draft_for_message(id).map_err(text)? {
+        Some(record) => Ok(Some(record)),
+        // A draft another app saved opens in compose as well.
+        None => state.store.adopt_draft(id).map_err(text),
+    }
 }
 
 #[tauri::command]

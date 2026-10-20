@@ -938,6 +938,14 @@ async fn drain_outbox<S: Stream>(
     Ok(any)
 }
 
+/// Gmail's Trash, where a draft copy goes to be deleted for good; None for other servers.
+fn gmail_trash(store: &Store, account_id: i64) -> Result<Option<String>> {
+    if !store.is_gmail(account_id)? {
+        return Ok(None);
+    }
+    Ok(store.folders()?.into_iter().find(|f| f.account_id == account_id && f.role == "trash").map(|f| f.name))
+}
+
 /// The account's Sent folders as the store has them; after `discover_folders` there is at most one.
 fn sent_folders(store: &Store, account_id: i64) -> Result<Vec<crate::models::Folder>> {
     Ok(store.folders()?.into_iter().filter(|f| f.account_id == account_id && f.role == "sent").collect())
@@ -950,15 +958,17 @@ fn sent_folders(store: &Store, account_id: i64) -> Result<Vec<crate::models::Fol
 async fn sync_drafts<S: Stream>(s: &mut Imap<S>, store: &Store, account: &Account) -> Result<bool> {
     let due = store.drafts_due(account.id)?;
     let any = !due.is_empty();
+    let trash = if any { gmail_trash(store, account.id)? } else { None };
+    let trash = trash.as_deref();
     for job in due {
         let result = match job {
             DraftSync::Upload { id, draft, version, folder, previous } => {
-                upload_draft(s, store, account, id, &draft, version, &folder, previous).await
+                upload_draft(s, store, account, id, &draft, version, &folder, previous, trash).await
             }
             DraftSync::Remove { id, folder, copy } => {
                 async {
                     if let (Some(folder), Some(copy)) = (folder, copy) {
-                        delete_copy(s, &folder, copy).await?;
+                        delete_copy(s, &folder, copy, trash).await?;
                     }
                     store.draft_removed(id)
                 }
@@ -985,6 +995,7 @@ async fn upload_draft<S: Stream>(
     version: i64,
     folder: &str,
     previous: Option<(u32, u32)>,
+    trash: Option<&str>,
 ) -> Result<()> {
     let raw = smtp::draft_bytes(&account.config, draft)?;
     let mut copy = within_for(upload_limit(raw.len()), s.append(folder, &raw, true)).await?;
@@ -1011,20 +1022,36 @@ async fn upload_draft<S: Stream>(
     }
     if let Some(old) = previous {
         if Some(old) != copy {
-            delete_copy(s, folder, old).await?;
+            delete_copy(s, folder, old, trash).await?;
         }
     }
     store.draft_uploaded(id, folder, version, copy)
 }
 
 /// Deletes one copy (validity, uid) from `folder`, unless the folder was renumbered since: then the uid may be
-/// another message, and the stale copy is left for the person rather than risk that.
-async fn delete_copy<S: Stream>(s: &mut Imap<S>, folder: &str, (validity, uid): (u32, u32)) -> Result<()> {
+/// another message, and the stale copy is left for the person rather than risk that. On Gmail, deleting from Drafts
+/// only takes the label off and the copy stays in All Mail as mail; it is moved to `trash` and deleted there.
+async fn delete_copy<S: Stream>(
+    s: &mut Imap<S>,
+    folder: &str,
+    (validity, uid): (u32, u32),
+    trash: Option<&str>,
+) -> Result<()> {
     let selected = within(s.select(folder)).await?;
-    if selected.uid_validity == Some(validity) {
-        within(s.delete(&uid.to_string())).await?;
-    } else {
+    if selected.uid_validity != Some(validity) {
         log::warn!("{folder} was renumbered; an old draft copy may be left there");
+        return Ok(());
+    }
+    match trash {
+        Some(trash) => {
+            // Without COPYUID the copy waits in Trash, which Gmail empties after 30 days.
+            let moved = within(s.move_to(&uid.to_string(), trash)).await?;
+            if let Some((_, there)) = moved.first() {
+                within(s.select(trash)).await?;
+                within(s.delete(&there.to_string())).await?;
+            }
+        }
+        None => within(s.delete(&uid.to_string())).await?,
     }
     Ok(())
 }
@@ -1627,6 +1654,42 @@ mod tests {
             )
             .await;
             assert!(sent.iter().any(|c| c.starts_with("UID EXPUNGE 12")), "{sent:?}");
+        }
+
+        #[tokio::test]
+        async fn a_gmail_draft_copy_is_deleted_through_trash_not_archived() {
+            let (store, account, _, _) = mailbox();
+            store.upsert_folder(account.id, "[Gmail]/Drafts", "drafts").unwrap();
+            store.upsert_folder(account.id, "[Gmail]/Trash", "trash").unwrap();
+            let draft =
+                crate::models::Draft { to: vec!["b@x".into()], subject: "hi".into(), ..Default::default() };
+            let id = store.save_draft(None, account.id, draft, true).unwrap();
+            store.draft_uploaded(id, "[Gmail]/Drafts", 1, Some((9, 3))).unwrap();
+            store.draft_sent(id).unwrap();
+            let (stream, sent) = signed_in(
+                SIGNED_IN,
+                vec![
+                    (
+                        "SELECT [Gmail]/Drafts",
+                        "* 1 EXISTS\r\n* OK [UIDVALIDITY 9] v\r\n{tag} OK [READ-WRITE] s\r\n",
+                    ),
+                    (
+                        "UID MOVE 3 [Gmail]/Trash",
+                        "* OK [COPYUID 4 3 12] moved\r\n* 1 EXPUNGE\r\n{tag} OK done\r\n",
+                    ),
+                    (
+                        "SELECT [Gmail]/Trash",
+                        "* 1 EXISTS\r\n* OK [UIDVALIDITY 4] v\r\n{tag} OK [READ-WRITE] s\r\n",
+                    ),
+                    ("UID STORE 12 +FLAGS (\\Deleted)", "{tag} OK done\r\n"),
+                    ("UID EXPUNGE 12", "* 1 EXPUNGE\r\n{tag} OK done\r\n"),
+                ],
+            );
+            let mut s = Imap::open(stream, "ada", "x").await.unwrap();
+            assert!(super::super::sync_drafts(&mut s, &store, &account).await.unwrap());
+            let sent = sent.lock().unwrap().clone();
+            assert!(sent.iter().any(|c| c.starts_with("UID EXPUNGE 12")), "deleted from Trash: {sent:?}");
+            assert!(store.drafts_due(account.id).unwrap().is_empty(), "the draft is forgotten");
         }
 
         #[test]

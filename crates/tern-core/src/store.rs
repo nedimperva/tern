@@ -1956,6 +1956,79 @@ impl Store {
         id.map(|id| self.draft(id)).transpose().map(Option::flatten)
     }
 
+    /// A draft in the Drafts folder that Tern did not write (another app's, or one whose record is gone), taken
+    /// over so it opens in compose: its server copy becomes the draft's, replaced by the next save and deleted by
+    /// a discard. None while its text has not come yet, or when it has attachments, which Tern cannot carry over.
+    pub fn adopt_draft(&self, message: i64) -> Result<Option<DraftRecord>> {
+        type Row =
+            (i64, Option<u32>, Option<String>, String, String, String, String, bool, String, Option<u32>);
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let row: Option<Row> = tx
+            .query_row(
+                "SELECT m.account_id, m.uid, m.message_id, m.to_addrs, m.cc_addrs, m.subject, m.refs,
+                        m.has_attachments, f.name, f.uid_validity
+                 FROM messages m JOIN folders f ON f.id = m.folder_id AND f.role = 'drafts'
+                 WHERE m.id = ?1 AND m.body_state = 'full'",
+                [message],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                        r.get(8)?,
+                        r.get(9)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((account_id, Some(uid), Some(bare), to, cc, subject, refs, false, folder, validity)) = row
+        else {
+            return Ok(None);
+        };
+        // A record of any kind, even one on its way out, is that draft's: never a second one.
+        let known: bool = tx.query_row(
+            "SELECT EXISTS (SELECT 1 FROM drafts WHERE account_id = ?1 AND message_id = ?2)",
+            params![account_id, bare],
+            |r| r.get(0),
+        )?;
+        let body: Option<(Option<String>, Option<String>)> = tx
+            .query_row("SELECT text, html FROM bodies WHERE message_id = ?1", [message], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .optional()?;
+        let Some((text, html)) = body.filter(|_| !known) else { return Ok(None) };
+        let list = |s: &str| -> Vec<String> {
+            s.split(',').map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect()
+        };
+        let references: Vec<String> = refs.split_whitespace().map(str::to_string).collect();
+        let draft = Draft {
+            to: list(&to),
+            cc: list(&cc),
+            subject,
+            body: text.unwrap_or_default(),
+            html,
+            in_reply_to: references.last().cloned(),
+            references,
+            message_id: Some(format!("<{bare}>")),
+            ..Default::default()
+        };
+        tx.execute(
+            "INSERT INTO drafts (account_id, message_id, payload, updated_at, synced_version, server_folder,
+                                 server_validity, server_uid)
+             VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6, ?7)",
+            params![account_id, bare, serde_json::to_string(&draft)?, now(), folder, validity, uid],
+        )?;
+        let id = tx.last_insert_rowid();
+        tx.commit()?;
+        Ok(Some(DraftRecord { id, account_id, draft, updated_at: now() }))
+    }
+
     /// Discards a draft. It leaves the Drafts folder at once; its server copy goes after DRAFT_REST seconds, until
     /// when `undo_discard` brings it all back.
     pub fn discard_draft(&self, id: i64) -> Result<()> {
@@ -3016,8 +3089,8 @@ impl Store {
         )?)
     }
 
-    /// Uids in `folder` that queued work is about to change. Sync leaves these alone, so it does not undo on screen
-    /// what the person just did.
+    /// Uids in `folder` that queued work or the draft sync is about to change. Sync leaves these alone, so it does
+    /// not undo on screen what the person just did.
     pub fn pending_uids(&self, account_id: i64, folder: &str) -> Result<HashSet<u32>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached("SELECT payload FROM outbox WHERE account_id = ?1")?;
@@ -3033,6 +3106,15 @@ impl Store {
                 }
                 _ => {}
             }
+        }
+        // A sent or discarded draft's server copy until the draft sync deletes it: its row already left the
+        // Drafts folder, and fetching the copy again would bring it back as mail.
+        let mut leaving = conn.prepare_cached(
+            "SELECT server_uid FROM drafts WHERE account_id = ?1 AND server_folder = ?2 AND server_uid IS NOT NULL
+             AND (discarded_at IS NOT NULL OR sent_at IS NOT NULL)",
+        )?;
+        for uid in leaving.query_map(params![account_id, folder], |r| r.get::<_, u32>(0))? {
+            uids.insert(uid?);
         }
         Ok(uids)
     }
@@ -4122,6 +4204,65 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         assert!(store.outbox_waiting().unwrap().is_empty());
         assert!(store.undo_discard(id).unwrap());
         assert_eq!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().len(), 1, "undo brings it back");
+    }
+
+    #[test]
+    fn sync_leaves_alone_the_copy_of_a_draft_that_is_leaving() {
+        let (store, account, _, _) = setup();
+        store.upsert_folder(account, "Drafts", "drafts").unwrap();
+        let id = store.save_draft(None, account, draft_to("hi"), true).unwrap();
+        store.draft_uploaded(id, "Drafts", 1, Some((7, 41))).unwrap();
+        assert!(store.pending_uids(account, "Drafts").unwrap().is_empty(), "a draft being written is synced");
+        // Discarded, its row is gone here while the copy waits on the server: fetched again, it would come
+        // back as mail.
+        store.discard_draft(id).unwrap();
+        assert!(store.pending_uids(account, "Drafts").unwrap().contains(&41));
+        store.draft_removed(id).unwrap();
+        assert!(store.pending_uids(account, "Drafts").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_draft_from_another_app_opens_as_a_draft() {
+        let (store, account, _, _) = setup();
+        let drafts = store.upsert_folder(account, "Drafts", "drafts").unwrap();
+        let state =
+            crate::models::FolderState { uid_validity: Some(7), uid_next: Some(9), highest_modseq: None };
+        store.set_folder_state(drafts, &state).unwrap();
+        let theirs = NewMessage {
+            uid: 8,
+            message_id: Some("phone@x".into()),
+            subject: "Notes".into(),
+            to_addrs: "b@x, c@x".into(),
+            references: vec!["first@x".into(), "answered@x".into()],
+            date: 5,
+            headers_only: true,
+            ..Default::default()
+        };
+        store.insert_messages(account, drafts, &[theirs]).unwrap();
+        let row = store.list(&ListTarget::Folder(drafts), None, 1).unwrap()[0].id;
+        assert!(store.draft_for_message(row).unwrap().is_none());
+        assert!(store.adopt_draft(row).unwrap().is_none(), "not before its text is here");
+
+        store
+            .conn()
+            .execute("INSERT INTO bodies (message_id, text) VALUES (?1, 'from the phone')", [row])
+            .unwrap();
+        store.conn().execute("UPDATE messages SET body_state = 'full' WHERE id = ?1", [row]).unwrap();
+        let adopted = store.adopt_draft(row).unwrap().unwrap();
+        assert_eq!(adopted.draft.to, ["b@x", "c@x"]);
+        assert_eq!(adopted.draft.body, "from the phone");
+        assert_eq!(adopted.draft.in_reply_to.as_deref(), Some("answered@x"));
+        assert_eq!(store.draft_for_message(row).unwrap().unwrap().id, adopted.id, "opens as this draft now");
+        assert!(store.adopt_draft(row).unwrap().is_none(), "never twice");
+        assert!(store.drafts_due(account).unwrap().is_empty(), "the copy there is this version");
+
+        // The next save replaces the copy that came from the other app.
+        store
+            .save_draft(Some(adopted.id), account, Draft { body: "more".into(), ..adopted.draft }, true)
+            .unwrap();
+        let due = store.drafts_due(account).unwrap();
+        assert!(matches!(&due[0], DraftSync::Upload { previous: Some((7, 8)), .. }), "{due:?}");
+        assert_eq!(store.list(&ListTarget::Folder(drafts), None, 9).unwrap().len(), 1, "still one row");
     }
 
     #[test]
