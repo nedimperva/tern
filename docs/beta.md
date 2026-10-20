@@ -90,6 +90,9 @@ are kept). To go back:
 
 5. Start the earlier version. Mail that arrived since syncs again from the server; changes made in the newer
    version that already reached the server are there too.
+6. If the status strip says "scheduled" or "scheduled sends to confirm", open it at once. The copy has the
+   **Send later** messages that were waiting when you upgraded; one the newer version already sent would go out a
+   second time. For each of those, choose **Edit** and discard the draft that opens.
 
 No copy for that number? Delete `mail.db` (and `-wal`, `-shm`) instead: Tern downloads your mail again from the
 server, and your accounts need adding again. Drafts that were only on this computer would be lost that way, so
