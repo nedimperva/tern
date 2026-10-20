@@ -292,7 +292,6 @@ fn look(app: &AppHandle) -> anyhow::Result<()> {
 }
 
 /// Archives a notification's conversation through the outbox, as `e` in the inbox would.
-#[cfg(target_os = "linux")]
 fn archive(app: &AppHandle, m: &NewMail) -> anyhow::Result<()> {
     use tern_core::{Action, ListTarget};
     let state = app.state::<AppState>();
@@ -370,53 +369,76 @@ fn notice_icon(app: &AppHandle) -> Option<String> {
 }
 
 /// Shows one notification; a click opens the conversation, and one conversation also gets Archive and Reply.
-/// Windows notifications can't report clicks yet (M3), so there only the text is used.
-#[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+#[cfg(target_os = "linux")]
 fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest: NewMail) {
     let mut note = notify_rust::Notification::new();
     note.summary(&summary).body(&body).appname("Tern");
-    #[cfg(target_os = "linux")]
-    {
-        match notice_icon(app) {
-            Some(path) => note.icon(&path),
-            None => note.icon("mail-unread"),
-        };
-        note.action("default", "Open");
-        // One conversation can be dealt with from the notification itself.
-        if one {
-            note.action("archive", "Archive").action("reply", "Reply");
-        }
-    }
-    #[cfg(windows)]
-    {
-        note.app_id(&app.config().identifier);
+    match notice_icon(app) {
+        Some(path) => note.icon(&path),
+        None => note.icon("mail-unread"),
+    };
+    note.action("default", "Open");
+    // One conversation can be dealt with from the notification itself.
+    if one {
+        note.action("archive", "Archive").action("reply", "Reply");
     }
     match note.show() {
-        #[cfg(target_os = "linux")]
         Ok(handle) => {
             // Clicking the notification opens that conversation. The wait blocks, so it gets its own thread.
             let app = app.clone();
             std::thread::spawn(move || {
                 handle.wait_for_action(|action| match action {
-                    "default" => {
-                        show(&app);
-                        let _ = app.emit("open-mail", &latest);
-                    }
-                    "reply" => {
-                        show(&app);
-                        let _ = app.emit("reply-mail", &latest);
-                    }
-                    "archive" => {
-                        if let Err(e) = archive(&app, &latest) {
-                            log::warn!("archive from a notification: {e:#}");
-                        }
-                    }
-                    _ => {}
+                    "default" => noticed(&app, None, &latest),
+                    action => noticed(&app, Some(action), &latest),
                 })
             });
         }
-        #[cfg(not(target_os = "linux"))]
-        Ok(_) => {}
         Err(e) => log::warn!("notification: {e}"),
+    }
+}
+
+/// Shows one notification as a Windows toast; a click opens the conversation, and one conversation also gets
+/// Archive and Reply. Windows reports clicks while Tern runs, which in the tray it does.
+#[cfg(windows)]
+fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest: NewMail) {
+    use tauri_winrt_notification::Toast;
+    // An installed Tern has its own app id (the installer puts it on the Start menu shortcut); a build run from
+    // the source tree has none, and Windows shows nothing for an unknown id.
+    let id = if cfg!(debug_assertions) {
+        Toast::POWERSHELL_APP_ID.to_string()
+    } else {
+        app.config().identifier.clone()
+    };
+    let mut toast = Toast::new(&id).title(&summary).text1(&body);
+    if one {
+        toast = toast.add_button("Archive", "archive").add_button("Reply", "reply");
+    }
+    let clicked = app.clone();
+    let toast = toast.on_activated(move |action| {
+        noticed(&clicked, action.as_deref(), &latest);
+        Ok(())
+    });
+    if let Err(e) = toast.show() {
+        log::warn!("notification: {e}");
+    }
+}
+
+/// A notification was clicked (`action` None) or one of its buttons.
+fn noticed(app: &AppHandle, action: Option<&str>, latest: &NewMail) {
+    match action {
+        None => {
+            show(app);
+            let _ = app.emit("open-mail", latest);
+        }
+        Some("reply") => {
+            show(app);
+            let _ = app.emit("reply-mail", latest);
+        }
+        Some("archive") => {
+            if let Err(e) = archive(app, latest) {
+                log::warn!("archive from a notification: {e:#}");
+            }
+        }
+        Some(_) => {}
     }
 }

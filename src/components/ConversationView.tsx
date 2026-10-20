@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { api, type Mailto, type ThreadMessage } from "../api";
+import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
 import {
@@ -75,6 +76,7 @@ function HtmlBody(props: { web: Remote; remote: boolean; designed: boolean; read
     const fit = () => fitFrame(frame!, doc);
     fit();
     new ResizeObserver(fit).observe(doc.body);
+    quietMenu(doc);
     // Keys typed while the message has focus (after selecting text in it) still reach Tern's shortcuts.
     doc.addEventListener("keydown", (ev) => {
       // A form field in the mail keeps its typing.
