@@ -759,6 +759,9 @@ function SnippetSettings(props: { accounts: Account[] }) {
 const formatted = (html: string) => /<(strong|em|u|s|a|code|ul|ol|blockquote)\b/i.test(html);
 
 /** Signatures: several per account, one for new mail and one for replies, and where they go in a reply. */
+/** HTML signatures set aside by a switch to "Write it here", by id: switching back brings them back. */
+const keptHtml = new Map<number, string>();
+
 function SignatureSettings(props: { accounts: Account[]; account: number | null; onAccount: (id: number) => void }) {
   const [list, setList] = createSignal<Signature[]>([]);
   const [picked, setPicked] = createSignal<number | null>(null);
@@ -851,7 +854,12 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
         <div class="tabs" role="tablist" aria-label="Account">
           <For each={props.accounts}>
             {(a) => (
-              <button role="tab" aria-selected={a.id === account()} onClick={() => props.onAccount(a.id)}>
+              <button
+                role="tab"
+                aria-selected={a.id === account()}
+                style={{ "--tab": colourOf(props.accounts, a.id) }}
+                onClick={() => props.onAccount(a.id)}
+              >
                 <span class="dot" style={{ background: colourOf(props.accounts, a.id) }} />
                 {accountName(a)} <span class="muted">· {a.email}</span>
               </button>
@@ -907,30 +915,41 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
                   <input value={s().name} onInput={(e) => edit({ name: e.currentTarget.value })} />
                 </label>
                 <fieldset class="field">
-                  <legend class="title">Made</legend>
+                  <legend class="title">Format</legend>
                   <span class="segmented">
                     <label classList={{ on: !s().custom }}>
                       <input
                         type="radio"
                         name="signature-kind"
                         checked={!s().custom}
-                        onChange={() => (edit({ custom: false, html: null }), setVersion(version() + 1))}
+                        onChange={() => {
+                          if (s().html) keptHtml.set(s().id, s().html!);
+                          edit({ custom: false, html: null });
+                          setVersion(version() + 1);
+                        }}
                       />
-                      Here
+                      Write it here
                     </label>
                     <label classList={{ on: !!s().custom }}>
-                      <input type="radio" name="signature-kind" checked={!!s().custom} onChange={() => edit({ custom: true })} />
-                      In another mail app (HTML)
+                      <input
+                        type="radio"
+                        name="signature-kind"
+                        checked={!!s().custom}
+                        onChange={() => {
+                          const kept = keptHtml.get(s().id);
+                          edit(kept ? { custom: true, html: kept, body: htmlText(kept) } : { custom: true });
+                        }}
+                      />
+                      Paste from another app
                     </label>
                   </span>
                   <span class="help">
-                    For one with a logo, colours or a layout of its own: copy it from Gmail's or Outlook's settings and
-                    paste it here. It goes out exactly as it is.
+                    For a signature with a logo or a layout of its own: copy it in Gmail's or Outlook's settings and paste
+                    it below. It goes out exactly as it is.
                   </span>
                 </fieldset>
                 <Show when={s().custom}>
                   <div class="field">
-                    <span class="title">Paste it</span>
                     <div
                       class="paste-box"
                       contentEditable
@@ -942,11 +961,11 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
                         if (e.clipboardData) setHtml(pastedHtml(e.clipboardData));
                       }}
                     >
-                      Click here and press Ctrl+V
+                      {s().html ? "Click here and press Ctrl+V to paste a new one" : "Click here and press Ctrl+V"}
                     </div>
                   </div>
-                  <label class="field">
-                    <span class="title">HTML</span>
+                  <details class="field html-details">
+                    <summary>Edit the HTML</summary>
                     <textarea
                       class="html-source"
                       rows={8}
@@ -954,15 +973,15 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
                       value={s().html ?? ""}
                       onInput={(e) => setHtml(e.currentTarget.value)}
                     />
-                    <Show when={localPictures(s().html ?? "")}>
-                      {(n) => (
-                        <span class="help warn">
-                          {n() === 1 ? "A picture is" : `${n()} pictures are`} only on this computer, so the people you write
-                          to won't see {n() === 1 ? "it" : "them"}. Use pictures with a web address (https://…).
-                        </span>
-                      )}
-                    </Show>
-                  </label>
+                  </details>
+                  <Show when={localPictures(s().html ?? "")}>
+                    {(n) => (
+                      <p class="help warn">
+                        {n() === 1 ? "A picture is" : `${n()} pictures are`} only on this computer, so the people you write to
+                        won't see {n() === 1 ? "it" : "them"}. Use pictures with a web address (https://…).
+                      </p>
+                    )}
+                  </Show>
                 </Show>
                 <Show when={!s().custom}>
                 <div class="field">
@@ -997,16 +1016,32 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
               <div class="pair">
                 <label class="field">
                   <span class="title">New messages</span>
-                  <select value={String(forNew() ?? "")} onChange={(e) => void setDefault(false, e.currentTarget.value)}>
-                    <Index each={mine()}>{(x) => <option value={String(x().id)}>{x().name || "Untitled"}</option>}</Index>
-                    <option value="">None</option>
+                  <select onChange={(e) => void setDefault(false, e.currentTarget.value)}>
+                    <Index each={mine()}>
+                      {(x) => (
+                        <option value={String(x().id)} selected={x().id === forNew()}>
+                          {x().name || "Untitled"}
+                        </option>
+                      )}
+                    </Index>
+                    <option value="" selected={forNew() == null}>
+                      None
+                    </option>
                   </select>
                 </label>
                 <label class="field">
                   <span class="title">Replies and forwards</span>
-                  <select value={String(forReply() ?? "")} onChange={(e) => void setDefault(true, e.currentTarget.value)}>
-                    <Index each={mine()}>{(x) => <option value={String(x().id)}>{x().name || "Untitled"}</option>}</Index>
-                    <option value="">None</option>
+                  <select onChange={(e) => void setDefault(true, e.currentTarget.value)}>
+                    <Index each={mine()}>
+                      {(x) => (
+                        <option value={String(x().id)} selected={x().id === forReply()}>
+                          {x().name || "Untitled"}
+                        </option>
+                      )}
+                    </Index>
+                    <option value="" selected={forReply() == null}>
+                      None
+                    </option>
                   </select>
                 </label>
               </div>
@@ -1133,11 +1168,15 @@ function AccountPage(props: { account: Account; onSignatures: () => void; onRena
       </div>
       <div class="setting">
         <span class="title">Sign-in</span>
-        <span>{props.account.auth === "google" ? "With Google, in the browser" : gmail() ? "App password" : "Password"}</span>
+        <span class="value-action">
+          {props.account.auth === "google" ? "With Google, in the browser" : gmail() ? "App password" : "Password"}
+          <Show when={google() && (props.account.auth === "google" || gmail())}>
+            <button onClick={() => void signIn()} disabled={signing()}>
+              {signing() ? "Waiting for the browser…" : props.account.auth === "google" ? "Sign in again" : "Switch to Google sign-in"}
+            </button>
+          </Show>
+        </span>
         <Show when={google() && (props.account.auth === "google" || gmail())}>
-          <button onClick={() => void signIn()} disabled={signing()}>
-            {signing() ? "Waiting for the browser…" : props.account.auth === "google" ? "Sign in again" : "Switch to Google sign-in"}
-          </button>
           <span class="help">
             {props.account.auth === "google"
               ? "Opens Google in your browser. Use it if Tern says the sign-in expired or was removed."

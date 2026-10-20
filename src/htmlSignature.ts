@@ -31,6 +31,14 @@ export function pastedHtml(data: DataTransfer): string {
   while (walker.nextNode()) comments.push(walker.currentNode as ChildNode);
   comments.forEach((c) => c.remove());
   doc.body.querySelectorAll("meta, title, script").forEach((e) => e.remove());
+  // Copies often start or end with empty lines (Gmail's begins with two): they would show as a gap.
+  const empty = (n: ChildNode | null) =>
+    !!n &&
+    (n.nodeName === "BR" ||
+      (n.nodeType === Node.TEXT_NODE && !n.textContent?.trim()) ||
+      (n instanceof Element && !n.textContent?.trim() && !n.querySelector("img")));
+  while (empty(doc.body.firstChild)) doc.body.firstChild!.remove();
+  while (empty(doc.body.lastChild)) doc.body.lastChild!.remove();
   return doc.body.innerHTML.trim();
 }
 
