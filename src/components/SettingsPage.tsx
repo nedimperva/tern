@@ -222,11 +222,17 @@ const BETA_GUIDE = "https://github.com/nedimperva/tern/blob/main/docs/beta.md";
 /** The version, and what a bug report needs: details without addresses, the log, the issue form. */
 function AboutSettings() {
   const [about] = createResource(() => api.about());
-  const [copied, setCopied] = createSignal(false);
+  const [copied, setCopied] = createSignal<"yes" | "no" | null>(null);
+  let details: HTMLPreElement | undefined;
   const copy = async () => {
-    await navigator.clipboard.writeText(about()?.details ?? "").catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const done = await navigator.clipboard.writeText(about()?.details ?? "").then(
+      () => true,
+      () => false,
+    );
+    // Refused (the window lost focus, say): the text is selected instead, for Ctrl+C.
+    if (!done && details) window.getSelection()?.selectAllChildren(details);
+    setCopied(done ? "yes" : "no");
+    setTimeout(() => setCopied(null), 3000);
   };
   return (
     <Show when={about()}>
@@ -246,8 +252,12 @@ function AboutSettings() {
           </div>
           <div class="setting">
             <span class="title">Details for a bug report</span>
-            <button onClick={() => void copy()}>{copied() ? "Copied" : "Copy"}</button>
-            <pre class="about-details">{a().details}</pre>
+            <button onClick={() => void copy()}>
+              {copied() === "yes" ? "Copied" : copied() === "no" ? "Selected: press Ctrl+C" : "Copy"}
+            </button>
+            <pre class="about-details" ref={details}>
+              {a().details}
+            </pre>
             <span class="help">Your version, system and each account's provider. No addresses or server names of your own.</span>
           </div>
           <div class="setting">

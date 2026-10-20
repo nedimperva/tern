@@ -126,6 +126,8 @@ fn provider(host: &str) -> &'static str {
 fn install_kind() -> &'static str {
     if std::env::var_os("APPIMAGE").is_some() {
         "AppImage"
+    } else if cfg!(debug_assertions) {
+        "local build"
     } else if cfg!(windows) {
         "Windows installer"
     } else {
