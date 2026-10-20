@@ -1145,7 +1145,7 @@ export function SettingsPage(props: {
         dot: colourOf(props.accounts, a.id),
         body: () => (
           <AccountPage
-            account={a}
+            account={props.accounts.find((x) => x.id === a.id) ?? a}
             onSignatures={() => (setSignatureAccount(a.id), setSection("Signatures"))}
             onRenamed={props.onAccountsChanged}
           />
@@ -1165,6 +1165,12 @@ export function SettingsPage(props: {
     if (hits.length && !hits.some((s) => s.id === section())) setSection(hits[0].id);
   });
   const open = () => sections().find((s) => s.id === section()) ?? sections()[0];
+  // Made again only when another section is picked. The account list is read again whenever sync reports, and
+  // remaking the page then would take the focus from the field being typed in.
+  const body = createMemo(() => {
+    section();
+    return untrack(() => open().body());
+  });
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape") return;
     e.preventDefault();
@@ -1216,7 +1222,7 @@ export function SettingsPage(props: {
       <div class="settings-body">
         <div class="settings-content" classList={{ wide: open().id === "Snippets" || open().id === "Signatures" }}>
           <h1>{open().name}</h1>
-          {open().body()}
+          {body()}
         </div>
       </div>
     </div>
