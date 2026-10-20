@@ -5309,7 +5309,7 @@ dependencies = [
 
 [[package]]
 name = "tern"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5332,7 +5332,7 @@ dependencies = [
 
 [[package]]
 name = "tern-core"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "ammonia",
  "anyhow",
