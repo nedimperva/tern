@@ -401,26 +401,60 @@ fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest
 /// Archive and Reply. Windows reports clicks while Tern runs, which in the tray it does.
 #[cfg(windows)]
 fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest: NewMail) {
-    use tauri_winrt_notification::Toast;
+    if let Err(e) = toast(app, &summary, &body, one, latest) {
+        log::warn!("notification: {e}");
+    }
+}
+
+/// The toast is written as XML rather than through a toast library: a click on the toast itself only comes back to
+/// Tern when the toast has a `launch` argument, which the libraries leave out.
+#[cfg(windows)]
+fn toast(
+    app: &AppHandle,
+    summary: &str,
+    body: &str,
+    one: bool,
+    latest: NewMail,
+) -> windows::core::Result<()> {
+    use windows::core::{IInspectable, Interface, HSTRING};
+    use windows::Data::Xml::Dom::XmlDocument;
+    use windows::Foundation::TypedEventHandler;
+    use windows::UI::Notifications::{ToastActivatedEventArgs, ToastNotification, ToastNotificationManager};
+
+    let text = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    let buttons = if one {
+        r#"<actions><action content="Archive" arguments="archive"/><action content="Reply" arguments="reply"/></actions>"#
+    } else {
+        ""
+    };
+    let xml = format!(
+        r#"<toast launch="open"><visual><binding template="ToastGeneric"><text>{}</text><text>{}</text></binding></visual>{buttons}</toast>"#,
+        text(summary),
+        text(body)
+    );
+    let doc = XmlDocument::new()?;
+    doc.LoadXml(&HSTRING::from(xml))?;
+    let toast = ToastNotification::CreateToastNotification(&doc)?;
+    let clicked = app.clone();
+    toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(move |_, args| {
+        let args: &Option<IInspectable> = &args;
+        let action = args
+            .as_ref()
+            .and_then(|a| a.cast::<ToastActivatedEventArgs>().ok())
+            .and_then(|a| a.Arguments().ok())
+            .map(|a| a.to_string());
+        let action = action.as_deref().filter(|a| *a != "open");
+        noticed(&clicked, action, &latest);
+        Ok(())
+    }))?;
     // An installed Tern has its own app id (the installer puts it on the Start menu shortcut); a build run from
-    // the source tree has none, and Windows shows nothing for an unknown id.
+    // the source tree has none, and Windows shows nothing for an unknown id, so it borrows PowerShell's.
     let id = if cfg!(debug_assertions) {
-        Toast::POWERSHELL_APP_ID.to_string()
+        "{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe".to_string()
     } else {
         app.config().identifier.clone()
     };
-    let mut toast = Toast::new(&id).title(&summary).text1(&body);
-    if one {
-        toast = toast.add_button("Archive", "archive").add_button("Reply", "reply");
-    }
-    let clicked = app.clone();
-    let toast = toast.on_activated(move |action| {
-        noticed(&clicked, action.as_deref(), &latest);
-        Ok(())
-    });
-    if let Err(e) = toast.show() {
-        log::warn!("notification: {e}");
-    }
+    ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(id))?.Show(&toast)
 }
 
 /// A notification was clicked (`action` None) or one of its buttons.

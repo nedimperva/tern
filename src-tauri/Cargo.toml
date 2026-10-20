@@ -33,4 +33,4 @@ tauri-plugin-updater = { version = "2", default-features = false, features = ["r
 notify-rust = "4"
 
 [target.'cfg(windows)'.dependencies]
-tauri-winrt-notification = "0.8"
+windows = { version = "0.62", features = ["Data_Xml_Dom", "Foundation", "UI_Notifications"] }
