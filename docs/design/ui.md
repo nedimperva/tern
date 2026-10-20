@@ -220,7 +220,7 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - Layout: "side" scenes put the words left (kicker in `--z-kicker`, the time or a count at 56 px, one line) and the
   picture right; "center" ones put the words at the bottom over a full picture. Under 760 px wide the picture steps
   back to 35 % behind centred words. Colours are `--z-*` and `--t1…8` tokens on `.zero`, light and dark.
-- Settings → Appearance → Inbox Zero: a different tern each day (default), one scene, or just the time. The counts
+- Settings → Appearance → Inbox Zero: a different tern each day (default) or one scene. The counts
   are kept with the settings (`zeroLog`), on this computer: what is cleared in another app isn't in them. No buttons.
   `C` still composes.
 

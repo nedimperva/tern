@@ -43,11 +43,10 @@ export function dayOfYear(now: Date) {
 /** Late evening and the small hours. */
 export const lateNight = (now: Date) => now.getHours() >= 22 || now.getHours() < 5;
 
-/** Today's scene, or null for only the time. A rotation through ten never shows one two days running. */
-export function sceneFor(now: Date): SceneId | null {
+/** Today's scene. A rotation through ten never shows one two days running. */
+export function sceneFor(now: Date): SceneId {
   const pick = settings.zeroScene;
-  if (pick === "time") return null;
-  if (pick !== "rotate") return pick as SceneId;
+  if (pick === NIGHT_SHIFT.id || SCENES.some((s) => s.id === pick)) return pick as SceneId;
   if (lateNight(now)) return "night";
   return SCENES[localDay(now) % SCENES.length].id;
 }

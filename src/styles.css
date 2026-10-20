@@ -357,17 +357,12 @@ button.primary kbd {
   flex-direction: column;
   gap: var(--s-2);
 }
-.zero-center .zero-words,
-.zero-plain {
+.zero-center .zero-words {
   margin: auto auto 16cqh;
   align-items: center;
   text-align: center;
   max-width: 560px;
   padding: 0 var(--s-5);
-}
-.zero-plain {
-  flex-direction: column;
-  gap: var(--s-2);
 }
 .zero-side .zero-words {
   margin: auto 0 auto 9cqw;

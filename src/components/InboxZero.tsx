@@ -397,19 +397,11 @@ export function InboxZero(props: { accounts: Account[] }) {
 
   const scene = () => {
     const id = sceneFor(now());
-    return id ? { id, ...scenes[id]() } : null;
+    return { id, ...scenes[id]() };
   };
 
   return (
-    <Show
-      when={scene()}
-      fallback={
-        <div class="zero zero-plain">
-          <div class="zero-big">{time()}</div>
-          <div class="zero-line">Inbox zero.</div>
-        </div>
-      }
-    >
+    <Show when={scene()}>
       {(s) => (
         <div class={`zero zero-${s().layout} zero-${s().id}`}>
           <svg

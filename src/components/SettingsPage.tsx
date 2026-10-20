@@ -116,7 +116,6 @@ function AppearanceSettings() {
         choices={[
           { label: "A different tern each day", value: "rotate" },
           ...[...SCENES, NIGHT_SHIFT].map((s) => ({ label: s.name, value: s.id as string })),
-          { label: "Just the time", value: "time" },
         ]}
       />
     </>

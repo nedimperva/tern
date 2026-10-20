@@ -39,7 +39,7 @@ export type Settings = {
   attachmentCheck: boolean;
   /** The person's own words for that, besides the built-in ones (src/attachmentWords.ts). */
   attachmentWords: string[];
-  /** Inbox Zero's scene: a different one each day, always the same one, or only the time (src/zero.ts). */
+  /** Inbox Zero's scene: "rotate" for a different one each day, or always the same one (src/zero.ts). */
   zeroScene: string;
   /** Per local day ("2026-10-20"): conversations cleared from the inbox in Tern, and whether it reached zero. */
   zeroLog: Record<string, { cleared: number; zero: boolean }>;
