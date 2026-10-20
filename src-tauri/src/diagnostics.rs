@@ -83,7 +83,7 @@ pub fn about(app: &AppHandle) -> anyhow::Result<About> {
     lines.push(format!("System: {}", system()));
     if let Some(state) = app.try_state::<AppState>() {
         let states = state.states.lock().unwrap().clone();
-        for (i, account) in state.store.accounts()?.iter().enumerate() {
+        for account in state.store.accounts()? {
             let sync = match states.get(&account.id) {
                 Some(SyncState::Idle) | None => "up to date",
                 Some(SyncState::Syncing) => "syncing",
@@ -98,7 +98,7 @@ pub fn about(app: &AppHandle) -> anyhow::Result<About> {
             };
             lines.push(format!(
                 "Account {}: {}, {auth} sign-in, {sync}",
-                i + 1,
+                account.id,
                 provider(&account.config.imap_host)
             ));
         }

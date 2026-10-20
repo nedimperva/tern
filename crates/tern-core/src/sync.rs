@@ -177,7 +177,7 @@ pub async fn run_account(
     let mut report = |state: SyncState| {
         if last != Some(state) {
             last = Some(state);
-            log::debug!("{}: {state:?}", account.config.email);
+            log::debug!("account {}: {state:?}", account.id);
             on_state(state);
         }
     };
@@ -196,7 +196,7 @@ pub async fn run_account(
         }
         if resumed.has_changed().unwrap_or(false) {
             resumed.mark_unchanged();
-            log::info!("{}: woke from sleep or the network came back; reconnecting", account.config.email);
+            log::info!("account {}: woke from sleep or the network came back; reconnecting", account.id);
             session = None;
             failures = 0;
         }
@@ -229,7 +229,7 @@ pub async fn run_account(
                 }
             }
             Err(e) => {
-                log::warn!("{}: {e:#}", account.config.email);
+                log::warn!("account {}: {e:#}", account.id);
                 session = None;
                 failures += 1;
                 if imap::sign_in_refused(&e) || oauth::is_revoked(&e) {
@@ -299,7 +299,7 @@ async fn watch_inbox(
     mut resumed: tokio::sync::watch::Receiver<u64>,
     mut paused: tokio::sync::watch::Receiver<bool>,
 ) {
-    let email = &account.config.email;
+    let id = account.id;
     let mut failures: u32 = 0;
     loop {
         if paused.wait_for(|p| !*p).await.is_err() {
@@ -309,7 +309,7 @@ async fn watch_inbox(
             Ok(s) => s,
             Err(e) => {
                 failures += 1;
-                log::warn!("{email}: inbox watch could not connect: {e:#}");
+                log::warn!("account {id}: inbox watch could not connect: {e:#}");
                 let wait = if imap::sign_in_refused(&e) || oauth::is_revoked(&e) {
                     AUTH_RETRY
                 } else {
@@ -325,7 +325,7 @@ async fn watch_inbox(
         failures = 0;
         if !s.has("IDLE") {
             log::info!(
-                "{email}: the server has no IDLE; new mail is found by polling every {}s",
+                "account {id}: the server has no IDLE; new mail is found by polling every {}s",
                 POLL.as_secs()
             );
             let _ = s.logout().await;
@@ -334,7 +334,7 @@ async fn watch_inbox(
         let pause = tokio::select! {
             stopped = keep_idling(&mut s, &wake) => {
                 if let Err(e) = stopped {
-                    log::warn!("{email}: inbox watch stopped: {e:#}");
+                    log::warn!("account {id}: inbox watch stopped: {e:#}");
                     tokio::time::sleep(backoff(1)).await;
                 }
                 false
@@ -430,7 +430,7 @@ async fn pass(
                 // The server refused this folder (most often: deleted elsewhere). The others still get checked,
                 // and the folder list is read again after them.
                 Err(e) => {
-                    log::warn!("{}: {e:#}", account.config.email);
+                    log::warn!("account {}: {e:#}", account.id);
                     refused = true;
                     (false, false)
                 }
@@ -459,7 +459,7 @@ async fn pass(
             }
             Err(e) if connection_broke(&e) => return Err(e),
             Err(e) => {
-                log::warn!("{}: {e:#}", account.config.email);
+                log::warn!("account {}: {e:#}", account.id);
                 refused = true;
             }
         }
@@ -516,7 +516,7 @@ async fn discover_folders<S: Stream>(s: &mut Imap<S>, store: &Store, account_id:
         let gone = store.retire_label_rows(account_id)?;
         if gone > 0 {
             log::info!(
-                "{account_id}: dropped {gone} copies kept in Gmail label folders; All Mail holds them"
+                "account {account_id}: dropped {gone} copies kept in Gmail label folders; All Mail holds them"
             );
         }
     }
@@ -906,7 +906,7 @@ async fn drain_outbox<S: Stream>(
             Err(e) => {
                 let failure = failure(&e);
                 store.outbox_failed(id, &format!("{e:#}"), failure)?;
-                log::warn!("{}: queued work {id} failed ({failure:?}): {e:#}", account.config.email);
+                log::warn!("account {}: queued work {id} failed ({failure:?}): {e:#}", account.id);
                 // A Send uses its own SMTP connection; only an IMAP failure (a forward fetching its original) can leave
                 // this session broken.
                 if connection_broke(&e) && (!matches!(op, OutboxOp::Send(_)) || imap::connection_lost(&e)) {
@@ -966,7 +966,7 @@ async fn sync_drafts<S: Stream>(s: &mut Imap<S>, store: &Store, account: &Accoun
             }
         };
         if let Err(e) = result {
-            log::warn!("{}: draft not synced: {e:#}", account.config.email);
+            log::warn!("account {}: draft not synced: {e:#}", account.id);
             if connection_broke(&e) {
                 return Err(e);
             }

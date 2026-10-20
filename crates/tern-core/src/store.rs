@@ -4683,6 +4683,8 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         assert_eq!(version, SCHEMA_VERSION - 1, "the copy is the database as it was");
         let kept: i64 = old.query_row("SELECT count(*) FROM messages", [], |r| r.get(0)).unwrap();
         assert_eq!(kept, 1);
+        // Closed, or Windows cannot replace it below.
+        drop(old);
         // Opening an up-to-date database copies nothing; only the two newest copies stay.
         for v in [3, 4, 5] {
             std::fs::write(dir.join(format!("mail.db.before-v{v}")), b"").unwrap();

@@ -66,7 +66,7 @@ pub fn login(account: &Account) -> secrets::Login {
 pub fn start_account(app: &AppHandle, state: &AppState, account: Account) {
     let email = &account.config.email;
     if secrets::password(email).is_err() && secrets::tokens(email).is_err() {
-        log::error!("{email}: no saved password or Google sign-in");
+        log::error!("account {}: no saved password or Google sign-in", account.id);
         state.states.lock().unwrap().insert(account.id, SyncState::AuthFailed);
         return;
     }
