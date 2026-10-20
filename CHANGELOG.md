@@ -7,6 +7,16 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-10-20
+
+Two fixes from using 0.3.6.
+
+### Fixed
+
+- Typing a snippet or signature name in Settings no longer loses its place every few seconds while mail syncs.
+- Ctrl+Shift+, discards a message being written on any keyboard layout (it did nothing where Shift+, types
+  something other than "<", such as Bosnian, Croatian or German).
+
 ## [0.3.6] - 2026-10-20
 
 Gmail labels, drafts that behave, and what beta testers need: About, a log file and a guide. This version
@@ -170,7 +180,8 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.6...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.7...HEAD
+[0.3.7]: https://github.com/nedimperva/tern/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/nedimperva/tern/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/nedimperva/tern/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/nedimperva/tern/compare/v0.3.3...v0.3.4
