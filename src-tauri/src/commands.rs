@@ -686,6 +686,20 @@ pub async fn send_now(state: State<'_, AppState>, id: i64) -> Reply<()> {
     Ok(())
 }
 
+/// The version, the log file and the details a bug report needs (no addresses).
+#[tauri::command]
+pub fn about(app: AppHandle) -> Reply<crate::diagnostics::About> {
+    crate::diagnostics::about(&app).map_err(text)
+}
+
+/// Opens the folder that holds the log file.
+#[tauri::command]
+pub fn open_logs(app: AppHandle) -> Reply<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = crate::diagnostics::log_dir(&app);
+    app.opener().open_path(dir.display().to_string(), None::<&str>).map_err(|e| e.to_string())
+}
+
 /// Pauses or resumes sync for every account; the "sync-state" events say when each one has.
 #[tauri::command]
 pub fn set_sync_paused(app: AppHandle, on: bool) {

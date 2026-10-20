@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use rusqlite::types::Value;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
@@ -228,6 +228,38 @@ fn security(r: &Row, i: usize) -> rusqlite::Result<Security> {
 
 pub fn now() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+/// Before a newer Tern migrates the database, a copy of it as it was: migrations only go forward, so this copy is
+/// how someone goes back to the version they had (docs/beta.md, "Going back"). Saved next to it as
+/// `mail.db.before-v<old version>`; the two newest are kept.
+fn backup_before_migrating(conn: &Connection, path: &Path) -> Result<()> {
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    if version == 0 || version >= SCHEMA_VERSION {
+        return Ok(());
+    }
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("mail.db");
+    let copy = path.with_file_name(format!("{name}.before-v{version}"));
+    let _ = std::fs::remove_file(&copy);
+    // VACUUM INTO writes a consistent, compact copy, WAL included, without closing the database.
+    conn.execute("VACUUM INTO ?1", [copy.to_string_lossy()]).with_context(|| {
+        format!("Could not save a copy of the mail database before upgrading it ({})", copy.display())
+    })?;
+    log::info!("saved the mail database as it was (schema {version}) to {}", copy.display());
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let prefix = format!("{name}.before-v");
+    let mut copies: Vec<(i64, std::path::PathBuf)> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let v = e.file_name().to_str()?.strip_prefix(&prefix)?.parse().ok()?;
+            Some((v, e.path()))
+        })
+        .collect();
+    copies.sort_by_key(|(v, _)| std::cmp::Reverse(*v));
+    for (_, old) in copies.into_iter().skip(2) {
+        let _ = std::fs::remove_file(old);
+    }
+    Ok(())
 }
 
 /// Brings the database up to SCHEMA_VERSION one step at a time, each step in its own transaction together with
@@ -596,7 +628,9 @@ pub struct Store {
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
-        Self::init(Connection::open(path)?)
+        let conn = Connection::open(path)?;
+        backup_before_migrating(&conn, path)?;
+        Self::init(conn)
     }
 
     pub fn open_in_memory() -> Result<Self> {
@@ -4768,6 +4802,47 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         store.insert_messages(account, inbox, &[same(1)]).unwrap();
         store.insert_messages(account, archive, &[same(2)]).unwrap();
         assert_eq!(store.search("quarterly", 10).unwrap().rows.len(), 1);
+    }
+
+    #[test]
+    fn an_upgrade_keeps_a_copy_of_the_database_as_it_was() {
+        let dir = std::env::temp_dir().join(format!("tern-backup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("mail.db");
+        let store = Store::open(&path).unwrap();
+        let account = store.add_account(&config()).unwrap().id;
+        let inbox = store.upsert_folder(account, "INBOX", "inbox").unwrap();
+        store.insert_messages(account, inbox, &[message(1, "kept", 1)]).unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, SCHEMA_VERSION - 1);
+        drop(conn);
+        Store::open(&path).unwrap();
+        let copy = dir.join(format!("mail.db.before-v{}", SCHEMA_VERSION - 1));
+        let old = Connection::open(&copy).unwrap();
+        let version: i64 = old.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, SCHEMA_VERSION - 1, "the copy is the database as it was");
+        let kept: i64 = old.query_row("SELECT count(*) FROM messages", [], |r| r.get(0)).unwrap();
+        assert_eq!(kept, 1);
+        // Closed, or Windows cannot replace it below.
+        drop(old);
+        // Opening an up-to-date database copies nothing; only the two newest copies stay.
+        for v in [3, 4, 5] {
+            std::fs::write(dir.join(format!("mail.db.before-v{v}")), b"").unwrap();
+        }
+        let conn = Store::open(&path).unwrap().conn.into_inner().unwrap();
+        wind_back(&conn, SCHEMA_VERSION - 1);
+        drop(conn);
+        Store::open(&path).unwrap();
+        let mut left: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.unwrap().file_name().into_string().ok())
+            .filter(|n| n.contains("before-v"))
+            .collect();
+        left.sort();
+        assert_eq!(left.len(), 2, "{left:?}");
+        assert!(left.contains(&format!("mail.db.before-v{}", SCHEMA_VERSION - 1)));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

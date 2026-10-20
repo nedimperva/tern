@@ -85,6 +85,18 @@ Flatpak manifest, `tern` from-source PKGBUILD, website polish.
   commit log reads as sprint work rather than release notes. Local `tauri build` makes no updater files (the
   workflow turns them on with `--config`), so building needs no key.
 
+- 2026-10-20 — **Beta readiness slice selected by the owner** (M2 exit gate). In it: a copy of the database before
+  each upgrade, a log file and Settings → About, the tester guide (`docs/beta.md`), the M2 acceptance checklist.
+  Releases keep Gmail on app passwords (decision record, 2026-10-19), so no consent-screen or verification work.
+- 2026-10-20 — **Upgrades keep a copy, not a down-migration.** Migrations only go forward. Before migrating,
+  `Store::open` writes `VACUUM INTO mail.db.before-v<old>` (consistent, WAL included) and keeps the two newest;
+  the beta guide's "Going back" swaps it in with a table of release → schema. Writing reverse migrations for every
+  step would cost more and be riskier than a copy that is known good.
+- 2026-10-20 — **The log goes to a file as well as stderr**: `<app log dir>/tern.log` (`tern-dev.log` for debug
+  builds), restarted past 5 MB with one `.old` kept, imap-codec's "Rectified" warnings left out. The bug-report
+  details name each account's provider only for the big ones ("another IMAP server" otherwise), so a report
+  doesn't carry someone's own domain.
+
 ## Log
 
 - 2026-10-18 — Updater (`src-tauri/src/update.rs`, status-strip link, palette entry), `release.yml` signing and
@@ -96,3 +108,7 @@ Flatpak manifest, `tern` from-source PKGBUILD, website polish.
   verified its signature and signed version ("update 0.3.2 is ready"). The click that installs and restarts was
   not tried: with no account the setup dialog covers the status strip. Owner: publish `tern-bin` to the AUR, back
   up the key, and on the first release after this try "Restart to update" in an installed AppImage.
+- 2026-10-20 — Beta readiness: backup before migrating (test), `diagnostics.rs` (log file, About), Settings → About
+  (tried in `npm run dev`), the bug form pre-fills the version, `docs/beta.md`, `docs/acceptance/m2-beta.md`,
+  README points testers at the guide and no longer offers the unpublished AUR package. The log file checked in a
+  dev build on Omarchy. Owner: the Fastmail and Gmail runs and the tester group in the M2 checklist.
