@@ -2345,6 +2345,20 @@ button.fold {
   align-items: center;
   gap: var(--s-2);
 }
+.about-details {
+  grid-column: 1 / -1;
+  margin: var(--s-2) 0 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  font: var(--t-sm) / 1.5 var(--mono);
+  white-space: pre-wrap;
+  user-select: text;
+}
+.about-path {
+  font-family: var(--mono);
+  user-select: text;
+}
 .quiet-hours {
   display: flex;
   gap: var(--s-2);

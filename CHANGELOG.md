@@ -7,6 +7,22 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Gmail labels: All Mail is now Tern's archive for Gmail, so archived mail shows even without a label; labels are
+  listed under Labels in the side panel, conversations show theirs as coloured chips, and `l` puts a label on or
+  takes it off (with undo).
+- Before a new version upgrades the mail database, Tern saves a copy of it as it was, so going back to an earlier
+  version keeps your mail ([docs/beta.md](docs/beta.md)).
+- Settings → About: the version, details for a bug report (without addresses), the log, and a link to report a
+  problem. Tern now also writes a log file.
+- A guide for beta testers ([docs/beta.md](docs/beta.md)).
+
+### Changed
+
+- Gmail's own Important and Starred folders are no longer downloaded (stars still show), and a message in several
+  labels is kept once. Search shows a message once, not once per folder.
+
 ## [0.3.5] - 2026-10-19
 
 A redesigned compose, and Google sign-in for builds made with your own Google client. This version upgrades the

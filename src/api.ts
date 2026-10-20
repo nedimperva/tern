@@ -169,6 +169,8 @@ export type Preset = {
   note: string | null;
 };
 export type Applied = { token: number[]; accounts: number[]; drafts: number[] };
+/** Settings → About. */
+export type About = { version: string; logFile: string; details: string };
 /** Queued work Tern stopped retrying: it waits for the person to retry or discard it. */
 export type OutboxProblem = {
   id: number;
@@ -340,6 +342,10 @@ export interface Api {
   checkFolder(id: number): Promise<void>;
   onSyncState(f: (accountId: number, state: SyncState) => void): void;
   openUrl(url: string): void;
+  /** The version, the log file, and the details a bug report needs (no addresses). */
+  about(): Promise<About>;
+  /** Opens the folder with the log file. */
+  openLogs(): Promise<void>;
 }
 
 // Everything that must be saved before the window goes (an open compose), and whether closing only hides it. One
@@ -487,6 +493,8 @@ const tauri: Api = {
   onSyncState: (f) =>
     void listen<{ accountId: number; state: SyncState }>("sync-state", (e) => f(e.payload.accountId, e.payload.state)),
   openUrl: (url) => void import("@tauri-apps/plugin-opener").then((m) => m.openUrl(url)),
+  about: () => invoke("about"),
+  openLogs: () => invoke("open_logs"),
 };
 
 // MARK: A fake mailbox for the browser
@@ -990,6 +998,12 @@ function fake(): Api {
         : null,
     saveAttachment: async () => true,
     openUrl: (url) => void window.open(url, "_blank", "noopener"),
+    about: async () => ({
+      version: "0.3.6",
+      logFile: "/home/you/.local/share/app.tern.mail/logs/tern.log",
+      details: "Tern 0.3.6 (release build, AppImage)\nSystem: linux x86_64, Arch Linux, Hyprland, Wayland\nAccount 1: Gmail, password sign-in, up to date\nMail here: 5000 messages, 5000 with their text",
+    }),
+    openLogs: async () => {},
   };
 }
 

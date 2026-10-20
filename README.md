@@ -44,13 +44,16 @@ Download the latest build from [Releases](https://github.com/nedimperva/tern/rel
 
 | System | File |
 |---|---|
-| Arch, Omarchy | `yay -S tern-bin` (from the AUR) |
 | Linux | `.AppImage` (any distro), `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE) |
 | Windows 10/11 | `-setup.exe` or `.msi` |
 
+Trying the beta? Start with the [tester guide](docs/beta.md): installing, adding Gmail and other accounts, what
+works yet, where Tern keeps things, going back to an earlier version, and reporting a problem.
+
 The AppImage and the Windows installers update themselves: a new version downloads in the background and
-"Restart to update" appears in the status strip. AUR, `.deb` and `.rpm` installs update through the package
-manager. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+"Update ready · Restart" appears in the status bar. `.deb` and `.rpm` installs update with the next package. What
+changed in each version is in [CHANGELOG.md](CHANGELOG.md). An AUR package is in `packaging/aur/` for when it is
+published.
 
 On Hyprland the window's class is `tern`. It tiles like any window (Tern's minimum is 720×480); to float it
 instead, add a rule to `~/.config/hypr/hyprland.lua` on Omarchy:
