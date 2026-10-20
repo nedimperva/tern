@@ -50,7 +50,6 @@ Not yet, or only partly:
   IMAP. New labels are made in Gmail.
 - **Search** reads the text of mail that is on this computer; older mail is found by sender and subject until
   you've opened it.
-- **Windows**: notifications can't be clicked yet.
 - No calendar, no AI, no Outlook sign-in.
 
 Every change you make (archive, star, move, send) happens here at once and goes to the server after 5 seconds, so

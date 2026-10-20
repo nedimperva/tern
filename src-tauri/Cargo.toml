@@ -23,8 +23,14 @@ tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 tauri-plugin-deep-link = "2"
 tauri-plugin-autostart = "2"
-notify-rust = "4"
 # Local time for quiet hours (already in the tree through io-imap).
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # No `zip`: release updates are a plain AppImage and an NSIS .exe, and zip 4 carries open advisories.
 tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
+
+# Notifications: the desktop's notification service on Linux, toasts that report clicks on Windows.
+[target.'cfg(target_os = "linux")'.dependencies]
+notify-rust = "4"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Data_Xml_Dom", "Foundation", "UI_Notifications"] }

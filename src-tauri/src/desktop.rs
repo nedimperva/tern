@@ -292,7 +292,6 @@ fn look(app: &AppHandle) -> anyhow::Result<()> {
 }
 
 /// Archives a notification's conversation through the outbox, as `e` in the inbox would.
-#[cfg(target_os = "linux")]
 fn archive(app: &AppHandle, m: &NewMail) -> anyhow::Result<()> {
     use tern_core::{Action, ListTarget};
     let state = app.state::<AppState>();
@@ -370,53 +369,110 @@ fn notice_icon(app: &AppHandle) -> Option<String> {
 }
 
 /// Shows one notification; a click opens the conversation, and one conversation also gets Archive and Reply.
-/// Windows notifications can't report clicks yet (M3), so there only the text is used.
-#[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+#[cfg(target_os = "linux")]
 fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest: NewMail) {
     let mut note = notify_rust::Notification::new();
     note.summary(&summary).body(&body).appname("Tern");
-    #[cfg(target_os = "linux")]
-    {
-        match notice_icon(app) {
-            Some(path) => note.icon(&path),
-            None => note.icon("mail-unread"),
-        };
-        note.action("default", "Open");
-        // One conversation can be dealt with from the notification itself.
-        if one {
-            note.action("archive", "Archive").action("reply", "Reply");
-        }
-    }
-    #[cfg(windows)]
-    {
-        note.app_id(&app.config().identifier);
+    match notice_icon(app) {
+        Some(path) => note.icon(&path),
+        None => note.icon("mail-unread"),
+    };
+    note.action("default", "Open");
+    // One conversation can be dealt with from the notification itself.
+    if one {
+        note.action("archive", "Archive").action("reply", "Reply");
     }
     match note.show() {
-        #[cfg(target_os = "linux")]
         Ok(handle) => {
             // Clicking the notification opens that conversation. The wait blocks, so it gets its own thread.
             let app = app.clone();
             std::thread::spawn(move || {
                 handle.wait_for_action(|action| match action {
-                    "default" => {
-                        show(&app);
-                        let _ = app.emit("open-mail", &latest);
-                    }
-                    "reply" => {
-                        show(&app);
-                        let _ = app.emit("reply-mail", &latest);
-                    }
-                    "archive" => {
-                        if let Err(e) = archive(&app, &latest) {
-                            log::warn!("archive from a notification: {e:#}");
-                        }
-                    }
-                    _ => {}
+                    "default" => noticed(&app, None, &latest),
+                    action => noticed(&app, Some(action), &latest),
                 })
             });
         }
-        #[cfg(not(target_os = "linux"))]
-        Ok(_) => {}
         Err(e) => log::warn!("notification: {e}"),
+    }
+}
+
+/// Shows one notification as a Windows toast; a click opens the conversation, and one conversation also gets
+/// Archive and Reply. Windows reports clicks while Tern runs, which in the tray it does.
+#[cfg(windows)]
+fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest: NewMail) {
+    if let Err(e) = toast(app, &summary, &body, one, latest) {
+        log::warn!("notification: {e}");
+    }
+}
+
+/// The toast is written as XML rather than through a toast library: a click on the toast itself only comes back to
+/// Tern when the toast has a `launch` argument, which the libraries leave out.
+#[cfg(windows)]
+fn toast(
+    app: &AppHandle,
+    summary: &str,
+    body: &str,
+    one: bool,
+    latest: NewMail,
+) -> windows::core::Result<()> {
+    use windows::core::{IInspectable, Interface, HSTRING};
+    use windows::Data::Xml::Dom::XmlDocument;
+    use windows::Foundation::TypedEventHandler;
+    use windows::UI::Notifications::{ToastActivatedEventArgs, ToastNotification, ToastNotificationManager};
+
+    let text = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    let buttons = if one {
+        r#"<actions><action content="Archive" arguments="archive"/><action content="Reply" arguments="reply"/></actions>"#
+    } else {
+        ""
+    };
+    let xml = format!(
+        r#"<toast launch="open"><visual><binding template="ToastGeneric"><text>{}</text><text>{}</text></binding></visual>{buttons}</toast>"#,
+        text(summary),
+        text(body)
+    );
+    let doc = XmlDocument::new()?;
+    doc.LoadXml(&HSTRING::from(xml))?;
+    let toast = ToastNotification::CreateToastNotification(&doc)?;
+    let clicked = app.clone();
+    toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(move |_, args| {
+        let args: &Option<IInspectable> = &args;
+        let action = args
+            .as_ref()
+            .and_then(|a| a.cast::<ToastActivatedEventArgs>().ok())
+            .and_then(|a| a.Arguments().ok())
+            .map(|a| a.to_string());
+        let action = action.as_deref().filter(|a| *a != "open");
+        noticed(&clicked, action, &latest);
+        Ok(())
+    }))?;
+    // An installed Tern has its own app id (the installer puts it on the Start menu shortcut); a build run from
+    // the source tree has none, and Windows shows nothing for an unknown id, so it borrows PowerShell's.
+    let id = if cfg!(debug_assertions) {
+        "{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe".to_string()
+    } else {
+        app.config().identifier.clone()
+    };
+    ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(id))?.Show(&toast)
+}
+
+/// A notification was clicked (`action` None) or one of its buttons.
+fn noticed(app: &AppHandle, action: Option<&str>, latest: &NewMail) {
+    match action {
+        None => {
+            show(app);
+            let _ = app.emit("open-mail", latest);
+        }
+        Some("reply") => {
+            show(app);
+            let _ = app.emit("reply-mail", latest);
+        }
+        Some("archive") => {
+            if let Err(e) = archive(app, latest) {
+                log::warn!("archive from a notification: {e:#}");
+            }
+        }
+        Some(_) => {}
     }
 }

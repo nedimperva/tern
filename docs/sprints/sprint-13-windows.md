@@ -1,6 +1,6 @@
 # Sprint 13 — Windows
 
-**Status:** todo
+**Status:** in progress
 
 ## Delivery scope
 
@@ -20,23 +20,23 @@ WebView2, Windows notifications and tray; `mailto:` registration works; fonts an
 ## Tasks
 
 ### Build
-- [ ] Rust MSVC toolchain, VS Build Tools "Desktop development with C++"; WebView2 runtime is on Windows 11, NSIS installer bootstraps it on 10.
-- [ ] `rustls` means no OpenSSL headaches; confirm `cargo build --release` is clean on Windows with no `-sys` crates needing vcpkg.
-- [ ] `keyring` feature `windows-native` already on; verify OAuth JSON fits Credential Manager's 2,560-byte limit (split across two entries if not).
-- [ ] `tauri.conf.json` → `bundle.windows`: `wix` and `nsis` targets, `webviewInstallMode: downloadBootstrapper`, per-user install, code signing left unsigned for now (SmartScreen will warn; document it).
+- [x] Rust MSVC toolchain, VS Build Tools "Desktop development with C++"; WebView2 runtime is on Windows 11, NSIS installer bootstraps it on 10.
+- [x] `rustls` means no OpenSSL headaches; confirm `cargo build --release` is clean on Windows with no `-sys` crates needing vcpkg.
+- [x] `keyring` feature `windows-native` already on; verify OAuth JSON fits Credential Manager's 2,560-byte limit (split across two entries if not).
+- [x] `tauri.conf.json` → `bundle.windows`: `wix` and `nsis` targets, `webviewInstallMode: downloadBootstrapper`, per-user install, code signing left unsigned for now (SmartScreen will warn; document it).
 
 ### Platform behaviour
 - [ ] Notifications via the plugin (WinRT toasts); click-through to the conversation; tray via the core tray API.
-- [ ] `mailto:` registration through the deep-link plugin (registry under `HKCU`); "Make default" opens `ms-settings:defaultapps`.
-- [ ] Autostart via the plugin (registry `Run` key).
-- [ ] Key display: `Ctrl` everywhere; `Alt` menus do not exist; make sure `Ctrl+K`, `Ctrl+Enter`, `Ctrl+Shift+…` are not swallowed by WebView2 (`Ctrl+F` and `F5` need `preventDefault`).
+- [x] `mailto:` registration through the deep-link plugin (registry under `HKCU`); "Make default" opens `ms-settings:defaultapps`.
+- [x] Autostart via the plugin (registry `Run` key).
+- [x] Key display: `Ctrl` everywhere; `Alt` menus do not exist; make sure `Ctrl+K`, `Ctrl+Enter`, `Ctrl+Shift+…` are not swallowed by WebView2 (`Ctrl+F` and `F5` need `preventDefault`).
 - [ ] Fonts: keep bundled Inter; fall back to Segoe UI only if the user picks "system font". Check ClearType rendering at 100 % / 125 % / 150 %.
-- [ ] Window: custom title bar? No — keep the native frame in v1; dark title bar via `tauri`'s `theme` option.
-- [ ] Sleep/resume and network change via `tokio` timers (D-Bus code is `#[cfg(target_os = "linux")]`).
-- [ ] Paths: `app_data_dir()` under `%APPDATA%\app.tern.mail`; attachments cache under `%LOCALAPPDATA%`.
+- [x] Window: custom title bar? No — keep the native frame in v1; dark title bar via `tauri`'s `theme` option.
+- [x] Sleep/resume and network change via `tokio` timers (D-Bus code is `#[cfg(target_os = "linux")]`).
+- [x] Paths: `app_data_dir()` under `%APPDATA%\app.tern.mail`; attachments cache under `%LOCALAPPDATA%`.
 
 ### CI
-- [ ] GitHub Actions `windows-latest` job: `cargo test --workspace`, `npm run tauri build`, upload artifacts. Compile/test checks run on PRs from M0; add installer artifacts for M3.
+- [x] GitHub Actions `windows-latest` job: `cargo test --workspace`, `npm run tauri build`, upload artifacts. Compile/test checks run on PRs from M0; add installer artifacts for M3.
 
 ## Cut first
 NSIS (keep MSI), ms-settings deep link.
@@ -48,8 +48,26 @@ NSIS (keep MSI), ms-settings deep link.
 
 ## Decisions
 
-_None yet._
+- 2026-10-20 — Windows notifications are toasts from `tauri-winrt-notification` (the crate Tauri's own plugin
+  uses), not `notify-rust`: they report a click and their buttons while Tern runs, which in the tray it does. Body
+  click opens the conversation; one conversation gets Archive and Reply, as on Linux. A build from source shows
+  them under PowerShell's app id, since only the installer registers Tern's. A click on an old toast in the Action
+  Center after Tern has quit does nothing (that needs a COM activator; not worth it while Tern lives in the tray).
+- 2026-10-20 — The web view's own keys and menu go in released builds (`src/browserKeys.ts`): F5, Ctrl+R, Ctrl+P,
+  Ctrl+F, Alt+Left and the like, and the right-click menu except on text fields and selections (also inside a
+  message's frame). Builds from source keep them for development.
+- 2026-10-20 — The title bar follows Tern's theme (`setTheme`), "System" leaves it to Windows.
+- 2026-10-20 — Already true before this package: CI checks Windows on every PR, releases build the NSIS `.exe` and
+  the `.msi` and sign them for the updater, passwords use Credential Manager (Google's tokens are well under its
+  2,560-byte limit), received attachments are cached under `%LOCALAPPDATA%`, sleep/resume is noticed by a clock
+  jump on every platform. The SmartScreen warning is in docs/beta.md. Fonts are Inter, bundled.
 
 ## Log
 
-_No sessions yet._
+- 2026-10-20 — Audit of the package against 0.3.7 on the owner's Windows 11; built the toasts with actions, the
+  browser keys and menu, the title bar theme, explicit `bundle.windows` settings (per-user NSIS, WebView2
+  bootstrapper) and the [M3 checklist](../acceptance/m3-windows.md). Checked with clippy on Windows, `tsc`,
+  `vite build`. Tried in `tauri build --debug --no-bundle` (production UI) on the owner's Windows 11 with a copy of
+  the owner's database: F5, Ctrl+R, Ctrl+P, Ctrl+F and Alt+Left neither reload nor leave the page; the right-click
+  menu is gone on the list and kept in the search field; the title bar is dark with Tern dark and light with Tern
+  light on a light Windows. Notifications wait for the owner (they need new mail).

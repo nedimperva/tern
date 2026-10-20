@@ -92,6 +92,8 @@ createRoot(() =>
     const root = document.documentElement;
     if (settings.theme === "system") delete root.dataset.theme;
     else root.dataset.theme = settings.theme;
+    // The title bar too, or a dark Tern on a light Windows has a white bar on top.
+    api.setWindowTheme(settings.theme === "system" ? null : settings.theme);
     root.dataset.density = settings.density;
   }),
 );

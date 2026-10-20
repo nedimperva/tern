@@ -5328,6 +5328,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tern-core",
  "tokio",
+ "windows",
 ]
 
 [[package]]

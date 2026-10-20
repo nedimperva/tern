@@ -9,11 +9,15 @@ every release needs one here before it is tagged.
 
 ### Added
 
+- Windows: clicking a notification opens that conversation, and a notification for one conversation has Archive
+  and Reply, as on Linux.
 - HTML signatures: copy your signature from Gmail's or Outlook's settings and paste it in Settings → Signatures,
   logo, colours and layout included. It shows under the message in compose and goes out exactly as it is.
 
 ### Changed
 
+- Windows: F5, Ctrl+R, Ctrl+P, Ctrl+F and the browser's right-click menu no longer reload, print or search the app
+  window (right-click still offers Cut, Copy and Paste in text). The title bar follows Tern's Light or Dark setting.
 - Settings is quieter: a picked snippet or signature has no coloured bar, filters and "New mail · Replies" are
   grey, and each account's tab is underlined in that account's own colour. The Google sign-in button sits next to
   how the account signs in.
