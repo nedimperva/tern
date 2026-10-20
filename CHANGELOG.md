@@ -23,6 +23,13 @@ every release needs one here before it is tagged.
 - Gmail's own Important and Starred folders are no longer downloaded (stars still show), and a message in several
   labels is kept once. Search shows a message once, not once per folder.
 
+### Fixed
+
+- A draft you discarded or sent no longer comes back in Drafts as an ordinary message for a while afterwards.
+- Drafts saved in another app (the phone, Gmail on the web) open in compose, like Tern's own, instead of as mail
+  to reply to. One with attachments still opens as mail for now.
+- On Gmail, old draft versions and discarded drafts are deleted, not kept in All Mail.
+
 ## [0.3.5] - 2026-10-19
 
 A redesigned compose, and Google sign-in for builds made with your own Google client. This version upgrades the

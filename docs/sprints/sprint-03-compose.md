@@ -162,3 +162,9 @@ Pop-out window, paste-images-as-attachments, aliases. Never cut draft autosave.
   in twelve languages plus the person's own words; no subject; outside recipients mixed with inside ones);
   minimize to a corner card (App keeps its keys meanwhile) and focus mode (the caret's paragraph in full colour,
   via an editor decoration). Public mail domains never count as an organisation.
+- 2026-10-20 — Draft fixes from the owner's report. A sent or discarded draft's server copy is held out of the Drafts
+  folder's sync until the draft sync deletes it (`pending_uids`); before, a server without QRESYNC fetched it
+  again as a new message, with no draft behind it. On Gmail a copy goes to Trash and is deleted there, since
+  deleting from Drafts only takes the label off. A Drafts row Tern has no record of (another app's draft) is
+  adopted when opened (`adopt_draft`): its server copy becomes the draft's, replaced by the next save; not one
+  with attachments, and not before its text has downloaded.

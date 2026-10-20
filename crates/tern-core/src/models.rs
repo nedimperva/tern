@@ -254,7 +254,7 @@ pub struct Cursor {
     pub id: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Draft {
     pub to: Vec<String>,
