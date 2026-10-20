@@ -133,6 +133,8 @@ fn install_kind() -> &'static str {
     }
 }
 
+// Only Linux adds details, so elsewhere the list stays as it starts.
+#[cfg_attr(not(target_os = "linux"), allow(unused_mut, clippy::useless_vec))]
 fn system() -> String {
     let mut parts = vec![format!("{} {}", std::env::consts::OS, std::env::consts::ARCH)];
     #[cfg(target_os = "linux")]
