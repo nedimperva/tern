@@ -26,13 +26,13 @@ when it is offline.
 - [-] ~~`tauri-plugin-notification`; on Linux this is `org.freedesktop.Notifications` — works on Hyprland with `mako`/`dunst`/`swaync`.~~ — replaced by notify-rust, which reports clicks and actions (Decisions, 2026-10-15).
 - [x] `tauri-plugin-autostart` (XDG autostart `.desktop` on Linux; registry on Windows later).
 - [x] `tauri-plugin-deep-link` for `mailto:`; register the scheme in `tauri.conf.json` and the `.desktop` file (`MimeType=x-scheme-handler/mailto`).
-- [ ] `tauri-plugin-dialog` already from Sprint 3; `tauri-plugin-clipboard-manager` for "Copy link / Copy address".
+- [x] `tauri-plugin-dialog` already from Sprint 3; `tauri-plugin-clipboard-manager` for "Copy link / Copy address".
 - [x] Review `capabilities/default.json` after each plugin; least privilege.
 
 ### Notifications
 - [x] Rules: notify for Important split only by default; per-split toggle; quiet hours; never for muted/snoozed/own sent.
 - [x] Group by thread; body is the snippet; click → open the conversation; actions `Archive` / `Reply` where the server supports notification actions (freedesktop does).
-- [ ] Reminder-due and follow-up-due notifications from Sprint 5.
+- [x] Reminder-due and follow-up-due notifications from Sprint 5.
 
 ### Tray
 - [x] Tray icon with an unread dot (two icon variants), menu: Open, Compose, Check now, Pause sync, Quit. `libappindicator`/StatusNotifier on Linux (works in Waybar).
@@ -131,3 +131,10 @@ Notification actions, NetworkManager D-Bus (keep backoff), quiet hours.
 - 2026-10-18 — Owner ran the branch build on Omarchy/Hyprland with their real accounts (installed over
   `~/.local/bin/tern`): "seems like everything works". Owner also checked fractional scaling and that the
   "System" theme follows Omarchy's light/dark switch: both work.
+
+- 2026-10-20 — Copy link: a right-click on a link in a message opens Tern's own menu (the address, Open link, Copy
+  link; for `mailto:` Write to / Copy address), as #73 took the web view's menu away. The web clipboard does it, no
+  plugin; a sender's address was already copyable from their card. Notifications: snooze-back and no-reply-yet
+  already notified; a scheduled send held at start (due while Tern was closed) now does too, and its click opens
+  the list it waits in. Tried in `npm run dev` (the link menu) and in a debug build on an empty test database with
+  an overdue scheduled send (held, notified, the click event opens "Waiting to go out").

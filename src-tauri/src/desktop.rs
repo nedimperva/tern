@@ -397,11 +397,65 @@ fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest
     }
 }
 
+/// Scheduled sends that came due while Tern was closed wait for the person (`hold_overdue`). Tern may have started
+/// quietly in the tray, so this says so; a click shows them.
+pub fn notify_held(app: &AppHandle, held: usize) {
+    let Some(state) = app.try_state::<AppState>() else { return };
+    if !Notices::read(&state.store).is_ok_and(|n| n.on) {
+        return;
+    }
+    let summary = if held == 1 {
+        "A scheduled send is waiting".to_string()
+    } else {
+        format!("{held} scheduled sends are waiting")
+    };
+    let body = "Their time passed while Tern was closed. Send them now or keep them as drafts.".to_string();
+    show_plain(app, summary, body);
+}
+
+#[cfg(target_os = "linux")]
+fn show_plain(app: &AppHandle, summary: String, body: String) {
+    let mut note = notify_rust::Notification::new();
+    note.summary(&summary).body(&body).appname("Tern");
+    match notice_icon(app) {
+        Some(path) => note.icon(&path),
+        None => note.icon("mail-send"),
+    };
+    note.action("default", "Open");
+    match note.show() {
+        Ok(handle) => {
+            let app = app.clone();
+            std::thread::spawn(move || {
+                handle.wait_for_action(|action| {
+                    if action == "default" {
+                        show(&app);
+                        let _ = app.emit("show-waiting", ());
+                    }
+                })
+            });
+        }
+        Err(e) => log::warn!("notification: {e}"),
+    }
+}
+
+#[cfg(windows)]
+fn show_plain(app: &AppHandle, summary: String, body: String) {
+    let clicked = app.clone();
+    let shown = toast(app, &summary, &body, false, move |_| {
+        show(&clicked);
+        let _ = clicked.emit("show-waiting", ());
+    });
+    if let Err(e) = shown {
+        log::warn!("notification: {e}");
+    }
+}
+
 /// Shows one notification as a Windows toast; a click opens the conversation, and one conversation also gets
 /// Archive and Reply. Windows reports clicks while Tern runs, which in the tray it does.
 #[cfg(windows)]
 fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest: NewMail) {
-    if let Err(e) = toast(app, &summary, &body, one, latest) {
+    let clicked = app.clone();
+    if let Err(e) = toast(app, &summary, &body, one, move |action| noticed(&clicked, action, &latest)) {
         log::warn!("notification: {e}");
     }
 }
@@ -413,8 +467,8 @@ fn toast(
     app: &AppHandle,
     summary: &str,
     body: &str,
-    one: bool,
-    latest: NewMail,
+    buttons: bool,
+    clicked: impl Fn(Option<&str>) + Send + 'static,
 ) -> windows::core::Result<()> {
     use windows::core::{IInspectable, Interface, HSTRING};
     use windows::Data::Xml::Dom::XmlDocument;
@@ -422,7 +476,7 @@ fn toast(
     use windows::UI::Notifications::{ToastActivatedEventArgs, ToastNotification, ToastNotificationManager};
 
     let text = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
-    let buttons = if one {
+    let buttons = if buttons {
         r#"<actions><action content="Archive" arguments="archive"/><action content="Reply" arguments="reply"/></actions>"#
     } else {
         ""
@@ -435,7 +489,6 @@ fn toast(
     let doc = XmlDocument::new()?;
     doc.LoadXml(&HSTRING::from(xml))?;
     let toast = ToastNotification::CreateToastNotification(&doc)?;
-    let clicked = app.clone();
     toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(move |_, args| {
         let args: &Option<IInspectable> = &args;
         let action = args
@@ -443,8 +496,7 @@ fn toast(
             .and_then(|a| a.cast::<ToastActivatedEventArgs>().ok())
             .and_then(|a| a.Arguments().ok())
             .map(|a| a.to_string());
-        let action = action.as_deref().filter(|a| *a != "open");
-        noticed(&clicked, action, &latest);
+        clicked(action.as_deref().filter(|a| *a != "open"));
         Ok(())
     }))?;
     // An installed Tern has its own app id (the installer puts it on the Start menu shortcut); a build run from

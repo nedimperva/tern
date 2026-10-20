@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tern: a fast, local-first mail client</title>
+<meta name="description" content="Tern is a fast, keyboard-first mail client for any IMAP account, on Linux and Windows. Your mail lives on your computer; nothing is tracked.">
+<link rel="icon" href="images/icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #ffffff;
+    --soft: #f6f8fb;
+    --fg: #18181b;
+    --fg-1: #52525b;
+    --line: #e4e4e7;
+    --accent: #2563eb;
+    --accent-fg: #ffffff;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111318;
+      --soft: #171a21;
+      --fg: #ededf0;
+      --fg-1: #a1a1aa;
+      --line: #2a2a30;
+      --accent: #60a5fa;
+      --accent-fg: #0b1220;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+  header { padding: 64px 0 32px; text-align: center; }
+  header img.icon { width: 88px; height: 88px; }
+  h1 { margin: 12px 0 8px; font-size: clamp(36px, 6vw, 52px); letter-spacing: -1px; line-height: 1.1; }
+  .lede { max-width: 620px; margin: 0 auto; font-size: 19px; color: var(--fg-1); }
+  .downloads { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 28px 0 12px; }
+  .button {
+    display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 20px;
+    border-radius: 8px; border: 1px solid var(--line); color: var(--fg); text-decoration: none; font-weight: 600;
+  }
+  .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .small { font-size: 14px; color: var(--fg-1); }
+  .shots { margin: 40px 0 8px; display: grid; gap: 16px; }
+  .shots img { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); display: block; }
+  .shots .pair { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  section { padding: 48px 0; border-top: 1px solid var(--line); }
+  h2 { margin: 0 0 20px; font-size: 26px; letter-spacing: -0.3px; }
+  .grid { display: grid; gap: 24px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .grid h3 { margin: 0 0 6px; font-size: 17px; }
+  .grid p { margin: 0; color: var(--fg-1); }
+  table { border-collapse: collapse; width: 100%; max-width: 560px; }
+  td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  kbd {
+    font: 13px ui-monospace, monospace; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px;
+    background: var(--soft);
+  }
+  footer { padding: 32px 0 48px; border-top: 1px solid var(--line); font-size: 14px; color: var(--fg-1); }
+  @media (max-width: 720px) {
+    .grid, .shots .pair { grid-template-columns: 1fr; }
+    header { padding-top: 40px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img class="icon" src="images/icon.svg" alt="">
+    <h1>Tern</h1>
+    <p class="lede">A fast, keyboard-first mail client for any IMAP account. Your mail lives on your computer, so
+      lists, conversations and search never wait on the network.</p>
+    <div class="downloads">
+      <a class="button primary" href="https://github.com/nedimperva/tern/releases/latest">Download for Windows</a>
+      <a class="button primary" href="https://github.com/nedimperva/tern/releases/latest">Download for Linux</a>
+      <a class="button" href="https://github.com/nedimperva/tern">Source on GitHub</a>
+    </div>
+    <p class="small">Windows 10/11: the <code>-setup.exe</code>. Linux: the <code>.AppImage</code>, <code>.deb</code>
+      or <code>.rpm</code>. Free and open source (MIT). Beta: see the <a href="beta.html">tester guide</a>.</p>
+  </header>
+
+  <div class="shots">
+    <img src="images/reading.png" alt="Tern with a conversation open beside the inbox" width="1280" height="760">
+    <div class="pair">
+      <img src="images/compose.png" alt="Writing a message in the dark theme" width="1280" height="760">
+      <img src="images/inbox-zero.png" alt="Inbox Zero: the tern's migration from pole to pole" width="1280" height="760">
+    </div>
+  </div>
+
+  <section>
+    <h2>What it does</h2>
+    <div class="grid">
+      <div><h3>Local first</h3><p>Everything you see comes from a database on your computer. Archive, star or send and it shows at once; it reaches the server after a 5-second undo window, or when you're back online.</p></div>
+      <div><h3>Keyboard first</h3><p>Gmail-style keys and a command bar for every action. <kbd>e</kbd> archives, <kbd>z</kbd> undoes, <kbd>Ctrl K</kbd> finds the rest.</p></div>
+      <div><h3>Any IMAP account</h3><p>Fastmail, Gmail with its labels, your company's server. New mail arrives as it comes (IDLE), and the inbox fills headers first.</p></div>
+      <div><h3>Triage</h3><p>Important and Other, snooze, send later, "remind me if no reply", and fast full-text search with filters.</p></div>
+      <div><h3>Compose</h3><p>Snippets, signatures (HTML ones from Gmail or Outlook too), and a check for the attachment you mentioned but forgot.</p></div>
+      <div><h3>On your desktop</h3><p>Tray, notifications with Archive and Reply, start at login, <code>mailto:</code> links. It updates itself.</p></div>
+    </div>
+  </section>
+
+  <section id="privacy">
+    <h2>Privacy</h2>
+    <p>Tern talks to your mail servers and to nothing else, unless you choose to load a message's images or turn on
+      sender logos. It has no account of its own, sends no analytics or crash reports, and this site has no
+      tracking. Passwords stay in your system's keyring (Credential Manager or the Secret Service), never in a file.
+      Mail is shown in a sandbox with no scripts, and remote images are blocked until you load them.</p>
+    <p>Updates are checked against GitHub's release list and are signed, so a tampered download is refused.</p>
+  </section>
+
+  <section>
+    <h2>A few keys</h2>
+    <table>
+      <tr><td><kbd>j</kbd> <kbd>k</kbd></td><td>next, previous</td></tr>
+      <tr><td><kbd>e</kbd></td><td>archive</td></tr>
+      <tr><td><kbd>z</kbd></td><td>undo</td></tr>
+      <tr><td><kbd>r</kbd></td><td>reply</td></tr>
+      <tr><td><kbd>c</kbd></td><td>compose</td></tr>
+      <tr><td><kbd>h</kbd></td><td>snooze</td></tr>
+      <tr><td><kbd>/</kbd></td><td>search</td></tr>
+      <tr><td><kbd>Ctrl K</kbd></td><td>every command</td></tr>
+    </table>
+  </section>
+
+  <footer>
+    Tern is open source under the MIT licence ·
+    <a href="https://github.com/nedimperva/tern">GitHub</a> ·
+    <a href="https://github.com/nedimperva/tern/releases">Releases</a> ·
+    <a href="https://github.com/nedimperva/tern/issues/new/choose">Report a problem</a>
+  </footer>
+</div>
+</body>
+</html>

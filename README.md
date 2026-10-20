@@ -10,14 +10,20 @@
 [![release](https://img.shields.io/github/v/release/nedimperva/tern?include_prereleases&sort=semver)](https://github.com/nedimperva/tern/releases)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Linux first, then Windows · Rust · Tauri 2 · SolidJS · SQLite
+Linux and Windows · Rust · Tauri 2 · SolidJS · SQLite
 
 </div>
 
+![Tern with a conversation open beside the inbox](docs/images/reading.png)
+
+| | |
+|---|---|
+| ![Writing a message in the dark theme](docs/images/compose.png) | ![Inbox Zero: the tern's migration from pole to pole](docs/images/inbox-zero.png) |
+
 > [!WARNING]
-> **Tern is early alpha software (0.3.x).** It syncs and sends real mail and its author uses it every day, but
-> expect rough edges. Try it with a test account, or keep another mail client around. Installers are not
-> code-signed yet.
+> **Tern is beta software (0.3.x).** It syncs and sends real mail and its author uses it every day on Linux and
+> Windows, but expect rough edges. Try it with a test account, or keep another mail client around. Installers are
+> not code-signed yet.
 
 ## Why Tern
 
@@ -32,9 +38,15 @@ a 5-second undo window. If you're offline, it goes once you're back.
 - **Keyboard first.** Gmail-style keys and a command bar (`Ctrl K`) for every action. See [Keys](#keys).
 - **Undo everything.** Archive, move, star and send wait 5 seconds before reaching the server; `z` takes them back.
   A send that may already have gone out is never retried on its own.
-- **Triage.** Important / Other splits, local snooze, and fast full-text search with filters.
-- **Compose.** Drafts, attachments, signatures, address autocomplete, snippets (`;`) and quoting a selection.
-- **Desktop integration.** Tray icon, notifications, background running, start at login and `mailto:` links.
+- **Gmail labels.** All Mail is the archive, labels show as coloured chips, and `l` puts one on or takes it off.
+- **Triage.** Important / Other splits, local snooze, send later, "remind me if no reply", and fast full-text
+  search with filters.
+- **Compose.** Drafts, attachments, address autocomplete, snippets (`;`), quoting a selection, checks before
+  sending (a mentioned attachment that isn't there, in twelve languages), and signatures, including HTML ones
+  pasted from Gmail or Outlook.
+- **Desktop integration.** Tray icon, notifications with Archive and Reply, background running, start at login and
+  `mailto:` links.
+- **Inbox Zero** gets a tern scene a day: its migration, a flock for what you cleared, your streak.
 - **Private by default.** Remote images are blocked until you load them, mail HTML runs without scripts, sender
   logos are off unless you turn them on, and there is no telemetry.
 
@@ -172,6 +184,7 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 |---|---|
 | `j` / `k` | next / previous message |
 | `e` | archive |
+| `l` | put a Gmail label on or take it off |
 | `#` | move to Trash |
 | `s` | star |
 | `Shift I` / `Shift U` | mark read / unread |
@@ -218,9 +231,10 @@ src/                     the UI (SolidJS): virtualized list, thread view, compos
 
 ## Roadmap
 
-Delivery follows milestones: safe foundation → Linux private alpha → focused Linux beta → Windows release →
-expansion. Tern is in the Linux beta now. Next up are Gmail labels, wider provider testing and Linux packaging.
-Optional AI (off by default), calendar and more providers come later. See [docs/PLAN.md](docs/PLAN.md).
+Delivery follows milestones: safe foundation → Linux private alpha → focused Linux beta → Windows release (1.0) →
+expansion. Tern is in the beta now, tested on Linux and Windows; [what 1.0 still needs](docs/release-1.0.md) is
+mostly testing with real accounts and testers. Optional AI (off by default), calendar and more providers come
+later. See [docs/PLAN.md](docs/PLAN.md).
 
 ## Contributing
 
@@ -228,4 +242,5 @@ Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIB
 
 ## License
 
-[MIT](LICENSE) © Nedim Perva
+[MIT](LICENSE) © Nedim Perva. The licences of the libraries Tern ships with are in
+[THIRD_PARTY.md](THIRD_PARTY.md).

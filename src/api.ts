@@ -314,6 +314,8 @@ export interface Api {
     openMail: (m: NewMail) => void;
     /** A notification's Reply: open the conversation and reply to it. */
     reply: (m: NewMail) => void;
+    /** A notification about scheduled sends that wait: show them. */
+    waiting: () => void;
   }): void;
   /** Pauses or resumes sync for every account (also in the tray); `onSyncState` reports "paused" per account. */
   setSyncPaused(on: boolean): Promise<void>;
@@ -468,6 +470,7 @@ const tauri: Api = {
     void listen<Mailto>("mailto", (e) => h.mailto(e.payload));
     void listen<NewMail>("open-mail", (e) => h.openMail(e.payload));
     void listen<NewMail>("reply-mail", (e) => h.reply(e.payload));
+    void listen("show-waiting", () => h.waiting());
     void listen("quit", () => void tauri.quit());
   },
   takeMailto: () => invoke("take_mailto"),
