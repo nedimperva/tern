@@ -219,13 +219,17 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   sections whose settings match. Content sits in a 640 px column. Controls are plain: toggles, selects, text
   fields. Every setting has one line of explanation under it.
 - Built (2026-10-19), Snippets and Signatures use a wider (1040 px) list-and-detail layout. On the left, a list
-  of rows (name, `;shortcut` or "New mail"/"Replies" badges); the picked row is `--bg-3` with a 3 px `--accent` bar.
+  of rows (name, `;shortcut` or "New mail · Replies" in `--fg-2`); the picked row is `--bg-3`, nothing more, and a
+  pressed filter pill is `--bg-3` too. Colour is for accounts: a per-account tab is underlined in that account's colour.
   On the right, its editor, with a `--soft` preview at the bottom and a footer that says when it saved.
   Snippets: find field, filter pills (All, each account, Most used), the shortcut checked as it is typed ("Free to
   use" in `--ok`, "Taken by …" in `--danger`), the places as `--accent-soft` chips that insert at the cursor,
   "Available in" (an account) and "Also fill in" (subject, Cc), and a preview written to a made-up person.
   Signatures: a tab per account, the signature in compose's editor (select text to format it), which one goes on
-  new mail and which on replies, and above or below the quote as a segmented control.
+  new mail and which on replies, and above or below the quote as a segmented control. "Format: Write it here / Paste
+  from another app" switches the editor for a paste box (a dashed `--line` border; Ctrl+V keeps the copied formatting),
+  the HTML source in `--mono` folded under "Edit the HTML", a `--warn-fg` note when a picture has no web address, and the preview shows it in a
+  white frame. In compose an HTML signature sits under the text in the same white frame, not in the editor.
 
 ### 4.9 Account setup
 

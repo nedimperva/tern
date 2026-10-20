@@ -18,6 +18,7 @@ import { until } from "./ConversationRow";
 import { SnoozePicker } from "./SnoozePicker";
 import type { SnippetSource } from "./Editor";
 import { Icon } from "./Icon";
+import { HtmlFrame } from "./HtmlFrame";
 // The editor is a chunk of its own (ProseMirror is most of its weight); App loads it once the list is up.
 const Editor = lazy(() => import("./Editor").then((m) => ({ default: m.Editor })));
 import { RecipientField, splitAddresses, validAddress } from "./RecipientField";
@@ -51,6 +52,8 @@ export type ComposeInit = {
   /** New mail and replies: the signature goes in after `body` and above `quote` (below it when `below`). `kind`
    * says which of the account's signatures a change of From picks. A saved draft has none: its own text has it. */
   signature?: { id: number | null; kind: "new" | "reply"; quote: string; below: boolean };
+  /** A saved draft's HTML signature, shown under the text again. */
+  htmlSignature?: number | null;
 };
 
 /** The signature of `accountId` for new mail or for replies, if it has one. */
@@ -109,14 +112,22 @@ export function Compose(props: {
     return made;
   });
   // The signature in the text now (null: none, or one Tern can't find as written), and the editor showing it.
-  const [sigId, setSigId] = createSignal<number | null>(props.init.signature?.id ?? null);
+  const [sigId, setSigId] = createSignal<number | null>(props.init.signature?.id ?? props.init.htmlSignature ?? null);
+  // An HTML signature (pasted from another mail app) isn't in the text: it shows under it and joins it on the way out.
+  const htmlSig = () => {
+    const s = props.signatures.find((x) => x.id === sigId());
+    return s?.custom && s.html ? s : null;
+  };
+  const sigBelow = () => props.init.signature?.below ?? (settings.signatureBelow && !!props.init.inReplyTo);
+  let tools: Awaited<ReturnType<typeof signatureTools>> | undefined;
+  void signatureTools().then((t) => (tools = t));
   const sigKind = props.init.signature?.kind ?? (props.init.inReplyTo ? "reply" : "new");
   const accountSignatures = () => props.signatures.filter((s) => s.accountId === from());
   let view: EditorView | undefined;
   const editorReady = (v: EditorView) => {
     view = v;
     // A saved draft: find which of the account's signatures it holds, so switching replaces that one.
-    if (props.init.signature) return;
+    if (props.init.signature || props.init.htmlSignature) return;
     void signatureTools().then(({ findSignature }) => {
       const held = accountSignatures().find((s) => findSignature(v.state.doc, s));
       if (held) setSigId(held.id);
@@ -129,13 +140,15 @@ export function Compose(props: {
     const state = view.state;
     const current = props.signatures.find((s) => s.id === sigId());
     const at = current ? findSignature(state.doc, current) : null;
-    const blocks = next ? signatureDoc(next).content : null;
+    const blocks = next && !next.custom ? signatureDoc(next).content : null;
     if (at) view.dispatch(blocks ? state.tr.replaceWith(at.from, at.to, blocks) : state.tr.delete(at.from, at.to));
     else if (blocks) {
       const below = props.init.signature?.below ?? false;
       view.dispatch(state.tr.insert(signaturePlace(state.doc, below), blocks));
     }
     setSigId(next?.id ?? null);
+    // The text did not change, but what goes out did.
+    if (current?.custom || next?.custom) changed();
   };
   /** Ctrl+Shift+S: the account's next signature, then none, then round again. */
   const cycleSignature = () => {
@@ -196,18 +209,25 @@ export function Compose(props: {
   // Reopened after undo-send, what is here may never have been saved.
   let dirty = props.init.unsaved ?? false;
   let saveTimer: number | undefined;
-  const draft = (): Draft => ({
-    to: to(),
-    cc: cc(),
-    bcc: bcc(),
-    subject: subject(),
-    body: body(),
-    html: html(),
-    inReplyTo: props.init.inReplyTo ?? null,
-    references: props.init.references ?? [],
-    attachments: files(),
-    forwardOf: forwardOf(),
-  });
+  const draft = (): Draft => {
+    const sig = htmlSig();
+    const out = sig && view && tools ? tools.withHtmlSignature(view.state.doc, sig, sigBelow()) : null;
+    return {
+      to: to(),
+      cc: cc(),
+      bcc: bcc(),
+      subject: subject(),
+      body: body(),
+      html: html(),
+      inReplyTo: props.init.inReplyTo ?? null,
+      references: props.init.references ?? [],
+      attachments: files(),
+      forwardOf: forwardOf(),
+      htmlSignature: sig?.id ?? null,
+      outBody: out?.body ?? null,
+      outHtml: out?.html ?? null,
+    };
+  };
   /** Saves the draft, if there is anything to keep. */
   const save = async (uploadNow: boolean) => {
     clearTimeout(saveTimer);
@@ -455,6 +475,13 @@ export function Compose(props: {
           )}
         </Show>
       </Suspense>
+      <Show when={htmlSig()}>
+        {(s) => (
+          <div class="html-signature" title="Your signature, as it goes out. Change it in Settings → Signatures.">
+            <HtmlFrame html={s().html!} title="Signature" />
+          </div>
+        )}
+      </Show>
       <Show when={files().length || forwardOf()}>
         <div class="outgoing-files" aria-label="Attachments">
           <Show when={forwardOf()}>

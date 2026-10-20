@@ -1795,6 +1795,9 @@ mod tests {
                 attachments: vec![],
                 forward_of: None,
                 message_id: None,
+                html_signature: None,
+                out_body: None,
+                out_html: None,
             }
         }
 
@@ -2168,6 +2171,9 @@ mod tests {
             attachments: vec![],
             forward_of: None,
             message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         };
         let work = store.queue_send(account.id, draft, 0).unwrap();
         let message_id = match store.outbox_op(work).unwrap() {
@@ -2214,6 +2220,9 @@ mod tests {
             attachments: vec![],
             forward_of: None,
             message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         };
         let copies = |message_id: String| {
             let (config, password) = (config.clone(), password.clone());
@@ -2297,6 +2306,9 @@ mod tests {
             attachments,
             forward_of,
             message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         };
         store
             .queue_send(
@@ -2493,6 +2505,9 @@ mod tests {
             attachments: vec![],
             forward_of: None,
             message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
         };
         crate::smtp::send(&config, &password.credential().await.unwrap(), &draft, &[]).await.unwrap();
         let mut row = None;

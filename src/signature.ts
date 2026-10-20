@@ -25,6 +25,8 @@ const blocks = (doc: Node) => {
 
 /** Where `sig` sits in `doc`, as positions around its blocks; null when it is not there as written. */
 export function findSignature(doc: Node, sig: Signature): { from: number; to: number } | null {
+  // An HTML signature is never in the text: compose shows it under it.
+  if (sig.custom) return null;
   const want = blocks(signatureDoc(sig));
   const have = blocks(doc);
   const text = words(want);
@@ -57,7 +59,7 @@ export function withSignature(
   sig: Signature | null,
   below: boolean,
 ): { body: string; html: string | null } {
-  if (!sig) return { body: text + quote, html: null };
+  if (!sig || sig.custom) return { body: text + quote, html: null };
   if (!sig.html) {
     const lines = `-- \n${sig.body.trim()}`;
     return { body: below ? `${text}${quote}\n\n${lines}` : `${text}\n\n${lines}${quote}`, html: null };
@@ -67,4 +69,17 @@ export function withSignature(
   if (below && parts.length === 3) parts.push(parts.splice(1, 1)[0]);
   const doc = schema.topNodeType.create(null, Fragment.fromArray(parts.flatMap(blocks)));
   return { body: toText(doc), html: toHtml(doc) };
+}
+
+/** What goes out with an HTML signature (Signature.custom), which the editor can't hold: the text and HTML with it
+ * where a signature goes. The text version gets the "-- " line; the HTML is the person's own, as it is. */
+export function withHtmlSignature(doc: Node, sig: Signature, below: boolean): { body: string; html: string } {
+  const at = signaturePlace(doc, below);
+  const before = doc.cut(0, at);
+  const after = doc.cut(at);
+  const rest = after.childCount ? toText(after) : "";
+  return {
+    body: `${toText(before).trimEnd()}\n\n-- \n${sig.body.trim()}${rest ? `\n\n${rest}` : ""}`,
+    html: `${toHtml(before)}<div class="tern-signature">${sig.html ?? ""}</div>${after.childCount ? toHtml(after) : ""}`,
+  };
 }

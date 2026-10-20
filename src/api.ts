@@ -45,6 +45,8 @@ export type Signature = {
   name: string;
   body: string;
   html: string | null;
+  /** `html` is the person's own, pasted from another mail app: it goes out as it is, under the text. */
+  custom?: boolean;
   forNew: boolean;
   forReply: boolean;
 };
@@ -140,6 +142,10 @@ export type Draft = {
   html?: string | null;
   inReplyTo?: string | null;
   references?: string[];
+  /** The HTML signature (Signature.custom) shown under the text, and what goes out with it in place. */
+  htmlSignature?: number | null;
+  outBody?: string | null;
+  outHtml?: string | null;
 };
 export type ReplyKind = "reply" | "replyAll" | "forward";
 /** A draft as compose last saved it. */
@@ -948,7 +954,7 @@ function fake(): Api {
     signatures: async () => signatures.map((s) => ({ ...s })),
     saveSignature: async (signature) => {
       if (signature.id) {
-        signatures = signatures.map((s) => (s.id === signature.id ? { ...s, name: signature.name, body: signature.body, html: signature.html } : s));
+        signatures = signatures.map((s) => (s.id === signature.id ? { ...s, name: signature.name, body: signature.body, html: signature.html, custom: signature.custom } : s));
         return signature.id;
       }
       const first = !signatures.some((s) => s.accountId === signature.accountId);

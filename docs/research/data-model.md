@@ -174,6 +174,23 @@ SMTP with XOAUTH2; every account before this has a password. One column takes th
 ALTER TABLE accounts ADD COLUMN auth TEXT NOT NULL DEFAULT 'password';        -- 'password' | 'google'
 ```
 
+## v22 — package 04, Gmail labels (implemented 2026-10-20)
+Which messages (by bare Message-ID) a Gmail label folder holds. Label folders keep no message rows of their own;
+their messages are All Mail's.
+```sql
+CREATE TABLE message_labels (folder_id INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+                             message_id TEXT NOT NULL, PRIMARY KEY (folder_id, message_id)) WITHOUT ROWID;
+CREATE INDEX message_labels_message ON message_labels (message_id);
+```
+
+## v23 — package 07, HTML signatures (implemented 2026-10-20)
+A signature's `html` can be the person's own, pasted from another mail app (a logo, colours, a table layout the
+compose editor can't hold). It is cleaned like mail when saved, shown under the text in compose, and joined to the
+text on the way out: the draft carries `htmlSignature`, `outBody` and `outHtml` in its JSON, no column.
+```sql
+ALTER TABLE signatures ADD COLUMN custom INTEGER NOT NULL DEFAULT 0;
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN caps TEXT NOT NULL DEFAULT '{}';               -- JSON: condstore, qresync, move, idle, gmail_ext
