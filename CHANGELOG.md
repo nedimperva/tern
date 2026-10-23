@@ -7,6 +7,8 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-23
+
 ### Added
 
 - Inbox Zero has a tern scene a day: the tern's migration from pole to pole, a flock with a bird for each
@@ -31,6 +33,8 @@ every release needs one here before it is tagged.
 
 ### Fixed
 
+- Security updates for certificate checks (rustls-webpki, webpki-roots: distrusted intermediates are no longer
+  accepted) and ctutils.
 - Some mail showed only its subject, for good: a flag change the server reported while bodies were downloading
   was saved as that message's body. Those messages download again after the update. A message the server will not
   give, or a batch it refuses, no longer holds up snippets and bodies for the rest of the mailbox.
@@ -210,7 +214,8 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v0.3.7...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/nedimperva/tern/compare/v0.3.7...v1.0.0
 [0.3.7]: https://github.com/nedimperva/tern/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/nedimperva/tern/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/nedimperva/tern/compare/v0.3.4...v0.3.5
