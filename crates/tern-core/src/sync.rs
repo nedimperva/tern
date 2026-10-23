@@ -398,7 +398,15 @@ async fn pass(
     }
     // Messages someone opened before their body came: those first, whatever folder they are in.
     for (folder_id, name) in store.folders_with_wanted_bodies(account.id)? {
-        within(s.select(&name)).await.with_context(|| format!("Could not open {name}"))?;
+        // A folder the server refuses (gone, or not selectable) cannot give the bodies, and must not stop the pass.
+        if let Err(e) = within(s.select(&name)).await.with_context(|| format!("Could not open {name}")) {
+            if connection_broke(&e) {
+                return Err(e);
+            }
+            log::warn!("account {}: {e:#}", account.id);
+            store.unwant_bodies(folder_id, None)?;
+            continue;
+        }
         let opened_only = i64::MAX;
         fetch_bodies(
             s,
@@ -809,9 +817,18 @@ async fn fetch_snippets<S: Stream>(
         let mut snippets: HashMap<u32, String> =
             needed.iter().map(|(uid, _)| (*uid, String::new())).collect();
         for (section, uids) in by_section {
-            let fetched = within(s.part_start(&uid_set(&uids), section, SNIPPET_BYTES))
+            let fetched = match within(s.part_start(&uid_set(&uids), section, SNIPPET_BYTES))
                 .await
-                .with_context(|| format!("Could not read snippets in {name}"))?;
+                .with_context(|| format!("Could not read snippets in {name}"))
+            {
+                Ok(fetched) => fetched,
+                Err(e) if connection_broke(&e) => return Err(e),
+                // Refused: these keep an empty snippet rather than fail the folder (and its bodies) every pass.
+                Err(e) => {
+                    log::warn!("{e:#}");
+                    continue;
+                }
+            };
             for f in fetched {
                 if let (Some(bytes), Some(part)) = (f.part.as_deref(), parts.get(&f.uid)) {
                     snippets.insert(f.uid, mime::part_snippet(part, bytes));
@@ -835,15 +852,21 @@ async fn fetch_bodies<S: Stream>(
     deadline: Instant,
     on_change: &(dyn Fn() + Send + Sync),
 ) -> Result<bool> {
+    // Asked for in this call and not given: not asked for again until a later pass, so the mail after them
+    // still comes.
+    let mut missing: HashSet<u32> = HashSet::new();
     loop {
-        let needed = store.bodies_needed(folder_id, since, BODY_ROUND)?;
+        let needed: Vec<(u32, Option<u32>)> = store
+            .bodies_needed(folder_id, since, BODY_ROUND + missing.len() as i64)?
+            .into_iter()
+            .filter(|(uid, _)| !missing.contains(uid))
+            .collect();
         if needed.is_empty() {
             return Ok(false);
         }
         let uids: Vec<u32> = needed.iter().map(|(uid, _)| *uid).collect();
         let sizes: HashMap<u32, u32> =
             needed.iter().filter_map(|(uid, size)| Some((*uid, (*size)?))).collect();
-        let mut filled = 0;
         for chunk in by_size(&uids, &sizes) {
             // Out of time, or something the person did is waiting: leave the rest for later. Prefetch also stops
             // for a message someone opened that has no body yet.
@@ -859,9 +882,48 @@ async fn fetch_bodies<S: Stream>(
             log::debug!("fetching {name} bodies {set} ({} kB)", bytes / 1000);
             // Big mail takes longer to come down, so the limit grows with the batch.
             let limit = COMMAND_TIMEOUT + Duration::from_secs(bytes / MIN_BYTES_PER_SECOND);
-            let fetched = within_for(limit, s.bodies(&set))
+            let fetched = match within_for(limit, s.bodies(&set))
                 .await
-                .with_context(|| format!("Could not fetch {name} bodies {set}"))?;
+                .with_context(|| format!("Could not fetch {name} bodies {set}"))
+            {
+                Ok(fetched) => fetched,
+                Err(e) if connection_broke(&e) => return Err(e),
+                // The server refused the batch, likely over one message in it: ask for each on its own, so the
+                // rest still come down and only the one it will not give is left out.
+                Err(e) if chunk.len() > 1 => {
+                    log::warn!("{e:#}; asking one by one");
+                    let mut fetched = Vec::new();
+                    for uid in chunk {
+                        match within_for(limit, s.bodies(&uid.to_string())).await {
+                            Ok(one) => fetched.extend(one),
+                            Err(e) if connection_broke(&e) => return Err(e),
+                            Err(e) => log::warn!("{name}: the server would not give message {uid}: {e:#}"),
+                        }
+                    }
+                    fetched
+                }
+                Err(e) => {
+                    log::warn!("{e:#}");
+                    Vec::new()
+                }
+            };
+            // Only bodies asked for count. The answer also carries any FETCH the server sends on its own (a flag
+            // changed elsewhere, for any message in the folder): taken as a body, that stored an empty one for
+            // good, and the message showed its subject and nothing else.
+            let fetched: Vec<_> =
+                fetched.into_iter().filter(|f| f.body.is_some() && chunk.contains(&f.uid)).collect();
+            let came: HashSet<u32> = fetched.iter().map(|f| f.uid).collect();
+            let lost: Vec<u32> = chunk.iter().copied().filter(|u| !came.contains(u)).collect();
+            if !lost.is_empty() {
+                log::warn!(
+                    "{name}: no body came back for {} of {} messages ({})",
+                    lost.len(),
+                    chunk.len(),
+                    uid_set(&lost)
+                );
+                store.unwant_bodies(folder_id, Some(&lost))?;
+                missing.extend(lost);
+            }
             // A body that does not parse is stored empty rather than fetched again and again.
             let batch: Vec<NewMessage> = fetched
                 .iter()
@@ -872,13 +934,8 @@ async fn fetch_bodies<S: Stream>(
                         .unwrap_or_else(|| NewMessage { uid: f.uid, ..Default::default() })
                 })
                 .collect();
-            filled += store.fill_bodies(folder_id, &batch)?;
+            store.fill_bodies(folder_id, &batch)?;
             on_change();
-        }
-        // Nothing came back for any of them (gone from the server): leave them to the next pass's cleanup
-        // instead of asking again now.
-        if filled == 0 {
-            return Ok(false);
         }
     }
 }
@@ -2121,6 +2178,128 @@ mod tests {
             assert!(m.store.undo(&starred.token).unwrap());
             assert!(m.store.undo(&archived.token).unwrap(), "fine once nothing waits on it");
             assert_eq!(m.store.local_uids(m.inbox).unwrap(), [4].into());
+        }
+    }
+
+    mod bodies {
+        use std::time::{Duration, Instant};
+
+        use super::super::fetch_bodies;
+        use crate::imap::Imap;
+        use crate::models::{Account, AccountConfig, ListTarget, NewMessage, Security};
+        use crate::scripted::{signed_in, Script};
+        use crate::store::{now, Store};
+
+        const SIGNED_IN: &str = "{tag} OK [CAPABILITY IMAP4rev1 MOVE UIDPLUS] in\r\n";
+        const DAY: i64 = 86_400;
+
+        /// INBOX with headers-only uid 4 (yesterday) and uid 9 (a year ago), uid 4's Message-ID a4@example.com.
+        fn mailbox() -> (Store, Account, i64) {
+            let store = Store::open_in_memory().unwrap();
+            let account = store
+                .add_account(&AccountConfig {
+                    email: "ada@example.com".into(),
+                    display_name: String::new(),
+                    username: "ada".into(),
+                    imap_host: "imap.example.com".into(),
+                    imap_port: 993,
+                    imap_security: Security::Tls,
+                    smtp_host: "smtp.example.com".into(),
+                    smtp_port: 465,
+                    smtp_security: Security::Tls,
+                    auth: Default::default(),
+                })
+                .unwrap();
+            let inbox = store.upsert_folder(account.id, "INBOX", "inbox").unwrap();
+            let headers = |uid: u32, date: i64| NewMessage {
+                uid,
+                message_id: Some(format!("a{uid}@example.com")),
+                subject: format!("m{uid}"),
+                date,
+                size: Some(100),
+                headers_only: true,
+                ..Default::default()
+            };
+            store
+                .insert_messages(account.id, inbox, &[headers(4, now() - DAY), headers(9, now() - 365 * DAY)])
+                .unwrap();
+            (store, account, inbox)
+        }
+
+        async fn fetch(
+            store: &Store,
+            account: &Account,
+            inbox: i64,
+            since: i64,
+            script: Script,
+        ) -> Vec<String> {
+            let (stream, sent) = signed_in(SIGNED_IN, script);
+            let mut s = Imap::open(stream, "ada", "x").await.unwrap();
+            let deadline = Instant::now() + Duration::from_secs(30);
+            fetch_bodies(&mut s, store, account.id, (inbox, "INBOX"), since, deadline, &|| {}).await.unwrap();
+            let sent = sent.lock().unwrap()[2..].to_vec();
+            sent
+        }
+
+        #[tokio::test]
+        async fn a_flag_change_sent_alongside_is_not_taken_for_a_body() {
+            let (store, account, inbox) = mailbox();
+            fetch(
+                &store,
+                &account,
+                inbox,
+                now() - 90 * DAY,
+                vec![(
+                    "UID FETCH 4 ",
+                    "* 2 FETCH (UID 9 FLAGS (\\Seen))\r\n\
+                     * 1 FETCH (UID 4 FLAGS () BODY[] {28}\r\nSubject: m4\r\n\r\nHello there\r\n)\r\n\
+                     {tag} OK done\r\n",
+                )],
+            )
+            .await;
+            assert_eq!(store.body_state_of(inbox, 4).as_deref(), Some("full"));
+            assert_eq!(
+                store.body_state_of(inbox, 9).as_deref(),
+                Some("none"),
+                "old mail still gets its body when opened"
+            );
+        }
+
+        #[tokio::test]
+        async fn a_refused_batch_is_asked_for_one_by_one() {
+            let (store, account, inbox) = mailbox();
+            let sent = fetch(
+                &store,
+                &account,
+                inbox,
+                0,
+                vec![
+                    ("UID FETCH 4,9 ", "{tag} NO Some messages could not be fetched\r\n"),
+                    ("UID FETCH 4 ", "* 1 FETCH (UID 4 BODY[] {28}\r\nSubject: m4\r\n\r\nHello there\r\n)\r\n{tag} OK done\r\n"),
+                    ("UID FETCH 9 ", "{tag} NO That one is broken\r\n"),
+                ],
+            )
+            .await;
+            assert_eq!(sent.len(), 3, "{sent:?}");
+            assert_eq!(store.body_state_of(inbox, 4).as_deref(), Some("full"));
+            assert_eq!(store.body_state_of(inbox, 9).as_deref(), Some("none"));
+        }
+
+        #[tokio::test]
+        async fn an_opened_message_the_server_does_not_give_stops_holding_up_the_rest() {
+            let (store, account, inbox) = mailbox();
+            let old = store
+                .list(&ListTarget::Folder(inbox), None, 10)
+                .unwrap()
+                .into_iter()
+                .find(|r| r.subject == "m9")
+                .unwrap();
+            store.want_bodies(&[old.id]).unwrap();
+            assert_eq!(store.folders_with_wanted_bodies(account.id).unwrap().len(), 1);
+            // Gone, or dropped as unreadable: nothing comes back for it.
+            fetch(&store, &account, inbox, i64::MAX, vec![("UID FETCH 9 ", "{tag} OK done\r\n")]).await;
+            // Snippets and the prefetch everywhere wait while a body is wanted; this one would have held them for good.
+            assert!(store.folders_with_wanted_bodies(account.id).unwrap().is_empty());
         }
     }
 
