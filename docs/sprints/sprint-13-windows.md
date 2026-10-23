@@ -26,7 +26,7 @@ WebView2, Windows notifications and tray; `mailto:` registration works; fonts an
 - [x] `tauri.conf.json` → `bundle.windows`: `wix` and `nsis` targets, `webviewInstallMode: downloadBootstrapper`, per-user install, code signing left unsigned for now (SmartScreen will warn; document it).
 
 ### Platform behaviour
-- [ ] Notifications via the plugin (WinRT toasts); click-through to the conversation; tray via the core tray API.
+- [x] Notifications via the plugin (WinRT toasts); click-through to the conversation; tray via the core tray API.
 - [x] `mailto:` registration through the deep-link plugin (registry under `HKCU`); "Make default" opens `ms-settings:defaultapps`.
 - [x] Autostart via the plugin (registry `Run` key).
 - [x] Key display: `Ctrl` everywhere; `Alt` menus do not exist; make sure `Ctrl+K`, `Ctrl+Enter`, `Ctrl+Shift+…` are not swallowed by WebView2 (`Ctrl+F` and `F5` need `preventDefault`).
@@ -71,3 +71,6 @@ NSIS (keep MSI), ms-settings deep link.
   the owner's database: F5, Ctrl+R, Ctrl+P, Ctrl+F and Alt+Left neither reload nor leave the page; the right-click
   menu is gone on the list and kept in the search field; the title bar is dark with Tern dark and light with Tern
   light on a light Windows. Notifications wait for the owner (they need new mail).
+
+- 2026-10-20 — The owner tried the toasts in a build from #73: a click on the toast opens the conversation (after
+  the `launch` fix), Reply opens a reply with nothing on top, Archive archives. Merged.

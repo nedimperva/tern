@@ -1,0 +1,20 @@
+# Third-party licences
+
+Tern is MIT-licensed ([LICENSE](LICENSE)). It ships with the open-source Rust crates below, each under the licence
+shown with its full text. The JavaScript the window runs is listed at the end. This file is generated: run
+`scripts/third-party.sh` after changing dependencies.
+
+## Licences used
+
+{{#each overview}}- {{{name}}}: {{count}} {{#if (eq count 1)}}crate{{else}}crates{{/if}}
+{{/each}}
+
+{{#each licenses}}
+## {{{name}}}
+
+Used by {{#each used_by}}[{{crate.name}} {{crate.version}}](https://crates.io/crates/{{crate.name}}){{#unless @last}}, {{/unless}}{{/each}}.
+
+```text
+{{{text}}}
+```
+{{/each}}

@@ -166,6 +166,9 @@ fn main() {
                 start_account(app.handle(), &state, account);
             }
             app.manage(state);
+            if held > 0 {
+                desktop::notify_held(app.handle(), held);
+            }
             // Sets the mark that later mail is measured against.
             desktop::mail_changed(app.handle());
             desktop::watch_snoozes(app.handle());

@@ -289,6 +289,8 @@ export default function App() {
       mailto: fromLink,
       openMail: (m) => void openMail(m),
       reply: (m) => void replyToMail(m),
+      // A notification about scheduled sends waiting: the list they wait in.
+      waiting: () => batch(() => (setSettingsOpen(null), setReviewing(true))),
     });
     void api.takeMailto().then((m) => m && fromLink(m));
     // Said once as it arrives; the status strip keeps offering it after.

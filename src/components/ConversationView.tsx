@@ -58,6 +58,19 @@ function HtmlBody(props: { web: Remote; remote: boolean; designed: boolean; read
         : textFrame(html(), remote(), theme(), props.large ? 16 : 15);
   // Darkened mail stays hidden until it is dark, so it never flashes white.
   const [ready, setReady] = createSignal(false);
+  // A right-click on a link: Tern's own Open / Copy link, as the web view's menu is taken away (browserKeys.ts).
+  const [linkMenu, setLinkMenu] = createSignal<{ x: number; y: number; href: string } | null>(null);
+  const closeLinkMenu = () => setLinkMenu(null);
+  onMount(() => {
+    window.addEventListener("mousedown", closeLinkMenu);
+    window.addEventListener("blur", closeLinkMenu);
+    window.addEventListener("keydown", closeLinkMenu);
+  });
+  onCleanup(() => {
+    window.removeEventListener("mousedown", closeLinkMenu);
+    window.removeEventListener("blur", closeLinkMenu);
+    window.removeEventListener("keydown", closeLinkMenu);
+  });
   createEffect(on(srcdoc, () => setReady(false)));
   // Quoted replies and signatures start folded; the pill below the frame opens them.
   const [foldable, setFoldable] = createSignal(false);
@@ -95,11 +108,23 @@ function HtmlBody(props: { web: Remote; remote: boolean; designed: boolean; read
       if (copy.defaultPrevented) ev.preventDefault();
     });
     doc.addEventListener("click", (ev) => {
+      setLinkMenu(null);
       const a = (ev.target as Element).closest("a");
       if (!a?.href) return;
       ev.preventDefault();
       if (/^(https?|mailto):/i.test(a.href)) api.openUrl(a.href);
     });
+    doc.addEventListener("contextmenu", (ev) => {
+      const a = (ev.target as Element).closest("a");
+      if (!a?.href || !/^(https?|mailto):/i.test(a.href)) return;
+      ev.preventDefault();
+      const box = frame!.getBoundingClientRect();
+      // Kept inside the window near its right and bottom edges.
+      const x = Math.min(box.left + ev.clientX, window.innerWidth - 370);
+      const y = Math.min(box.top + ev.clientY, window.innerHeight - 120);
+      setLinkMenu({ x, y, href: a.href });
+    });
+    doc.addEventListener("mousedown", (ev) => ev.button === 0 && setLinkMenu(null));
   };
 
   const body = (
@@ -119,6 +144,32 @@ function HtmlBody(props: { web: Remote; remote: boolean; designed: boolean; read
       <div class="html-stage" classList={{ framed: designed() && !reading() }}>
         {body}
       </div>
+      <Show when={linkMenu()}>
+        {(m) => (
+          <div
+            class="link-menu"
+            role="menu"
+            style={{ left: `${m().x}px`, top: `${m().y}px` }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <span class="link-menu-url" title={m().href}>
+              {m().href.replace(/^mailto:/i, "")}
+            </span>
+            <button role="menuitem" onClick={() => (api.openUrl(m().href), setLinkMenu(null))}>
+              {/^mailto:/i.test(m().href) ? "Write to this address" : "Open link"}
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                void navigator.clipboard.writeText(m().href.replace(/^mailto:/i, "")).catch(() => {});
+                setLinkMenu(null);
+              }}
+            >
+              {/^mailto:/i.test(m().href) ? "Copy address" : "Copy link"}
+            </button>
+          </div>
+        )}
+      </Show>
       <Show when={foldable()}>
         <button
           class="fold"

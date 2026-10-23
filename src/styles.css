@@ -188,6 +188,40 @@ button.primary kbd {
   border-bottom: 1px solid var(--line);
 }
 
+/* Tern's right-click menu on a link in a message. */
+.link-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 200px;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
+}
+.link-menu-url {
+  padding: 6px 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.link-menu button {
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  text-align: left;
+}
+.link-menu button:hover,
+.link-menu button:focus-visible {
+  background: var(--bg-2);
+}
+
 /* Inbox Zero gets the best screen in the app (§4.7): a tern scene a day (components/InboxZero.tsx). The scenes'
    colours are here, light and dark; the tern keeps the icon's blues, a shade lighter at night. */
 .zero {

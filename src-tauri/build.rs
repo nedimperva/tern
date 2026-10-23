@@ -10,6 +10,7 @@ fn main() {
 fn google_client() {
     println!("cargo:rerun-if-env-changed=TERN_GOOGLE_CLIENT_ID");
     println!("cargo:rerun-if-env-changed=TERN_GOOGLE_CLIENT_SECRET");
+    println!("cargo:rerun-if-env-changed=TERN_NO_UPDATES");
     println!("cargo:rerun-if-changed=../secrets/google-client.json");
     let from_env = std::env::var("TERN_GOOGLE_CLIENT_ID").ok().filter(|id| !id.is_empty());
     let (id, secret) = match from_env {

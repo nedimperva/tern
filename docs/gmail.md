@@ -95,6 +95,19 @@ sign-in, and no cost. The 100-account limit counts every account that ever signs
 can't be reset. Verification is only needed to offer Gmail sign-in to the public. See Google's
 [restricted scope verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification).
 
+### 4. Sharing your build
+
+A build with your client can go to friends as it is, the installer from `src-tauri/target/release/bundle/` (or
+`target/release/bundle/`). Build it with updates off, or the first release it updates to replaces it with one
+that has no Google sign-in, and their Gmail stops syncing:
+
+```sh
+TERN_NO_UPDATES=1 npm run tauri build      # PowerShell: $env:TERN_NO_UPDATES=1; npm run tauri build
+```
+
+That copy never checks for updates; give your friends a new installer when you want them on a newer Tern. Each of
+them counts towards the 100 accounts, and in **Testing** each must be on your test-user list first.
+
 ## When something goes wrong
 
 - **"Access blocked" or "Error 403: access_denied" in the browser.** The project is in Testing and the account is
