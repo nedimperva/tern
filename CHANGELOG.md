@@ -33,6 +33,8 @@ every release needs one here before it is tagged.
 
 ### Fixed
 
+- Security updates for certificate checks (rustls-webpki, webpki-roots: distrusted intermediates are no longer
+  accepted) and ctutils.
 - Some mail showed only its subject, for good: a flag change the server reported while bodies were downloading
   was saved as that message's body. Those messages download again after the update. A message the server will not
   give, or a batch it refuses, no longer holds up snippets and bodies for the rest of the mailbox.
