@@ -191,6 +191,17 @@ text on the way out: the draft carries `htmlSignature`, `outBody` and `outHtml` 
 ALTER TABLE signatures ADD COLUMN custom INTEGER NOT NULL DEFAULT 0;
 ```
 
+## v24 — package 06, empty bodies fetched again (implemented 2026-10-23)
+Until now a FETCH the server sent on its own during a body download (a flag changed elsewhere) was stored as an
+empty body for whatever message it named. Rows with an empty body go back to headers only, so recent ones are
+downloaded again and older ones when opened.
+```sql
+UPDATE messages SET body_state = 'none'
+ WHERE body_state = 'full' AND uid IS NOT NULL AND id IN (
+     SELECT message_id FROM bodies WHERE COALESCE(text, '') = '' AND COALESCE(html, '') = '');
+DELETE FROM bodies WHERE message_id IN (SELECT id FROM messages WHERE body_state = 'none');
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN caps TEXT NOT NULL DEFAULT '{}';               -- JSON: condstore, qresync, move, idle, gmail_ext

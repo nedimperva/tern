@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 23;
+const SCHEMA_VERSION: i64 = 24;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -421,6 +421,15 @@ fn migrate(conn: &Connection) -> Result<()> {
             }
             // A signature's HTML can be the person's own, pasted from another mail app (Signature::custom).
             22 => "ALTER TABLE signatures ADD COLUMN custom INTEGER NOT NULL DEFAULT 0;",
+            // A flag change the server sent during a body fetch was stored as an empty body, so that message showed
+            // its subject and nothing else, for good. Every empty body is fetched once more; one that really is
+            // empty comes back empty.
+            23 => {
+                "UPDATE messages SET body_state = 'none'
+                 WHERE body_state = 'full' AND uid IS NOT NULL AND id IN (
+                     SELECT message_id FROM bodies WHERE COALESCE(text, '') = '' AND COALESCE(html, '') = '');
+                 DELETE FROM bodies WHERE message_id IN (SELECT id FROM messages WHERE body_state = 'none');"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -1092,6 +1101,18 @@ impl Store {
         Ok(out)
     }
 
+    /// body_state of one message, for tests.
+    #[cfg(test)]
+    pub(crate) fn body_state_of(&self, folder_id: i64, uid: u32) -> Option<String> {
+        self.conn()
+            .query_row(
+                "SELECT body_state FROM messages WHERE folder_id = ?1 AND uid = ?2",
+                params![folder_id, uid],
+                |r| r.get(0),
+            )
+            .ok()
+    }
+
     /// (seen, flagged) of one message, for tests.
     #[cfg(test)]
     pub(crate) fn flags_of(&self, folder_id: i64, uid: u32) -> Option<(bool, bool)> {
@@ -1304,10 +1325,29 @@ impl Store {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
             "SELECT DISTINCT f.id, f.name FROM messages m JOIN folders f ON f.id = m.folder_id
-             WHERE m.account_id = ?1 AND m.body_state = 'wanted'",
+             WHERE m.account_id = ?1 AND m.body_state = 'wanted' AND m.uid IS NOT NULL",
         )?;
         let rows = stmt.query_map([account_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Opened messages whose body the server did not give (`uids`, or all of the folder's when None) stop being
+    /// wanted. While one is wanted, snippets and the body prefetch wait for it in every folder; one that never
+    /// comes would hold them up for good. Opening the message again asks once more.
+    pub fn unwant_bodies(&self, folder_id: i64, uids: Option<&[u32]>) -> Result<usize> {
+        let conn = self.conn();
+        let sql = "UPDATE messages SET body_state = 'none'
+                   WHERE folder_id = ?1 AND body_state = 'wanted' AND (?2 IS NULL OR uid = ?2)";
+        Ok(match uids {
+            None => conn.execute(sql, params![folder_id, None::<u32>])?,
+            Some(uids) => {
+                let mut n = 0;
+                for uid in uids {
+                    n += conn.execute(sql, params![folder_id, uid])?;
+                }
+                n
+            }
+        })
     }
 
     /// Marks bodyless messages as wanted, so the sync worker fetches them before anything else. Returns the
@@ -4591,6 +4631,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                23 => "",
                 22 => "ALTER TABLE signatures DROP COLUMN custom;",
                 21 => "DROP TABLE message_labels;",
                 20 => "ALTER TABLE accounts DROP COLUMN auth;",
@@ -4898,6 +4939,31 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
         assert_eq!(left.len(), 2, "{left:?}");
         assert!(left.contains(&format!("mail.db.before-v{}", SCHEMA_VERSION - 1)));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn migration_24_fetches_empty_bodies_again() {
+        let (store, account, inbox, _) = setup();
+        store
+            .insert_messages(account, inbox, &[message(1, "kept", now()), message(2, "emptied", now())])
+            .unwrap();
+        let emptied = store
+            .list(&ListTarget::Folder(inbox), None, 10)
+            .unwrap()
+            .into_iter()
+            .find(|r| r.subject == "emptied")
+            .unwrap();
+        store
+            .conn()
+            .execute("UPDATE bodies SET text = NULL, html = NULL WHERE message_id = ?1", [emptied.id])
+            .unwrap();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 23);
+        let store = Store::init(conn).unwrap();
+        assert_eq!(store.body_state_of(inbox, 1).as_deref(), Some("full"));
+        assert_eq!(store.body_state_of(inbox, 2).as_deref(), Some("none"));
+        assert!(!store.thread(emptied.id).unwrap()[0].body_loaded, "opening it asks for the body");
+        assert_eq!(store.bodies_needed(inbox, 0, 10).unwrap().len(), 1);
     }
 
     #[test]
