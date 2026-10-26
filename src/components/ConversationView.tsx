@@ -16,9 +16,10 @@ import {
   textFrame,
   withoutTrackers,
 } from "../mailview";
-import { isDark, setSetting, settings } from "../settings";
+import { aiOn, isDark, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
 import { ActionMenu, type MenuItem } from "./ActionMenu";
+import { AiSummary } from "./AiSummary";
 import { Icon } from "./Icon";
 import { PersonCard, type PersonActions } from "./PersonCard";
 import { logoFor } from "../logos";
@@ -634,6 +635,7 @@ export function ConversationView(props: {
               </span>
             </div>
           </Show>
+          <Show when={last() && aiOn("summaries", last().accountId) && last()}>{(m) => <AiSummary id={m().id} />}</Show>
         </div>
         <div class="tools">
           <Show when={privacy().trackers || privacy().blocked}>

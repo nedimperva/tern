@@ -39,7 +39,8 @@ import { AttachmentViewer } from "./components/AttachmentViewer";
 import { until } from "./components/ConversationRow";
 import { PerfOverlay } from "./components/PerfOverlay";
 import { timeKey, timeQuery } from "./perf";
-import { loadSettings, ROW_HEIGHTS, setSetting, settings } from "./settings";
+import { aiOn, loadSettings, ROW_HEIGHTS, setSetting, settings } from "./settings";
+import { summon } from "./ai";
 import { Icon } from "./components/Icon";
 import { VirtualList } from "./components/VirtualList";
 import { InboxZero } from "./components/InboxZero";
@@ -895,6 +896,9 @@ export default function App() {
     { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
     { keys: "r", name: "Reply (or continue the draft)", context: "conversation", run: reply },
     { keys: "v", name: "View attachments", context: "conversation", run: viewFiles },
+    ...(aiOn("summaries", messages[0]?.accountId)
+      ? [{ keys: "S", name: "Summarize with AI", context: "conversation" as const, run: summon }]
+      : []),
     { keys: "F", name: focusMode() ? "Show the list again" : "Focus mode (hide the list)", context: "conversation", run: () => setFocusMode(!focusMode()) },
     { keys: "z", name: "Undo", run: undo },
     { keys: "h", name: "Snooze", run: () => targets().length > 0 && setSnoozing(targets()) },

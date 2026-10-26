@@ -24,6 +24,8 @@ decisions that aren't visible from the code.
   Package 08 polish (Pause sync, tray dot, notification Archive/Reply, quiet hours, `tern --compose`) and
   package 06 progress: the strip says "Downloading mail: X of Y" from each folder's server count (schema v18).
   `cargo run --release -p tern-core --example gen_mailbox -- PATH` makes a 100k test store; `TERN_DB=PATH` opens it.
+  Package 10's first AI slice (2026-10-26, branch `sprint/10-ai`): Claude with the person's own Anthropic key,
+  manual summaries and Write with AI, off by default (`crates/tern-core/src/ai/`). No local model yet (owner).
   `store_bench` exits non-zero on a missed target and runs in CI with `TERN_BENCH_SLACK=3`.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
@@ -101,7 +103,11 @@ policy review. No implementation or real-provider acceptance was completed by th
   blocks remote images until the user clicks "Load images". Links open through the opener plugin. Keep it that way.
   The CSP lets fonts load from the app itself (Inter for text mail), nothing else. A picture attachment's card
   preview only reads a file already downloaded; expanding a message never downloads its files.
-- **Passwords** only in the OS keyring (service `tern-mail`), never in SQLite or files.
+- **Passwords** only in the OS keyring (service `tern-mail`), never in SQLite or files. The Anthropic key too
+  (`ai/anthropic`).
+- **AI is opt-in and on request.** Every AI call goes through `ai::allowed` (on, feature on, account ticked) before
+  the keyring is read or anything is sent. No background AI, no tools for the model, mail sent as material in tags,
+  never attachments. Don't add an AI path that skips the gate.
 - This is a fresh codebase. It was designed after studying Mach (`D:\GitHub\mach-main` on the Windows machine, a Swift
   Gmail/Outlook client licensed PolyForm Noncommercial). **Do not copy code from Mach**; it is a reference only.
 

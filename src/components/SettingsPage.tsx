@@ -16,7 +16,7 @@ import {
 } from "solid-js";
 import { api, type Account, type Signature, type Snippet } from "../api";
 import { colourOf } from "../colours";
-import { setSetting, settings, type Settings } from "../settings";
+import { setSetting, settings, type AiSettings, type Settings } from "../settings";
 import { fillSnippet, PLACES } from "../snippets";
 import { Icon } from "./Icon";
 import { NIGHT_SHIFT, SCENES } from "../zero";
@@ -397,6 +397,248 @@ function DesktopSettings() {
           </button>
           <span class="help">Clicking an email address on a web page or in another app starts a message here.</span>
         </Show>
+      </div>
+      <Show when={error()}>
+        <p class="setting-error">{error()}</p>
+      </Show>
+    </>
+  );
+}
+
+/** Optional AI with the person's own Anthropic key (package 10). Off until they turn it on, which first says plainly
+ * what is sent and to whom. */
+function AiSettingsPage(props: { accounts: Account[] }) {
+  const [status, { refetch }] = createResource(() => api.aiStatus());
+  const [key, setKey] = createSignal("");
+  const [tested, setTested] = createSignal<{ ok: boolean; text: string } | null>(null);
+  const [testing, setTesting] = createSignal(false);
+  // Turning AI on shows what it sends first; on only after "Turn on".
+  const [sheet, setSheet] = createSignal(false);
+  const [cleared, setCleared] = createSignal<number | null>(null);
+  const [error, setError] = createSignal("");
+  const ai = () => settings.ai;
+  const set = (patch: Partial<AiSettings>) => setSetting("ai", { ...settings.ai, ...patch });
+  const allowed = (id: number) => ai().accounts.includes(id);
+  const allow = (id: number, on: boolean) =>
+    set({ accounts: on ? [...ai().accounts.filter((a) => a !== id), id] : ai().accounts.filter((a) => a !== id) });
+
+  const test = async () => {
+    setTesting(true);
+    setTested(null);
+    try {
+      const name = await api.aiTest(key().trim() || null, ai().model);
+      setTested({ ok: true, text: `The key works with ${name}.` });
+    } catch (e) {
+      setTested({ ok: false, text: String(e) });
+    } finally {
+      setTesting(false);
+    }
+  };
+  const saveKey = async () => {
+    setError("");
+    try {
+      await api.aiSetKey(key().trim());
+      setKey("");
+      await refetch();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  const forgetKey = async () => {
+    setError("");
+    try {
+      await api.aiForgetKey();
+      setTested(null);
+      set({ enabled: false });
+      await refetch();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  const turnOn = () => {
+    // The accounts it may read start as all of them; the sheet shows them, and they can be unticked below.
+    set({ enabled: true, accounts: ai().accounts.length ? ai().accounts : props.accounts.map((a) => a.id) });
+    setSheet(false);
+  };
+  const ready = () => !!status()?.hasKey;
+
+  return (
+    <>
+      <p class="section-lead help">
+        Summaries of conversations and help writing, from Claude, with your own Anthropic API key. Off unless you turn it
+        on, and only when you ask: Tern never sends mail to AI in the background.
+      </p>
+      <div class="setting">
+        <span class="title">Anthropic API key</span>
+        <Show
+          when={ready()}
+          fallback={
+            <span class="ai-key">
+              <input
+                type="password"
+                placeholder="sk-ant-…"
+                aria-label="Anthropic API key"
+                value={key()}
+                onInput={(e) => (setKey(e.currentTarget.value), setTested(null))}
+                onKeyDown={(e) => e.key === "Enter" && key().trim() && void saveKey()}
+              />
+              <button disabled={!key().trim() || testing()} onClick={() => void test()}>
+                {testing() ? "Testing…" : "Test"}
+              </button>
+              <button class="primary" disabled={!key().trim()} onClick={() => void saveKey()}>
+                Save
+              </button>
+            </span>
+          }
+        >
+          <span class="ai-key">
+            <span class="saved-key">
+              <Icon name="check" size={12} /> Saved in the system keychain
+            </span>
+            <button disabled={testing()} onClick={() => void test()}>
+              {testing() ? "Testing…" : "Test"}
+            </button>
+            <button onClick={() => void forgetKey()}>Forget</button>
+          </span>
+        </Show>
+        <span class="help">
+          Make one at console.anthropic.com. Anthropic bills you for what Tern asks; the key never leaves this computer
+          except to go to Anthropic.
+        </span>
+        <Show when={tested()}>
+          {(t) => <span class={t().ok ? "ai-test ok" : "ai-test bad"}>{t().text}</span>}
+        </Show>
+      </div>
+      <Show
+        when={!sheet()}
+        fallback={
+          <div class="ai-sheet" role="dialog" aria-label="What AI sends">
+            <h2>What Tern sends, and where</h2>
+            <ul>
+              <li>
+                <strong>Only when you ask.</strong> Summarize sends the conversation: each message's sender, date and text,
+                without the quoted replies. Write with AI sends your draft, what you asked for and, in a reply, the message
+                you answer.
+              </li>
+              <li>
+                <strong>To Anthropic,</strong> under your key, at api.anthropic.com. Their commercial terms and data
+                retention apply to it. Mail then no longer stays only on this computer and your mail provider.
+              </li>
+              <li>
+                <strong>Never attachments,</strong> never mail from accounts you don't tick below.
+              </li>
+              <li>
+                With the address filter on, addresses and phone numbers become [email] and [phone] first. That is a
+                best effort: names and other details still go.
+              </li>
+              <li>Answers are kept on this computer so a summary isn't paid for twice. Delete them below at any time.</li>
+              <li>Turn AI off here at any time: from then on nothing is sent.</li>
+            </ul>
+            <div class="ai-sheet-actions">
+              <button class="primary" onClick={turnOn}>
+                Turn on AI
+              </button>
+              <button onClick={() => setSheet(false)}>Cancel</button>
+            </div>
+          </div>
+        }
+      >
+        <label class="setting">
+          <span class="title">AI</span>
+          <select
+            value={String(ai().enabled)}
+            disabled={!ready() && !ai().enabled}
+            onChange={(e) => {
+              if (e.currentTarget.value === "true") {
+                e.currentTarget.value = "false";
+                setSheet(true);
+              } else set({ enabled: false });
+            }}
+          >
+            <option value="false">Off</option>
+            <option value="true">On</option>
+          </select>
+          <span class="help">
+            {ai().enabled
+              ? "On: only what you ask about is sent. Off: nothing is sent, and nothing about AI shows."
+              : ready()
+                ? "Off: nothing is sent to AI, and nothing about AI shows."
+                : "Save a key first."}
+          </span>
+        </label>
+      </Show>
+      <Show when={ai().enabled}>
+        <div class="setting">
+          <span class="title">Accounts it may read</span>
+          <span />
+          <div class="ai-accounts">
+            <For each={props.accounts}>
+              {(a) => (
+                <label>
+                  <input type="checkbox" checked={allowed(a.id)} onChange={(e) => allow(a.id, e.currentTarget.checked)} />
+                  <span class="dot" style={{ background: colourOf(props.accounts, a.id) }} />
+                  {accountName(a)}
+                </label>
+              )}
+            </For>
+          </div>
+          <span class="help">Mail and drafts of the others are never sent.</span>
+        </div>
+        <label class="setting">
+          <span class="title">Model</span>
+          <select value={ai().model} onChange={(e) => (set({ model: e.currentTarget.value }), setTested(null))}>
+            <For each={status()?.models ?? []}>{([id, name]) => <option value={id}>{name}</option>}</For>
+          </select>
+          <span class="help">Opus writes best; Sonnet is quicker and costs about half; Haiku is quickest and costs least.</span>
+        </label>
+        <label class="setting">
+          <span class="title">Summaries</span>
+          <select value={String(ai().summaries)} onChange={(e) => set({ summaries: e.currentTarget.value === "true" })}>
+            <option value="true">On</option>
+            <option value="false">Off</option>
+          </select>
+          <span class="help">Shift S in a conversation, or Summarize under its subject: one line, and the points under it.</span>
+        </label>
+        <label class="setting">
+          <span class="title">Write with AI</span>
+          <select value={String(ai().writing)} onChange={(e) => set({ writing: e.currentTarget.value === "true" })}>
+            <option value="true">On</option>
+            <option value="false">Off</option>
+          </select>
+          <span class="help">Ctrl J in compose: write out your notes, or make the draft shorter, more formal or friendlier.</span>
+        </label>
+        <label class="setting">
+          <span class="title">Addresses and phone numbers</span>
+          <select value={String(ai().redact)} onChange={(e) => set({ redact: e.currentTarget.value === "true" })}>
+            <option value="true">Take them out of mail first</option>
+            <option value="false">Send mail as it is</option>
+          </select>
+          <span class="help">Replaced by [email] and [phone] before mail is sent. Best effort, not anonymous.</span>
+        </label>
+        <label class="setting">
+          <span class="title">Daily limit</span>
+          <select value={String(ai().dailyTokens)} onChange={(e) => set({ dailyTokens: Number(e.currentTarget.value) })}>
+            <option value="50000">50,000 tokens</option>
+            <option value="200000">200,000 tokens</option>
+            <option value="1000000">1,000,000 tokens</option>
+            <option value="0">No limit</option>
+          </select>
+          <span class="help">Sent and received, per day (UTC). A summary of a long conversation takes a few thousand.</span>
+        </label>
+      </Show>
+      <div class="setting">
+        <span class="title">Kept answers</span>
+        <button
+          onClick={() =>
+            void api.aiClearCache().then(
+              (n) => setCleared(n),
+              (e) => setError(String(e)),
+            )
+          }
+        >
+          {cleared() == null ? "Delete AI cache" : `Deleted ${cleared()}`}
+        </button>
+        <span class="help">Summaries kept on this computer. What Anthropic keeps is up to their retention policy.</span>
       </div>
       <Show when={error()}>
         <p class="setting-error">{error()}</p>
@@ -1251,6 +1493,13 @@ export function SettingsPage(props: {
     },
     { id: "Notifications", name: "Notifications", group: "General", words: "notify new mail quiet hours", body: () => <NotificationSettings /> },
     { id: "Desktop", name: "Desktop", group: "General", words: "background tray close login start email links mailto default", body: () => <DesktopSettings /> },
+    {
+      id: "AI",
+      name: "AI",
+      group: "General",
+      words: "ai claude anthropic api key summary summarize write rewrite model privacy",
+      body: () => <AiSettingsPage accounts={props.accounts} />,
+    },
     { id: "About", name: "About", group: "General", words: "version log bug report problem help beta", body: () => <AboutSettings /> },
     { id: "Compose", name: "Compose", group: "Writing", words: "undo send delay attachment forgotten attached prilog anhang", body: () => <ComposeSettings /> },
     { id: "Snippets", name: "Snippets", group: "Writing", words: "saved replies templates shortcut text", body: () => <SnippetSettings accounts={props.accounts} /> },

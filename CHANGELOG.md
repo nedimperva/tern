@@ -7,6 +7,15 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Optional AI with your own Anthropic API key, off until you turn it on in Settings → AI, which first says what is
+  sent and where. Summarize a conversation (Shift S, or Summarize under its subject): one line, and the points under
+  it. Write with AI in compose (Ctrl J): write out your notes, or make the draft shorter, more formal or friendlier;
+  the new text goes in only when you pick "Use this". Nothing is sent unless you ask, only from the accounts you
+  tick, never attachments; addresses and phone numbers are taken out first, a daily limit caps the cost, and kept
+  summaries can be deleted.
+
 ## [1.0.0] - 2026-10-23
 
 ### Added

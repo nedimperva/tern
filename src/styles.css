@@ -3555,3 +3555,241 @@ button.place.muted {
 .conversation [data-message] {
   scroll-margin-top: 60px;
 }
+
+/* Settings → AI */
+.ai-key {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+}
+.ai-key input {
+  width: 220px;
+  font-family: var(--mono);
+}
+.ai-key .saved-key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+  color: var(--ok);
+}
+.ai-test {
+  grid-column: 1 / -1;
+  font-size: var(--t-sm);
+}
+.ai-test.ok {
+  color: var(--ok);
+}
+.ai-test.bad {
+  color: var(--danger);
+}
+.ai-accounts {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+}
+.ai-accounts label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-rd);
+}
+.ai-accounts .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.ai-sheet {
+  margin: var(--s-3) 0;
+  padding: var(--s-4) var(--s-5);
+  border-radius: var(--r-lg);
+  background: var(--soft);
+}
+.ai-sheet h2 {
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-lg);
+}
+.ai-sheet ul {
+  margin: 0;
+  padding-left: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  font-size: var(--t-rd);
+  color: var(--fg-1);
+  line-height: 1.5;
+}
+.ai-sheet strong {
+  color: var(--fg-0);
+}
+.ai-sheet-actions {
+  display: flex;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+/* The AI summary under a conversation's subject. */
+.ai-summary {
+  margin-top: var(--s-3);
+  font-size: var(--t-rd);
+  color: var(--fg-1);
+}
+.ai-summary kbd.ai-mark {
+  flex: none;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.ai-ask,
+.ai-line {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 100%;
+  margin: 0;
+  padding: var(--s-1) var(--s-2);
+  margin-left: calc(-1 * var(--s-2));
+  border: none;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.ai-ask {
+  color: var(--fg-2);
+}
+.ai-ask kbd:last-child {
+  opacity: 0;
+  transition: opacity var(--d-fast);
+}
+.ai-ask:hover kbd:last-child,
+.ai-ask:focus-visible kbd:last-child {
+  opacity: 1;
+}
+button.ai-ask:hover,
+button.ai-line:hover {
+  background: var(--bg-2);
+}
+.ai-line .text {
+  min-width: 0;
+}
+.ai-summary:not(.open) .ai-line .text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-line svg {
+  flex: none;
+  color: var(--fg-2);
+  transition: transform var(--d-fast);
+}
+.ai-summary.open .ai-line {
+  align-items: flex-start;
+}
+.ai-summary.open .ai-line kbd,
+.ai-summary.open .ai-line svg {
+  margin-top: 2px;
+}
+.ai-summary.open .ai-line svg {
+  transform: rotate(180deg);
+}
+.ai-line.error .text {
+  color: var(--danger);
+}
+.ai-points {
+  margin: var(--s-2) 0 0;
+  padding-left: calc(var(--s-6) + var(--s-1));
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  line-height: 1.5;
+}
+.ai-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+  padding-left: var(--s-6);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.ai-actions span {
+  margin-right: auto;
+}
+
+/* Write with AI in compose: what to do, then the answer, which goes in only on "Use this". */
+.ai-write {
+  margin: 0 var(--s-4) var(--s-3);
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--soft);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.ai-write kbd.ai-mark,
+.ai-button kbd.ai-mark {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.ai-ask-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.ai-ask-row input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: var(--t-rd);
+  color: var(--fg-0);
+  outline: none;
+}
+.ai-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+.ai-chips .chip {
+  padding: 2px var(--s-2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.ai-chips .chip:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.ai-result {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  font-size: var(--t-rd);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  user-select: text;
+}
+.ai-error {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--danger);
+}
+.ai-result-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.ai-result-actions span {
+  margin-right: auto;
+}

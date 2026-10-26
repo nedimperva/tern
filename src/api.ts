@@ -1,8 +1,15 @@
 // The UI's only door to the engine. Inside Tauri it calls the Rust commands; in a plain browser (`npm run dev`) it
 // answers from a fake mailbox, so the UI can be worked on without an account.
 
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+
+/** An AI summary of a conversation (package 10): one line, then the points under it. */
+export type AiSummary = { line: string; points: string[]; cached: boolean };
+/** Whether an Anthropic key is saved, and the models to pick from as [id, name]. */
+export type AiStatus = { hasKey: boolean; models: [string, string][] };
+/** What Write with AI sends: the person's own text, what they want done, and the quoted mail when replying. */
+export type AiWriteInput = { accountId: number; draft: string; request: string; replyingTo: string | null };
 
 /** "tls": encrypted from the first byte (IMAP 993, SMTP 465). "starttls": upgraded before sign-in (IMAP 143, SMTP 587). */
 export type Security = "tls" | "starttls";
@@ -356,6 +363,18 @@ export interface Api {
   openLogs(): Promise<void>;
   /** The window's own frame (the title bar on Windows) in Tern's theme; null follows the system. */
   setWindowTheme(theme: "light" | "dark" | null): void;
+  // AI, only on the person's ask; the engine refuses while it is off or not allowed (Settings → AI).
+  aiStatus(): Promise<AiStatus>;
+  aiSetKey(key: string): Promise<void>;
+  aiForgetKey(): Promise<void>;
+  /** Checks the typed key (or the saved one) against the model; its name when it works. Costs nothing. */
+  aiTest(key: string | null, model: string): Promise<string>;
+  /** The summary kept for the conversation as it is now; sends nothing. */
+  aiCachedSummary(id: number): Promise<AiSummary | null>;
+  /** The words come through `onText` as they are written. `fresh` asks again instead of using a kept one. */
+  aiSummarize(id: number, fresh: boolean, onText: (text: string) => void): Promise<AiSummary>;
+  aiWrite(input: AiWriteInput, onText: (text: string) => void): Promise<string>;
+  aiClearCache(): Promise<number>;
 }
 
 // Everything that must be saved before the window goes (an open compose), and whether closing only hides it. One
@@ -508,7 +527,22 @@ const tauri: Api = {
   openLogs: () => invoke("open_logs"),
   setWindowTheme: (theme) =>
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => getCurrentWindow().setTheme(theme).catch(() => {})),
+  aiStatus: () => invoke("ai_status"),
+  aiSetKey: (key) => invoke("ai_set_key", { key }),
+  aiForgetKey: () => invoke("ai_forget_key"),
+  aiTest: (key, model) => invoke("ai_test", { key, model }),
+  aiCachedSummary: (id) => invoke("ai_cached_summary", { id }),
+  aiSummarize: (id, fresh, onText) => invoke("ai_summarize", { id, fresh, onText: channel(onText) }),
+  aiWrite: (input, onText) => invoke("ai_write", { input, onText: channel(onText) }),
+  aiClearCache: () => invoke("ai_clear_cache"),
 };
+
+/** A channel the engine streams text through. */
+function channel(onText: (text: string) => void): Channel<string> {
+  const ch = new Channel<string>();
+  ch.onmessage = onText;
+  return ch;
+}
 
 // MARK: A fake mailbox for the browser
 
@@ -1018,7 +1052,53 @@ function fake(): Api {
     }),
     openLogs: async () => {},
     setWindowTheme: () => {},
+    // AI in the browser: a made-up answer, streamed a word at a time like the real one. The key "fail" fails.
+    aiStatus: async () => ({
+      hasKey: localStorage.getItem("tern.fake.aiKey") != null,
+      models: [
+        ["claude-opus-5-5", "Claude Opus 5.5"],
+        ["claude-sonnet-5-5", "Claude Sonnet 5.5"],
+        ["claude-haiku-5-5", "Claude Haiku 5.5"],
+      ],
+    }),
+    aiSetKey: async (key) => void localStorage.setItem("tern.fake.aiKey", key),
+    aiForgetKey: async () => void localStorage.removeItem("tern.fake.aiKey"),
+    aiTest: async (key, model) => {
+      await new Promise((r) => setTimeout(r, 400));
+      if ((key ?? localStorage.getItem("tern.fake.aiKey")) === "fail") throw "Anthropic refused the API key. Check it in Settings → AI.";
+      return model === "claude-haiku-5-5" ? "Claude Haiku 5.5" : model === "claude-sonnet-5-5" ? "Claude Sonnet 5.5" : "Claude Opus 5.5";
+    },
+    aiCachedSummary: async (id) => fakeSummaries.get(id) ?? null,
+    aiSummarize: async (id, fresh, onText) => {
+      if (!fresh && fakeSummaries.has(id)) return fakeSummaries.get(id)!;
+      const subject = messages.find((m) => m.id === id)?.subject ?? "this";
+      const text = `The conversation about ${subject.toLowerCase()} is waiting on your answer.\n\n- Ana asked for the numbers by Friday\n- Tom sent a first draft on Tuesday\n- Nobody has confirmed the meeting time`;
+      await stream(text, onText);
+      const done = { line: text.split("\n")[0], points: text.split("\n- ").slice(1), cached: false };
+      fakeSummaries.set(id, { ...done, cached: true });
+      return done;
+    },
+    aiWrite: async (input, onText) => {
+      if (!input.draft.trim()) throw "Write a few words first: what the mail should say.";
+      const text = `Hi,\n\nThanks for your message. ${input.draft.trim().replace(/^./, (c) => c.toUpperCase())}.\n\nLet me know if anything else is needed.`;
+      await stream(text, onText);
+      return text;
+    },
+    aiClearCache: async () => {
+      const n = fakeSummaries.size;
+      fakeSummaries.clear();
+      return n;
+    },
   };
+}
+
+const fakeSummaries = new Map<number, AiSummary>();
+async function stream(text: string, onText: (t: string) => void) {
+  await new Promise((r) => setTimeout(r, 600));
+  for (const word of text.match(/\S+\s*/g) ?? []) {
+    onText(word);
+    await new Promise((r) => setTimeout(r, 25));
+  }
 }
 
 export const api: Api = "__TAURI_INTERNALS__" in window ? tauri : fake();

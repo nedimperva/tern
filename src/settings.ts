@@ -43,6 +43,21 @@ export type Settings = {
   zeroScene: string;
   /** Per local day ("2026-10-20"): conversations cleared from the inbox in Tern, and whether it reached zero. */
   zeroLog: Record<string, { cleared: number; zero: boolean }>;
+  /** Optional AI, read by the engine too, which refuses what it does not allow (tern_core::ai::AiSettings). */
+  ai: AiSettings;
+};
+
+export type AiSettings = {
+  enabled: boolean;
+  model: string;
+  summaries: boolean;
+  writing: boolean;
+  /** Addresses and phone numbers in mail become [email] and [phone] before it is sent. */
+  redact: boolean;
+  /** Tokens a UTC day may use; 0 for no limit. */
+  dailyTokens: number;
+  /** Accounts whose mail and drafts may be sent. */
+  accounts: number[];
 };
 
 export const DEFAULTS: Settings = {
@@ -66,7 +81,20 @@ export const DEFAULTS: Settings = {
   attachmentWords: [],
   zeroScene: "rotate",
   zeroLog: {},
+  ai: {
+    enabled: false,
+    model: "claude-opus-5-5",
+    summaries: true,
+    writing: true,
+    redact: true,
+    dailyTokens: 200_000,
+    accounts: [],
+  },
 };
+
+/** Whether AI may be offered for this feature on this account (the engine checks again). */
+export const aiOn = (feature: "summaries" | "writing", accountId: number | undefined) =>
+  settings.ai.enabled && settings.ai[feature] && accountId != null && settings.ai.accounts.includes(accountId);
 
 export const ROW_HEIGHTS: Record<Settings["density"], number> = { dense: 36, comfortable: 44, spacious: 52 };
 
@@ -77,7 +105,9 @@ export { settings };
 export async function loadSettings() {
   const saved = await api.settings();
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
-    if (key in saved) setStore(key, saved[key] as never);
+    // AI settings gain fields over time; the ones saved before take the defaults.
+    if (key === "ai" && key in saved) setStore("ai", { ...DEFAULTS.ai, ...(saved.ai as Partial<AiSettings>) });
+    else if (key in saved) setStore(key, saved[key] as never);
   }
 }
 

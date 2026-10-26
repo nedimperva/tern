@@ -13,7 +13,7 @@ import {
 import { fillSnippet } from "../snippets";
 import { attachmentWords, domainOf, mentionsAttachment, outside } from "../attachmentWords";
 import { colourOf } from "../colours";
-import { settings } from "../settings";
+import { aiOn, settings } from "../settings";
 import { until } from "./ConversationRow";
 import { SnoozePicker } from "./SnoozePicker";
 import type { SnippetSource } from "./Editor";
@@ -63,6 +63,7 @@ export function defaultSignature(all: Signature[], accountId: number | undefined
 
 /** Signature work needs the editor's document model, so it loads with the editor, not with the app. */
 const signatureTools = () => import("../signature");
+const schemaTools = () => import("../editor/schema");
 
 /** Above this a message may bounce: many servers take 25 MB at most. */
 const LARGE_BYTES = 25_000_000;
@@ -340,9 +341,82 @@ export function Compose(props: {
     props.onSend(from()!, { ...draft(), ...recipients }, done, draftId, { at, followUp: followUp() });
   };
 
+  // Write with AI (Ctrl+J, package 10): the person's own text (not the signature or the quote) goes to the model
+  // with what they ask for; the answer shows below the editor and goes in only when they pick "Use this".
+  const aiAllowed = () => aiOn("writing", from());
+  const [ai, setAi] = createSignal<{ state: "ready" | "busy" | "done" | "error"; text: string; error?: string } | null>(null);
+  const [aiAsk, setAiAsk] = createSignal("");
+  let aiInput: HTMLInputElement | undefined;
+  let aiRun = 0;
+  const openAi = () => {
+    if (!aiAllowed()) return;
+    if (!ai()) setAi({ state: "ready", text: "" });
+    queueMicrotask(() => aiInput?.focus());
+  };
+  const closeAi = () => {
+    aiRun++;
+    setAi(null);
+    setAiAsk("");
+    view?.focus();
+  };
+  /** Where the person's own words end: before the signature or the quote, whichever comes first. */
+  const ownPart = async () => {
+    if (!view) return null;
+    const { findSignature, signaturePlace } = await signatureTools();
+    const doc = view.state.doc;
+    let end = signaturePlace(doc, false);
+    const sig = props.signatures.find((x) => x.id === sigId());
+    const at = sig ? findSignature(doc, sig) : null;
+    if (at && at.from < end) end = at.from;
+    return { end, text: doc.textBetween(0, end, "\n\n", "\n").trim() };
+  };
+  /** Asks for a new version. A follow-up ("Shorter") on an answer works on that answer. */
+  const askAi = async (request: string) => {
+    const own = await ownPart();
+    if (!own || !view) return;
+    const previous = ai();
+    const draftText = previous?.state === "done" ? previous.text : own.text;
+    const { toText } = await schemaTools();
+    const quoted = props.init.inReplyTo
+      ? toText(view.state.doc)
+          .split("\n")
+          .filter((l) => l.startsWith(">"))
+          .join("\n")
+      : "";
+    const run = ++aiRun;
+    setAi({ state: "busy", text: "" });
+    try {
+      const text = await api.aiWrite(
+        { accountId: from()!, draft: draftText, request, replyingTo: quoted || null },
+        (t) => run === aiRun && setAi((a) => a && { ...a, text: a.text + t }),
+      );
+      if (run === aiRun) setAi({ state: "done", text });
+    } catch (e) {
+      if (run === aiRun) setAi({ state: "error", text: "", error: String(e) });
+    }
+  };
+  /** Puts the answer in place of the person's own words. Ctrl+Z in the editor brings them back. */
+  const useAi = async () => {
+    const answer = ai();
+    const own = await ownPart();
+    if (!answer || answer.state !== "done" || !own || !view) return;
+    const { fromText } = await schemaTools();
+    view.dispatch(view.state.tr.replaceWith(0, own.end, fromText(answer.text).content));
+    closeAi();
+  };
+  const AI_ASKS = [
+    ["Write it out", "Write this out as a full email."],
+    ["Shorter", "Make it shorter."],
+    ["More formal", "Make it more formal."],
+    ["Friendlier", "Make it friendlier."],
+    ["Fix grammar", "Fix spelling and grammar only. Change nothing else."],
+  ] as const;
+
   const onKeyDown = (e: KeyboardEvent) => {
     const ctrl = e.ctrlKey || e.metaKey;
-    if (e.key === "Escape" && sendMenu()) setSendMenu(false);
+    if (e.key === "Escape" && ai()) closeAi();
+    else if (ctrl && !e.shiftKey && e.key.toLowerCase() === "j" && aiAllowed()) openAi();
+    else if (e.key === "Escape" && sendMenu()) setSendMenu(false);
     else if (e.key === "Escape" && focusMode()) setFocusMode(false);
     else if (e.key === "Escape") void close();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "f" && !props.init.inline) setFocusMode(!focusMode());
@@ -548,6 +622,58 @@ export function Compose(props: {
       <Show when={problem()}>
         <p class="error">{problem()}</p>
       </Show>
+      <Show when={ai()}>
+        {(a) => (
+          <div class="ai-write" aria-live="polite">
+            <div class="ai-ask-row">
+              <kbd class="ai-mark">AI</kbd>
+              <input
+                ref={aiInput}
+                value={aiAsk()}
+                placeholder={a().state === "done" ? "Change it how?" : "What should it do? Or pick one:"}
+                aria-label="Ask AI"
+                onInput={(e) => setAiAsk(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !(e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (a().state !== "busy") void askAi(aiAsk().trim() || AI_ASKS[0][1]);
+                  }
+                }}
+              />
+              <button type="button" class="icon-button" aria-label="Close (Esc)" title="Close (Esc)" onClick={closeAi}>
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+            <div class="ai-chips">
+              <For each={AI_ASKS}>
+                {([label, request]) => (
+                  <button type="button" class="chip" disabled={a().state === "busy"} onClick={() => void askAi(request)}>
+                    {label}
+                  </button>
+                )}
+              </For>
+            </div>
+            <Show when={a().state === "busy" || a().state === "done"}>
+              <div class="ai-result">{a().text || "Writing…"}</div>
+            </Show>
+            <Show when={a().state === "error"}>
+              <p class="ai-error">{a().error}</p>
+            </Show>
+            <Show when={a().state === "done"}>
+              <div class="ai-result-actions">
+                <span>Written by AI. Read it before you send.</span>
+                <button type="button" class="primary" onClick={() => void useAi()}>
+                  Use this
+                </button>
+                <button type="button" onClick={() => setAi({ state: "ready", text: "" })}>
+                  Discard
+                </button>
+              </div>
+            </Show>
+          </div>
+        )}
+      </Show>
       <Show when={checks() || (outsiders().length && !outsideDismissed())}>
         <div class="checks">
           <Show when={checks()?.attachment}>
@@ -637,6 +763,11 @@ export function Compose(props: {
         <span class="tools">
           {iconButton("paperclip", "Attach files (Ctrl+Shift+A), or drop them here", () => void pick())}
           <Show when={snippetList().length}>{iconButton("file-text", "Snippet ( ; )", openSnippets)}</Show>
+          <Show when={aiAllowed()}>
+            <button type="button" class="icon-button ai-button" title="Write with AI (Ctrl+J)" aria-label="Write with AI" onClick={openAi}>
+              <kbd class="ai-mark">AI</kbd>
+            </button>
+          </Show>
           <Show when={accountSignatures().length}>
             <label class="signature-pick" title="Signature (Ctrl+Shift+S)">
               <Icon name="pen-line" size={14} />

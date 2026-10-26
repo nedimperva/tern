@@ -160,7 +160,14 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - Quoted text and signatures collapse behind a `···` pill.
 - Attachments strip: file cards on `--soft`, with a type badge (PDF, XLSX…, coloured `--file-*`) or a picture preview once the file is on this computer, name, size and Save; clicking opens it.
 - Inline reply box at the bottom when replying (see Compose); `Esc` collapses it and keeps the draft.
-- AI summary (Sprint 10): one line under the subject, `--fg-1`, with a tiny `AI` keycap; click or key expands.
+- AI summary (package 10, built 2026-10-26, shown only when AI is on for the account): under the subject a quiet
+  "Summarize" with an `AI` keycap (`--accent` on `--accent-soft`) and `Shift S` on hover. Asked, it streams one line
+  in `--fg-1`; a click or `Shift S` opens the 3–5 points under it, with "Written by AI…", Regenerate and Dismiss.
+  A summary kept for the conversation as it is shows at once; new mail asks again only when asked.
+- Write with AI (compose, `Ctrl J`, or the `AI` keycap in the footer): a `--soft` panel under the text with a field
+  ("What should it do?") and chips (Write it out, Shorter, More formal, Friendlier, Fix grammar). The answer streams
+  into a `--bg-0` box; "Use this" puts it in place of the person's own words (signature and quote stay; `Ctrl Z`
+  brings the old words back), Discard drops it, `Esc` closes the panel. A chip on an answer reworks the answer.
 
 ### 4.3 Command palette (`Ctrl+K`)
 
@@ -227,7 +234,7 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ### 4.8 Settings (`Ctrl+,`)
 
 - Full-screen page over the list with a 232 px left list of sections in three groups, each under a `--t-xs`
-  label: General (Appearance · Reading · Notifications · Desktop), Writing (Compose · Snippets · Signatures) and
+  label: General (Appearance · Reading · Notifications · Desktop · AI · About), Writing (Compose · Snippets · Signatures) and
   Accounts (one entry per account, with its colour dot). A search field at the top of the list narrows it to the
   sections whose settings match. Content sits in a 640 px column. Controls are plain: toggles, selects, text
   fields. Every setting has one line of explanation under it.
