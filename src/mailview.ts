@@ -107,10 +107,17 @@ const page = (remote: boolean, css: string, html: string) => `<!doctype html><ht
 export function fitFrame(frame: HTMLIFrameElement, doc: Document) {
   const body = doc.body;
   if (!body) return;
-  body.style.zoom = "";
   const room = doc.documentElement.clientWidth;
-  const wide = Math.max(body.scrollWidth, doc.documentElement.scrollWidth);
-  if (room > 0 && wide > room + 1) body.style.zoom = String(room / wide);
+  const overflows = () => Math.max(body.scrollWidth, doc.documentElement.scrollWidth) > room + 1;
+  // The zoom is worked out again only when the frame's width changed or the mail no longer fits (a picture came
+  // in). Resetting it on every resize made the body change size, which fired the observer that calls this, around
+  // and around: the mail flashed, many times a second.
+  if (frame.dataset.room !== String(room) || overflows()) {
+    frame.dataset.room = String(room);
+    body.style.zoom = "";
+    const wide = Math.max(body.scrollWidth, doc.documentElement.scrollWidth);
+    if (room > 0 && wide > room + 1) body.style.zoom = String(room / wide);
+  }
   frame.style.height = `${Math.ceil(body.getBoundingClientRect().height)}px`;
 }
 

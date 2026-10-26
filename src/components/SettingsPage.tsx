@@ -14,7 +14,7 @@ import {
   untrack,
   type JSX,
 } from "solid-js";
-import { api, type Account, type AiLearned, type AiProvider, type Signature, type Snippet } from "../api";
+import { api, type Account, type AiLearned, type AiProvider, type AiStats, type AiStyle, type Signature, type Snippet } from "../api";
 import { colourOf } from "../colours";
 import { aiRoute, setSetting, settings, type AiFeatureKey, type AiRoute, type AiSettings, type Settings } from "../settings";
 import { fillSnippet, PLACES } from "../snippets";
@@ -444,19 +444,30 @@ function Step(props: { n: number; done: boolean; current: boolean; title: string
  * turned on, which first shows the privacy sheet; a provider not agreed to yet is asked about before it gets mail. */
 function AiSettingsPage(props: { accounts: Account[] }) {
   const ai = () => settings.ai;
-  const [keys, { refetch: recheckKeys }] = createResource(async () => {
-    const out = {} as Record<AiProvider, boolean>;
-    for (const p of PROVIDERS) out[p.id] = await api.aiHasKey(p.id).catch(() => false);
-    return out;
-  });
-  const hasKey = (p: AiProvider) => !!keys()?.[p];
+  // Keys, model lists and use are plain signals filled in as they come, not resources: a resource read here would
+  // hold the whole settings page behind its Suspense until the keychain and the providers' model lists (a network
+  // call for OpenAI and Google) had answered, which took seconds.
+  const [keys, setKeys] = createSignal<Partial<Record<AiProvider, boolean>>>({});
+  const hasKey = (p: AiProvider) => !!keys()[p];
   // What each provider with a key can use; OpenAI's and Google's lineups change often, so they are read with it.
-  const [models] = createResource(keys, async (k) => {
-    const out = {} as Record<AiProvider, [string, string][]>;
-    for (const p of PROVIDERS) out[p.id] = k[p.id] ? await api.aiModels(p.id, null).catch(() => []) : [];
-    return out;
-  });
-  const [stats, { refetch: restat }] = createResource(() => api.aiStats().catch(() => null));
+  const [models, setModels] = createSignal<Partial<Record<AiProvider, [string, string][]>>>({});
+  // The page waits for the keychain (quick) so it doesn't first draw "Add key" everywhere; model lists come after.
+  const [known, setKnown] = createSignal(false);
+  const recheckKeys = async () => {
+    const found = await Promise.all(PROVIDERS.map((p) => api.aiHasKey(p.id).catch(() => false)));
+    setKeys(Object.fromEntries(PROVIDERS.map((p, i) => [p.id, found[i]])));
+    setKnown(true);
+    await Promise.all(
+      PROVIDERS.map(async (p, i) => {
+        const list = found[i] ? await api.aiModels(p.id, null).catch(() => [] as [string, string][]) : [];
+        setModels((m) => ({ ...m, [p.id]: list }));
+      }),
+    );
+  };
+  void recheckKeys();
+  const [stats, setStats] = createSignal<AiStats | null>(null);
+  const restat = () => void api.aiStats().then(setStats, () => setStats(null));
+  restat();
   // The provider whose key is being typed, the key, and what Test said.
   const [adding, setAdding] = createSignal<AiProvider | null>(null);
   const [key, setKey] = createSignal("");
@@ -473,7 +484,7 @@ function AiSettingsPage(props: { accounts: Account[] }) {
     set({ accounts: on ? [...ai().accounts.filter((a) => a !== id), id] : ai().accounts.filter((a) => a !== id) });
   const company = (p: AiProvider) => PROVIDERS.find((x) => x.id === p)!.company;
   const agreedTo = (p: AiProvider) => ai().agreed.includes(p) || (!ai().agreed.length && p === ai().provider);
-  const modelName = (r: AiRoute) => models()?.[r.provider]?.find(([id]) => id === r.model)?.[1] ?? r.model;
+  const modelName = (r: AiRoute) => models()[r.provider]?.find(([id]) => id === r.model)?.[1] ?? r.model;
   /** The providers the features that are on would send to. */
   const inUse = () => {
     const out: AiProvider[] = [];
@@ -564,7 +575,7 @@ function AiSettingsPage(props: { accounts: Account[] }) {
   const usesGemini = () => inUse().includes("gemini");
 
   return (
-    <>
+    <Show when={known()}>
       <div class="ai-status">
         <Show
           when={ai().enabled}
@@ -684,7 +695,7 @@ function AiSettingsPage(props: { accounts: Account[] }) {
                       disabled={!ready()}
                       onChange={(e) => pick(f.key, e.currentTarget)}
                     >
-                      <Show when={!(models()?.[aiRoute(ai(), f.key).provider] ?? []).some(([id]) => id === aiRoute(ai(), f.key).model)}>
+                      <Show when={!(models()[aiRoute(ai(), f.key).provider] ?? []).some(([id]) => id === aiRoute(ai(), f.key).model)}>
                         <option value={`${aiRoute(ai(), f.key).provider}:${aiRoute(ai(), f.key).model}`} selected>
                           {modelName(aiRoute(ai(), f.key))}
                         </option>
@@ -692,7 +703,7 @@ function AiSettingsPage(props: { accounts: Account[] }) {
                       <For each={PROVIDERS.filter((p) => hasKey(p.id))}>
                         {(p) => (
                           <optgroup label={p.company}>
-                            <For each={models()?.[p.id] ?? []}>
+                            <For each={models()[p.id] ?? []}>
                               {([id, name]) => {
                                 const r = () => aiRoute(ai(), f.key);
                                 // Marked here, not only by the select's value: the list arrives after the select.
@@ -825,7 +836,7 @@ function AiSettingsPage(props: { accounts: Account[] }) {
       <Show when={error()}>
         <p class="setting-error">{error()}</p>
       </Show>
-    </>
+    </Show>
   );
 }
 
@@ -882,7 +893,9 @@ function noteText(p: NoteParts): string {
 /** One account's writing style. Learn sends its sent mail once; the first answer comes with a sample written plainly
  * and in that style ("Does this sound like you?"); after that the note shows as parts to tune, or as text. */
 function StyleNote(props: { account: Account; accounts: Account[]; onChange: () => void }) {
-  const [style, { mutate }] = createResource(() => props.account.id, (id) => api.aiStyle(id));
+  // A signal, not a resource, so loading the note never holds the settings page behind its Suspense.
+  const [style, mutate] = createSignal<AiStyle | null>(null);
+  void api.aiStyle(props.account.id).then(mutate, () => {});
   const [preview, setPreview] = createSignal<AiLearned["preview"]>(null);
   const [learning, setLearning] = createSignal(false);
   const [asText, setAsText] = createSignal(false);

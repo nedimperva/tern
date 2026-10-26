@@ -14,6 +14,12 @@ every release needs one here before it is tagged.
   Haiku, GPT-6 Luna or Gemini Flash); Write with AI and learning your style keep the bigger one. A model from a
   provider you haven't allowed yet asks first.
 
+### Fixed
+
+- Some wide mail (newsletters, receipts) flashed many times a second while open: shrinking it to fit the pane kept
+  undoing and redoing itself.
+- Settings → AI showed the inbox for a few seconds, then flickered, before it opened.
+
 ## [1.1.0] - 2026-10-26
 
 ### Added
