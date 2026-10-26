@@ -3,12 +3,19 @@
 //! person's own, read from the keyring only when a request is about to go.
 
 use std::io::{BufRead, BufReader};
-use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use serde_json::{json, Value};
 
+use super::providers::{self, Provider};
 use super::{Completion, Model, Request};
+
+/// The models offered in Settings → AI, best first.
+pub const MODELS: &[(&str, &str)] = &[
+    ("claude-opus-5-5", "Claude Opus 5.5"),
+    ("claude-sonnet-5-5", "Claude Sonnet 5.5"),
+    ("claude-haiku-5-5", "Claude Haiku 5.5"),
+];
 
 const API: &str = "https://api.anthropic.com/v1";
 const VERSION: &str = "2026-10-21";
@@ -17,39 +24,13 @@ const VERSION: &str = "2026-10-21";
 const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
 const MAX_TOKENS: u32 = 16_000;
 
-/// Keyring entry (service `tern-mail`) holding the key.
-const KEY_ENTRY: &str = "ai/anthropic";
-
-pub fn set_key(key: &str) -> Result<()> {
-    keyring::Entry::new("tern-mail", KEY_ENTRY)?
-        .set_password(key.trim())
-        .context("Could not save the key to the system keychain")
-}
-
-pub fn has_key() -> bool {
-    keyring::Entry::new("tern-mail", KEY_ENTRY).and_then(|e| e.get_password()).is_ok()
-}
-
-pub fn delete_key() -> Result<()> {
-    match keyring::Entry::new("tern-mail", KEY_ENTRY)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(e.into()),
-    }
-}
-
-fn key() -> Result<String> {
-    keyring::Entry::new("tern-mail", KEY_ENTRY)?
-        .get_password()
-        .map_err(|_| anyhow::anyhow!("Add your Anthropic API key in Settings → AI."))
-}
-
 /// Claude, with the key from the keyring.
 pub struct Anthropic;
 
 impl Model for Anthropic {
     fn complete(&self, req: &Request, on_text: &mut dyn FnMut(&str)) -> Result<Completion> {
-        let key = key()?;
-        let mut call = agent()
+        let key = providers::key(Provider::Anthropic, None)?;
+        let mut call = providers::agent()
             .post(&format!("{API}/messages"))
             .header("x-api-key", &key)
             .header("anthropic-version", VERSION)
@@ -57,7 +38,8 @@ impl Model for Anthropic {
         if falls_back(&req.model) {
             call = call.header("anthropic-beta", FALLBACK_BETA);
         }
-        let mut res = call.send(body(req).to_string()).map_err(unreachable)?;
+        let mut res =
+            call.send(body(req).to_string()).map_err(providers::unreachable(Provider::Anthropic))?;
         let status = res.status().as_u16();
         if status != 200 {
             let text = res.body_mut().read_to_string().unwrap_or_default();
@@ -67,39 +49,15 @@ impl Model for Anthropic {
     }
 }
 
-/// Settings → AI → Test: whether the key works and may use the model. Costs nothing: it reads the model's entry.
-pub fn test(key: Option<&str>, model: &str) -> Result<String> {
-    let key = match key.map(str::trim).filter(|k| !k.is_empty()) {
-        Some(k) => k.to_string(),
-        None => self::key()?,
-    };
-    let mut res = agent()
-        .get(&format!("{API}/models/{model}"))
-        .header("x-api-key", &key)
-        .header("anthropic-version", VERSION)
-        .call()
-        .map_err(unreachable)?;
-    let status = res.status().as_u16();
-    let text = res.body_mut().read_to_string().unwrap_or_default();
-    if status != 200 {
-        bail!(refused(status, &text, model));
-    }
-    let v: Value = serde_json::from_str(&text).unwrap_or_default();
+/// Whether the key works and may use the model; its name if so. Costs nothing: it reads the model's entry.
+pub(super) fn test(key: &str, model: &str) -> Result<String> {
+    let v = providers::get_json(
+        Provider::Anthropic,
+        &format!("{API}/models/{model}"),
+        &[("x-api-key", key), ("anthropic-version", VERSION)],
+        model,
+    )?;
     Ok(v["display_name"].as_str().unwrap_or(model).to_string())
-}
-
-fn agent() -> ureq::Agent {
-    let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
-    ureq::Agent::config_builder()
-        .tls_config(tls)
-        .https_only(true)
-        .http_status_as_error(false)
-        .timeout_connect(Some(Duration::from_secs(15)))
-        // The model thinks before its first word; the answer itself then streams for as long as it takes.
-        .timeout_recv_response(Some(Duration::from_secs(180)))
-        .user_agent("Tern")
-        .build()
-        .into()
 }
 
 /// Haiku has no server-side fallback; Opus and Sonnet take the "default" one.
@@ -123,26 +81,15 @@ fn body(req: &Request) -> Value {
     body
 }
 
-fn unreachable(e: ureq::Error) -> anyhow::Error {
-    anyhow::Error::new(e).context("Could not reach Anthropic. Check the connection and try again.")
-}
-
-/// What to tell the person when Anthropic said no.
+/// What to tell the person when Anthropic said no. Its overloaded status (529) is its own.
 fn refused(status: u16, body: &str, model: &str) -> String {
     let v: Value = serde_json::from_str(body).unwrap_or_default();
-    let message = v["error"]["message"].as_str().unwrap_or("").trim();
-    match status {
-        401 => "Anthropic refused the API key. Check it in Settings → AI.".into(),
-        403 => format!("This API key may not do that: {message}"),
-        404 => format!("This API key can't use {model}. Pick another model in Settings → AI."),
-        429 => "Anthropic is limiting requests on this key right now. Try again in a minute.".into(),
-        500..=599 if status == 529 || message.to_ascii_lowercase().contains("overload") => {
-            "Anthropic is busy. Try again in a moment.".into()
-        }
-        500..=599 => "Anthropic had a problem answering. Try again in a moment.".into(),
-        _ if message.is_empty() => format!("Anthropic refused the request ({status})."),
-        _ => format!("Anthropic refused the request: {message}"),
-    }
+    providers::refused(
+        Provider::Anthropic,
+        status,
+        v["error"]["message"].as_str().unwrap_or("").trim(),
+        model,
+    )
 }
 
 /// The answer from the server-sent events of a streamed reply. Text deltas go out as they come; across a

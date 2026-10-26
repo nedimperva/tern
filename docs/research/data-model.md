@@ -213,6 +213,14 @@ CREATE TABLE ai_cache (kind TEXT NOT NULL, key_hash TEXT NOT NULL, model TEXT NO
 CREATE TABLE ai_usage (day INTEGER PRIMARY KEY, tokens INTEGER NOT NULL DEFAULT 0);
 ```
 
+## v26 — package 10, writing style (implemented 2026-10-26)
+One note per account on how the person writes, learned from their sent mail only when they ask, editable, and
+followed by Write with AI and suggested replies when "Write in my style" is on.
+```sql
+CREATE TABLE ai_styles (account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+                        note TEXT NOT NULL, samples INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL);
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN caps TEXT NOT NULL DEFAULT '{}';               -- JSON: condstore, qresync, move, idle, gmail_ext

@@ -3,12 +3,12 @@
 //! (opt-in, on request) AI.
 
 use tauri::{AppHandle, Emitter, Manager, State};
-use tern_core::ai::{self, anthropic};
+use tern_core::ai::{self, providers, Provider};
 use tern_core::presets::{self, Preset};
 use tern_core::{
-    logo, mime, secrets, sync, Account, AccountConfig, Action, Applied, Auth, Contact, ContactCard, Cursor,
-    Draft, DraftRecord, Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting, OutgoingAttachment,
-    ReplyInit, ReplyKind, SearchResult, ThreadMessage, ThreadRow,
+    logo, mime, secrets, sync, Account, AccountConfig, Action, AiStyle, Applied, Auth, Contact, ContactCard,
+    Cursor, Draft, DraftRecord, Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting,
+    OutgoingAttachment, ReplyInit, ReplyKind, SearchResult, ThreadMessage, ThreadRow,
 };
 
 use std::collections::{HashMap, HashSet};
@@ -884,39 +884,42 @@ pub async fn sender_logo(app: AppHandle, addr: String) -> Reply<Option<String>> 
 // Every AI command but the key's own runs only on the person's ask, and the engine checks first that AI is on and
 // allowed for the feature and the account (tern_core::ai::allowed): with AI off nothing is sent anywhere.
 
-/// What Settings → AI shows: whether a key is saved, and the models to pick from.
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiStatus {
-    has_key: bool,
-    models: Vec<(String, String)>,
+/// Runs blocking AI work (the keyring, a streamed HTTP answer) off the async runtime.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Reply<T> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?.map_err(text)
+}
+
+/// The model the person picked, from the provider they picked.
+fn chosen(store: &tern_core::Store) -> Box<dyn ai::Model + Send + Sync> {
+    ai::settings(store).map(|s| s.provider).unwrap_or_default().model()
+}
+
+/// Whether a key is saved for the provider.
+#[tauri::command]
+pub async fn ai_has_key(provider: Provider) -> Reply<bool> {
+    blocking(move || Ok(providers::has_key(provider))).await
 }
 
 #[tauri::command]
-pub async fn ai_status() -> Reply<AiStatus> {
-    let has_key =
-        tauri::async_runtime::spawn_blocking(anthropic::has_key).await.map_err(|e| e.to_string())?;
-    let models = ai::MODELS.iter().map(|(id, name)| (id.to_string(), name.to_string())).collect();
-    Ok(AiStatus { has_key, models })
+pub async fn ai_set_key(provider: Provider, key: String) -> Reply<()> {
+    blocking(move || providers::set_key(provider, &key)).await
 }
 
 #[tauri::command]
-pub async fn ai_set_key(key: String) -> Reply<()> {
-    anthropic::set_key(&key).map_err(text)
+pub async fn ai_forget_key(provider: Provider) -> Reply<()> {
+    blocking(move || providers::delete_key(provider)).await
 }
 
+/// The models to pick from: Anthropic's own list, or what the OpenAI or Google key (typed, else saved) can use.
 #[tauri::command]
-pub async fn ai_forget_key() -> Reply<()> {
-    anthropic::delete_key().map_err(text)
+pub async fn ai_models(provider: Provider, key: Option<String>) -> Reply<Vec<(String, String)>> {
+    blocking(move || providers::models(provider, key.as_deref())).await
 }
 
 /// Whether the key (the one typed, else the saved one) works and may use the model; the model's name if so.
 #[tauri::command]
-pub async fn ai_test(key: Option<String>, model: String) -> Reply<String> {
-    tauri::async_runtime::spawn_blocking(move || anthropic::test(key.as_deref(), &model))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(text)
+pub async fn ai_test(provider: Provider, key: Option<String>, model: String) -> Reply<String> {
+    blocking(move || providers::test(provider, key.as_deref(), &model)).await
 }
 
 /// The summary kept for the conversation as it is now, if any. Sends nothing.
@@ -934,31 +937,81 @@ pub async fn ai_summarize(
     on_text: tauri::ipc::Channel<String>,
 ) -> Reply<ai::Summary> {
     let store = state.store.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        ai::summarize(&store, &anthropic::Anthropic, id, fresh, &mut |t| drop(on_text.send(t.to_string())))
+    blocking(move || {
+        ai::summarize(&store, chosen(&store).as_ref(), id, fresh, &mut |t| drop(on_text.send(t.to_string())))
     })
     .await
-    .map_err(|e| e.to_string())?
-    .map_err(text)
 }
 
-/// A new version of the draft for compose to show; compose decides whether it goes in.
+/// Three replies the person could send to the conversation of message `id`.
+#[tauri::command]
+pub async fn ai_replies(
+    state: State<'_, AppState>,
+    id: i64,
+    fresh: bool,
+    on_text: tauri::ipc::Channel<String>,
+) -> Reply<Vec<ai::Suggestion>> {
+    let store = state.store.clone();
+    blocking(move || {
+        ai::replies(&store, chosen(&store).as_ref(), id, fresh, &mut |t| drop(on_text.send(t.to_string())))
+    })
+    .await
+}
+
+/// What Write with AI wrote, for compose to show; compose decides whether it goes in.
 #[tauri::command]
 pub async fn ai_write(
     state: State<'_, AppState>,
     input: ai::WriteInput,
     on_text: tauri::ipc::Channel<String>,
-) -> Reply<String> {
+) -> Reply<ai::Written> {
     let store = state.store.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        ai::write(&store, &anthropic::Anthropic, &input, &mut |t| drop(on_text.send(t.to_string())))
+    blocking(move || {
+        ai::write(&store, chosen(&store).as_ref(), &input, &mut |t| drop(on_text.send(t.to_string())))
     })
     .await
-    .map_err(|e| e.to_string())?
-    .map_err(text)
+}
+
+/// What Settings → AI shows of use: tokens spent today (UTC) and the answers kept, by kind.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiStats {
+    tokens_today: i64,
+    kept: HashMap<String, i64>,
+}
+
+#[tauri::command]
+pub async fn ai_stats(state: State<'_, AppState>) -> Reply<AiStats> {
+    let today = tern_core::store::now().div_euclid(86_400);
+    Ok(AiStats {
+        tokens_today: state.store.ai_tokens(today).map_err(text)?,
+        kept: state.store.ai_kept().map_err(text)?,
+    })
 }
 
 #[tauri::command]
 pub async fn ai_clear_cache(state: State<'_, AppState>) -> Reply<usize> {
     state.store.ai_clear_cache().map_err(text)
+}
+
+#[tauri::command]
+pub async fn ai_style(state: State<'_, AppState>, account_id: i64) -> Reply<Option<AiStyle>> {
+    state.store.ai_style(account_id).map_err(text)
+}
+
+/// Learns the account's style note from its sent mail. Only on the person's ask (Settings → AI).
+#[tauri::command]
+pub async fn ai_learn_style(state: State<'_, AppState>, account_id: i64) -> Reply<ai::Learned> {
+    let store = state.store.clone();
+    blocking(move || ai::learn_style(&store, chosen(&store).as_ref(), account_id)).await
+}
+
+/// The person's own edit of the note. Saving nothing removes it.
+#[tauri::command]
+pub async fn ai_set_style(state: State<'_, AppState>, account_id: i64, note: String) -> Reply<()> {
+    if note.trim().is_empty() {
+        return state.store.delete_ai_style(account_id).map_err(text);
+    }
+    let samples = state.store.ai_style(account_id).map_err(text)?.map(|s| s.samples).unwrap_or(0);
+    state.store.set_ai_style(account_id, note.trim(), samples).map_err(text)
 }
