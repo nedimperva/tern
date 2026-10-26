@@ -7,6 +7,8 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-26
+
 ### Added
 
 - The start of the day. On the first open of a day, a screen says who waits on you and since when, and Enter takes
