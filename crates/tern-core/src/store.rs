@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 24;
+const SCHEMA_VERSION: i64 = 25;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -430,6 +430,16 @@ fn migrate(conn: &Connection) -> Result<()> {
                      SELECT message_id FROM bodies WHERE COALESCE(text, '') = '' AND COALESCE(html, '') = '');
                  DELETE FROM bodies WHERE message_id IN (SELECT id FROM messages WHERE body_state = 'none');"
             }
+            // Optional AI (package 10): summaries kept by what was sent (`key_hash`, a SHA-256 of the prompt and the
+            // mail it carried) and the model that answered, so the same conversation is never paid for twice; and
+            // the tokens spent each day (UTC day number), for the daily limit.
+            24 => {
+                "CREATE TABLE ai_cache (kind TEXT NOT NULL, key_hash TEXT NOT NULL, model TEXT NOT NULL,
+                                        account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+                                        text TEXT NOT NULL, created INTEGER NOT NULL,
+                                        PRIMARY KEY (kind, key_hash, model));
+                 CREATE TABLE ai_usage (day INTEGER PRIMARY KEY, tokens INTEGER NOT NULL DEFAULT 0);"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -693,6 +703,59 @@ impl Store {
             "INSERT INTO settings (key, value) VALUES (?1, ?2)
              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
             params![key, value.to_string()],
+        )?;
+        Ok(())
+    }
+
+    // MARK: AI
+
+    /// A kept AI answer for exactly this request (see `ai::key_hash`).
+    pub fn ai_cached(&self, kind: &str, key_hash: &str, model: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT text FROM ai_cache WHERE kind = ?1 AND key_hash = ?2 AND model = ?3",
+                params![kind, key_hash, model],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    pub fn ai_keep(
+        &self,
+        kind: &str,
+        key_hash: &str,
+        model: &str,
+        account_id: Option<i64>,
+        text: &str,
+    ) -> Result<()> {
+        self.conn().execute(
+            "INSERT OR REPLACE INTO ai_cache (kind, key_hash, model, account_id, text, created)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![kind, key_hash, model, account_id, text, now()],
+        )?;
+        Ok(())
+    }
+
+    /// Settings → AI → "Delete AI cache". Returns how many answers were dropped.
+    pub fn ai_clear_cache(&self) -> Result<usize> {
+        Ok(self.conn().execute("DELETE FROM ai_cache", [])?)
+    }
+
+    /// Tokens (sent and received) spent on the UTC day `day` (Unix seconds / 86400).
+    pub fn ai_tokens(&self, day: i64) -> Result<i64> {
+        Ok(self
+            .conn()
+            .query_row("SELECT tokens FROM ai_usage WHERE day = ?1", [day], |r| r.get(0))
+            .optional()?
+            .unwrap_or(0))
+    }
+
+    pub fn ai_spend(&self, day: i64, tokens: i64) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO ai_usage (day, tokens) VALUES (?1, ?2)
+             ON CONFLICT (day) DO UPDATE SET tokens = tokens + excluded.tokens",
+            params![day, tokens],
         )?;
         Ok(())
     }
@@ -3775,6 +3838,26 @@ Engines Ltd"
     }
 
     #[test]
+    fn migration_25_starts_ai_empty_and_keeps_answers_per_model() {
+        let (store, account, ..) = setup();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 24);
+        let store = Store::init(conn).unwrap();
+        assert_eq!(store.ai_cached("summary", "h", "m").unwrap(), None);
+        store.ai_keep("summary", "h", "m", Some(account), "Short.").unwrap();
+        assert_eq!(store.ai_cached("summary", "h", "m").unwrap().as_deref(), Some("Short."));
+        assert_eq!(store.ai_cached("summary", "h", "other").unwrap(), None, "another model answers again");
+        store.ai_spend(7, 100).unwrap();
+        store.ai_spend(7, 20).unwrap();
+        assert_eq!((store.ai_tokens(7).unwrap(), store.ai_tokens(8).unwrap()), (120, 0));
+        assert_eq!(store.ai_clear_cache().unwrap(), 1);
+        assert_eq!(store.ai_cached("summary", "h", "m").unwrap(), None);
+        store.ai_keep("summary", "h", "m", Some(account), "Short.").unwrap();
+        store.remove_account(account).unwrap();
+        assert_eq!(store.ai_cached("summary", "h", "m").unwrap(), None, "an account's answers go with it");
+    }
+
+    #[test]
     fn search_says_when_bodies_were_not_all_searched() {
         let (store, account, inbox, _) = setup();
         let headers = NewMessage { headers_only: true, body_text: None, ..message(1, "Plans", 1) };
@@ -4631,6 +4714,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                24 => "DROP TABLE ai_cache; DROP TABLE ai_usage;",
                 23 => "",
                 22 => "ALTER TABLE signatures DROP COLUMN custom;",
                 21 => "DROP TABLE message_labels;",

@@ -1,7 +1,9 @@
 //! What the UI can ask for. Reads answer from the store and never touch the network, except signing in to a new
-//! account, the first open of a received attachment, and (opt-in) a sender's logo, fetched in the background.
+//! account, the first open of a received attachment, (opt-in) a sender's logo, fetched in the background, and
+//! (opt-in, on request) AI.
 
 use tauri::{AppHandle, Emitter, Manager, State};
+use tern_core::ai::{self, anthropic};
 use tern_core::presets::{self, Preset};
 use tern_core::{
     logo, mime, secrets, sync, Account, AccountConfig, Action, Applied, Auth, Contact, ContactCard, Cursor,
@@ -875,4 +877,88 @@ pub async fn sender_logo(app: AppHandle, addr: String) -> Reply<Option<String>> 
         });
     }
     Ok(None)
+}
+
+// MARK: AI (package 10)
+
+// Every AI command but the key's own runs only on the person's ask, and the engine checks first that AI is on and
+// allowed for the feature and the account (tern_core::ai::allowed): with AI off nothing is sent anywhere.
+
+/// What Settings → AI shows: whether a key is saved, and the models to pick from.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiStatus {
+    has_key: bool,
+    models: Vec<(String, String)>,
+}
+
+#[tauri::command]
+pub async fn ai_status() -> Reply<AiStatus> {
+    let has_key =
+        tauri::async_runtime::spawn_blocking(anthropic::has_key).await.map_err(|e| e.to_string())?;
+    let models = ai::MODELS.iter().map(|(id, name)| (id.to_string(), name.to_string())).collect();
+    Ok(AiStatus { has_key, models })
+}
+
+#[tauri::command]
+pub async fn ai_set_key(key: String) -> Reply<()> {
+    anthropic::set_key(&key).map_err(text)
+}
+
+#[tauri::command]
+pub async fn ai_forget_key() -> Reply<()> {
+    anthropic::delete_key().map_err(text)
+}
+
+/// Whether the key (the one typed, else the saved one) works and may use the model; the model's name if so.
+#[tauri::command]
+pub async fn ai_test(key: Option<String>, model: String) -> Reply<String> {
+    tauri::async_runtime::spawn_blocking(move || anthropic::test(key.as_deref(), &model))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(text)
+}
+
+/// The summary kept for the conversation as it is now, if any. Sends nothing.
+#[tauri::command]
+pub async fn ai_cached_summary(state: State<'_, AppState>, id: i64) -> Reply<Option<ai::Summary>> {
+    ai::cached_summary(&state.store, id).map_err(text)
+}
+
+/// Summarizes the conversation of message `id`; the words stream through `on_text` as they come.
+#[tauri::command]
+pub async fn ai_summarize(
+    state: State<'_, AppState>,
+    id: i64,
+    fresh: bool,
+    on_text: tauri::ipc::Channel<String>,
+) -> Reply<ai::Summary> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        ai::summarize(&store, &anthropic::Anthropic, id, fresh, &mut |t| drop(on_text.send(t.to_string())))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(text)
+}
+
+/// A new version of the draft for compose to show; compose decides whether it goes in.
+#[tauri::command]
+pub async fn ai_write(
+    state: State<'_, AppState>,
+    input: ai::WriteInput,
+    on_text: tauri::ipc::Channel<String>,
+) -> Reply<String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        ai::write(&store, &anthropic::Anthropic, &input, &mut |t| drop(on_text.send(t.to_string())))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(text)
+}
+
+#[tauri::command]
+pub async fn ai_clear_cache(state: State<'_, AppState>) -> Reply<usize> {
+    state.store.ai_clear_cache().map_err(text)
 }

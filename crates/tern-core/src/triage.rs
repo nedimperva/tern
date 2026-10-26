@@ -206,7 +206,7 @@ fn date(words: &[&str], today: i64) -> Option<(i64, usize)> {
 }
 
 /// (year, month, day) of a day in seconds since the epoch.
-fn civil(t: i64) -> (i64, i64, i64) {
+pub(crate) fn civil(t: i64) -> (i64, i64, i64) {
     let z = t.div_euclid(86_400) + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;
