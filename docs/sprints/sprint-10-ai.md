@@ -91,6 +91,12 @@ Automatic labels, Instant Reply, voice matching, Ask AI and additional provider 
   replies alike. The style note learns from the person's own messages by address (so Gmail's sent mail in All Mail
   counts), without quotes or signatures, at most 50, 2,000 characters each; it is stored in `ai_styles` (schema
   v26) and deleted with the account.
+- 2026-10-26, owner: one provider and one model for everything was a flaw (every feature asked Opus). Now any
+  providers at once, each with its key, and a model per feature (`AiSettings::uses`, `ai::route`), with each
+  provider's small model as the default for summaries and replies. Consent is per provider (`agreed`): turning on
+  agrees to those in use; a model from another one asks first, and the engine refuses a provider not agreed to.
+  Settings saved before keep working: their one provider counts as agreed. Each request names its provider and
+  `providers::Router` sends it there.
 - Open for the owner: the Google restricted-data / assessment review for Gmail accounts sending mail to a remote
   provider (privacy task 3) is a policy review, not code. Today Tern ships Gmail on app passwords without a Google
   client, so no Google API scope is involved, but the review should still be done before AI is announced.

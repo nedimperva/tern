@@ -43,14 +43,28 @@ export type Settings = {
   zeroScene: string;
   /** Per local day ("2026-10-20"): conversations cleared from the inbox in Tern, and whether it reached zero. */
   zeroLog: Record<string, { cleared: number; zero: boolean }>;
+  /** The start of the day: the morning screen on a day's first open and the line above the inbox, only the
+   * line, or neither. */
+  dayStart: "screen" | "line" | "off";
+  /** When the person was last here (Unix seconds): the start of the day counts from it. */
+  lastSeen: number;
+  /** The local day the morning screen last showed ("2026-10-26"), so it shows once a day. */
+  dayShown: string;
+  /** The local day the line above the inbox was put away. */
+  lineHidden: string;
   /** Optional AI, read by the engine too, which refuses what it does not allow (tern_core::ai::AiSettings). */
   ai: AiSettings;
 };
 
 export type AiSettings = {
   enabled: boolean;
+  /** The provider and model a feature uses when none is picked for it. */
   provider: AiProvider;
   model: string;
+  /** The model each feature uses, from any provider with a key (see `aiRoute`). */
+  uses: Partial<Record<AiFeatureKey, AiRoute>>;
+  /** Providers agreed to receive mail; empty in settings from before there were several (then `provider`). */
+  agreed: AiProvider[];
   summaries: boolean;
   writing: boolean;
   /** Suggested replies in a conversation. */
@@ -86,10 +100,16 @@ export const DEFAULTS: Settings = {
   attachmentWords: [],
   zeroScene: "rotate",
   zeroLog: {},
+  dayStart: "screen",
+  lastSeen: 0,
+  dayShown: "",
+  lineHidden: "",
   ai: {
     enabled: false,
     provider: "anthropic",
     model: "claude-opus-5-5",
+    uses: {},
+    agreed: [],
     summaries: true,
     writing: true,
     replies: true,
@@ -99,6 +119,26 @@ export const DEFAULTS: Settings = {
     accounts: [],
   },
 };
+
+export type AiFeatureKey = "summaries" | "replies" | "writing" | "style";
+export type AiRoute = { provider: AiProvider; model: string };
+
+/** Each provider's quick, cheap model, for the short everyday work. Matches `Provider::small_model`. */
+const SMALL_MODEL: Record<AiProvider, string> = {
+  anthropic: "claude-haiku-5-5",
+  openai: "gpt-6-luna",
+  gemini: "gemini-flash-latest",
+};
+
+/** The model a feature uses: the one picked for it, else the default provider's (its small model for summaries
+ * and replies). Matches `ai::route` in the engine. */
+export function aiRoute(s: AiSettings, feature: AiFeatureKey): AiRoute {
+  const picked = s.uses[feature];
+  if (picked) return picked;
+  return feature === "summaries" || feature === "replies"
+    ? { provider: s.provider, model: SMALL_MODEL[s.provider] }
+    : { provider: s.provider, model: s.model };
+}
 
 /** Whether AI may be offered for this feature on this account (the engine checks again). */
 export const aiOn = (feature: "summaries" | "writing" | "replies", accountId: number | undefined) =>

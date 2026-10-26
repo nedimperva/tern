@@ -144,6 +144,25 @@ pub struct ThreadMessage {
     pub list_unsubscribe: Option<String>,
 }
 
+/// The start of the day (what Tern shows on the first open of a day, and the line above the inbox): counts since
+/// the person was last here, and the conversations that need them.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DayStart {
+    /// When the person was last here (Unix seconds), as asked.
+    pub since: i64,
+    /// Inbox conversations with mail since then.
+    pub new_since: i64,
+    /// Important conversations whose newest message is someone else's, waiting longest first.
+    pub need_you: Vec<ThreadRow>,
+    /// Snoozed conversations that came back since then.
+    pub back: Vec<ThreadRow>,
+    /// Follow-ups that came due with no answer yet.
+    pub waiting: Vec<ThreadRow>,
+    /// Conversations with mail since then in Other (updates, lists).
+    pub rest: i64,
+}
+
 /// How someone writes from an account (package 10), as a note the AI follows when they ask it to.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -156,7 +156,12 @@ data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Ana.\"}]},\"finishRe
 
     #[test]
     fn the_request_carries_the_system_prompt_apart() {
-        let b = body(&Request { model: "gemini-flash-latest".into(), system: "sys", user: "hi".into() });
+        let b = body(&Request {
+            provider: Provider::Gemini,
+            model: "gemini-flash-latest".into(),
+            system: "sys",
+            user: "hi".into(),
+        });
         assert_eq!(b["systemInstruction"]["parts"][0]["text"], "sys");
         assert_eq!(b["contents"][0]["parts"][0]["text"], "hi");
     }

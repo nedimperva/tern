@@ -879,6 +879,13 @@ pub async fn sender_logo(app: AppHandle, addr: String) -> Reply<Option<String>> 
     Ok(None)
 }
 
+/// The start of the day: what came in since `since` (Unix seconds, when the person was last here) and what needs
+/// them. Read from the store only.
+#[tauri::command]
+pub async fn day_start(state: State<'_, AppState>, since: i64) -> Reply<tern_core::DayStart> {
+    state.store.day_start(since).map_err(text)
+}
+
 // MARK: AI (package 10)
 
 // Every AI command but the key's own runs only on the person's ask, and the engine checks first that AI is on and
@@ -887,11 +894,6 @@ pub async fn sender_logo(app: AppHandle, addr: String) -> Reply<Option<String>> 
 /// Runs blocking AI work (the keyring, a streamed HTTP answer) off the async runtime.
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Reply<T> {
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?.map_err(text)
-}
-
-/// The model the person picked, from the provider they picked.
-fn chosen(store: &tern_core::Store) -> Box<dyn ai::Model + Send + Sync> {
-    ai::settings(store).map(|s| s.provider).unwrap_or_default().model()
 }
 
 /// Whether a key is saved for the provider.
@@ -938,7 +940,7 @@ pub async fn ai_summarize(
 ) -> Reply<ai::Summary> {
     let store = state.store.clone();
     blocking(move || {
-        ai::summarize(&store, chosen(&store).as_ref(), id, fresh, &mut |t| drop(on_text.send(t.to_string())))
+        ai::summarize(&store, &providers::Router, id, fresh, &mut |t| drop(on_text.send(t.to_string())))
     })
     .await
 }
@@ -953,7 +955,7 @@ pub async fn ai_replies(
 ) -> Reply<Vec<ai::Suggestion>> {
     let store = state.store.clone();
     blocking(move || {
-        ai::replies(&store, chosen(&store).as_ref(), id, fresh, &mut |t| drop(on_text.send(t.to_string())))
+        ai::replies(&store, &providers::Router, id, fresh, &mut |t| drop(on_text.send(t.to_string())))
     })
     .await
 }
@@ -967,7 +969,7 @@ pub async fn ai_write(
 ) -> Reply<ai::Written> {
     let store = state.store.clone();
     blocking(move || {
-        ai::write(&store, chosen(&store).as_ref(), &input, &mut |t| drop(on_text.send(t.to_string())))
+        ai::write(&store, &providers::Router, &input, &mut |t| drop(on_text.send(t.to_string())))
     })
     .await
 }
@@ -1003,7 +1005,7 @@ pub async fn ai_style(state: State<'_, AppState>, account_id: i64) -> Reply<Opti
 #[tauri::command]
 pub async fn ai_learn_style(state: State<'_, AppState>, account_id: i64) -> Reply<ai::Learned> {
     let store = state.store.clone();
-    blocking(move || ai::learn_style(&store, chosen(&store).as_ref(), account_id)).await
+    blocking(move || ai::learn_style(&store, &providers::Router, account_id)).await
 }
 
 /// The person's own edit of the note. Saving nothing removes it.

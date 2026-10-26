@@ -4,6 +4,15 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+/** The start of the day: what came in since the person was last here and what needs them (see `day_start`). */
+export type DayStart = {
+  since: number;
+  newSince: number;
+  needYou: ThreadRow[];
+  back: ThreadRow[];
+  waiting: ThreadRow[];
+  rest: number;
+};
 /** An AI summary of a conversation (package 10): one line, then the points under it. */
 export type AiSummary = { line: string; facts: AiFact[]; points: string[]; cached: boolean };
 /** A summary's fact, for a chip: the nearest date that matters, what is asked of you, or what was decided. */
@@ -391,6 +400,8 @@ export interface Api {
   openLogs(): Promise<void>;
   /** The window's own frame (the title bar on Windows) in Tern's theme; null follows the system. */
   setWindowTheme(theme: "light" | "dark" | null): void;
+  /** What came in since `since` (Unix seconds) and what needs the person. From the store only. */
+  dayStart(since: number): Promise<DayStart>;
   // AI, only on the person's ask; the engine refuses while it is off or not allowed (Settings → AI).
   aiHasKey(provider: AiProvider): Promise<boolean>;
   aiSetKey(provider: AiProvider, key: string): Promise<void>;
@@ -565,6 +576,7 @@ const tauri: Api = {
   openLogs: () => invoke("open_logs"),
   setWindowTheme: (theme) =>
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => getCurrentWindow().setTheme(theme).catch(() => {})),
+  dayStart: (since) => invoke("day_start", { since }),
   aiHasKey: (provider) => invoke("ai_has_key", { provider }),
   aiSetKey: (provider, key) => invoke("ai_set_key", { provider, key }),
   aiForgetKey: (provider) => invoke("ai_forget_key", { provider }),
@@ -1097,6 +1109,22 @@ function fake(): Api {
     openLogs: async () => {},
     setWindowTheme: () => {},
     // AI in the browser: a made-up answer, streamed a word at a time like the real one. The key "fail" fails.
+    // The start of the day in the browser: people's mail in the inbox, newest someone else's, oldest first.
+    dayStart: async (since) => {
+      const inbox = messages.filter((m) => m.folderId === 1);
+      const latest = new Map<string, (typeof messages)[number]>();
+      for (const m of inbox) if (!latest.has(m.threadId) || latest.get(m.threadId)!.date < m.date) latest.set(m.threadId, m);
+      const rows = [...latest.values()].map((m) => ({ ...m, count: 1, unread: m.seen ? 0 : 1, participants: [m.fromName], snoozedUntil: null }) as unknown as ThreadRow);
+      const people = rows.filter((r) => !/github|stripe/i.test(r.fromName));
+      return {
+        since,
+        newSince: rows.filter((r) => r.date > since).length,
+        needYou: people.sort((a, b) => a.date - b.date).slice(0, 5),
+        back: people.slice(5, 7),
+        waiting: people.slice(7, 8),
+        rest: rows.filter((r) => r.date > since && /github|stripe/i.test(r.fromName)).length,
+      };
+    },
     aiHasKey: async (provider) => localStorage.getItem(`tern.fake.aiKey.${provider}`) != null,
     aiSetKey: async (provider, key) => void localStorage.setItem(`tern.fake.aiKey.${provider}`, key),
     aiForgetKey: async (provider) => void localStorage.removeItem(`tern.fake.aiKey.${provider}`),

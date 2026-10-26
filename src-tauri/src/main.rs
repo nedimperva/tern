@@ -191,6 +191,7 @@ fn main() {
             commands::list_messages,
             commands::thread,
             commands::sender_logo,
+            commands::day_start,
             commands::ai_has_key,
             commands::ai_set_key,
             commands::ai_forget_key,

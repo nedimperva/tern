@@ -7,6 +7,31 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-26
+
+### Added
+
+- The start of the day. On the first open of a day, a screen says who waits on you and since when, and Enter takes
+  you through them one at a time (Reply, Snooze, Done, Later). After that, one quiet line above the inbox counts
+  what came in since you were last here, what needs you, what came back from snooze and what has no answer yet;
+  1–4 jump to each. All counted on this computer; Settings → Reading turns either off.
+
+### Changed
+
+- AI: set up several providers at once (Anthropic, OpenAI, Google), each with its own key, and pick the model for
+  each feature in Settings → AI. Summaries and suggested replies now use a small, cheap model by default (Claude
+  Haiku, GPT-6 Luna or Gemini Flash); Write with AI and learning your style keep the bigger one. A model from a
+  provider you haven't allowed yet asks first.
+
+### Fixed
+
+- Some wide mail (newsletters, receipts) flashed many times a second while open: shrinking it to fit the pane kept
+  undoing and redoing itself.
+- Settings → AI showed the inbox for a few seconds, then flickered, before it opened.
+- R (and Reply all) opened the reply at the bottom of a long conversation, out of view; it now scrolls there.
+- Write with AI has its quick asks again: Write it out (Write a reply, in an empty reply), Shorter, More formal,
+  Friendlier and Fix grammar, above the field; on a version they rework it.
+
 ## [1.1.0] - 2026-10-26
 
 ### Added

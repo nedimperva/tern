@@ -176,7 +176,9 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   the invite, `Ctrl J` or the `AI` keycap in the footer opens a `--soft` panel. What the person says shows as
   bubbles on the right (`--accent-soft`); each answer as a "Version n" pill, the one on show filled `--accent`
   ("· below"), its text in a `--bg-0` box under them. The field ("Say more, or Tab to keep it", 2 px `--accent`)
-  asks again from the version on show; `Tab` keeps it as ordinary text (signature and quote stay; `Ctrl Z` brings
+  asks again from the version on show, and quick asks above it (Write it out, which reads "Write a reply" in an empty
+  reply and writes from the conversation, Shorter, More formal, Friendlier, Fix grammar; the bubble shows the chip's
+  name) rework the version on show; `Tab` keeps it as ordinary text (signature and quote stay; `Ctrl Z` brings
   back what was there), `↑`/`↓` step through versions, `Esc` drops them all. One quiet line says what it reads
   ("Reads this conversation and your style."). It writes from the whole conversation; the draft may be empty.
   Send waits while versions are open ("Keep a version (Tab) or drop them (Esc) before you send.").
@@ -247,6 +249,28 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   are kept with the settings (`zeroLog`), on this computer: what is cleared in another app isn't in them. No buttons.
   `C` still composes.
 
+### 4.7a Start of the day
+
+Built (2026-10-26, from the canvas "Tern home screen ideas", the owner's picks A2, A3 and A5). Counted on this
+computer from the store (`day_start`), since the person was last here (`lastSeen`: when the window last went away).
+Settings → Reading → Start of the day: the screen and the line, only the line, or neither.
+
+- **The line (A2)**, above the inbox and its Important split, not while searching: on `--soft`, 44 px, "Morning,
+  Ada." and "23 new since 18:40 yesterday:", then pills for what there is: *need you* (`--accent-soft`), *back
+  from snooze*, *no answer yet*, *the rest*, each with its count and key `1`–`4`. 1–3 start the run through that
+  group; 4 opens Other. × puts it away until tomorrow. Conversations that need you carry a 6 px `--accent` dot in
+  their row's mark column.
+- **The morning screen (A3)**, on the first open of a day when something waits: over the whole window on Inbox
+  Zero's sky (`.zero` colours, light and dark) with a quiet landscape and two terns. A kicker (day · time), one
+  headline ("Five conversations wait on you. The first since Tuesday."), a sentence on the rest, then "Start with
+  Marko: Contract …" (`Enter`, primary) and "Done all N updates" (`Shift E`, the Other mail that came in, undoable),
+  with chips of who waits along the bottom. `Esc` goes to the inbox.
+- **One at a time (A5)**: the conversations as a stack of cards on `--bg-2`: a header with "Your morning", "1 of
+  5" and progress bars, a card (`--bg-0`, 14 px radius, `--shadow`, one card behind it) with the sender and how long
+  it has waited, the subject, the newest message's words, its files, suggested replies when AI is on (`Q`, `1`–`3`),
+  then Reply `R` (compose over the run), Snooze `H`, Done `E`, Later `J` (`K` back). It ends with "That's everything
+  that needed you." and the inbox.
+
 ### 4.8 Settings (`Ctrl+,`)
 
 - Full-screen page over the list with a 232 px left list of sections in three groups, each under a `--t-xs`
@@ -266,13 +290,16 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   from another app" switches the editor for a paste box (a dashed `--line` border; Ctrl+V keeps the copied formatting),
   the HTML source in `--mono` folded under "Edit the HTML", a `--warn-fg` note when a picture has no web address, and the preview shows it in a
   white frame. In compose an HTML signature sits under the text in the same white frame, not in the editor.
-- Built (2026-10-26), AI: four steps, each with a 26 px mark (a check on `--ok` once done, the number on `--accent`
-  while it is the one to do, `--bg-3` after): Who answers (three provider cards, the picked one `--bg-0` with a 2 px
-  `--accent` border), Your key, Mail it may read (accounts, the address filter), What it may do (a `--soft` table:
-  feature and key, what goes to the provider when asked, a checkbox; a footer line on what never goes). Then "Review
-  and turn on" opens the privacy sheet; once on, a status line at the top (On · provider · model, Turn off), two
-  cards (Today: tokens against the daily limit as a meter; Advanced: model and daily limit), "Your writing style"
-  per account, and what is kept with Delete AI cache.
+- Built (2026-10-26), AI: three steps, each with a 26 px mark (a check on `--ok` once done, the number on `--accent`
+  while it is the one to do, `--bg-3` after): Providers (Anthropic, OpenAI, Google as rows on `--soft`, each with
+  "Key saved" and Test / Forget, or Add key opening its field; any number of them), Mail it may read (accounts, the
+  address filter), What it may do (a `--soft` table: feature and key, what goes to its model's provider when asked,
+  the model, picked from every provider with a key in groups by provider, and a checkbox; a footer line on what
+  never goes). A model from a provider not yet allowed opens a row on `--accent-soft` under its feature ("gpt-6-luna
+  sends summaries to OpenAI, …", Allow OpenAI / Cancel) and the list keeps the model in use until then. "Review and
+  turn on" opens the privacy sheet naming every provider in use; once on, a status line (On · providers, Turn off),
+  two cards (Today: tokens against the daily limit as a meter; Limit), "Your writing style" per account, and what is
+  kept with Delete AI cache.
   Writing style: after Learn, "Does this sound like you?" (made-up notes written plainly and in the person's style,
   the second with a 2 px `--accent` border, what it picked up as `--accent-soft` tags; Sounds like me, Adjust the
   note, Don't use a style). After that the note shows as parts on `--soft`: greetings and sign-offs as removable

@@ -193,7 +193,12 @@ data: {\"type\":\"message_stop\"}\n";
 
     #[test]
     fn the_request_asks_for_a_stream_with_fallback_where_there_is_one() {
-        let req = Request { model: "claude-opus-5-5".into(), system: "sys", user: "hi".into() };
+        let req = Request {
+            provider: Provider::Anthropic,
+            model: "claude-opus-5-5".into(),
+            system: "sys",
+            user: "hi".into(),
+        };
         let b = body(&req);
         assert_eq!((b["stream"].as_bool(), b["fallbacks"].as_str()), (Some(true), Some("default")));
         assert_eq!(b["output_config"]["effort"], "low");
