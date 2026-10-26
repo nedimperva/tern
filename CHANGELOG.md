@@ -27,6 +27,8 @@ every release needs one here before it is tagged.
   undoing and redoing itself.
 - Settings → AI showed the inbox for a few seconds, then flickered, before it opened.
 - R (and Reply all) opened the reply at the bottom of a long conversation, out of view; it now scrolls there.
+- Write with AI has its quick asks again: Write it out (Write a reply, in an empty reply), Shorter, More formal,
+  Friendlier and Fix grammar, above the field; on a version they rework it.
 
 ## [1.1.0] - 2026-10-26
 

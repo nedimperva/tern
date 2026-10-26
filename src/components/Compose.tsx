@@ -359,7 +359,8 @@ export function Compose(props: {
   // also names who it goes to and a subject; names are matched in the contacts on this computer.
   const aiAllowed = () => aiOn("writing", from());
   const newMail = () => !props.init.inReplyTo && !props.init.forwardOf;
-  type Version = { request: string; written: AiWritten | null; streamed: string; error?: string };
+  /** `request` is what went to the model; `said` what the bubble shows (a chip's own name). */
+  type Version = { request: string; said: string; written: AiWritten | null; streamed: string; error?: string };
   const [aiOpen, setAiOpen] = createSignal(false);
   const [versions, setVersions] = createSignal<Version[]>([]);
   // The version on show; the newest unless the person stepped back.
@@ -407,9 +408,10 @@ export function Compose(props: {
     const at = streamed.indexOf("\n===");
     return at < 0 ? "" : streamed.slice(at + 4).replace(/^=*\s*/, "");
   };
-  const askAi = async () => {
+  /** Asks for a version: what the person typed, or what a chip asks. */
+  const askAi = async (chip?: { label: string; request: string }) => {
     if (aiBusy()) return;
-    const request = aiAsk().trim();
+    const request = chip?.request ?? aiAsk().trim();
     const own = await ownPart();
     if (!own || !view) return;
     if (!request && !own.text && !versions().length) {
@@ -427,7 +429,7 @@ export function Compose(props: {
       : "";
     const run = ++aiRun;
     const asked = request || (versions().length ? "Again, differently." : "Write this out as a full email.");
-    setVersions([...earlier, { request: asked, written: null, streamed: "" }]);
+    setVersions([...earlier, { request: asked, said: chip?.label ?? asked, written: null, streamed: "" }]);
     setShown(earlier.length);
     setAiAsk("");
     setAiBusy(true);
@@ -500,6 +502,19 @@ export function Compose(props: {
       // The "-- " line a signature starts with.
       .replace(/(^|\s)--(?=\s|$)/g, " ")
       .trim();
+  /** Quick asks, above the field. On a version they rework it; before one, "Write it out" writes from the draft,
+   * or in an empty reply from the conversation. */
+  const AI_CHIPS = [
+    ["Write it out", "Write this out as a full email."],
+    ["Shorter", "Make it shorter."],
+    ["More formal", "Make it more formal."],
+    ["Friendlier", "Make it friendlier."],
+    ["Fix grammar", "Fix spelling and grammar only. Change nothing else."],
+  ] as const;
+  const nothingYet = () => !versions().length && ownEmpty();
+  const chipLabel = (label: string) => (label === "Write it out" && nothingYet() ? (props.init.inReplyTo ? "Write a reply" : "Write it out") : label);
+  const chipRequest = (label: string, request: string) =>
+    label === "Write it out" && nothingYet() && props.init.inReplyTo ? "Write a reply to the newest message." : request;
   /** Space at the start of an empty draft (its first line, nothing written yet) asks AI instead. */
   const spaceAsks = (e: KeyboardEvent) => {
     if (e.key !== " " || e.ctrlKey || e.metaKey || e.altKey || aiOpen() || !aiAllowed() || !view || !view.hasFocus()) return false;
@@ -737,7 +752,7 @@ export function Compose(props: {
             {(v, i) => (
               <>
                 <div class="ai-said">
-                  <span>{v.request}</span>
+                  <span>{v.said}</span>
                 </div>
                 <div class="ai-version-row">
                   <kbd class="ai-mark">AI</kbd>
@@ -815,6 +830,15 @@ export function Compose(props: {
             </Show>
             <div class="ai-preview">{current()!.written?.body ?? bodyOf(current()!.streamed)}</div>
           </Show>
+          <div class="ai-chips" role="group" aria-label="Quick asks">
+            <For each={AI_CHIPS}>
+              {([label, request]) => (
+                <button type="button" class="chip" disabled={aiBusy()} onClick={() => void askAi({ label: chipLabel(label), request: chipRequest(label, request) })}>
+                  {chipLabel(label)}
+                </button>
+              )}
+            </For>
+          </div>
           <label class="ai-say">
             <kbd class="ai-mark">AI</kbd>
             <input

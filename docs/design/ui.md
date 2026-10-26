@@ -176,7 +176,9 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   the invite, `Ctrl J` or the `AI` keycap in the footer opens a `--soft` panel. What the person says shows as
   bubbles on the right (`--accent-soft`); each answer as a "Version n" pill, the one on show filled `--accent`
   ("· below"), its text in a `--bg-0` box under them. The field ("Say more, or Tab to keep it", 2 px `--accent`)
-  asks again from the version on show; `Tab` keeps it as ordinary text (signature and quote stay; `Ctrl Z` brings
+  asks again from the version on show, and quick asks above it (Write it out, which reads "Write a reply" in an empty
+  reply and writes from the conversation, Shorter, More formal, Friendlier, Fix grammar; the bubble shows the chip's
+  name) rework the version on show; `Tab` keeps it as ordinary text (signature and quote stay; `Ctrl Z` brings
   back what was there), `↑`/`↓` step through versions, `Esc` drops them all. One quiet line says what it reads
   ("Reads this conversation and your style."). It writes from the whole conversation; the draft may be empty.
   Send waits while versions are open ("Keep a version (Tab) or drop them (Esc) before you send.").
