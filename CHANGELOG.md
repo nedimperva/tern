@@ -19,6 +19,7 @@ every release needs one here before it is tagged.
 - Some wide mail (newsletters, receipts) flashed many times a second while open: shrinking it to fit the pane kept
   undoing and redoing itself.
 - Settings → AI showed the inbox for a few seconds, then flickered, before it opened.
+- R (and Reply all) opened the reply at the bottom of a long conversation, out of view; it now scrolls there.
 
 ## [1.1.0] - 2026-10-26
 

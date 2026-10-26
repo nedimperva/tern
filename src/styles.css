@@ -1787,6 +1787,8 @@ button.fold {
 .compose.inline {
   width: 100%;
   max-height: none;
+  /* Scrolled to on opening: room for the compact header bar over the pane and the end of the message above. */
+  scroll-margin-top: 112px;
   box-shadow: none;
   background: var(--soft);
 }

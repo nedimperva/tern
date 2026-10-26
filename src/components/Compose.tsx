@@ -128,8 +128,15 @@ export function Compose(props: {
   const sigKind = props.init.signature?.kind ?? (props.init.inReplyTo ? "reply" : "new");
   const accountSignatures = () => props.signatures.filter((s) => s.accountId === from());
   let view: EditorView | undefined;
+  let formEl: HTMLFormElement | undefined;
   const editorReady = (v: EditorView) => {
     view = v;
+    // An inline reply opens below the whole conversation; the editor takes the focus without scrolling (ProseMirror
+    // focuses that way), so bring the reply into view, the end of the message above it still showing.
+    if (props.init.inline) {
+      const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      requestAnimationFrame(() => formEl?.scrollIntoView({ block: "start", behavior: smooth ? "smooth" : "auto" }));
+    }
     // A saved draft: find which of the account's signatures it holds, so switching replaces that one.
     if (props.init.signature || props.init.htmlSignature) return;
     void signatureTools().then(({ findSignature }) => {
@@ -543,6 +550,7 @@ export function Compose(props: {
 
   const form = (
     <form
+      ref={formEl}
       class="compose"
       classList={{ inline: props.init.inline, focus: focusMode() }}
       onKeyDown={onKeyDown}
