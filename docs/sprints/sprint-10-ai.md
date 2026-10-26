@@ -1,6 +1,6 @@
 # Sprint 10 — AI with your own key
 
-**Status:** todo
+**Status:** in progress · started 2026-10-26
 
 ## Delivery scope
 
