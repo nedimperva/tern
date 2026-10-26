@@ -16,9 +16,11 @@ import {
   textFrame,
   withoutTrackers,
 } from "../mailview";
-import { isDark, setSetting, settings } from "../settings";
+import { aiOn, isDark, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
 import { ActionMenu, type MenuItem } from "./ActionMenu";
+import { AiReplies } from "./AiReplies";
+import { AiSummary } from "./AiSummary";
 import { Icon } from "./Icon";
 import { PersonCard, type PersonActions } from "./PersonCard";
 import { logoFor } from "../logos";
@@ -459,7 +461,8 @@ export function ConversationView(props: {
   /** An inline reply is open below the messages, so the reply row steps aside. */
   replying: boolean;
   onToggle: (index: number) => void;
-  onReply: (m: ThreadMessage, kind: "reply" | "replyAll" | "forward") => void;
+  /** `text` starts the reply with it (a suggested reply). */
+  onReply: (m: ThreadMessage, kind: "reply" | "replyAll" | "forward", text?: string) => void;
   onView: (m: ThreadMessage, index: number) => void;
   onMailto: (m: Mailto) => void;
   onDone: () => void;
@@ -583,6 +586,9 @@ export function ConversationView(props: {
     <Show when={!props.replying && last()}>
       {(m) => (
         <div class="reply-end">
+          <Show when={aiOn("replies", m().accountId) && !props.mine(m().fromAddr)}>
+            <AiReplies id={m().id} onPick={(text) => props.onReply(m(), "reply", text)} />
+          </Show>
           <div class="end">
             <button class="start" title="Reply (R)" onClick={() => props.onReply(m(), "reply")}>
               <span>{props.mine(m().fromAddr) ? "Reply…" : `Reply to ${m().fromName || m().fromAddr}…`}</span>
@@ -634,6 +640,7 @@ export function ConversationView(props: {
               </span>
             </div>
           </Show>
+          <Show when={last() && aiOn("summaries", last().accountId) && last()}>{(m) => <AiSummary id={m().id} />}</Show>
         </div>
         <div class="tools">
           <Show when={privacy().trackers || privacy().blocked}>

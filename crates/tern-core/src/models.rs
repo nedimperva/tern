@@ -144,6 +144,18 @@ pub struct ThreadMessage {
     pub list_unsubscribe: Option<String>,
 }
 
+/// How someone writes from an account (package 10), as a note the AI follows when they ask it to.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiStyle {
+    pub account_id: i64,
+    pub note: String,
+    /// Sent messages it was learned from.
+    pub samples: i64,
+    /// Unix seconds.
+    pub updated: i64,
+}
+
 /// An attached file, for the strip under a message.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -305,7 +317,7 @@ impl Draft {
 }
 
 /// Someone to suggest as a recipient.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Contact {
     pub email: String,

@@ -202,6 +202,25 @@ UPDATE messages SET body_state = 'none'
 DELETE FROM bodies WHERE message_id IN (SELECT id FROM messages WHERE body_state = 'none');
 ```
 
+## v25 — package 10, AI cache and daily use (implemented 2026-10-26)
+Summaries are kept by a SHA-256 of exactly what was sent (prompt and mail), per model, so asking again about an
+unchanged conversation costs nothing; a new message changes the key. `account_id` lets an account's answers go with
+it. `ai_usage` counts tokens sent and received per UTC day for the daily limit. Settings live in the `ai` setting.
+```sql
+CREATE TABLE ai_cache (kind TEXT NOT NULL, key_hash TEXT NOT NULL, model TEXT NOT NULL,
+                       account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+                       text TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY (kind, key_hash, model));
+CREATE TABLE ai_usage (day INTEGER PRIMARY KEY, tokens INTEGER NOT NULL DEFAULT 0);
+```
+
+## v26 — package 10, writing style (implemented 2026-10-26)
+One note per account on how the person writes, learned from their sent mail only when they ask, editable, and
+followed by Write with AI and suggested replies when "Write in my style" is on.
+```sql
+CREATE TABLE ai_styles (account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+                        note TEXT NOT NULL, samples INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL);
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN caps TEXT NOT NULL DEFAULT '{}';               -- JSON: condstore, qresync, move, idle, gmail_ext
@@ -327,8 +346,8 @@ CREATE TABLE snippets (id INTEGER PRIMARY KEY, shortcut TEXT UNIQUE, name TEXT N
 `calendars`, `events`, `event_instances` as in the sprint file.
 
 ## v8 — Sprint 10 (AI)
+`ai_cache` shipped in v25 (above). Still planned, for the automatic-labels slice:
 ```sql
-CREATE TABLE ai_cache (kind TEXT NOT NULL, key_hash TEXT NOT NULL, model TEXT NOT NULL, text TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY (kind, key_hash, model));
 CREATE TABLE auto_labels (id INTEGER PRIMARY KEY, label_id INTEGER NOT NULL REFERENCES labels(id) ON DELETE CASCADE, prompt TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1);
 ```
 

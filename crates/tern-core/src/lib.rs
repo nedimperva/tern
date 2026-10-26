@@ -2,6 +2,7 @@
 //! happens behind it in [`sync::run_account`], and everything a person does goes through the outbox so it shows at
 //! once, can be undone for a few seconds, and survives being offline.
 
+pub mod ai;
 pub mod imap;
 pub mod logo;
 pub mod mailto;

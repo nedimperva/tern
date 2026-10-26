@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 24;
+const SCHEMA_VERSION: i64 = 26;
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -430,6 +430,23 @@ fn migrate(conn: &Connection) -> Result<()> {
                      SELECT message_id FROM bodies WHERE COALESCE(text, '') = '' AND COALESCE(html, '') = '');
                  DELETE FROM bodies WHERE message_id IN (SELECT id FROM messages WHERE body_state = 'none');"
             }
+            // Optional AI (package 10): summaries kept by what was sent (`key_hash`, a SHA-256 of the prompt and the
+            // mail it carried) and the model that answered, so the same conversation is never paid for twice; and
+            // the tokens spent each day (UTC day number), for the daily limit.
+            24 => {
+                "CREATE TABLE ai_cache (kind TEXT NOT NULL, key_hash TEXT NOT NULL, model TEXT NOT NULL,
+                                        account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+                                        text TEXT NOT NULL, created INTEGER NOT NULL,
+                                        PRIMARY KEY (kind, key_hash, model));
+                 CREATE TABLE ai_usage (day INTEGER PRIMARY KEY, tokens INTEGER NOT NULL DEFAULT 0);"
+            }
+            // How the person writes from an account, learned from their sent mail when they asked (ai::learn_style),
+            // for Write with AI and suggested replies. One note per account, editable.
+            25 => {
+                "CREATE TABLE ai_styles (account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+                                         note TEXT NOT NULL, samples INTEGER NOT NULL DEFAULT 0,
+                                         updated INTEGER NOT NULL);"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -695,6 +712,133 @@ impl Store {
             params![key, value.to_string()],
         )?;
         Ok(())
+    }
+
+    // MARK: AI
+
+    /// A kept AI answer for exactly this request (see `ai::key_hash`).
+    pub fn ai_cached(&self, kind: &str, key_hash: &str, model: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT text FROM ai_cache WHERE kind = ?1 AND key_hash = ?2 AND model = ?3",
+                params![kind, key_hash, model],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    pub fn ai_keep(
+        &self,
+        kind: &str,
+        key_hash: &str,
+        model: &str,
+        account_id: Option<i64>,
+        text: &str,
+    ) -> Result<()> {
+        self.conn().execute(
+            "INSERT OR REPLACE INTO ai_cache (kind, key_hash, model, account_id, text, created)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![kind, key_hash, model, account_id, text, now()],
+        )?;
+        Ok(())
+    }
+
+    /// Settings → AI → "Delete AI cache". Returns how many answers were dropped.
+    pub fn ai_clear_cache(&self) -> Result<usize> {
+        Ok(self.conn().execute("DELETE FROM ai_cache", [])?)
+    }
+
+    /// Tokens (sent and received) spent on the UTC day `day` (Unix seconds / 86400).
+    pub fn ai_tokens(&self, day: i64) -> Result<i64> {
+        Ok(self
+            .conn()
+            .query_row("SELECT tokens FROM ai_usage WHERE day = ?1", [day], |r| r.get(0))
+            .optional()?
+            .unwrap_or(0))
+    }
+
+    /// How many kept answers there are of each kind ("summary", "replies"), for Settings → AI.
+    pub fn ai_kept(&self) -> Result<HashMap<String, i64>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT kind, count(*) FROM ai_cache GROUP BY kind")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+        let mut out: HashMap<String, i64> = rows.collect::<rusqlite::Result<_>>()?;
+        let styles: i64 = conn.query_row("SELECT count(*) FROM ai_styles", [], |r| r.get(0))?;
+        out.insert("style".into(), styles);
+        Ok(out)
+    }
+
+    pub fn ai_spend(&self, day: i64, tokens: i64) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO ai_usage (day, tokens) VALUES (?1, ?2)
+             ON CONFLICT (day) DO UPDATE SET tokens = tokens + excluded.tokens",
+            params![day, tokens],
+        )?;
+        Ok(())
+    }
+
+    /// The row of the account's message with this Message-ID (with or without its angle brackets), if it is here.
+    pub fn message_row(&self, account_id: i64, message_id: &str) -> Result<Option<i64>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT id FROM messages WHERE account_id = ?1 AND message_id = ?2 ORDER BY date DESC LIMIT 1",
+                params![account_id, bare_id(message_id)],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// The account's style note, if one was learned (or written by hand).
+    pub fn ai_style(&self, account_id: i64) -> Result<Option<AiStyle>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT account_id, note, samples, updated FROM ai_styles WHERE account_id = ?1",
+                [account_id],
+                |r| {
+                    Ok(AiStyle {
+                        account_id: r.get(0)?,
+                        note: r.get(1)?,
+                        samples: r.get(2)?,
+                        updated: r.get(3)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    /// Saves the note; `samples` is how many sent messages it was learned from (kept when the person edits it).
+    pub fn set_ai_style(&self, account_id: i64, note: &str, samples: i64) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO ai_styles (account_id, note, samples, updated) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (account_id) DO UPDATE SET note = excluded.note, samples = excluded.samples,
+                                                    updated = excluded.updated",
+            params![account_id, note, samples, now()],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_ai_style(&self, account_id: i64) -> Result<()> {
+        self.conn().execute("DELETE FROM ai_styles WHERE account_id = ?1", [account_id])?;
+        Ok(())
+    }
+
+    /// The text of the newest messages the person sent from the account (by its address, so Gmail's sent mail,
+    /// which lives in All Mail, counts too), each once. Only messages whose text is here.
+    pub fn own_texts(&self, account_id: i64, address: &str, limit: usize) -> Result<Vec<String>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT b.text FROM messages m JOIN bodies b ON b.message_id = m.id
+             WHERE m.account_id = ?1 AND m.from_addr = ?2 COLLATE NOCASE AND COALESCE(b.text, '') != ''
+               AND NOT EXISTS (SELECT 1 FROM drafts d WHERE d.account_id = m.account_id
+                                 AND d.message_id = m.message_id AND d.sent_at IS NULL)
+             GROUP BY COALESCE(m.message_id, m.id)
+             ORDER BY max(m.date) DESC LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(params![account_id, address, limit as i64], |r| r.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<String>>>()?)
     }
 
     // MARK: Accounts and folders
@@ -3775,6 +3919,44 @@ Engines Ltd"
     }
 
     #[test]
+    fn migration_25_starts_ai_empty_and_keeps_answers_per_model() {
+        let (store, account, ..) = setup();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 24);
+        let store = Store::init(conn).unwrap();
+        assert_eq!(store.ai_cached("summary", "h", "m").unwrap(), None);
+        store.ai_keep("summary", "h", "m", Some(account), "Short.").unwrap();
+        assert_eq!(store.ai_cached("summary", "h", "m").unwrap().as_deref(), Some("Short."));
+        assert_eq!(store.ai_cached("summary", "h", "other").unwrap(), None, "another model answers again");
+        store.ai_spend(7, 100).unwrap();
+        store.ai_spend(7, 20).unwrap();
+        assert_eq!((store.ai_tokens(7).unwrap(), store.ai_tokens(8).unwrap()), (120, 0));
+        assert_eq!(store.ai_clear_cache().unwrap(), 1);
+        assert_eq!(store.ai_cached("summary", "h", "m").unwrap(), None);
+        store.ai_keep("summary", "h", "m", Some(account), "Short.").unwrap();
+        store.remove_account(account).unwrap();
+        assert_eq!(store.ai_cached("summary", "h", "m").unwrap(), None, "an account's answers go with it");
+    }
+
+    #[test]
+    fn migration_26_keeps_a_style_note_per_account() {
+        let (store, account, inbox, _) = setup();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 25);
+        let store = Store::init(conn).unwrap();
+        assert_eq!(store.ai_style(account).unwrap(), None);
+        store.set_ai_style(account, "- Short.", 12).unwrap();
+        store.set_ai_style(account, "- Short and warm.", 12).unwrap();
+        let style = store.ai_style(account).unwrap().unwrap();
+        assert_eq!((style.note.as_str(), style.samples), ("- Short and warm.", 12));
+        let mine = NewMessage { from_addr: "ME@example.com".into(), ..message(1, "sent", 10) };
+        store.insert_messages(account, inbox, &[mine, message(2, "theirs", 20)]).unwrap();
+        assert_eq!(store.own_texts(account, "me@example.com", 10).unwrap().len(), 1, "only what they wrote");
+        store.delete_ai_style(account).unwrap();
+        assert_eq!(store.ai_style(account).unwrap(), None);
+    }
+
+    #[test]
     fn search_says_when_bodies_were_not_all_searched() {
         let (store, account, inbox, _) = setup();
         let headers = NewMessage { headers_only: true, body_text: None, ..message(1, "Plans", 1) };
@@ -4631,6 +4813,8 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                25 => "DROP TABLE ai_styles;",
+                24 => "DROP TABLE ai_cache; DROP TABLE ai_usage;",
                 23 => "",
                 22 => "ALTER TABLE signatures DROP COLUMN custom;",
                 21 => "DROP TABLE message_labels;",

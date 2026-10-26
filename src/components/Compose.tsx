@@ -9,11 +9,14 @@ import {
   type SendOptions,
   type Signature,
   type Snippet,
+  type AiRecipient,
+  type AiWritten,
+  type Contact,
 } from "../api";
 import { fillSnippet } from "../snippets";
 import { attachmentWords, domainOf, mentionsAttachment, outside } from "../attachmentWords";
 import { colourOf } from "../colours";
-import { settings } from "../settings";
+import { aiOn, settings } from "../settings";
 import { until } from "./ConversationRow";
 import { SnoozePicker } from "./SnoozePicker";
 import type { SnippetSource } from "./Editor";
@@ -63,6 +66,7 @@ export function defaultSignature(all: Signature[], accountId: number | undefined
 
 /** Signature work needs the editor's document model, so it loads with the editor, not with the app. */
 const signatureTools = () => import("../signature");
+const schemaTools = () => import("../editor/schema");
 
 /** Above this a message may bounce: many servers take 25 MB at most. */
 const LARGE_BYTES = 25_000_000;
@@ -321,6 +325,8 @@ export function Compose(props: {
   };
 
   const send = (done: boolean, at: number | null = null) => {
+    // A version waiting to be kept or dropped is not what the person means to send yet.
+    if (aiOpen() && (pending() || aiBusy())) return setAiHold(true);
     // Whatever is still typed in a field counts as entered.
     const all = (list: string[], input?: HTMLInputElement) => [...list, ...splitAddresses(input?.value ?? "")];
     const recipients = { to: all(to(), toInput), cc: all(cc(), ccInput), bcc: all(bcc(), bccInput) };
@@ -340,9 +346,166 @@ export function Compose(props: {
     props.onSend(from()!, { ...draft(), ...recipients }, done, draftId, { at, followUp: followUp() });
   };
 
+  // Write with AI (package 10), talked through: the person says what to write (Space in an empty draft, Ctrl+J or
+  // the AI keycap), the AI writes it from the conversation, their draft and the talk so far; each answer is a
+  // version they can go back to, and nothing goes into the email until they keep one (Tab). In new mail the answer
+  // also names who it goes to and a subject; names are matched in the contacts on this computer.
+  const aiAllowed = () => aiOn("writing", from());
+  const newMail = () => !props.init.inReplyTo && !props.init.forwardOf;
+  type Version = { request: string; written: AiWritten | null; streamed: string; error?: string };
+  const [aiOpen, setAiOpen] = createSignal(false);
+  const [versions, setVersions] = createSignal<Version[]>([]);
+  // The version on show; the newest unless the person stepped back.
+  const [shown, setShown] = createSignal(0);
+  const [aiAsk, setAiAsk] = createSignal("");
+  const [aiBusy, setAiBusy] = createSignal(false);
+  // Send was pressed while a version waited to be kept or dropped.
+  const [aiHold, setAiHold] = createSignal(false);
+  const [hasStyle, setHasStyle] = createSignal(false);
+  let aiInput: HTMLInputElement | undefined;
+  let aiRun = 0;
+  const current = () => versions()[shown()];
+  const pending = () => versions().some((v) => v.written);
+  const openAi = () => {
+    if (!aiAllowed()) return;
+    setAiOpen(true);
+    void api.aiStyle(from()!).then((s) => setHasStyle(!!s && settings.ai.voice), () => setHasStyle(false));
+    queueMicrotask(() => aiInput?.focus());
+  };
+  /** Esc: drops every version; the email is as it was. */
+  const closeAi = () => {
+    aiRun++;
+    setAiOpen(false);
+    setVersions([]);
+    setShown(0);
+    setAiAsk("");
+    setAiBusy(false);
+    setAiHold(false);
+    view?.focus();
+  };
+  /** Where the person's own words end: before the signature or the quote, whichever comes first. */
+  const ownPart = async () => {
+    if (!view) return null;
+    const { findSignature, signaturePlace } = await signatureTools();
+    const doc = view.state.doc;
+    let end = signaturePlace(doc, false);
+    const sig = props.signatures.find((x) => x.id === sigId());
+    const at = sig ? findSignature(doc, sig) : null;
+    if (at && at.from < end) end = at.from;
+    return { end, text: doc.textBetween(0, end, "\n\n", "\n").trim() };
+  };
+  /** The body as it streams: in new mail, the header lines before "===" are not the email's words. */
+  const bodyOf = (streamed: string) => {
+    if (!newMail()) return streamed;
+    const at = streamed.indexOf("\n===");
+    return at < 0 ? "" : streamed.slice(at + 4).replace(/^=*\s*/, "");
+  };
+  const askAi = async () => {
+    if (aiBusy()) return;
+    const request = aiAsk().trim();
+    const own = await ownPart();
+    if (!own || !view) return;
+    if (!request && !own.text && !versions().length) {
+      aiInput?.focus();
+      return;
+    }
+    // Asking again after stepping back starts from that version: the later ones give way.
+    const earlier = versions().slice(0, shown() + 1).filter((v) => v.written);
+    const { toText } = await schemaTools();
+    const quoted = props.init.inReplyTo
+      ? toText(view.state.doc)
+          .split("\n")
+          .filter((l) => l.startsWith(">"))
+          .join("\n")
+      : "";
+    const run = ++aiRun;
+    const asked = request || (versions().length ? "Again, differently." : "Write this out as a full email.");
+    setVersions([...earlier, { request: asked, written: null, streamed: "" }]);
+    setShown(earlier.length);
+    setAiAsk("");
+    setAiBusy(true);
+    setAiHold(false);
+    const update = (patch: Partial<Version>) =>
+      run === aiRun && setVersions((list) => list.map((v, i) => (i === list.length - 1 ? { ...v, ...patch } : v)));
+    try {
+      const written = await api.aiWrite(
+        {
+          accountId: from()!,
+          draft: own.text,
+          request: asked,
+          inReplyTo: props.init.inReplyTo ?? null,
+          replyingTo: quoted || null,
+          turns: earlier.map((v) => ({ request: v.request, wrote: v.written!.body })),
+          newMail: newMail(),
+        },
+        (t) => update({ streamed: (versions()[versions().length - 1]?.streamed ?? "") + t }),
+      );
+      update({ written });
+    } catch (e) {
+      update({ error: String(e) });
+    } finally {
+      if (run === aiRun) {
+        setAiBusy(false);
+        queueMicrotask(() => aiInput?.focus());
+      }
+    }
+  };
+  /** Tab: the version on show goes into the email as ordinary text (Ctrl+Z in the editor brings back what was there);
+   * in new mail its people and subject too. */
+  const keepAi = async () => {
+    const w = current()?.written;
+    const own = await ownPart();
+    if (!w || !own || !view) return;
+    const { fromText } = await schemaTools();
+    view.dispatch(view.state.tr.replaceWith(0, own.end, fromText(w.body).content));
+    if (newMail()) {
+      const add = (list: string[], people: AiRecipient[]) => [
+        ...list,
+        ...people.flatMap((r) => (r.address && !list.some((a) => a.toLowerCase() === r.address!.toLowerCase()) ? [r.address] : [])),
+      ];
+      setTo(add(to(), w.to));
+      const cc2 = add(cc(), w.cc);
+      setCc(cc2);
+      if (cc2.length) setShowCc(true);
+      if (w.subject && !subject().trim()) setSubject(w.subject);
+      changed();
+    }
+    closeAi();
+  };
+  /** "2 people called Ana": another of them in place of the one picked. */
+  const pickPerson = (field: "to" | "cc", index: number, person: Contact) =>
+    setVersions((list) =>
+      list.map((v, i) => {
+        if (i !== shown() || !v.written) return v;
+        const people = v.written[field].map((r, k) =>
+          k === index && r.address
+            ? { ...r, address: person.email, name: person.name, others: [{ email: r.address, name: r.name }, ...r.others.filter((o) => o.email !== person.email)] }
+            : r,
+        );
+        return { ...v, written: { ...v.written, [field]: people } };
+      }),
+    );
+  /** No words of the person's own yet: only the signature and what is quoted or forwarded, if anything. */
+  const ownEmpty = () =>
+    !ownText()
+      .replace(/On .+ wrote:\s*$/s, "")
+      .replace(/-{5,} Forwarded message -{5,}[\s\S]*/, "")
+      // The "-- " line a signature starts with.
+      .replace(/(^|\s)--(?=\s|$)/g, " ")
+      .trim();
+  /** Space at the start of an empty draft (its first line, nothing written yet) asks AI instead. */
+  const spaceAsks = (e: KeyboardEvent) => {
+    if (e.key !== " " || e.ctrlKey || e.metaKey || e.altKey || aiOpen() || !aiAllowed() || !view || !view.hasFocus()) return false;
+    const $from = view.state.selection.$from;
+    return view.state.selection.empty && $from.depth === 1 && $from.index(0) === 0 && $from.parent.content.size === 0;
+  };
+
   const onKeyDown = (e: KeyboardEvent) => {
     const ctrl = e.ctrlKey || e.metaKey;
-    if (e.key === "Escape" && sendMenu()) setSendMenu(false);
+    if (e.key === "Escape" && aiOpen()) closeAi();
+    else if (ctrl && !e.shiftKey && e.key.toLowerCase() === "j" && aiAllowed()) openAi();
+    else if (spaceAsks(e)) openAi();
+    else if (e.key === "Escape" && sendMenu()) setSendMenu(false);
     else if (e.key === "Escape" && focusMode()) setFocusMode(false);
     else if (e.key === "Escape") void close();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "f" && !props.init.inline) setFocusMode(!focusMode());
@@ -548,6 +711,158 @@ export function Compose(props: {
       <Show when={problem()}>
         <p class="error">{problem()}</p>
       </Show>
+      <Show
+        when={aiOpen()}
+        fallback={
+          <Show when={aiAllowed() && ownEmpty()}>
+            <button type="button" class="ai-invite" onClick={openAi}>
+              <kbd class="ai-mark">AI</kbd>
+              <span>
+                Write, or press <kbd>Space</kbd> and say {newMail() ? "what to write and to whom" : "what to answer"}
+              </span>
+            </button>
+          </Show>
+        }
+      >
+        <div class="ai-talk" aria-live="polite">
+          <For each={versions()}>
+            {(v, i) => (
+              <>
+                <div class="ai-said">
+                  <span>{v.request}</span>
+                </div>
+                <div class="ai-version-row">
+                  <kbd class="ai-mark">AI</kbd>
+                  <Show
+                    when={!v.error}
+                    fallback={<span class="ai-error">{v.error}</span>}
+                  >
+                    <button
+                      type="button"
+                      class="ai-version"
+                      classList={{ on: shown() === i() }}
+                      disabled={!v.written}
+                      onClick={() => setShown(i())}
+                    >
+                      {!v.written ? "Writing…" : shown() === i() ? `Version ${i() + 1} · below` : `Version ${i() + 1}`}
+                    </button>
+                  </Show>
+                </div>
+              </>
+            )}
+          </For>
+          <Show when={current() && !current()!.error && (current()!.written || bodyOf(current()!.streamed))}>
+            <Show when={newMail() && current()!.written}>
+              {(_) => {
+                const w = () => current()!.written!;
+                const people = (field: "to" | "cc") => (
+                  <For each={w()[field]}>
+                    {(r, k) => (
+                      <span class="ai-person" classList={{ missing: !r.address }}>
+                        <Show when={r.address} fallback={<>No one called “{r.asked}” in your contacts</>}>
+                          {r.name || r.address}
+                          <Show when={r.name}>
+                            <span class="addr">{r.address}</span>
+                          </Show>
+                          <Show when={r.others.length}>
+                            <span class="others">
+                              · also{" "}
+                              <For each={r.others}>
+                                {(o) => (
+                                  <button type="button" class="link" onClick={() => pickPerson(field, k(), o)}>
+                                    {o.name || o.email}
+                                  </button>
+                                )}
+                              </For>
+                            </span>
+                          </Show>
+                        </Show>
+                      </span>
+                    )}
+                  </For>
+                );
+                return (
+                  <div class="ai-head-lines">
+                    <Show when={w().to.length}>
+                      <div>
+                        <span class="label">To</span>
+                        {people("to")}
+                      </div>
+                    </Show>
+                    <Show when={w().cc.length}>
+                      <div>
+                        <span class="label">Cc</span>
+                        {people("cc")}
+                      </div>
+                    </Show>
+                    <Show when={w().subject}>
+                      <div>
+                        <span class="label">Subject</span>
+                        <span>{w().subject}</span>
+                      </div>
+                    </Show>
+                  </div>
+                );
+              }}
+            </Show>
+            <div class="ai-preview">{current()!.written?.body ?? bodyOf(current()!.streamed)}</div>
+          </Show>
+          <label class="ai-say">
+            <kbd class="ai-mark">AI</kbd>
+            <input
+              ref={aiInput}
+              value={aiAsk()}
+              placeholder={
+                versions().length
+                  ? "Say more, or Tab to keep it"
+                  : newMail()
+                    ? "Who it goes to and what it should say"
+                    : "What should it answer?"
+              }
+              aria-label="Tell AI what to write"
+              onInput={(e) => setAiAsk(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !(e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void askAi();
+                } else if (e.key === "Tab" && !e.shiftKey && current()?.written) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void keepAi();
+                } else if (e.key === "ArrowUp" && !aiAsk() && shown() > 0) {
+                  e.preventDefault();
+                  setShown(shown() - 1);
+                } else if (e.key === "ArrowDown" && !aiAsk() && shown() < versions().length - 1) {
+                  e.preventDefault();
+                  setShown(shown() + 1);
+                }
+              }}
+            />
+            <kbd>Enter</kbd>
+          </label>
+          <div class="ai-talk-foot">
+            <span>{props.init.inReplyTo ? "Reads this conversation" : "Reads what you tell it"}{hasStyle() ? " and your style." : "."}{newMail() ? " Names are matched in your contacts on this computer." : ""}</span>
+            <span class="spacer" />
+            <Show when={current()?.written}>
+              <button type="button" class="link" onClick={() => void keepAi()}>
+                <kbd>Tab</kbd> keep
+              </button>
+            </Show>
+            <Show when={versions().length > 1}>
+              <span>
+                <kbd>↑</kbd> earlier version
+              </span>
+            </Show>
+            <button type="button" class="link" onClick={closeAi}>
+              <kbd>Esc</kbd> {versions().length ? "drop all" : "close"}
+            </button>
+          </div>
+          <Show when={aiHold()}>
+            <p class="ai-hold">Keep a version (Tab) or drop them (Esc) before you send.</p>
+          </Show>
+        </div>
+      </Show>
       <Show when={checks() || (outsiders().length && !outsideDismissed())}>
         <div class="checks">
           <Show when={checks()?.attachment}>
@@ -637,6 +952,11 @@ export function Compose(props: {
         <span class="tools">
           {iconButton("paperclip", "Attach files (Ctrl+Shift+A), or drop them here", () => void pick())}
           <Show when={snippetList().length}>{iconButton("file-text", "Snippet ( ; )", openSnippets)}</Show>
+          <Show when={aiAllowed()}>
+            <button type="button" class="icon-button ai-button" title="Write with AI (Ctrl+J)" aria-label="Write with AI" onClick={openAi}>
+              <kbd class="ai-mark">AI</kbd>
+            </button>
+          </Show>
           <Show when={accountSignatures().length}>
             <label class="signature-pick" title="Signature (Ctrl+Shift+S)">
               <Icon name="pen-line" size={14} />

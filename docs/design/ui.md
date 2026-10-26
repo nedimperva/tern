@@ -160,7 +160,30 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - Quoted text and signatures collapse behind a `···` pill.
 - Attachments strip: file cards on `--soft`, with a type badge (PDF, XLSX…, coloured `--file-*`) or a picture preview once the file is on this computer, name, size and Save; clicking opens it.
 - Inline reply box at the bottom when replying (see Compose); `Esc` collapses it and keeps the draft.
-- AI summary (Sprint 10): one line under the subject, `--fg-1`, with a tiny `AI` keycap; click or key expands.
+- AI (package 10, on request only, shown only when AI is on for the account; redesigned 2026-10-26 from the canvas
+  "Tern AI redesign ideas", the owner's picks):
+  - Summary, "lede and facts": a quiet "Summarize" (`AI` keycap on `--accent-soft`, `Shift S` on hover) under the
+    subject; asked, a lede of one or two sentences in `--t-read` / `--fg-1` with the `AI` keycap inline, then up to
+    three chips: Due (`--warn-soft`, clock), Asked of you (`--accent-soft`), Decided (`--ok-soft`, check), and More
+    (the 3–5 points), Regenerate and Dismiss at the end of the row. A kept summary shows at once.
+  - Suggested replies, "intents first": above the reply row "Suggest replies" with `Q`; asked, "ANSWER WITH" and
+    three cards in a row (`--soft`; the pointed one `--bg-0` with a 2 px `--accent` border): a `1`–`3` keycap, a label
+    of a few words (Accept, Another time) and the reply's start; under them the pointed reply in full, then Others
+    and Dismiss. A click or the digit starts a reply with it above the signature and quote. One column under 760 px.
+    Not offered on your own last message.
+- Write with AI, "talked through" (redesigned 2026-10-26, canvas boards F and G): an empty draft shows a dashed
+  invite under the text ("Write, or press Space and say what to answer"); Space on the empty first line, a click on
+  the invite, `Ctrl J` or the `AI` keycap in the footer opens a `--soft` panel. What the person says shows as
+  bubbles on the right (`--accent-soft`); each answer as a "Version n" pill, the one on show filled `--accent`
+  ("· below"), its text in a `--bg-0` box under them. The field ("Say more, or Tab to keep it", 2 px `--accent`)
+  asks again from the version on show; `Tab` keeps it as ordinary text (signature and quote stay; `Ctrl Z` brings
+  back what was there), `↑`/`↓` step through versions, `Esc` drops them all. One quiet line says what it reads
+  ("Reads this conversation and your style."). It writes from the whole conversation; the draft may be empty.
+  Send waits while versions are open ("Keep a version (Tab) or drop them (Esc) before you send.").
+  New mail: the same, and the answer also names who it goes to and a subject: To, Cc and Subject show above the
+  text, each person matched in the contacts on this computer (the contacts never go to the AI): a found one on
+  `--accent-soft` with the address, "also …" to pick another with the same name, "No one called “Zed” in your
+  contacts" on `--warn-soft`. Tab fills the fields (Subject only when empty).
 
 ### 4.3 Command palette (`Ctrl+K`)
 
@@ -227,7 +250,7 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ### 4.8 Settings (`Ctrl+,`)
 
 - Full-screen page over the list with a 232 px left list of sections in three groups, each under a `--t-xs`
-  label: General (Appearance · Reading · Notifications · Desktop), Writing (Compose · Snippets · Signatures) and
+  label: General (Appearance · Reading · Notifications · Desktop · AI · About), Writing (Compose · Snippets · Signatures) and
   Accounts (one entry per account, with its colour dot). A search field at the top of the list narrows it to the
   sections whose settings match. Content sits in a 640 px column. Controls are plain: toggles, selects, text
   fields. Every setting has one line of explanation under it.
@@ -243,6 +266,17 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   from another app" switches the editor for a paste box (a dashed `--line` border; Ctrl+V keeps the copied formatting),
   the HTML source in `--mono` folded under "Edit the HTML", a `--warn-fg` note when a picture has no web address, and the preview shows it in a
   white frame. In compose an HTML signature sits under the text in the same white frame, not in the editor.
+- Built (2026-10-26), AI: four steps, each with a 26 px mark (a check on `--ok` once done, the number on `--accent`
+  while it is the one to do, `--bg-3` after): Who answers (three provider cards, the picked one `--bg-0` with a 2 px
+  `--accent` border), Your key, Mail it may read (accounts, the address filter), What it may do (a `--soft` table:
+  feature and key, what goes to the provider when asked, a checkbox; a footer line on what never goes). Then "Review
+  and turn on" opens the privacy sheet; once on, a status line at the top (On · provider · model, Turn off), two
+  cards (Today: tokens against the daily limit as a meter; Advanced: model and daily limit), "Your writing style"
+  per account, and what is kept with Delete AI cache.
+  Writing style: after Learn, "Does this sound like you?" (made-up notes written plainly and in the person's style,
+  the second with a 2 px `--accent` border, what it picked up as `--accent-soft` tags; Sounds like me, Adjust the
+  note, Don't use a style). After that the note shows as parts on `--soft`: greetings and sign-offs as removable
+  chips, Length and Tone as segmented controls, habits as a list, with "Edit as text" and Forget.
 
 ### 4.9 Account setup
 

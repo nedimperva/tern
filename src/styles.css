@@ -3555,3 +3555,920 @@ button.place.muted {
 .conversation [data-message] {
   scroll-margin-top: 60px;
 }
+
+/* Settings → AI */
+.ai-key {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+}
+.ai-key input {
+  width: 220px;
+  font-family: var(--mono);
+}
+.ai-key .saved-key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+  color: var(--ok);
+}
+.ai-test {
+  grid-column: 1 / -1;
+  font-size: var(--t-sm);
+}
+.ai-test.ok {
+  color: var(--ok);
+}
+.ai-test.bad {
+  color: var(--danger);
+}
+.ai-accounts {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+}
+.ai-accounts label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-rd);
+}
+.ai-accounts .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.ai-sheet {
+  margin: var(--s-3) 0;
+  padding: var(--s-4) var(--s-5);
+  border-radius: var(--r-lg);
+  background: var(--soft);
+}
+.ai-sheet h2 {
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-lg);
+}
+.ai-sheet ul {
+  margin: 0;
+  padding-left: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  font-size: var(--t-rd);
+  color: var(--fg-1);
+  line-height: 1.5;
+}
+.ai-sheet strong {
+  color: var(--fg-0);
+}
+.ai-sheet-actions {
+  display: flex;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+/* The AI summary under a conversation's subject. */
+.ai-summary {
+  margin-top: var(--s-3);
+  font-size: var(--t-rd);
+  color: var(--fg-1);
+}
+.ai-summary kbd.ai-mark {
+  flex: none;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.ai-ask,
+.ai-line {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 100%;
+  margin: 0;
+  padding: var(--s-1) var(--s-2);
+  margin-left: calc(-1 * var(--s-2));
+  border: none;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.ai-ask {
+  color: var(--fg-2);
+}
+.ai-ask kbd:last-child {
+  opacity: 0;
+  transition: opacity var(--d-fast);
+}
+.ai-ask:hover kbd:last-child,
+.ai-ask:focus-visible kbd:last-child {
+  opacity: 1;
+}
+button.ai-ask:hover,
+button.ai-line:hover {
+  background: var(--bg-2);
+}
+.ai-line .text {
+  min-width: 0;
+}
+.ai-line svg {
+  flex: none;
+  color: var(--fg-2);
+  transition: transform var(--d-fast);
+}
+.ai-line.error .text {
+  color: var(--danger);
+}
+.ai-points {
+  margin: var(--s-2) 0 0;
+  padding-left: calc(var(--s-6) + var(--s-1));
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  line-height: 1.5;
+}
+.ai-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+  padding-left: var(--s-6);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.ai-actions span {
+  margin-right: auto;
+}
+
+/* Settings → AI → Your writing style: one note per account. */
+.ai-styles .style-note {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+.style-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-rd);
+}
+.style-head .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.style-head .meta {
+  margin-right: auto;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.style-note textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--soft);
+  color: var(--fg-0);
+  font: inherit;
+  font-size: var(--t-sm);
+  line-height: 1.6;
+  resize: vertical;
+}
+
+/* Suggested replies, above the reply row. */
+.ai-replies {
+  margin-bottom: var(--s-2);
+  font-size: var(--t-rd);
+  color: var(--fg-1);
+}
+.ai-replies kbd.ai-mark {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.ai-wait {
+  color: var(--fg-2);
+}
+/* The reply row hides its keycaps until hover; the AI mark and the 1–3 keys of suggestions always show. */
+.reply-end .ai-replies kbd {
+  display: inline-block;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.reply-end .ai-replies kbd.ai-mark {
+  border-color: transparent;
+  background: var(--accent-soft);
+}
+.reply-end .ai-replies .ai-ask kbd:last-child {
+  display: none;
+}
+.reply-end .ai-replies .ai-ask:hover kbd:last-child,
+.reply-end .ai-replies .ai-ask:focus-visible kbd:last-child {
+  display: inline-block;
+  opacity: 1;
+}
+
+/* The summary as the subject's lede, its facts as chips. */
+.ai-lede {
+  margin: 0;
+  max-width: 640px;
+  font-size: var(--t-read);
+  line-height: 1.55;
+  color: var(--fg-1);
+}
+.ai-lede kbd.ai-mark {
+  vertical-align: 2px;
+  margin-right: var(--s-1);
+}
+.ai-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+  margin-top: var(--s-2);
+}
+.ai-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 3px var(--s-2);
+  border-radius: 999px;
+  font-size: var(--t-sm);
+  background: var(--accent-soft);
+  color: var(--fg-0);
+}
+.ai-fact .label {
+  font-weight: 600;
+}
+.ai-fact.due {
+  background: var(--warn-soft);
+}
+.ai-fact.decided {
+  background: var(--ok-soft, var(--bg-2));
+}
+.ai-facts .spacer {
+  flex: 1;
+}
+.ai-facts button.link {
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-note {
+  margin: var(--s-2) 0 0;
+  padding-left: calc(var(--s-6) + var(--s-1));
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+
+/* Suggested replies as intents: what each does, the pointed one's words under them. */
+.ai-answer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+.ai-answer-head .kicker {
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-1);
+}
+.ai-intents {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+.ai-intent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 2px solid transparent;
+  border-radius: var(--r-lg);
+  background: var(--soft);
+  color: var(--fg-0);
+  font: inherit;
+  text-align: left;
+}
+.ai-intent.pointed {
+  border-color: var(--accent);
+  background: var(--bg-0);
+}
+.ai-intent .head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-rd);
+}
+.ai-intent .head strong {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-intent .gist {
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-intent-text {
+  margin-top: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-lg);
+  background: var(--soft);
+  font-size: var(--t-rd);
+  line-height: 1.55;
+}
+.ai-intent-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.ai-intent-foot .spacer {
+  flex: 1;
+}
+@media (max-width: 760px) {
+  .ai-intents {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ai-hold {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--warn-fg, var(--warn));
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Settings → AI as four steps, the last a table of what each feature sends. */
+.ai-status {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+.ai-status .help {
+  margin: 0;
+}
+.ai-status .on {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-rd);
+  color: var(--ok);
+}
+.ai-status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.ai-step {
+  display: flex;
+  gap: var(--s-3);
+  padding: var(--s-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+.ai-step-mark {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: var(--t-md);
+  font-weight: 600;
+  background: var(--bg-3);
+  color: var(--fg-1);
+}
+.ai-step.current .ai-step-mark {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.ai-step.done .ai-step-mark {
+  background: var(--ok);
+  color: var(--accent-fg);
+}
+.ai-step-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.ai-step-body h2 {
+  margin: 3px 0 0;
+  font-size: var(--t-rd);
+  font-weight: 600;
+}
+.ai-step-body .help {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.ai-step .ai-key .spacer {
+  flex: 1;
+}
+.ai-providers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+.ai-providers button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  border: 2px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--fg-0);
+  font: inherit;
+  text-align: left;
+}
+.ai-providers button.picked {
+  border-color: var(--accent);
+  background: var(--bg-0);
+}
+.ai-providers strong {
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+.ai-providers span {
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-redact {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-ledger {
+  border-radius: var(--r-lg);
+  background: var(--soft);
+  overflow: hidden;
+}
+.ai-ledger .row {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) 40px;
+  gap: var(--s-3);
+  align-items: start;
+  padding: var(--s-3) var(--s-4);
+  background: var(--bg-0);
+  border-top: 1px solid var(--bg-2);
+}
+.ai-ledger .row.head {
+  background: transparent;
+  border-top: none;
+  padding-block: var(--s-2);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-1);
+}
+.ai-ledger .name {
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+.ai-ledger .keys {
+  display: block;
+  font-weight: 400;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.ai-ledger .sends {
+  font-size: var(--t-md);
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+.ai-ledger input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+.ai-ledger .foot {
+  margin: 0;
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  color: var(--fg-1);
+}
+.ai-turn-on {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin: var(--s-4) 0;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--soft);
+  font-size: var(--t-md);
+  color: var(--fg-1);
+}
+.ai-turn-on span {
+  flex: 1;
+}
+.ai-usage {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+  margin: var(--s-4) 0;
+}
+.ai-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  font-size: var(--t-md);
+}
+.ai-card .kicker,
+.style-note .kicker {
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-1);
+}
+.ai-card .meter {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-3);
+  overflow: hidden;
+}
+.ai-card .meter div {
+  height: 100%;
+  background: var(--accent);
+}
+.ai-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  color: var(--fg-1);
+}
+.ai-inline select {
+  max-width: 60%;
+}
+.ai-styles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-4) 0;
+  border-top: 1px solid var(--line);
+}
+.ai-styles h2 {
+  margin: 0;
+  font-size: var(--t-rd);
+  font-weight: 600;
+}
+.ai-kept {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4) 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-kept .spacer,
+.style-actions .spacer,
+.style-foot .spacer {
+  flex: 1;
+}
+@media (max-width: 760px) {
+  .ai-providers,
+  .ai-usage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ai-ledger .row {
+    grid-template-columns: minmax(0, 1fr) 40px;
+  }
+}
+
+/* A style note: first a sample written both ways, then its parts to tune. */
+.style-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--soft);
+}
+.style-preview h3 {
+  margin: 0;
+  font-size: var(--t-rd);
+  font-weight: 600;
+}
+.style-preview .help {
+  margin: 0;
+}
+.style-notes {
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  font-size: var(--t-md);
+  color: var(--fg-1);
+}
+.style-compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+.style-compare > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border: 2px solid transparent;
+  border-radius: var(--r-lg);
+  background: var(--bg-0);
+}
+.style-compare .yours {
+  border-color: var(--accent);
+}
+.style-compare .yours .kicker {
+  color: var(--accent);
+}
+.style-compare .plain p {
+  color: var(--fg-1);
+}
+.style-compare p {
+  margin: 0;
+  font-size: var(--t-md);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.style-traits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.style-traits .trait {
+  padding: 2px var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--fg-0);
+}
+.style-actions,
+.style-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.style-profile {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+.style-part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-radius: var(--r-lg);
+  background: var(--soft);
+}
+.style-part.wide {
+  grid-column: 1 / -1;
+}
+.style-part ul {
+  margin: 0;
+  padding-left: var(--s-4);
+  font-size: var(--t-md);
+  line-height: 1.6;
+  color: var(--fg-1);
+}
+.style-part .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+.style-part .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 2px 2px 2px var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  font-size: var(--t-md);
+}
+.style-part .chip button {
+  border: none;
+  background: none;
+  padding: 0 var(--s-1);
+  color: var(--fg-2);
+  font: inherit;
+}
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+}
+.segmented button {
+  flex: 1;
+  padding: var(--s-1);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.segmented button.on {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+button.link.danger {
+  color: var(--danger);
+}
+@media (max-width: 760px) {
+  .style-compare,
+  .style-profile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Write with AI, talked through: what the person said, each version, the one on show, and where to say more. */
+.ai-invite {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0 var(--s-4) var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: var(--t-md);
+  text-align: left;
+}
+.ai-invite:hover {
+  background: var(--bg-2);
+}
+.ai-invite kbd.ai-mark,
+.ai-talk kbd.ai-mark,
+.ai-button kbd.ai-mark {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.ai-talk {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0 var(--s-4) var(--s-3);
+  padding: var(--s-3);
+  border-radius: var(--r-lg);
+  background: var(--soft);
+}
+.ai-said {
+  display: flex;
+  justify-content: flex-end;
+}
+.ai-said span {
+  max-width: 78%;
+  padding: var(--s-1) var(--s-3);
+  border-radius: 10px 10px 2px 10px;
+  background: var(--accent-soft);
+  font-size: var(--t-md);
+  line-height: 1.45;
+  color: var(--fg-0);
+}
+.ai-version-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.ai-version {
+  padding: 2px var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.ai-version.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+.ai-head-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  font-size: var(--t-md);
+}
+.ai-head-lines > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-2);
+}
+.ai-head-lines .label {
+  width: 56px;
+  color: var(--fg-2);
+}
+.ai-person {
+  padding: 1px var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+}
+.ai-person .addr,
+.ai-person .others {
+  margin-left: var(--s-1);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-person.missing {
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+}
+.ai-preview {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  font-size: var(--t-rd);
+  line-height: 1.55;
+  color: var(--fg-1);
+  white-space: pre-wrap;
+  user-select: text;
+}
+.ai-say {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 2px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+}
+.ai-say input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: var(--t-rd);
+  color: var(--fg-0);
+  outline: none;
+}
+.ai-talk-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.ai-talk-foot .spacer {
+  flex: 1;
+}
+.ai-talk-foot button.link {
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-error {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--danger);
+}

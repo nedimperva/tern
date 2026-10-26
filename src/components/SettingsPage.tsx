@@ -14,9 +14,9 @@ import {
   untrack,
   type JSX,
 } from "solid-js";
-import { api, type Account, type Signature, type Snippet } from "../api";
+import { api, type Account, type AiLearned, type AiProvider, type Signature, type Snippet } from "../api";
 import { colourOf } from "../colours";
-import { setSetting, settings, type Settings } from "../settings";
+import { setSetting, settings, type AiSettings, type Settings } from "../settings";
 import { fillSnippet, PLACES } from "../snippets";
 import { Icon } from "./Icon";
 import { NIGHT_SHIFT, SCENES } from "../zero";
@@ -402,6 +402,567 @@ function DesktopSettings() {
         <p class="setting-error">{error()}</p>
       </Show>
     </>
+  );
+}
+
+const PROVIDERS: { id: AiProvider; company: string; family: string; host: string; keys: string; placeholder: string }[] = [
+  { id: "anthropic", company: "Anthropic", family: "Claude", host: "api.anthropic.com", keys: "console.anthropic.com", placeholder: "sk-ant-…" },
+  { id: "openai", company: "OpenAI", family: "GPT", host: "api.openai.com", keys: "platform.openai.com", placeholder: "sk-…" },
+  { id: "gemini", company: "Google", family: "Gemini", host: "generativelanguage.googleapis.com", keys: "aistudio.google.com", placeholder: "AIza…" },
+];
+/** The model picked when switching to a provider, until its list says otherwise. */
+const FIRST_MODEL: Record<AiProvider, string> = {
+  anthropic: "claude-opus-5-5",
+  openai: "gpt-6-sol",
+  gemini: "gemini-flash-latest",
+};
+
+/** A numbered step: a check once done, the number in the accent while it is the one to do, grey after that. */
+function Step(props: { n: number; done: boolean; current: boolean; title: string; children: JSX.Element }) {
+  return (
+    <section class="ai-step" classList={{ done: props.done, current: props.current && !props.done }}>
+      <span class="ai-step-mark" aria-hidden="true">
+        <Show when={props.done} fallback={props.n}>
+          <Icon name="check" size={13} />
+        </Show>
+      </span>
+      <div class="ai-step-body">
+        <h2>
+          {props.title}
+          <Show when={props.done}>
+            <span class="visually-hidden"> (done)</span>
+          </Show>
+        </h2>
+        {props.children}
+      </div>
+    </section>
+  );
+}
+
+/** Optional AI with the person's own key (package 10), as four steps: who answers, the key, the mail it may read,
+ * and what it may do, each feature with what it sends. Off until turned on, which first shows the privacy sheet. */
+function AiSettingsPage(props: { accounts: Account[] }) {
+  const ai = () => settings.ai;
+  const provider = () => PROVIDERS.find((p) => p.id === ai().provider) ?? PROVIDERS[0];
+  const [hasKey, { refetch: recheckKey }] = createResource(() => ai().provider, (p) => api.aiHasKey(p));
+  // OpenAI's and Google's lineups change often: the list is what the saved key can use.
+  const [models, { refetch: relist }] = createResource(
+    () => (hasKey() || ai().provider === "anthropic" ? ai().provider : null),
+    (p) => api.aiModels(p, null).catch(() => [] as [string, string][]),
+  );
+  const [stats, { refetch: restat }] = createResource(() => api.aiStats().catch(() => null));
+  const [key, setKey] = createSignal("");
+  const [tested, setTested] = createSignal<{ ok: boolean; text: string } | null>(null);
+  const [testing, setTesting] = createSignal(false);
+  // Turning AI on shows what it sends first; on only after "Turn on".
+  const [sheet, setSheet] = createSignal(false);
+  const [error, setError] = createSignal("");
+  const set = (patch: Partial<AiSettings>) => setSetting("ai", { ...settings.ai, ...patch });
+  const allowed = (id: number) => ai().accounts.includes(id);
+  const allow = (id: number, on: boolean) =>
+    set({ accounts: on ? [...ai().accounts.filter((a) => a !== id), id] : ai().accounts.filter((a) => a !== id) });
+  const pickProvider = (id: AiProvider) => {
+    if (id === ai().provider) return;
+    // Another provider receives the mail: AI waits until the person has read the sheet for it.
+    set({ provider: id, model: FIRST_MODEL[id], enabled: false });
+    setKey("");
+    setTested(null);
+    setError("");
+  };
+  // A model the list doesn't have (a retired one, or none chosen yet) gives way to the list's first.
+  createEffect(() => {
+    const list = models();
+    if (list?.length && !list.some(([id]) => id === untrack(ai).model)) set({ model: list[0][0] });
+  });
+
+  const test = async () => {
+    setTesting(true);
+    setTested(null);
+    try {
+      const name = await api.aiTest(ai().provider, key().trim() || null, ai().model);
+      setTested({ ok: true, text: `Works with ${name}.` });
+    } catch (e) {
+      setTested({ ok: false, text: String(e) });
+    } finally {
+      setTesting(false);
+    }
+  };
+  const saveKey = async () => {
+    setError("");
+    try {
+      await api.aiSetKey(ai().provider, key().trim());
+      setKey("");
+      await recheckKey();
+      await relist();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  const forgetKey = async () => {
+    setError("");
+    try {
+      await api.aiForgetKey(ai().provider);
+      setTested(null);
+      set({ enabled: false });
+      await recheckKey();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  const turnOn = () => {
+    set({ enabled: true, accounts: ai().accounts.length ? ai().accounts : props.accounts.map((a) => a.id) });
+    setSheet(false);
+  };
+  const ready = () => !!hasKey();
+  const anyFeature = () => ai().summaries || ai().replies || ai().writing;
+  const modelName = () => models()?.find(([id]) => id === ai().model)?.[1] ?? ai().model;
+  const kept = () => {
+    const k = stats()?.kept ?? {};
+    const parts = [
+      k.summary ? `${k.summary} ${k.summary === 1 ? "summary" : "summaries"}` : "",
+      k.replies ? `${k.replies} sets of replies` : "",
+      k.style ? `${k.style} style ${k.style === 1 ? "note" : "notes"}` : "",
+    ].filter(Boolean);
+    return parts.length ? parts.join(", ") : "nothing yet";
+  };
+  const used = () => stats()?.tokensToday ?? 0;
+  const usedShare = () => (ai().dailyTokens > 0 ? Math.min(100, (used() / ai().dailyTokens) * 100) : 0);
+
+  // What each feature sends, in the table of step 4.
+  const FEATURES: { key: "summaries" | "replies" | "writing" | "voice"; name: string; keys: string; sends: string }[] = [
+    { key: "summaries", name: "Summaries", keys: "Shift S", sends: "Each message's sender, date and text, without quoted replies" },
+    { key: "replies", name: "Suggested replies", keys: "Q", sends: "The same as a summary, plus your style note if you use one" },
+    { key: "writing", name: "Write with AI", keys: "Space in an empty draft", sends: "What you tell it, your draft if any, and in a reply the conversation; in new mail, names you give are matched here" },
+    { key: "voice", name: "Write in my style", keys: "per account, below", sends: "Learning: your latest 50 sent messages, your own words only, once each time" },
+  ];
+
+  return (
+    <>
+      <div class="ai-status">
+        <Show
+          when={ai().enabled}
+          fallback={<p class="help">Off unless you turn it on, and only when you ask: Tern never sends mail to AI in the background.</p>}
+        >
+          <span class="on">
+            <span class="dot" /> On · {provider().company} · {modelName()}
+          </span>
+          <button onClick={() => set({ enabled: false })}>Turn off</button>
+        </Show>
+      </div>
+      <Step n={1} done current={false} title="Who answers">
+        <div class="ai-providers" role="radiogroup" aria-label="Provider">
+          <For each={PROVIDERS}>
+            {(p) => (
+              <button role="radio" aria-checked={p.id === ai().provider} classList={{ picked: p.id === ai().provider }} onClick={() => pickProvider(p.id)}>
+                <strong>{p.company}</strong>
+                <span>{p.family}</span>
+              </button>
+            )}
+          </For>
+        </div>
+        <span class="help">Each keeps its own key. Switching turns AI off until you agree again, since someone else then receives your mail.</span>
+      </Step>
+      <Step n={2} done={ready()} current title="Your key">
+        <Show
+          when={ready()}
+          fallback={
+            <span class="ai-key">
+              <input
+                type="password"
+                placeholder={provider().placeholder}
+                aria-label={`${provider().company} API key`}
+                value={key()}
+                onInput={(e) => (setKey(e.currentTarget.value), setTested(null))}
+                onKeyDown={(e) => e.key === "Enter" && key().trim() && void saveKey()}
+              />
+              <button disabled={!key().trim() || testing()} onClick={() => void test()}>
+                {testing() ? "Testing…" : "Test"}
+              </button>
+              <button class="primary" disabled={!key().trim()} onClick={() => void saveKey()}>
+                Save
+              </button>
+            </span>
+          }
+        >
+          <span class="ai-key">
+            <span class="saved-key">
+              <Icon name="check" size={12} /> Saved in the system keychain
+            </span>
+            <span class="spacer" />
+            <button disabled={testing()} onClick={() => void test()}>
+              {testing() ? "Testing…" : "Test"}
+            </button>
+            <button onClick={() => void forgetKey()}>Forget</button>
+          </span>
+        </Show>
+        <Show when={tested()}>{(t) => <span class={t().ok ? "ai-test ok" : "ai-test bad"}>{t().text}</span>}</Show>
+        <span class="help">
+          Make one at {provider().keys}. {provider().company} bills you for what Tern asks; the key only ever goes to {provider().company}.
+        </span>
+      </Step>
+      <Step n={3} done={ready() && ai().accounts.length > 0} current={ready()} title="Mail it may read">
+        <div class="ai-accounts">
+          <For each={props.accounts}>
+            {(a) => (
+              <label>
+                <input type="checkbox" checked={allowed(a.id)} onChange={(e) => allow(a.id, e.currentTarget.checked)} />
+                <span class="dot" style={{ background: colourOf(props.accounts, a.id) }} />
+                {accountName(a)}
+              </label>
+            )}
+          </For>
+        </div>
+        <label class="ai-redact">
+          <input type="checkbox" checked={ai().redact} onChange={(e) => set({ redact: e.currentTarget.checked })} />
+          Take addresses and phone numbers out first (they become [email] and [phone]; best effort, not anonymous)
+        </label>
+      </Step>
+      <Step n={4} done={ready() && ai().accounts.length > 0 && anyFeature()} current={ready() && ai().accounts.length > 0} title="What it may do">
+        <div class="ai-ledger" role="table" aria-label="What each feature sends">
+          <div class="row head" role="row">
+            <span role="columnheader">Feature</span>
+            <span role="columnheader">What goes to {provider().company}, when you ask</span>
+            <span role="columnheader">On</span>
+          </div>
+          <For each={FEATURES}>
+            {(f) => (
+              <label class="row" role="row">
+                <span role="cell" class="name">
+                  {f.name}
+                  <span class="keys">{f.keys}</span>
+                </span>
+                <span role="cell" class="sends">
+                  {f.sends}
+                </span>
+                <span role="cell">
+                  <input type="checkbox" checked={ai()[f.key]} onChange={(e) => set({ [f.key]: e.currentTarget.checked })} aria-label={f.name} />
+                </span>
+              </label>
+            )}
+          </For>
+          <p class="foot">
+            Never attachments, never in the background, never mail from accounts you didn't tick.
+            <Show when={ai().provider === "gemini"}> On Google's free tier, Google may use what you send to improve its products.</Show>
+          </p>
+        </div>
+      </Step>
+      <Show
+        when={!sheet()}
+        fallback={
+          <div class="ai-sheet" role="dialog" aria-label="What AI sends">
+            <h2>Before you turn it on</h2>
+            <ul>
+              <li>
+                <strong>Only when you ask</strong>, what the table above says goes <strong>to {provider().company}</strong> at {provider().host}, under
+                your key. Their terms and data retention apply to it, so that mail no longer stays only on this computer and your mail provider.
+              </li>
+              <Show when={ai().provider === "gemini"}>
+                <li>
+                  <strong>Google's free tier</strong> may use what you send to improve Google's products. A key from a project with billing
+                  turned on is covered by Google's paid terms instead.
+                </li>
+              </Show>
+              <li>Answers and style notes are kept on this computer; delete them here at any time.</li>
+              <li>Turn AI off here at any time: from then on nothing is sent.</li>
+            </ul>
+            <div class="ai-sheet-actions">
+              <button class="primary" onClick={turnOn}>
+                Turn on AI
+              </button>
+              <button onClick={() => setSheet(false)}>Cancel</button>
+            </div>
+          </div>
+        }
+      >
+        <Show when={!ai().enabled}>
+          <div class="ai-turn-on">
+            <span>{ready() ? `Turning it on shows exactly what goes to ${provider().company} first.` : "Save a key first."}</span>
+            <button class="primary" disabled={!ready()} onClick={() => setSheet(true)}>
+              Review and turn on
+            </button>
+          </div>
+        </Show>
+      </Show>
+      <Show when={ai().enabled}>
+        <div class="ai-usage">
+          <div class="ai-card">
+            <span class="kicker">Today</span>
+            <span>
+              {used().toLocaleString()} of {ai().dailyTokens > 0 ? `${ai().dailyTokens.toLocaleString()} tokens` : "no limit"}
+            </span>
+            <Show when={ai().dailyTokens > 0}>
+              <div class="meter" role="meter" aria-valuenow={used()} aria-valuemin={0} aria-valuemax={ai().dailyTokens} aria-label="Tokens used today">
+                <div style={{ width: `${usedShare()}%` }} />
+              </div>
+            </Show>
+            <span class="help">Sent and received. Resets at midnight UTC.</span>
+          </div>
+          <div class="ai-card">
+            <span class="kicker">Advanced</span>
+            <label class="ai-inline">
+              Model
+              <select value={ai().model} onChange={(e) => (set({ model: e.currentTarget.value }), setTested(null))}>
+                <Show when={!(models() ?? []).some(([id]) => id === ai().model)}>
+                  <option value={ai().model}>{ai().model}</option>
+                </Show>
+                <For each={models() ?? []}>{([id, name]) => <option value={id}>{name}</option>}</For>
+              </select>
+            </label>
+            <label class="ai-inline">
+              Daily limit
+              <select value={String(ai().dailyTokens)} onChange={(e) => set({ dailyTokens: Number(e.currentTarget.value) })}>
+                <option value="50000">50,000 tokens</option>
+                <option value="200000">200,000 tokens</option>
+                <option value="1000000">1,000,000 tokens</option>
+                <option value="0">No limit</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <Show when={ai().voice}>
+          <div class="ai-styles">
+            <h2>Your writing style</h2>
+            <span class="help">Learned from an account's latest sent mail when you click Learn, kept here, yours to change.</span>
+            <For each={props.accounts.filter((a) => allowed(a.id))}>
+              {(a) => <StyleNote account={a} accounts={props.accounts} onChange={() => void restat()} />}
+            </For>
+          </div>
+        </Show>
+      </Show>
+      <div class="ai-kept">
+        <span>Kept on this computer: {kept()}.</span>
+        <span class="spacer" />
+        <button onClick={() => void api.aiClearCache().then(() => restat(), (e) => setError(String(e)))}>Delete AI cache</button>
+      </div>
+      <Show when={error()}>
+        <p class="setting-error">{error()}</p>
+      </Show>
+    </>
+  );
+}
+
+/** A style note read as its parts: greetings, sign-offs, length, tone, habits. Lines it doesn't know stay as they are. */
+type NoteParts = { opens: string[]; closes: string[]; length: string; tone: string; habits: string[]; other: string[] };
+
+function noteParts(note: string): NoteParts {
+  const parts: NoteParts = { opens: [], closes: [], length: "", tone: "", habits: [], other: [] };
+  const list = (rest: string) => rest.split("|").map((t) => t.trim()).filter(Boolean);
+  for (const raw of note.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const field = /^(Opens with|Signs off with|Length|Tone):\s*(.*)$/i.exec(line);
+    if (field) {
+      const [, name, rest] = field;
+      const n = name.toLowerCase();
+      if (n === "opens with") parts.opens = list(rest);
+      else if (n === "signs off with") parts.closes = list(rest);
+      else if (n === "length") parts.length = rest.trim().toLowerCase();
+      else parts.tone = rest.trim().toLowerCase();
+    } else if (/^[-•*] /.test(line)) parts.habits.push(line.slice(2).trim());
+    else parts.other.push(line);
+  }
+  return parts;
+}
+
+function noteText(p: NoteParts): string {
+  return [
+    p.opens.length ? `Opens with: ${p.opens.join(" | ")}` : "",
+    p.closes.length ? `Signs off with: ${p.closes.join(" | ")}` : "",
+    p.length ? `Length: ${p.length}` : "",
+    p.tone ? `Tone: ${p.tone}` : "",
+    ...p.habits.map((h) => `- ${h}`),
+    ...p.other,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** One account's writing style. Learn sends its sent mail once; the first answer comes with a sample written plainly
+ * and in that style ("Does this sound like you?"); after that the note shows as parts to tune, or as text. */
+function StyleNote(props: { account: Account; accounts: Account[]; onChange: () => void }) {
+  const [style, { mutate }] = createResource(() => props.account.id, (id) => api.aiStyle(id));
+  const [preview, setPreview] = createSignal<AiLearned["preview"]>(null);
+  const [learning, setLearning] = createSignal(false);
+  const [asText, setAsText] = createSignal(false);
+  const [error, setError] = createSignal("");
+  const parts = () => noteParts(style()?.note ?? "");
+  // A note in no known shape (written by hand, or from before) is edited as text.
+  const structured = () => {
+    const p = parts();
+    return p.opens.length + p.closes.length + p.habits.length > 0 || !!p.length || !!p.tone;
+  };
+  const learn = async () => {
+    setLearning(true);
+    setError("");
+    try {
+      const got = await api.aiLearnStyle(props.account.id);
+      mutate(got.style);
+      setPreview(got.preview);
+      props.onChange();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLearning(false);
+    }
+  };
+  const save = (note: string) => {
+    const current = style();
+    if ((current?.note ?? "") === note.trim()) return;
+    void api.aiSetStyle(props.account.id, note).then(
+      () => {
+        mutate(note.trim() ? { accountId: props.account.id, samples: current?.samples ?? 0, note: note.trim(), updated: Math.floor(Date.now() / 1000) } : null);
+        props.onChange();
+      },
+      (e) => setError(String(e)),
+    );
+  };
+  const change = (patch: Partial<NoteParts>) => save(noteText({ ...parts(), ...patch }));
+  const forget = () => (setPreview(null), save(""));
+
+  return (
+    <div class="style-note">
+      <div class="style-head">
+        <span class="dot" style={{ background: colourOf(props.accounts, props.account.id) }} />
+        <strong>{accountName(props.account)}</strong>
+        <span class="meta">
+          {style() ? `${style()!.samples ? `From ${style()!.samples} sent messages, ` : ""}${lastDay(style()!.updated)}` : "Not learned yet"}
+        </span>
+        <button disabled={learning()} onClick={() => void learn()}>
+          {learning() ? "Learning…" : style() ? "Learn again" : "Learn from my sent mail"}
+        </button>
+      </div>
+      <Show when={style()}>
+        <Show
+          when={!preview()}
+          fallback={
+            <div class="style-preview">
+              <h3>Does this sound like you?</h3>
+              <p class="help">The same notes, written without and with what Tern learned from your sent mail.</p>
+              <div class="style-notes">
+                <strong>Notes:</strong> {preview()!.notes}
+              </div>
+              <div class="style-compare">
+                <div class="plain">
+                  <span class="kicker">Plain AI</span>
+                  <p>{preview()!.plain}</p>
+                </div>
+                <div class="yours">
+                  <span class="kicker">In your style</span>
+                  <p>{preview()!.yours}</p>
+                </div>
+              </div>
+              <Show when={preview()!.pickedUp.length}>
+                <div class="style-traits">
+                  <span>What it picked up:</span>
+                  <For each={preview()!.pickedUp}>{(t) => <span class="trait">{t}</span>}</For>
+                </div>
+              </Show>
+              <div class="style-actions">
+                <button class="primary" onClick={() => setPreview(null)}>
+                  Sounds like me
+                </button>
+                <button onClick={() => (setPreview(null), setAsText(false))}>Adjust the note</button>
+                <span class="spacer" />
+                <button class="link" onClick={forget}>
+                  Don't use a style
+                </button>
+              </div>
+            </div>
+          }
+        >
+          <Show
+            when={structured() && !asText()}
+            fallback={
+              <textarea
+                aria-label={`Writing style for ${accountName(props.account)}`}
+                value={style()!.note}
+                rows={Math.min(12, style()!.note.split("\n").length + 1)}
+                onBlur={(e) => save(e.currentTarget.value)}
+              />
+            }
+          >
+            <div class="style-profile">
+              <div class="style-part">
+                <span class="kicker">Opens with</span>
+                <div class="chips">
+                  <For each={parts().opens}>
+                    {(t) => (
+                      <span class="chip">
+                        {t}
+                        <button aria-label={`Remove ${t}`} onClick={() => change({ opens: parts().opens.filter((x) => x !== t) })}>
+                          ×
+                        </button>
+                      </span>
+                    )}
+                  </For>
+                </div>
+              </div>
+              <div class="style-part">
+                <span class="kicker">Signs off with</span>
+                <div class="chips">
+                  <For each={parts().closes}>
+                    {(t) => (
+                      <span class="chip">
+                        {t}
+                        <button aria-label={`Remove ${t}`} onClick={() => change({ closes: parts().closes.filter((x) => x !== t) })}>
+                          ×
+                        </button>
+                      </span>
+                    )}
+                  </For>
+                </div>
+              </div>
+              <div class="style-part">
+                <span class="kicker">Length</span>
+                <div class="segmented" role="radiogroup" aria-label="Length">
+                  <For each={["short", "medium", "long"]}>
+                    {(v) => (
+                      <button role="radio" aria-checked={parts().length === v} classList={{ on: parts().length === v }} onClick={() => change({ length: v })}>
+                        {v[0].toUpperCase() + v.slice(1)}
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </div>
+              <div class="style-part">
+                <span class="kicker">Tone</span>
+                <div class="segmented" role="radiogroup" aria-label="Tone">
+                  <For each={["formal", "plain", "warm"]}>
+                    {(v) => (
+                      <button role="radio" aria-checked={parts().tone === v} classList={{ on: parts().tone === v }} onClick={() => change({ tone: v })}>
+                        {v[0].toUpperCase() + v.slice(1)}
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </div>
+              <Show when={parts().habits.length}>
+                <div class="style-part wide">
+                  <span class="kicker">Habits</span>
+                  <ul>
+                    <For each={parts().habits}>{(h) => <li>{h}</li>}</For>
+                  </ul>
+                </div>
+              </Show>
+            </div>
+          </Show>
+          <div class="style-foot">
+            <span class="spacer" />
+            <Show when={structured()}>
+              <button class="link" onClick={() => setAsText(!asText())}>
+                {asText() ? "Show as parts" : "Edit as text"}
+              </button>
+            </Show>
+            <button class="link danger" onClick={forget}>
+              Forget
+            </button>
+          </div>
+        </Show>
+      </Show>
+      <Show when={error()}>
+        <p class="setting-error">{error()}</p>
+      </Show>
+    </div>
   );
 }
 
@@ -1251,6 +1812,13 @@ export function SettingsPage(props: {
     },
     { id: "Notifications", name: "Notifications", group: "General", words: "notify new mail quiet hours", body: () => <NotificationSettings /> },
     { id: "Desktop", name: "Desktop", group: "General", words: "background tray close login start email links mailto default", body: () => <DesktopSettings /> },
+    {
+      id: "AI",
+      name: "AI",
+      group: "General",
+      words: "ai claude anthropic openai gpt gemini google api key summary summarize replies suggest write rewrite style voice model privacy",
+      body: () => <AiSettingsPage accounts={props.accounts} />,
+    },
     { id: "About", name: "About", group: "General", words: "version log bug report problem help beta", body: () => <AboutSettings /> },
     { id: "Compose", name: "Compose", group: "Writing", words: "undo send delay attachment forgotten attached prilog anhang", body: () => <ComposeSettings /> },
     { id: "Snippets", name: "Snippets", group: "Writing", words: "saved replies templates shortcut text", body: () => <SnippetSettings accounts={props.accounts} /> },
