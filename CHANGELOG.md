@@ -7,19 +7,28 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-26
+
 ### Added
 
-- Optional AI with your own Anthropic API key, off until you turn it on in Settings → AI, which first says what is
-  sent and where. Summarize a conversation (Shift S, or Summarize under its subject): one line, and the points under
-  it. Write with AI in compose (Ctrl J): write out your notes, or make the draft shorter, more formal or friendlier;
-  the new text goes in only when you pick "Use this". Nothing is sent unless you ask, only from the accounts you
-  tick, never attachments; addresses and phone numbers are taken out first, a daily limit caps the cost, and kept
-  summaries can be deleted.
-- AI from OpenAI or Google (Gemini) as well as Anthropic, each with its own key; Settings lists the models your
-  key can use.
-- Suggested replies: Q in a conversation gives three short replies, and 1, 2 or 3 starts a reply with one.
-- Write in your style: Settings → AI → "Learn from my sent mail" reads an account's latest sent messages once and
-  keeps a short note on how you write, which you can edit. Write with AI and suggested replies follow it.
+- Optional AI, with your own key from Anthropic (Claude), OpenAI (GPT) or Google (Gemini). It is off until you turn
+  it on in Settings → AI, which first shows what is sent and to whom, and it only ever runs when you ask: nothing goes
+  in the background, nothing from accounts you didn't tick, and never attachments. Addresses and phone numbers are
+  taken out of mail first, a daily limit caps the cost, and what is kept on this computer can be deleted.
+- Summaries: Shift S in a conversation, or Summarize under its subject, gives a line or two on where it stands, with
+  what is due, what is asked of you and what was decided; More shows the points.
+- Suggested replies: Q in a conversation offers three replies, each labelled with what it does; 1, 2 or 3 starts a
+  reply with one, to edit before you send.
+- Write with AI: in an empty reply, press Space and say what to answer. It writes from the conversation and what you
+  tell it; say more to get another version, ↑ to go back, Tab to keep one, Esc to drop them. In new mail it also fills
+  in who it goes to and the subject, finding people in your contacts on this computer.
+- Your writing style: Settings → AI → "Learn from my sent mail" reads an account's latest sent messages once, shows a
+  sample written plainly and in your style, and keeps a note you can tune. Write with AI and suggested replies follow
+  it.
+
+### Changed
+
+- The mail database moves to a new version (a copy of the old one is kept beside it, as before every upgrade).
 
 ## [1.0.0] - 2026-10-23
 
