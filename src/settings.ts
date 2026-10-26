@@ -2,7 +2,7 @@
 
 import { createEffect, createRoot, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
-import { api } from "./api";
+import { api, type AiProvider } from "./api";
 
 export type Settings = {
   /** "system" follows the desktop's light or dark. */
@@ -49,9 +49,14 @@ export type Settings = {
 
 export type AiSettings = {
   enabled: boolean;
+  provider: AiProvider;
   model: string;
   summaries: boolean;
   writing: boolean;
+  /** Suggested replies in a conversation. */
+  replies: boolean;
+  /** Write with AI and suggested replies follow the account's style note, once one is learned. */
+  voice: boolean;
   /** Addresses and phone numbers in mail become [email] and [phone] before it is sent. */
   redact: boolean;
   /** Tokens a UTC day may use; 0 for no limit. */
@@ -83,9 +88,12 @@ export const DEFAULTS: Settings = {
   zeroLog: {},
   ai: {
     enabled: false,
+    provider: "anthropic",
     model: "claude-opus-5-5",
     summaries: true,
     writing: true,
+    replies: true,
+    voice: true,
     redact: true,
     dailyTokens: 200_000,
     accounts: [],
@@ -93,7 +101,7 @@ export const DEFAULTS: Settings = {
 };
 
 /** Whether AI may be offered for this feature on this account (the engine checks again). */
-export const aiOn = (feature: "summaries" | "writing", accountId: number | undefined) =>
+export const aiOn = (feature: "summaries" | "writing" | "replies", accountId: number | undefined) =>
   settings.ai.enabled && settings.ai[feature] && accountId != null && settings.ai.accounts.includes(accountId);
 
 export const ROW_HEIGHTS: Record<Settings["density"], number> = { dense: 36, comfortable: 44, spacious: 52 };

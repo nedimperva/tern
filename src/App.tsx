@@ -40,7 +40,7 @@ import { until } from "./components/ConversationRow";
 import { PerfOverlay } from "./components/PerfOverlay";
 import { timeKey, timeQuery } from "./perf";
 import { aiOn, loadSettings, ROW_HEIGHTS, setSetting, settings } from "./settings";
-import { summon } from "./ai";
+import { askReplies, suggestions, summon } from "./ai";
 import { Icon } from "./components/Icon";
 import { VirtualList } from "./components/VirtualList";
 import { InboxZero } from "./components/InboxZero";
@@ -571,7 +571,7 @@ export default function App() {
 
   /** Opens a reply, reply-all or forward to `m`, set up by the engine from the message's headers. Replies sit
    * under the open conversation; a forward is a new message in its own dialog. */
-  async function respond(m: ThreadMessage | undefined, kind: ReplyKind, only?: string) {
+  async function respond(m: ThreadMessage | undefined, kind: ReplyKind, only?: string, text?: string) {
     if (!m) return;
     const init = await api.replyInit(m.id, kind);
     // Quick quote: with text selected in the message, the reply quotes just that.
@@ -601,7 +601,7 @@ export default function App() {
       to: init.to,
       cc: init.cc,
       subject: init.subject,
-      body: "",
+      body: text ?? "",
       signature: signing(init.accountId, "reply", quote, kind !== "forward" && settings.signatureBelow),
       inReplyTo: init.inReplyTo,
       references: init.references,
@@ -899,6 +899,16 @@ export default function App() {
     ...(aiOn("summaries", messages[0]?.accountId)
       ? [{ keys: "S", name: "Summarize with AI", context: "conversation" as const, run: summon }]
       : []),
+    ...(aiOn("replies", messages[0]?.accountId)
+      ? [{ keys: "q", name: "Suggest replies with AI", context: "conversation" as const, run: askReplies }]
+      : []),
+    ...suggestions().map((text, i) => ({
+      keys: String(i + 1),
+      name: `Reply: ${text}`,
+      context: "conversation" as const,
+      run: () => respond(messages[messages.length - 1], "reply", undefined, text),
+      hidden: true,
+    })),
     { keys: "F", name: focusMode() ? "Show the list again" : "Focus mode (hide the list)", context: "conversation", run: () => setFocusMode(!focusMode()) },
     { keys: "z", name: "Undo", run: undo },
     { keys: "h", name: "Snooze", run: () => targets().length > 0 && setSnoozing(targets()) },
@@ -1268,7 +1278,7 @@ export default function App() {
             mine={(addr) => accounts().some((a) => a.email.toLowerCase() === addr.toLowerCase())}
             replying={!!compose()?.inline}
             onToggle={toggleMessage}
-            onReply={(m, kind) => respond(m, kind)}
+            onReply={(m, kind, text) => respond(m, kind, undefined, text)}
             onView={(message, index) => setViewing({ message, index })}
             onMailto={fromLink}
             onDone={() => act("archive")}

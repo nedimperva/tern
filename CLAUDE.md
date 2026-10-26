@@ -26,6 +26,7 @@ decisions that aren't visible from the code.
   `cargo run --release -p tern-core --example gen_mailbox -- PATH` makes a 100k test store; `TERN_DB=PATH` opens it.
   Package 10's first AI slice (2026-10-26, branch `sprint/10-ai`): Claude with the person's own Anthropic key,
   manual summaries and Write with AI, off by default (`crates/tern-core/src/ai/`). No local model yet (owner).
+  Then OpenAI and Gemini, suggested replies (Q) and a per-account style note (schema v26), all on request.
   `store_bench` exits non-zero on a missed target and runs in CI with `TERN_BENCH_SLACK=3`.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH

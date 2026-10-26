@@ -22,7 +22,7 @@ Normal mail remains fully usable without AI credentials, models or network calls
 ## Tasks
 
 ### Provider layer (`tern-core::ai`)
-- [ ] `trait Provider { fn complete(&self, req: ChatRequest) -> Stream<Item = Delta>; fn embed(...) -> Option<...> }` with `OpenAi`, `Anthropic`, `Gemini`, and `OpenAiCompatible { base_url }` (covers Ollama, LM Studio, OpenRouter, Mistral) — validate that the selected local endpoint and model make no external AI requests; configuration alone is not proof of local-only behavior. Start with one remote adapter and one tested local endpoint; additional providers are separate slices.
+- [ ] `trait Provider { fn complete(&self, req: ChatRequest) -> Stream<Item = Delta>; fn embed(...) -> Option<...> }` with `OpenAi`, `Anthropic`, `Gemini`, and `OpenAiCompatible { base_url }` (covers Ollama, LM Studio, OpenRouter, Mistral) — validate that the selected local endpoint and model make no external AI requests; configuration alone is not proof of local-only behavior. Start with one remote adapter and one tested local endpoint; additional providers are separate slices. *(2026-10-26: `Model` trait with `Anthropic`, `OpenAi` (Chat Completions) and `Gemini` (`streamGenerateContent`) built and tested on canned streams; `OpenAiCompatible`/local not built, see Decisions. Embeddings not needed yet.)*
 - [x] Keys in the keyring; base URL + model in settings; "Test connection" button; rate limit and cost guard (tokens per day, setting). *(Done 2026-10-26: key under `tern-mail`/`ai/anthropic`; Test reads the model's entry, free; a daily token limit, default 200k, UTC days.)*
 - [x] Streaming over Tauri channels (`tauri::ipc::Channel`) so text appears as it is generated.
 - [x] Prompt templates in `crates/tern-core/src/ai/prompts/*.md`, versioned; results cached in `ai_cache (kind, key_hash, model, text, created)`. *(Versioned by content: the cache key hashes the prompt with the mail, so an edited prompt asks again.)*
@@ -38,8 +38,8 @@ Normal mail remains fully usable without AI credentials, models or network calls
 
 ### Features (first slice is manual summarize + draft/rewrite; automation deferred)
 - [x] **Summarize** (manual first; auto-on-open only as a later explicit feature toggle): one line above the conversation, computed on explicit request. A later auto-on-open toggle may use thread length/word count and new-mail invalidation; `Shift+S`... (see key table) expands to 3–5 bullets. Cached per thread + last message id. *(Built: manual only, Shift S. Auto-on-open not built.)*
-- [x] **Write with AI** (`Cmd+J` in compose): turn the draft text into a full email; "shorter / more formal / friendlier / fix grammar" follow-ups. Later separate opt-in slice: voice matching from the user's last 50 sent emails (sampled, summarised once into a style note stored locally, refreshed monthly). *(Built as Ctrl J, Cmd J on macOS; voice matching not built.)*
-- [ ] **Instant Reply**: three short reply suggestions above the reply box for threads that ask a question; `Cmd+1/2/3` inserts.
+- [x] **Write with AI** (`Cmd+J` in compose): turn the draft text into a full email; "shorter / more formal / friendlier / fix grammar" follow-ups. Later separate opt-in slice: voice matching from the user's last 50 sent emails (sampled, summarised once into a style note stored locally, refreshed monthly). *(Built as Ctrl J, Cmd J on macOS. Voice matching built 2026-10-26 on request only: Settings → AI → Learn from my sent mail, per account, editable, never refreshed by itself.)*
+- [x] **Instant Reply**: three short reply suggestions above the reply box for threads that ask a question; `Cmd+1/2/3` inserts. *(Built 2026-10-26 on request: `Q` or "Suggest replies" above the reply row; `1`–`3` or a click starts a reply with one, since Ctrl+1–9 switch accounts. Not offered on your own last message.)*
 - [ ] **Ask AI** (`Cmd+Shift+K`): a question over mail. Retrieval is local: FTS over the query's keywords (LLM extracts them first) → top 20 messages → answer with citations that open the message. No embeddings in v1.
 - [ ] **Auto Labels**: user-defined label + prompt ("job applications", "invoices"); classify new Important-split mail in batches of 20 with one call; result becomes a label and optionally a split. Limited to N per day; never auto-archives in v1.
 
@@ -77,6 +77,20 @@ Automatic labels, Instant Reply, voice matching, Ask AI and additional provider 
   left out of summaries (shorter and less to inject through).
 - Consent: AI on (after the privacy sheet), per feature (Summaries, Write with AI) and per account (ticked; all
   ticked on first turn-on, shown in the sheet's wake). The engine checks all three on every call.
+- 2026-10-26, owner: add OpenAI and Gemini, voice matching and Instant Reply, **all on request like the rest**:
+  nothing learns or suggests by itself. Voice matching is a button per account ("Learn from my sent mail"), not
+  the monthly refresh the task described; suggested replies wait for `Q`.
+- OpenAI goes through Chat Completions (`max_completion_tokens`, no temperature or reasoning settings, which some
+  current models refuse); Gemini through `streamGenerateContent?alt=sse` with `x-goog-api-key`. Their model lineups
+  change every few weeks (GPT-6 Sol/Luna/Astra and Gemini 3.8 Flash / 4 Argon as of October 2026), so Settings
+  lists what the key can use (`GET /models`), filtered to text chat models, with `gpt-6-sol` and
+  `gemini-flash-latest` as where the list starts. Switching provider turns AI off until the privacy sheet is
+  agreed again, since someone else then receives the mail. The sheet adds, for Gemini, that Google's free tier may
+  use what is sent to improve its products.
+- The transcript now marks the reader's own messages `from="you"` (by the account's address), for summaries and
+  replies alike. The style note learns from the person's own messages by address (so Gmail's sent mail in All Mail
+  counts), without quotes or signatures, at most 50, 2,000 characters each; it is stored in `ai_styles` (schema
+  v26) and deleted with the account.
 - Open for the owner: the Google restricted-data / assessment review for Gmail accounts sending mail to a remote
   provider (privacy task 3) is a policy review, not code. Today Tern ships Gmail on app passwords without a Google
   client, so no Google API scope is involved, but the review should still be done before AI is announced.
@@ -90,3 +104,16 @@ Automatic labels, Instant Reply, voice matching, Ask AI and additional provider 
   a scripted model and canned SSE streams. UI tried in `npm run dev` against the fake mailbox (it streams a made-up
   answer): settings, sheet, summary, write/use. Not yet tried: a real Anthropic key in `npm run tauri dev`
   (owner).
+- 2026-10-26: owner tested the first slice in `npm run tauri dev` with a real key: works. Then OpenAI and Gemini
+  providers (shared keys/HTTP/error wording in `ai::providers`), suggested replies (Q, 1–3), the writing style per
+  account, schema v26. 27 AI engine tests. Tried in `npm run dev` on the fake: provider switch and Gemini sheet,
+  Learn style, Q then 1 starts the reply. Not yet tried with real OpenAI or Gemini keys (owner).
+- 2026-10-26: redesign from the canvas "Tern AI redesign ideas" (owner's picks): summary as a lede with Due /
+  Asked / Decided chips (the prompt asks for those lines), suggested replies as labelled intent cards ("Label |
+  reply"), Write with AI as word changes with Keep / Undo (Send waits; shown under the draft, not inside the editor),
+  Settings → AI as four steps with the feature table, today's use and what is kept (`ai_stats`), and the style flow
+  (a sample written both ways after Learn, then the note as parts to tune). Tried in `npm run dev` on the fake.
+- 2026-10-26: Write with AI again (owner picked boards F and G): Space in an empty draft, a back-and-forth of
+  versions (Tab keeps, ↑ steps back, Esc drops), written from the whole conversation (`in_reply_to` → the thread's
+  transcript) with the earlier turns; new mail also returns To / Cc / Subject, names matched in the local contacts
+  (`ai::write` → `Written`, `prompts/new_mail.md`). The word-diff view gave way to versions. 31 AI tests.

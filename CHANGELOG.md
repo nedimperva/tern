@@ -15,6 +15,11 @@ every release needs one here before it is tagged.
   the new text goes in only when you pick "Use this". Nothing is sent unless you ask, only from the accounts you
   tick, never attachments; addresses and phone numbers are taken out first, a daily limit caps the cost, and kept
   summaries can be deleted.
+- AI from OpenAI or Google (Gemini) as well as Anthropic, each with its own key; Settings lists the models your
+  key can use.
+- Suggested replies: Q in a conversation gives three short replies, and 1, 2 or 3 starts a reply with one.
+- Write in your style: Settings → AI → "Learn from my sent mail" reads an account's latest sent messages once and
+  keeps a short note on how you write, which you can edit. Write with AI and suggested replies follow it.
 
 ## [1.0.0] - 2026-10-23
 

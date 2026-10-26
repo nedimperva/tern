@@ -5,11 +5,37 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 /** An AI summary of a conversation (package 10): one line, then the points under it. */
-export type AiSummary = { line: string; points: string[]; cached: boolean };
-/** Whether an Anthropic key is saved, and the models to pick from as [id, name]. */
-export type AiStatus = { hasKey: boolean; models: [string, string][] };
-/** What Write with AI sends: the person's own text, what they want done, and the quoted mail when replying. */
-export type AiWriteInput = { accountId: number; draft: string; request: string; replyingTo: string | null };
+export type AiSummary = { line: string; facts: AiFact[]; points: string[]; cached: boolean };
+/** A summary's fact, for a chip: the nearest date that matters, what is asked of you, or what was decided. */
+export type AiFact = { kind: "due" | "asked" | "decided"; text: string };
+/** One suggested reply: a few words on what it does, and the reply. */
+export type AiSuggestion = { label: string; text: string };
+/** A style just learned, with made-up notes written plainly and in that style, shown once. */
+export type AiLearned = {
+  style: AiStyle;
+  preview: { notes: string; plain: string; yours: string; pickedUp: string[] } | null;
+};
+/** Tokens spent today (UTC) and the answers kept, by kind ("summary", "replies", "style"). */
+export type AiStats = { tokensToday: number; kept: Record<string, number> };
+/** Who answers AI requests, with the person's own key. */
+export type AiProvider = "anthropic" | "openai" | "gemini";
+/** How someone writes from an account, learned from their sent mail when they asked. */
+export type AiStyle = { accountId: number; note: string; samples: number; updated: number };
+/** What Write with AI sends: the person's own text so far (may be empty), what they ask now, the conversation it
+ * answers (by Message-ID; the quote when that is not here), the talk so far, and whether it is new mail. */
+export type AiWriteInput = {
+  accountId: number;
+  draft: string;
+  request: string;
+  inReplyTo: string | null;
+  replyingTo: string | null;
+  turns: { request: string; wrote: string }[];
+  newMail: boolean;
+};
+/** Someone the AI named in new mail, as said ("Tom"), and who that is in the contacts on this computer. */
+export type AiRecipient = { asked: string; address: string | null; name: string; others: Contact[] };
+/** What Write with AI wrote: the text, and for new mail its subject and people. */
+export type AiWritten = { body: string; subject: string | null; to: AiRecipient[]; cc: AiRecipient[] };
 
 /** "tls": encrypted from the first byte (IMAP 993, SMTP 465). "starttls": upgraded before sign-in (IMAP 143, SMTP 587). */
 export type Security = "tls" | "starttls";
@@ -87,6 +113,8 @@ export type MessageRow = {
   hasAttachments: boolean;
 };
 
+/** Someone to write to, from the mail on this computer. */
+export type Contact = { email: string; name: string };
 export type ContactCard = { email: string; name: string; sent: number; received: number; recent: MessageRow[] };
 export type ThreadMessage = MessageRow & {
   messageId: string | null;
@@ -364,17 +392,27 @@ export interface Api {
   /** The window's own frame (the title bar on Windows) in Tern's theme; null follows the system. */
   setWindowTheme(theme: "light" | "dark" | null): void;
   // AI, only on the person's ask; the engine refuses while it is off or not allowed (Settings → AI).
-  aiStatus(): Promise<AiStatus>;
-  aiSetKey(key: string): Promise<void>;
-  aiForgetKey(): Promise<void>;
+  aiHasKey(provider: AiProvider): Promise<boolean>;
+  aiSetKey(provider: AiProvider, key: string): Promise<void>;
+  aiForgetKey(provider: AiProvider): Promise<void>;
+  /** The models to pick from as [id, name]: Anthropic's, or what the typed (else saved) key can use. */
+  aiModels(provider: AiProvider, key: string | null): Promise<[string, string][]>;
   /** Checks the typed key (or the saved one) against the model; its name when it works. Costs nothing. */
-  aiTest(key: string | null, model: string): Promise<string>;
+  aiTest(provider: AiProvider, key: string | null, model: string): Promise<string>;
   /** The summary kept for the conversation as it is now; sends nothing. */
   aiCachedSummary(id: number): Promise<AiSummary | null>;
   /** The words come through `onText` as they are written. `fresh` asks again instead of using a kept one. */
   aiSummarize(id: number, fresh: boolean, onText: (text: string) => void): Promise<AiSummary>;
-  aiWrite(input: AiWriteInput, onText: (text: string) => void): Promise<string>;
+  /** Three replies the person could send; kept like summaries unless `fresh`. */
+  aiReplies(id: number, fresh: boolean, onText: (text: string) => void): Promise<AiSuggestion[]>;
+  aiWrite(input: AiWriteInput, onText: (text: string) => void): Promise<AiWritten>;
   aiClearCache(): Promise<number>;
+  aiStats(): Promise<AiStats>;
+  aiStyle(accountId: number): Promise<AiStyle | null>;
+  /** Reads the account's latest sent mail and learns how the person writes. Only on their ask. */
+  aiLearnStyle(accountId: number): Promise<AiLearned>;
+  /** Saves the person's own edit of the note; an empty one removes it. */
+  aiSetStyle(accountId: number, note: string): Promise<void>;
 }
 
 // Everything that must be saved before the window goes (an open compose), and whether closing only hides it. One
@@ -527,14 +565,20 @@ const tauri: Api = {
   openLogs: () => invoke("open_logs"),
   setWindowTheme: (theme) =>
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => getCurrentWindow().setTheme(theme).catch(() => {})),
-  aiStatus: () => invoke("ai_status"),
-  aiSetKey: (key) => invoke("ai_set_key", { key }),
-  aiForgetKey: () => invoke("ai_forget_key"),
-  aiTest: (key, model) => invoke("ai_test", { key, model }),
+  aiHasKey: (provider) => invoke("ai_has_key", { provider }),
+  aiSetKey: (provider, key) => invoke("ai_set_key", { provider, key }),
+  aiForgetKey: (provider) => invoke("ai_forget_key", { provider }),
+  aiModels: (provider, key) => invoke("ai_models", { provider, key }),
+  aiTest: (provider, key, model) => invoke("ai_test", { provider, key, model }),
   aiCachedSummary: (id) => invoke("ai_cached_summary", { id }),
   aiSummarize: (id, fresh, onText) => invoke("ai_summarize", { id, fresh, onText: channel(onText) }),
+  aiReplies: (id, fresh, onText) => invoke("ai_replies", { id, fresh, onText: channel(onText) }),
   aiWrite: (input, onText) => invoke("ai_write", { input, onText: channel(onText) }),
   aiClearCache: () => invoke("ai_clear_cache"),
+  aiStats: () => invoke("ai_stats"),
+  aiStyle: (accountId) => invoke("ai_style", { accountId }),
+  aiLearnStyle: (accountId) => invoke("ai_learn_style", { accountId }),
+  aiSetStyle: (accountId, note) => invoke("ai_set_style", { accountId, note }),
 };
 
 /** A channel the engine streams text through. */
@@ -1053,37 +1097,101 @@ function fake(): Api {
     openLogs: async () => {},
     setWindowTheme: () => {},
     // AI in the browser: a made-up answer, streamed a word at a time like the real one. The key "fail" fails.
-    aiStatus: async () => ({
-      hasKey: localStorage.getItem("tern.fake.aiKey") != null,
-      models: [
-        ["claude-opus-5-5", "Claude Opus 5.5"],
-        ["claude-sonnet-5-5", "Claude Sonnet 5.5"],
-        ["claude-haiku-5-5", "Claude Haiku 5.5"],
-      ],
-    }),
-    aiSetKey: async (key) => void localStorage.setItem("tern.fake.aiKey", key),
-    aiForgetKey: async () => void localStorage.removeItem("tern.fake.aiKey"),
-    aiTest: async (key, model) => {
+    aiHasKey: async (provider) => localStorage.getItem(`tern.fake.aiKey.${provider}`) != null,
+    aiSetKey: async (provider, key) => void localStorage.setItem(`tern.fake.aiKey.${provider}`, key),
+    aiForgetKey: async (provider) => void localStorage.removeItem(`tern.fake.aiKey.${provider}`),
+    aiModels: async (provider) =>
+      provider === "anthropic"
+        ? [
+            ["claude-opus-5-5", "Claude Opus 5.5"],
+            ["claude-sonnet-5-5", "Claude Sonnet 5.5"],
+            ["claude-haiku-5-5", "Claude Haiku 5.5"],
+          ]
+        : provider === "openai"
+          ? [
+              ["gpt-6-sol", "gpt-6-sol"],
+              ["gpt-6-luna", "gpt-6-luna"],
+            ]
+          : [
+              ["gemini-flash-latest", "Gemini Flash Latest"],
+              ["gemini-3.8-flash", "Gemini 3.8 Flash"],
+            ],
+    aiTest: async (provider, key, model) => {
       await new Promise((r) => setTimeout(r, 400));
-      if ((key ?? localStorage.getItem("tern.fake.aiKey")) === "fail") throw "Anthropic refused the API key. Check it in Settings → AI.";
-      return model === "claude-haiku-5-5" ? "Claude Haiku 5.5" : model === "claude-sonnet-5-5" ? "Claude Sonnet 5.5" : "Claude Opus 5.5";
+      if ((key ?? localStorage.getItem(`tern.fake.aiKey.${provider}`)) === "fail") throw "The provider refused the API key. Check it in Settings → AI.";
+      return model;
     },
     aiCachedSummary: async (id) => fakeSummaries.get(id) ?? null,
     aiSummarize: async (id, fresh, onText) => {
       if (!fresh && fakeSummaries.has(id)) return fakeSummaries.get(id)!;
       const subject = messages.find((m) => m.id === id)?.subject ?? "this";
-      const text = `The conversation about ${subject.toLowerCase()} is waiting on your answer.\n\n- Ana asked for the numbers by Friday\n- Tom sent a first draft on Tuesday\n- Nobody has confirmed the meeting time`;
+      const text = `Ana needs the final numbers on ${subject.toLowerCase()} by Friday; Tom has a draft and waits on your region split.\nDue: Fri 30 Oct\nAsked: the revenue split per region\nDecided: the deck goes out Monday\n\n- Ana asked for the numbers by Friday\n- Tom sent a first draft on Tuesday\n- Nobody has confirmed the meeting time`;
       await stream(text, onText);
-      const done = { line: text.split("\n")[0], points: text.split("\n- ").slice(1), cached: false };
+      const done: AiSummary = {
+        line: text.split("\n")[0],
+        facts: [
+          { kind: "due", text: "Fri 30 Oct" },
+          { kind: "asked", text: "the revenue split per region" },
+          { kind: "decided", text: "the deck goes out Monday" },
+        ],
+        points: text.split("\n- ").slice(1),
+        cached: false,
+      };
       fakeSummaries.set(id, { ...done, cached: true });
       return done;
     },
-    aiWrite: async (input, onText) => {
-      if (!input.draft.trim()) throw "Write a few words first: what the mail should say.";
-      const text = `Hi,\n\nThanks for your message. ${input.draft.trim().replace(/^./, (c) => c.toUpperCase())}.\n\nLet me know if anything else is needed.`;
+    aiReplies: async (_id, _fresh, onText) => {
+      const text = "1. Accept | Thursday at 10 works for me. I'll bring the region split.\n2. Another time | Could we move it to Friday morning instead?\n3. Not yet | Let me check and get back to you by [time].";
       await stream(text, onText);
-      return text;
+      return text.split("\n").map((l) => {
+        const [label, reply] = l.replace(/^\d\.\s*/, "").split(" | ");
+        return { label, text: reply };
+      });
     },
+    aiStyle: async (accountId) => fakeStyles.get(accountId) ?? null,
+    aiLearnStyle: async (accountId) => {
+      await new Promise((r) => setTimeout(r, 1200));
+      const style = {
+        accountId,
+        note: "Opens with: Hi <name>, | Pozdrav,\nSigns off with: Thanks, | Hvala,\nLength: short\nTone: plain\n- One idea per sentence; asks come last, as a question\n- Writes to colleagues in Bosnian, to clients in English\n- No exclamation marks",
+        samples: 42,
+        updated: Math.floor(Date.now() / 1000),
+      };
+      fakeStyles.set(accountId, style);
+      return {
+        style,
+        preview: {
+          notes: "can do friday, need the file first",
+          plain: "Dear Ana,\n\nThank you for your message! I am happy to confirm that Friday works well for me. Would you be able to share the file with me in advance?\n\nBest regards,",
+          yours: "Hi Ana,\n\nFriday works. Could you send the file before then?\n\nThanks,",
+          pickedUp: ["Hi, not Dear", "Two short sentences", "No exclamation marks", "Thanks, to sign off"],
+        },
+      };
+    },
+    aiSetStyle: async (accountId, note) => {
+      if (!note.trim()) fakeStyles.delete(accountId);
+      else fakeStyles.set(accountId, { ...(fakeStyles.get(accountId) ?? { accountId, samples: 0 }), note, updated: Math.floor(Date.now() / 1000) });
+    },
+    aiWrite: async (input, onText) => {
+      const said = (input.request || input.draft).trim();
+      if (!said) throw "Say what the mail should say.";
+      const shorter = input.turns.length > 0;
+      const body = shorter
+        ? "Hi,\n\nFriday works. Could you send the region file first? The deck goes out Monday.\n\nThanks,"
+        : `Hi,\n\nThanks for your message. ${said.replace(/^./, (c) => c.toUpperCase())}.\n\nLet me know if anything else is needed.\n\nThanks,`;
+      if (!input.newMail) {
+        await stream(body, onText);
+        return { body, subject: null, to: [], cc: [] };
+      }
+      await stream(`To: Tom\nCc: Ana\nSubject: Region split by Friday\n===\n${body}`, onText);
+      return {
+        body,
+        subject: "Region split by Friday",
+        to: [{ asked: "Tom", address: "tom@example.com", name: "Tom Berg", others: [] }],
+        cc: [{ asked: "Ana", address: "ana.rossi@example.com", name: "Ana Rossi", others: [{ email: "ana.b@example.com", name: "Ana Bilic" }] }],
+      };
+    },
+    aiStats: async () => ({ tokensToday: 36_400, kept: { summary: fakeSummaries.size, style: fakeStyles.size } }),
     aiClearCache: async () => {
       const n = fakeSummaries.size;
       fakeSummaries.clear();
@@ -1093,6 +1201,7 @@ function fake(): Api {
 }
 
 const fakeSummaries = new Map<number, AiSummary>();
+const fakeStyles = new Map<number, AiStyle>();
 async function stream(text: string, onText: (t: string) => void) {
   await new Promise((r) => setTimeout(r, 600));
   for (const word of text.match(/\S+\s*/g) ?? []) {
