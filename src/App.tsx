@@ -41,6 +41,10 @@ import { PerfOverlay } from "./components/PerfOverlay";
 import { timeKey, timeQuery } from "./perf";
 import { aiOn, loadSettings, ROW_HEIGHTS, setSetting, settings } from "./settings";
 import { askReplies, suggestions, summon } from "./ai";
+import { closeScreen, deck, lineShown, refreshStart, screen, setDeck, start, startDay } from "./day";
+import { DayDeck } from "./components/DayDeck";
+import { DayLine } from "./components/DayLine";
+import { DayScreen } from "./components/DayScreen";
 import { Icon } from "./components/Icon";
 import { VirtualList } from "./components/VirtualList";
 import { InboxZero } from "./components/InboxZero";
@@ -177,7 +181,7 @@ export default function App() {
   const current = () => rows()[focus()];
   const context = (): Context => (openRow() ? "conversation" : "list");
   const dialog = () =>
-    reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin()) || setup() || rail() || snoozing() !== null || labeling() !== null ||
+    screen() || deck() !== null || reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin()) || setup() || rail() || snoozing() !== null || labeling() !== null ||
     viewing() !== null;
   const searching = () => query().trim() !== "";
   // Some mail has headers only, so words in its body were not searched.
@@ -252,6 +256,7 @@ export default function App() {
   // Sync can report many changes a second; draw once per frame at most.
   let pending = false;
   const onChange = () => {
+    void refreshStart();
     if (pending) return;
     pending = true;
     requestAnimationFrame(() => {
@@ -281,7 +286,7 @@ export default function App() {
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
     onCleanup(() => (window.removeEventListener("online", onOnline), window.removeEventListener("offline", onOffline)));
-    void loadSettings();
+    void loadSettings().then(startDay);
     void refresh();
     // The tray, the system's links and notifications. Closing the window leaves Tern in the tray unless turned off.
     api.keepRunningWhen(() => settings.background);
@@ -396,10 +401,14 @@ export default function App() {
   }
 
   /** Snoozes the conversations the picker was opened for. Snoozing is Tern's alone, so Undo is immediate. */
+  // What snoozing from the one-at-a-time run does once a time is picked: that card leaves the run.
+  let afterSnooze: (() => void) | null = null;
   async function snoozeUntil(due: number) {
     const hit = snoozing() ?? [];
     setSnoozing(null);
     if (!hit.length) return;
+    afterSnooze?.();
+    afterSnooze = null;
     const ids = hit.map((r) => r.id);
     const snoozedView = "role" in target() && (target() as { role: string }).role === "snoozed";
     if (!snoozedView) dropRows(hit);
@@ -862,6 +871,42 @@ export default function App() {
     else if (query()) setQuery("");
   }
 
+  // MARK: Start of the day
+
+  /** The first name of the person, from the first account's name, for "Morning, Ada". */
+  const firstName = () => (accounts()[0]?.displayName ?? "").trim().split(/\s+/)[0] ?? "";
+  /** The conversations a run goes through: one group from the line, or everything that waits, from the screen. */
+  const deckRows = () => {
+    const s = start();
+    if (!s) return [];
+    const which = deck();
+    const all = which === "need" ? s.needYou : which === "back" ? s.back : which === "waiting" ? s.waiting : [...s.needYou, ...s.back, ...s.waiting];
+    const seen = new Set<string>();
+    return all.filter((r) => !seen.has(keyOf(r)) && !!seen.add(keyOf(r)));
+  };
+  const runDeck = (which: "need" | "back" | "waiting" | "all") => {
+    closeScreen();
+    setDeck(which);
+  };
+  const closeDeck = () => {
+    setDeck(null);
+    void refreshStart();
+    void load();
+  };
+  /** The updates that came in since the person was last here, all done at once (undo brings them back). */
+  async function doneUpdates() {
+    const s = start();
+    if (!s) return;
+    const rows = (await api.listThreads({ role: "bulk" }, null, 500)).filter((r) => r.date > s.since);
+    if (rows.length) await act("archive", rows);
+    void refreshStart();
+  }
+  /** Conversations that need the person, for the dot in their rows. */
+  const needsYou = createMemo(() => new Set((start()?.needYou ?? []).map(keyOf)));
+  /** The line above the inbox shows on the inbox and its Important split, not while searching. */
+  const lineHere = () =>
+    lineShown() && !searching() && "role" in target() && ["inbox", "important"].includes((target() as { role: string }).role);
+
   // MARK: Keys
 
   const bindings = createMemo<Binding[]>(() => [
@@ -876,6 +921,14 @@ export default function App() {
     { keys: "Enter", name: "Open conversation", context: "list", run: () => open(current()) },
     { keys: "o", name: "Open conversation", context: "list", run: () => open(current()), hidden: true },
     { keys: "Escape", name: "Back", run: escape },
+    ...(lineHere()
+      ? [
+          { keys: "1", name: "Go through what needs you", context: "list" as const, run: () => start()?.needYou.length && runDeck("need") },
+          { keys: "2", name: "Go through what came back from snooze", context: "list" as const, run: () => start()?.back.length && runDeck("back") },
+          { keys: "3", name: "Go through what has no answer yet", context: "list" as const, run: () => start()?.waiting.length && runDeck("waiting") },
+          { keys: "4", name: "Updates and lists (Other)", context: "list" as const, run: () => go({ role: "bulk" }) },
+        ]
+      : []),
     { keys: "e", name: "Done (archive)", run: () => act("archive") },
     { keys: "E", name: "Not done (back to Inbox)", run: () => act("inbox") },
     { keys: "!", name: "Mark as spam", run: () => act("junk") },
@@ -1160,6 +1213,9 @@ export default function App() {
         <Show when={searching() && partial()}>
           <div class="search-note">{coverage()}</div>
         </Show>
+        <Show when={lineHere()}>
+          <DayLine name={firstName()} onRun={runDeck} onRest={() => go({ role: "bulk" })} />
+        </Show>
         <Show
           when={rows().length}
           fallback={
@@ -1190,6 +1246,7 @@ export default function App() {
                 focused={index() === focus()}
                 selected={selection().has(keyOf(row))}
                 narrow={split()}
+                needsYou={needsYou().has(keyOf(row))}
                 onClick={(e) => {
                   setFocus(index());
                   if (e.shiftKey || e.ctrlKey || e.metaKey) toggleSelected(row);
@@ -1339,6 +1396,24 @@ export default function App() {
           </Suspense>
         )}
       </Show>
+      <Show when={screen() && start()}>
+        <DayScreen
+          name={firstName()}
+          onStart={() => runDeck("all")}
+          onDoneUpdates={() => void doneUpdates()}
+          paused={() => compose() !== null || snoozing() !== null || palette()}
+        />
+      </Show>
+      <Show when={deck() !== null && start()}>
+        <DayDeck
+          rows={deckRows()}
+          onReply={(m, text) => void respond(m, "reply", undefined, text)}
+          onSnooze={(row, then) => ((afterSnooze = then), setSnoozing([row]))}
+          onDone={(row) => act("archive", [row])}
+          onClose={closeDeck}
+          paused={() => (compose() !== null && !composeMin()) || snoozing() !== null || palette()}
+        />
+      </Show>
       <Show when={perf()}>
         <PerfOverlay />
       </Show>
@@ -1349,7 +1424,7 @@ export default function App() {
         {(v) => <AttachmentViewer message={v().message} index={v().index} onClose={() => setViewing(null)} />}
       </Show>
       <Show when={snoozing()}>
-        {(hit) => <SnoozePicker count={hit().length} onPick={(due) => void snoozeUntil(due)} onClose={() => setSnoozing(null)} />}
+        {(hit) => <SnoozePicker count={hit().length} onPick={(due) => void snoozeUntil(due)} onClose={() => ((afterSnooze = null), setSnoozing(null))} />}
       </Show>
       <Show when={labeling()}>
         {(hit) => (

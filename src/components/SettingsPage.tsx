@@ -126,6 +126,16 @@ function ReadingSettings() {
   return (
     <>
       <Select
+        name="dayStart"
+        title="Start of the day"
+        help="On the first open of a day, a screen with what waits on you, then a line above the inbox. Counted on this computer."
+        choices={[
+          { label: "Morning screen and the line", value: "screen" },
+          { label: "Only the line above the inbox", value: "line" },
+          { label: "Neither", value: "off" },
+        ]}
+      />
+      <Select
         name="openMode"
         title="Open conversations"
         help="Beside the list keeps it in view; over the list gives the message the whole window."
@@ -1922,7 +1932,7 @@ export function SettingsPage(props: {
       id: "Reading",
       name: "Reading",
       group: "General",
-      words: "open conversations mark read inbox split important other images logos designed dark",
+      words: "open conversations mark read inbox split important other images logos designed dark start day morning",
       body: () => <ReadingSettings />,
     },
     { id: "Notifications", name: "Notifications", group: "General", words: "notify new mail quiet hours", body: () => <NotificationSettings /> },

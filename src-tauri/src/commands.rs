@@ -879,6 +879,13 @@ pub async fn sender_logo(app: AppHandle, addr: String) -> Reply<Option<String>> 
     Ok(None)
 }
 
+/// The start of the day: what came in since `since` (Unix seconds, when the person was last here) and what needs
+/// them. Read from the store only.
+#[tauri::command]
+pub async fn day_start(state: State<'_, AppState>, since: i64) -> Reply<tern_core::DayStart> {
+    state.store.day_start(since).map_err(text)
+}
+
 // MARK: AI (package 10)
 
 // Every AI command but the key's own runs only on the person's ask, and the engine checks first that AI is on and

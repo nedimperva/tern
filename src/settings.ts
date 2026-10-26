@@ -43,6 +43,15 @@ export type Settings = {
   zeroScene: string;
   /** Per local day ("2026-10-20"): conversations cleared from the inbox in Tern, and whether it reached zero. */
   zeroLog: Record<string, { cleared: number; zero: boolean }>;
+  /** The start of the day: the morning screen on a day's first open and the line above the inbox, only the
+   * line, or neither. */
+  dayStart: "screen" | "line" | "off";
+  /** When the person was last here (Unix seconds): the start of the day counts from it. */
+  lastSeen: number;
+  /** The local day the morning screen last showed ("2026-10-26"), so it shows once a day. */
+  dayShown: string;
+  /** The local day the line above the inbox was put away. */
+  lineHidden: string;
   /** Optional AI, read by the engine too, which refuses what it does not allow (tern_core::ai::AiSettings). */
   ai: AiSettings;
 };
@@ -91,6 +100,10 @@ export const DEFAULTS: Settings = {
   attachmentWords: [],
   zeroScene: "rotate",
   zeroLog: {},
+  dayStart: "screen",
+  lastSeen: 0,
+  dayShown: "",
+  lineHidden: "",
   ai: {
     enabled: false,
     provider: "anthropic",

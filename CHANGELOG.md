@@ -7,6 +7,13 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- The start of the day. On the first open of a day, a screen says who waits on you and since when, and Enter takes
+  you through them one at a time (Reply, Snooze, Done, Later). After that, one quiet line above the inbox counts
+  what came in since you were last here, what needs you, what came back from snooze and what has no answer yet;
+  1–4 jump to each. All counted on this computer; Settings → Reading turns either off.
+
 ### Changed
 
 - AI: set up several providers at once (Anthropic, OpenAI, Google), each with its own key, and pick the model for

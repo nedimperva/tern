@@ -714,6 +714,66 @@ impl Store {
         Ok(())
     }
 
+    /// What the start of the day shows: how many conversations got mail since `since` (when the person was last
+    /// here), the ones that need them (Important, the newest message someone else's, waiting longest first), the
+    /// snoozed ones that came back since then, follow-ups still without an answer, and how many of the new are in
+    /// Other. All from this computer.
+    pub fn day_start(&self, since: i64) -> Result<DayStart> {
+        let conn = self.conn();
+        let (important, imp_value) = target_filter(&ListTarget::Role(IMPORTANT.into()), 1);
+        let need: Vec<MessageRow> = conn
+            .prepare(&format!(
+                "SELECT {ROW} FROM messages m JOIN accounts a ON a.id = m.account_id
+                 WHERE {important}
+                   AND m.id = (SELECT x.id FROM messages x WHERE x.account_id = m.account_id
+                                 AND x.thread_id = m.thread_id ORDER BY x.date DESC, x.id DESC LIMIT 1)
+                   AND lower(m.from_addr) <> lower(a.email)
+                 ORDER BY m.date, m.id LIMIT 200"
+            ))?
+            .query_map([imp_value], row)?
+            .collect::<rusqlite::Result<_>>()?;
+        let back: Vec<MessageRow> = conn
+            .prepare(&format!(
+                "SELECT {ROW} FROM reminders r JOIN messages m ON m.id = (
+                     SELECT x.id FROM messages x JOIN folders f ON f.id = x.folder_id
+                     WHERE x.account_id = r.account_id AND x.thread_id = r.thread_id AND f.role = 'inbox'
+                     ORDER BY x.date DESC, x.id DESC LIMIT 1)
+                 WHERE r.kind = 'woke' AND r.due > ?1 ORDER BY r.due"
+            ))?
+            .query_map([since], row)?
+            .collect::<rusqlite::Result<_>>()?;
+        let waiting: Vec<MessageRow> = conn
+            .prepare(&format!(
+                "SELECT {ROW} FROM reminders r JOIN messages m ON m.id = (
+                     SELECT id FROM messages WHERE account_id = r.account_id AND thread_id = {FOLLOW_UP_THREAD}
+                     ORDER BY date DESC, id DESC LIMIT 1)
+                 WHERE r.kind = 'followup' AND r.fired ORDER BY r.due"
+            ))?
+            .query_map([], row)?
+            .collect::<rusqlite::Result<_>>()?;
+        let count = |role: &str| -> Result<i64> {
+            let (filter, value) = target_filter(&ListTarget::Role(role.into()), 1);
+            Ok(conn.query_row(
+                &format!(
+                    "SELECT count(*) FROM (SELECT DISTINCT m.account_id, m.thread_id FROM messages m
+                     WHERE {filter} AND m.date > ?2)"
+                ),
+                params![value, since],
+                |r| r.get(0),
+            )?)
+        };
+        let new_since = count("inbox")?;
+        let rest = count(OTHER)?;
+        Ok(DayStart {
+            since,
+            new_since,
+            need_you: conversations(&conn, need)?,
+            back: conversations(&conn, back)?,
+            waiting: conversations(&conn, waiting)?,
+            rest,
+        })
+    }
+
     // MARK: AI
 
     /// A kept AI answer for exactly this request (see `ai::key_hash`).
@@ -1752,6 +1812,7 @@ impl Store {
     pub fn wake_snoozed(&self, now: i64) -> Result<Vec<NewMail>> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
+        tx.execute("DELETE FROM reminders WHERE kind = 'woke' AND due < ?1", [now - 2 * 86_400])?;
         let due: Vec<(i64, String)> = tx
             .prepare(
                 "SELECT r.account_id, r.thread_id FROM reminders r JOIN accounts a ON a.id = r.account_id
@@ -1766,6 +1827,13 @@ impl Store {
             tx.execute(
                 "DELETE FROM reminders WHERE account_id = ?1 AND thread_id = ?2 AND kind = 'snooze'",
                 params![account_id, thread_id],
+            )?;
+            // That it came back, and when: the start of the day lists what came back since the person was last
+            // here. Kept two days.
+            tx.execute(
+                "INSERT OR REPLACE INTO reminders (account_id, thread_id, kind, due, created)
+                 VALUES (?1, ?2, 'woke', ?3, ?3)",
+                params![account_id, thread_id, now],
             )?;
             let latest = tx
                 .query_row(
@@ -3936,6 +4004,46 @@ Engines Ltd"
         store.ai_keep("summary", "h", "m", Some(account), "Short.").unwrap();
         store.remove_account(account).unwrap();
         assert_eq!(store.ai_cached("summary", "h", "m").unwrap(), None, "an account's answers go with it");
+    }
+
+    #[test]
+    fn the_day_starts_with_who_waits_on_you_longest() {
+        let (store, account, inbox, _) = setup();
+        let sent = store.upsert_folder(account, "Sent", "sent").unwrap();
+        let mut from_ana = message(1, "Contract", 100);
+        from_ana.from_addr = "ana@x.com".into();
+        let mut from_tom = message(2, "Numbers", 300);
+        from_tom.from_addr = "tom@x.com".into();
+        let mut answered = message(3, "Dinner", 200);
+        answered.from_addr = "lejla@x.com".into();
+        let mut list = message(4, "Weekly news", 400);
+        list.from_addr = "news@shop.example".into();
+        list.list_id = Some("news.shop.example".into());
+        store.insert_messages(account, inbox, &[from_ana, from_tom, answered, list]).unwrap();
+        // The person answered Lejla: the last word is theirs, so it waits on nobody.
+        let mut reply = message(5, "Re: Dinner", 250);
+        reply.from_addr = "me@example.com".into();
+        reply.in_reply_to = Some("3@example.com".into());
+        reply.references = vec!["3@example.com".into()];
+        store.insert_messages(account, sent, &[reply]).unwrap();
+
+        let start = store.day_start(150).unwrap();
+        let waiting: Vec<&str> = start.need_you.iter().map(|t| t.latest.subject.as_str()).collect();
+        assert_eq!(
+            waiting,
+            ["Contract", "Numbers"],
+            "longest waiting first, not the answered one, not lists"
+        );
+        assert_eq!(start.new_since, 3, "conversations with mail after `since`");
+        assert_eq!(start.rest, 1, "the list mail is in Other");
+
+        let ids: Vec<i64> = start.need_you.iter().map(|t| t.latest.id).collect();
+        store.snooze(&ids[..1], 10_000, 160).unwrap();
+        assert_eq!(store.day_start(150).unwrap().need_you.len(), 1, "a snoozed one waits out of sight");
+        store.wake_snoozed(20_000).unwrap();
+        let later = store.day_start(15_000).unwrap();
+        assert_eq!(later.back.len(), 1, "it came back since the person was last here");
+        assert!(store.day_start(25_000).unwrap().back.is_empty(), "and not before");
     }
 
     #[test]

@@ -122,3 +122,8 @@ Team split, "teaches the rule" from Move, RFC 8058 POST (keep mailto/URL).
   picker (its own presets), the "No reply yet" chip, "N scheduled" and "to confirm" links, Scheduled section in
   the review dialog. Tried in `npm run dev` (`#followup`, `#scheduled`) in headless Chromium; found and fixed a
   stale read of the picker's kind after closing it. Not tried in the Tauri window against a server yet.
+- 2026-10-26 (branch `sprint/10-ai-models`, owner's call to ship it with the AI follow-up): the start of the day,
+  designed on a canvas and picked by the owner (A2 line, A3 morning screen, A5 one at a time). `Store::day_start`:
+  Important conversations whose newest message is someone else's, oldest first; snoozed ones that came back
+  (`wake_snoozed` now leaves a `woke` reminder, kept two days); fired follow-ups; new since and new in Other.
+  `src/day.ts` keeps `lastSeen` while the window shows. Tried in `npm run dev` on the fake.

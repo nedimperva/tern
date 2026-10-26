@@ -43,6 +43,8 @@ export function ConversationRow(props: {
   selected: boolean;
   /** The list is beside an open conversation: no room for the snippet. */
   narrow: boolean;
+  /** Its newest message is someone else's and waits on the person (the start of the day). */
+  needsYou?: boolean;
   onClick: (e: MouseEvent) => void;
   onOpen: () => void;
 }) {
@@ -55,7 +57,7 @@ export function ConversationRow(props: {
       onMouseDown={props.onClick}
       onDblClick={props.onOpen}
     >
-      <span class="mark">{props.selected ? "✓" : ""}</span>
+      <span class="mark">{props.selected ? "✓" : props.needsYou ? <span class="needs" title="Waits on you" /> : ""}</span>
       <span class="who">
         <span class="names">{participants(props.row)}</span>
         <Show when={props.row.count > 1}>
