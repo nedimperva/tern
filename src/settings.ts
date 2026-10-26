@@ -49,8 +49,13 @@ export type Settings = {
 
 export type AiSettings = {
   enabled: boolean;
+  /** The provider and model a feature uses when none is picked for it. */
   provider: AiProvider;
   model: string;
+  /** The model each feature uses, from any provider with a key (see `aiRoute`). */
+  uses: Partial<Record<AiFeatureKey, AiRoute>>;
+  /** Providers agreed to receive mail; empty in settings from before there were several (then `provider`). */
+  agreed: AiProvider[];
   summaries: boolean;
   writing: boolean;
   /** Suggested replies in a conversation. */
@@ -90,6 +95,8 @@ export const DEFAULTS: Settings = {
     enabled: false,
     provider: "anthropic",
     model: "claude-opus-5-5",
+    uses: {},
+    agreed: [],
     summaries: true,
     writing: true,
     replies: true,
@@ -99,6 +106,26 @@ export const DEFAULTS: Settings = {
     accounts: [],
   },
 };
+
+export type AiFeatureKey = "summaries" | "replies" | "writing" | "style";
+export type AiRoute = { provider: AiProvider; model: string };
+
+/** Each provider's quick, cheap model, for the short everyday work. Matches `Provider::small_model`. */
+const SMALL_MODEL: Record<AiProvider, string> = {
+  anthropic: "claude-haiku-5-5",
+  openai: "gpt-6-luna",
+  gemini: "gemini-flash-latest",
+};
+
+/** The model a feature uses: the one picked for it, else the default provider's (its small model for summaries
+ * and replies). Matches `ai::route` in the engine. */
+export function aiRoute(s: AiSettings, feature: AiFeatureKey): AiRoute {
+  const picked = s.uses[feature];
+  if (picked) return picked;
+  return feature === "summaries" || feature === "replies"
+    ? { provider: s.provider, model: SMALL_MODEL[s.provider] }
+    : { provider: s.provider, model: s.model };
+}
 
 /** Whether AI may be offered for this feature on this account (the engine checks again). */
 export const aiOn = (feature: "summaries" | "writing" | "replies", accountId: number | undefined) =>

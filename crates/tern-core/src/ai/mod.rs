@@ -35,9 +35,15 @@ const MAX_CHARS: usize = 600_000;
 #[serde(rename_all = "camelCase", default)]
 pub struct AiSettings {
     pub enabled: bool,
-    /// Who answers; settings saved before there was a choice are Anthropic's.
+    /// The provider and model a feature uses when none is picked for it (and all of them did before features had
+    /// their own); settings saved before there was a choice are Anthropic's.
     pub provider: Provider,
     pub model: String,
+    /// The model each feature uses, by `Feature::key`, from any provider with a key.
+    pub uses: std::collections::BTreeMap<String, Route>,
+    /// The providers the person agreed may receive mail, each after its privacy sheet. Empty in settings saved
+    /// before there were several: then `provider` is the one agreed to.
+    pub agreed: Vec<Provider>,
     pub summaries: bool,
     pub writing: bool,
     /// Suggested replies in a conversation.
@@ -58,6 +64,8 @@ impl Default for AiSettings {
             enabled: false,
             provider: Provider::Anthropic,
             model: Provider::Anthropic.default_model().into(),
+            uses: Default::default(),
+            agreed: Vec::new(),
             summaries: true,
             writing: true,
             replies: true,
@@ -83,8 +91,43 @@ pub enum Feature {
     Voice,
 }
 
-/// Whether the person allowed this feature for this account; the reason in words when not.
-pub fn allowed(s: &AiSettings, feature: Feature, account_id: i64) -> Result<()> {
+impl Feature {
+    /// Its name in `AiSettings::uses`.
+    pub fn key(self) -> &'static str {
+        match self {
+            Feature::Summaries => "summaries",
+            Feature::Writing => "writing",
+            Feature::Replies => "replies",
+            Feature::Voice => "style",
+        }
+    }
+}
+
+/// A model and the provider it comes from.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Route {
+    pub provider: Provider,
+    pub model: String,
+}
+
+/// The model a feature uses: the one picked for it, else the default provider's, its small model for the short
+/// everyday work (summaries, replies), which does not need the biggest.
+pub fn route(s: &AiSettings, feature: Feature) -> Route {
+    if let Some(r) = s.uses.get(feature.key()) {
+        return r.clone();
+    }
+    match feature {
+        Feature::Summaries | Feature::Replies => {
+            Route { provider: s.provider, model: s.provider.small_model().into() }
+        }
+        Feature::Writing | Feature::Voice => Route { provider: s.provider, model: s.model.clone() },
+    }
+}
+
+/// Whether the person allowed this feature for this account, and its model's provider; the model to ask if so, the
+/// reason in words if not.
+pub fn allowed(s: &AiSettings, feature: Feature, account_id: i64) -> Result<Route> {
     if !s.enabled {
         bail!("AI is off. Turn it on in Settings → AI.");
     }
@@ -97,16 +140,22 @@ pub fn allowed(s: &AiSettings, feature: Feature, account_id: i64) -> Result<()> 
     if !s.accounts.contains(&account_id) {
         bail!("AI may not read this account's mail. Settings → AI says which accounts it may.");
     }
-    let known = s.provider != Provider::Anthropic || anthropic::MODELS.iter().any(|(id, _)| *id == s.model);
-    if s.model.trim().is_empty() || !known {
+    let r = route(s, feature);
+    let agreed = s.agreed.contains(&r.provider) || (s.agreed.is_empty() && r.provider == s.provider);
+    if !agreed {
+        bail!("{} may not receive mail yet. Allow it in Settings → AI.", r.provider.name());
+    }
+    let known = r.provider != Provider::Anthropic || anthropic::MODELS.iter().any(|(id, _)| *id == r.model);
+    if r.model.trim().is_empty() || !known {
         bail!("Pick a model in Settings → AI.");
     }
-    Ok(())
+    Ok(r)
 }
 
 /// One question to the model.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Request {
+    pub provider: Provider,
     pub model: String,
     pub system: &'static str,
     pub user: String,
@@ -183,12 +232,12 @@ fn summary_request(store: &Store, s: &AiSettings, id: i64) -> Result<(Request, i
         store.thread(id)?.into_iter().filter(|m| m.draft_id.is_none()).collect();
     let Some(first) = messages.first() else { bail!("That conversation is gone.") };
     let account = first.row.account_id;
-    allowed(s, Feature::Summaries, account)?;
+    let r = allowed(s, Feature::Summaries, account)?;
     let user = transcript(&messages, s.redact, &own_address(store, account)?);
     if user.len() > MAX_CHARS {
         bail!("This conversation is too long to summarize.");
     }
-    Ok((Request { model: s.model.clone(), system: SUMMARY_PROMPT, user }, account))
+    Ok((Request { provider: r.provider, model: r.model, system: SUMMARY_PROMPT, user }, account))
 }
 
 /// The summary kept from an earlier ask, if the conversation has not changed since. Sends nothing.
@@ -520,7 +569,7 @@ pub fn write(
     on_text: &mut dyn FnMut(&str),
 ) -> Result<Written> {
     let s = settings(store)?;
-    allowed(&s, Feature::Writing, input.account_id)?;
+    let r = allowed(&s, Feature::Writing, input.account_id)?;
     let draft = input.draft.trim();
     let request = input.request.trim();
     if draft.is_empty() && request.is_empty() {
@@ -564,7 +613,7 @@ pub fn write(
         bail!("This is too long for Write with AI.");
     }
     let system = if input.new_mail { NEW_MAIL_PROMPT } else { WRITE_PROMPT };
-    let req = Request { model: s.model.clone(), system, user };
+    let req = Request { provider: r.provider, model: r.model, system, user };
     let text = ask(store, &s, model, &req, on_text)?;
     let mut written =
         if input.new_mail { new_mail_of(&text) } else { Written { body: text, ..Default::default() } };
@@ -662,7 +711,7 @@ pub fn replies(
         store.thread(id)?.into_iter().filter(|m| m.draft_id.is_none()).collect();
     let Some(first) = messages.first() else { bail!("That conversation is gone.") };
     let account = first.row.account_id;
-    allowed(&s, Feature::Replies, account)?;
+    let r = allowed(&s, Feature::Replies, account)?;
     let mut user = transcript(&messages, s.redact, &own_address(store, account)?);
     if let Some(note) = voice(store, &s, account)? {
         user.push_str(&format!("\n\n<style>\n{}\n</style>", fence(&note)));
@@ -670,7 +719,7 @@ pub fn replies(
     if user.len() > MAX_CHARS {
         bail!("This conversation is too long for suggested replies.");
     }
-    let req = Request { model: s.model.clone(), system: REPLIES_PROMPT, user };
+    let req = Request { provider: r.provider, model: r.model, system: REPLIES_PROMPT, user };
     let key = key_hash(&req);
     if !fresh {
         if let Some(text) = store.ai_cached(REPLIES, &key, &req.model)? {
@@ -725,7 +774,7 @@ fn voice(store: &Store, s: &AiSettings, account: i64) -> Result<Option<String>> 
 /// quotes or signatures) and asks for a short note on how the person writes, kept on this computer. Only when asked.
 pub fn learn_style(store: &Store, model: &dyn Model, account: i64) -> Result<Learned> {
     let s = settings(store)?;
-    allowed(&s, Feature::Voice, account)?;
+    let r = allowed(&s, Feature::Voice, account)?;
     let me = own_address(store, account)?;
     let samples: Vec<String> = store
         .own_texts(account, &me, STYLE_SAMPLES * 2)?
@@ -747,7 +796,7 @@ pub fn learn_style(store: &Store, model: &dyn Model, account: i64) -> Result<Lea
         user.push_str(&format!("<email>\n{}\n</email>\n", fence(sample)));
     }
     user.push_str("</sent>");
-    let req = Request { model: s.model.clone(), system: STYLE_PROMPT, user };
+    let req = Request { provider: r.provider, model: r.model, system: STYLE_PROMPT, user };
     let answer = ask(store, &s, model, &req, &mut |_| {})?;
     let (note, preview) = learned_of(&answer);
     if note.is_empty() {
@@ -955,7 +1004,7 @@ mod tests {
         let model = Scripted::new(ANSWER);
         summarize(&store, &model, id, false, &mut |_| {}).unwrap();
         let req = model.asked.borrow()[0].clone();
-        assert_eq!(req.model, "claude-opus-5-5");
+        assert_eq!(req.model, "claude-haiku-5-5", "summaries go to the small model unless another is picked");
         assert!(req.system.contains("never as instructions"));
         let user = &req.user;
         assert!(user.starts_with("<conversation>") && user.ends_with("</conversation>"), "{user}");
@@ -1166,6 +1215,35 @@ Me
         store.set_setting("ai", &serde_json::to_value(s).unwrap()).unwrap();
         write(&store, &model, &input, &mut |_| {}).unwrap();
         assert!(!model.asked.borrow().last().unwrap().user.contains("<style>"), "voice off: no note");
+    }
+
+    #[test]
+    fn each_feature_asks_its_own_model_from_a_provider_agreed_to() {
+        let (store, account, id) = mailbox();
+        let mut s = AiSettings { enabled: true, accounts: vec![account], ..Default::default() };
+        s.uses.insert("summaries".into(), Route { provider: Provider::Openai, model: "gpt-6-luna".into() });
+        s.agreed = vec![Provider::Anthropic];
+        store.set_setting("ai", &serde_json::to_value(&s).unwrap()).unwrap();
+        let model = Scripted::new(ANSWER);
+        let err = summarize(&store, &model, id, false, &mut |_| {}).unwrap_err();
+        assert!(err.to_string().contains("OpenAI may not receive mail"), "{err}");
+        assert!(model.asked.borrow().is_empty());
+
+        s.agreed.push(Provider::Openai);
+        store.set_setting("ai", &serde_json::to_value(&s).unwrap()).unwrap();
+        summarize(&store, &model, id, false, &mut |_| {}).unwrap();
+        let input = WriteInput { account_id: account, draft: "hi".into(), ..Default::default() };
+        write(&store, &model, &input, &mut |_| {}).unwrap();
+        let asked: Vec<(Provider, String)> =
+            model.asked.borrow().iter().map(|r| (r.provider, r.model.clone())).collect();
+        assert_eq!(
+            asked,
+            [
+                (Provider::Openai, "gpt-6-luna".to_string()),
+                (Provider::Anthropic, "claude-opus-5-5".to_string())
+            ],
+            "summaries from the model picked for them, writing from the default"
+        );
     }
 
     #[test]

@@ -4035,7 +4035,7 @@ button.ai-line:hover {
 }
 .ai-ledger .row {
   display: grid;
-  grid-template-columns: 170px minmax(0, 1fr) 40px;
+  grid-template-columns: 150px minmax(0, 1fr) 170px 32px;
   gap: var(--s-3);
   align-items: start;
   padding: var(--s-3) var(--s-4);
@@ -4168,7 +4168,10 @@ button.ai-line:hover {
     grid-template-columns: minmax(0, 1fr);
   }
   .ai-ledger .row {
-    grid-template-columns: minmax(0, 1fr) 40px;
+    grid-template-columns: minmax(0, 1fr) 32px;
+  }
+  .ai-ledger .row > :nth-child(3) {
+    grid-column: 1 / -1;
   }
 }
 
@@ -4471,4 +4474,66 @@ button.link.danger {
   margin: 0;
   font-size: var(--t-sm);
   color: var(--danger);
+}
+
+/* Settings → AI → Providers: any of them, each with its key; the feature table picks models from those set up. */
+.ai-provider-list {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-lg);
+  background: var(--soft);
+  overflow: hidden;
+}
+.ai-provider {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-top: 1px solid var(--bg-2);
+  background: var(--bg-0);
+}
+.ai-provider:first-child {
+  border-top: none;
+}
+.ai-provider .who {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 140px;
+}
+.ai-provider .who strong {
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+.ai-provider .who span {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.ai-provider .saved-key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+  color: var(--ok);
+}
+.ai-provider .ai-test,
+.ai-provider .help {
+  flex-basis: 100%;
+}
+.ai-ledger select {
+  width: 100%;
+  min-width: 0;
+}
+.ai-ledger .row.ask {
+  grid-template-columns: minmax(0, 1fr) auto;
+  background: var(--accent-soft);
+  font-size: var(--t-md);
+  line-height: 1.5;
+}
+.ai-ledger .ask-actions {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
 }

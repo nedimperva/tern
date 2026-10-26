@@ -7,6 +7,13 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Changed
+
+- AI: set up several providers at once (Anthropic, OpenAI, Google), each with its own key, and pick the model for
+  each feature in Settings → AI. Summaries and suggested replies now use a small, cheap model by default (Claude
+  Haiku, GPT-6 Luna or Gemini Flash); Write with AI and learning your style keep the bigger one. A model from a
+  provider you haven't allowed yet asks first.
+
 ## [1.1.0] - 2026-10-26
 
 ### Added

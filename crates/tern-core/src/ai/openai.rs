@@ -176,7 +176,12 @@ data: [DONE]\n\n";
 
     #[test]
     fn the_request_streams_with_a_cap_and_no_sampling_settings() {
-        let b = body(&Request { model: "gpt-6-sol".into(), system: "sys", user: "hi".into() });
+        let b = body(&Request {
+            provider: Provider::Openai,
+            model: "gpt-6-sol".into(),
+            system: "sys",
+            user: "hi".into(),
+        });
         assert_eq!(b["stream"], true);
         assert_eq!(b["stream_options"]["include_usage"], true);
         assert_eq!(b["messages"][0]["role"], "system");

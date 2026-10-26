@@ -45,12 +45,30 @@ impl Provider {
         }
     }
 
+    /// The quick, cheap model for short everyday work (summaries, suggested replies).
+    pub fn small_model(self) -> &'static str {
+        match self {
+            Provider::Anthropic => "claude-haiku-5-5",
+            Provider::Openai => "gpt-6-luna",
+            Provider::Gemini => "gemini-flash-latest",
+        }
+    }
+
     pub fn model(self) -> Box<dyn Model + Send + Sync> {
         match self {
             Provider::Anthropic => Box::new(anthropic::Anthropic),
             Provider::Openai => Box::new(openai::OpenAi),
             Provider::Gemini => Box::new(gemini::Gemini),
         }
+    }
+}
+
+/// Sends each request to the provider it names.
+pub struct Router;
+
+impl Model for Router {
+    fn complete(&self, req: &super::Request, on_text: &mut dyn FnMut(&str)) -> Result<super::Completion> {
+        req.provider.model().complete(req, on_text)
     }
 }
 

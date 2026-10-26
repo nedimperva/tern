@@ -266,13 +266,16 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   from another app" switches the editor for a paste box (a dashed `--line` border; Ctrl+V keeps the copied formatting),
   the HTML source in `--mono` folded under "Edit the HTML", a `--warn-fg` note when a picture has no web address, and the preview shows it in a
   white frame. In compose an HTML signature sits under the text in the same white frame, not in the editor.
-- Built (2026-10-26), AI: four steps, each with a 26 px mark (a check on `--ok` once done, the number on `--accent`
-  while it is the one to do, `--bg-3` after): Who answers (three provider cards, the picked one `--bg-0` with a 2 px
-  `--accent` border), Your key, Mail it may read (accounts, the address filter), What it may do (a `--soft` table:
-  feature and key, what goes to the provider when asked, a checkbox; a footer line on what never goes). Then "Review
-  and turn on" opens the privacy sheet; once on, a status line at the top (On · provider · model, Turn off), two
-  cards (Today: tokens against the daily limit as a meter; Advanced: model and daily limit), "Your writing style"
-  per account, and what is kept with Delete AI cache.
+- Built (2026-10-26), AI: three steps, each with a 26 px mark (a check on `--ok` once done, the number on `--accent`
+  while it is the one to do, `--bg-3` after): Providers (Anthropic, OpenAI, Google as rows on `--soft`, each with
+  "Key saved" and Test / Forget, or Add key opening its field; any number of them), Mail it may read (accounts, the
+  address filter), What it may do (a `--soft` table: feature and key, what goes to its model's provider when asked,
+  the model, picked from every provider with a key in groups by provider, and a checkbox; a footer line on what
+  never goes). A model from a provider not yet allowed opens a row on `--accent-soft` under its feature ("gpt-6-luna
+  sends summaries to OpenAI, …", Allow OpenAI / Cancel) and the list keeps the model in use until then. "Review and
+  turn on" opens the privacy sheet naming every provider in use; once on, a status line (On · providers, Turn off),
+  two cards (Today: tokens against the daily limit as a meter; Limit), "Your writing style" per account, and what is
+  kept with Delete AI cache.
   Writing style: after Learn, "Does this sound like you?" (made-up notes written plainly and in the person's style,
   the second with a 2 px `--accent` border, what it picked up as `--accent-soft` tags; Sounds like me, Adjust the
   note, Don't use a style). After that the note shows as parts on `--soft`: greetings and sign-offs as removable
