@@ -389,6 +389,20 @@ pub struct ForwardOf {
     pub message_id: Option<String>,
 }
 
+impl ForwardOf {
+    /// A name for the message's downloaded files that a different message never gets. Row ids are reused once
+    /// the newest rows are deleted, so they can't be it: a new message would be shown the old one's files. The
+    /// Message-ID stays with the message across moves; without one, its place on the server stands in.
+    pub fn cache_key(&self, account_id: i64) -> String {
+        let name = match &self.message_id {
+            Some(id) => format!("{account_id}\nid\n{id}"),
+            None => format!("{account_id}\nat\n{}\n{:?}\n{}", self.folder, self.validity, self.uid),
+        };
+        let digest = ring::digest::digest(&ring::digest::SHA256, name.as_bytes());
+        digest.as_ref()[..16].iter().map(|b| format!("{b:02x}")).collect()
+    }
+}
+
 /// A draft as compose last saved it.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

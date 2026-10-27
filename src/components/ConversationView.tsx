@@ -3,6 +3,7 @@ import { api, type Mailto, type Mark, type ThreadMessage } from "../api";
 import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
+import { linkify } from "../linkify";
 import {
   darken,
   designedFrame,
@@ -245,10 +246,12 @@ function PlainBody(props: { text: string }) {
   const at = () => foldAt(props.text);
   return (
     <>
-      <pre class="plain">{at() < 0 ? props.text : props.text.slice(0, at())}</pre>
+      <pre class="plain">
+        <Linked text={at() < 0 ? props.text : props.text.slice(0, at())} />
+      </pre>
       <Show when={at() >= 0 && unfolded()}>
         <pre class="plain quoted" classList={{ signature: /^\s*-- ?\n/.test(props.text.slice(at())) }}>
-          {props.text.slice(at()).replace(/^\s*\n/, "")}
+          <Linked text={props.text.slice(at()).replace(/^\s*\n/, "")} />
         </pre>
       </Show>
       <Show when={at() >= 0}>
@@ -262,6 +265,30 @@ function PlainBody(props: { text: string }) {
         </button>
       </Show>
     </>
+  );
+}
+
+/** Text with its web and mailto addresses as links, opened the way links in HTML mail are. */
+function Linked(props: { text: string }) {
+  return (
+    <For each={linkify(props.text)}>
+      {(p) =>
+        typeof p === "string" ? (
+          p
+        ) : (
+          <a
+            href={p.href}
+            title={p.href}
+            onClick={(e) => {
+              e.preventDefault();
+              api.openUrl(p.href);
+            }}
+          >
+            {p.text}
+          </a>
+        )
+      }
+    </For>
   );
 }
 

@@ -4,11 +4,11 @@ Tern handles mail and account passwords, so security reports are welcome and tak
 
 ## Supported versions
 
-Tern is in early alpha. Only the latest release gets security fixes.
+Only the latest release gets security fixes.
 
 | Version | Supported |
 |---|---|
-| Latest 0.3.x release | Yes |
+| Latest 1.x release | Yes |
 | Anything older | No |
 
 ## Reporting a vulnerability

@@ -99,6 +99,8 @@ pub struct Fetched {
     pub part: Option<Vec<u8>>,
     /// The leaf parts from BODYSTRUCTURE.
     pub structure: Option<Vec<Part>>,
+    /// When the server received the message (INTERNALDATE), in Unix seconds.
+    pub received: Option<i64>,
 }
 
 /// The header fields the list, threading and list handling need; the rest of the header comes with the body.
@@ -385,6 +387,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
         let items = vec![
             MessageDataItemName::Uid,
             MessageDataItemName::Flags,
+            MessageDataItemName::InternalDate,
             MessageDataItemName::Rfc822Size,
             MessageDataItemName::BodyStructure,
             header,
@@ -647,6 +650,7 @@ fn fetched_from(items: Vec<MessageDataItem<'static>>) -> Option<Fetched> {
         body: None,
         part: None,
         structure: None,
+        received: None,
     };
     for item in items {
         match item {
@@ -661,6 +665,7 @@ fn fetched_from(items: Vec<MessageDataItem<'static>>) -> Option<Fetched> {
                 }
             }
             MessageDataItem::Rfc822Size(size) => f.size = Some(size),
+            MessageDataItem::InternalDate(at) => f.received = Some(at.as_ref().timestamp()),
             MessageDataItem::BodyExt { section, data, .. } => {
                 let bytes = data.0.map(|d| d.as_ref().to_vec());
                 match section {
@@ -1073,10 +1078,10 @@ mod tests {
         let (stream, sent) = signed_in(
             "{tag} OK [CAPABILITY IMAP4rev1] in\r\n",
             vec![(
-                "UID FETCH 4 (UID FLAGS RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT \
+                "UID FETCH 4 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT \
                  MESSAGE-ID IN-REPLY-TO REFERENCES LIST-ID LIST-UNSUBSCRIBE REPLY-TO MAIL-FOLLOWUP-TO PRECEDENCE)])",
                 // multipart/mixed: (alternative: plain, html), a PDF attachment, an inline image.
-                "* 1 FETCH (UID 4 FLAGS (\\Seen) RFC822.SIZE 52000 BODYSTRUCTURE (\
+                "* 1 FETCH (UID 4 FLAGS (\\Seen) INTERNALDATE \"17-Jul-2026 02:44:25 -0700\" RFC822.SIZE 52000 BODYSTRUCTURE (\
                  ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"QUOTED-PRINTABLE\" 120 4 NIL NIL NIL NIL)\
                  (\"TEXT\" \"HTML\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 400 9 NIL NIL NIL NIL) \"ALTERNATIVE\")\
                  (\"APPLICATION\" \"PDF\" (\"NAME\" \"r.pdf\") NIL NIL \"BASE64\" 50000 NIL \
@@ -1090,6 +1095,7 @@ mod tests {
         let fetched = imap.headers("4").await.unwrap();
         let f = &fetched[0];
         assert_eq!((f.uid, f.seen, f.size), (4, true, Some(52000)));
+        assert_eq!(f.received, Some(1_784_281_465));
         assert_eq!(f.header.as_deref(), Some(&b"From: a@b.c\r\nSubject: Hi\r\n\r\n"[..]));
         assert!(f.body.is_none());
         let parts = f.structure.as_ref().expect("BODYSTRUCTURE parsed");

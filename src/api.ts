@@ -268,6 +268,13 @@ export interface Api {
   googleAvailable(): Promise<boolean>;
   /** Signs in with Google in the browser: adds the account, or switches an existing one (`hint`) to it. */
   googleSignIn(name: string, hint?: string): Promise<Account>;
+  /** A new password for an account whose server refuses the old one; checked against the server first. */
+  setPassword(id: number, password: string): Promise<void>;
+  /** Removes the account and everything Tern keeps of it. The server keeps its mail. */
+  removeAccount(id: number): Promise<void>;
+  /** Bytes of downloaded attachments and inline images kept on disk. */
+  receivedCacheSize(): Promise<number>;
+  clearReceivedCache(): Promise<void>;
   list(target: Target, before: Cursor | null, limit: number): Promise<MessageRow[]>;
   /** Conversations with a message in `target`, newest first; `before` is the last row's (date, id). */
   listThreads(target: Target, before: Cursor | null, limit: number): Promise<ThreadRow[]>;
@@ -463,6 +470,10 @@ const tauri: Api = {
   addAccount: (config, password) => invoke("add_account", { config, password }),
   googleAvailable: () => invoke("google_available"),
   googleSignIn: (name, hint) => invoke("google_sign_in", { name, hint: hint ?? null }),
+  setPassword: (id, password) => invoke("set_password", { id, password }),
+  removeAccount: (id) => invoke("remove_account", { id }),
+  receivedCacheSize: () => invoke("received_cache_size"),
+  clearReceivedCache: () => invoke("clear_received_cache"),
   list: (target, before, limit) => invoke("list_messages", { target, before, limit }),
   listThreads: (target, before, limit) => invoke("list_threads", { target, before, limit }),
   applyConversations: (ids, action, target) => invoke("apply_conversations", { ids, action, target }),
@@ -815,6 +826,12 @@ function fake(): Api {
     }),
     addAccount: async (config) => ({ ...config, id: 1 }),
     googleAvailable: async () => true,
+    setPassword: async (_, password) => {
+      if (password.length < 4) throw new Error("The server refused the password");
+    },
+    removeAccount: async () => {},
+    receivedCacheSize: async () => 48_200_000,
+    clearReceivedCache: async () => {},
     googleSignIn: async (name, hint) => ({
       email: hint ?? "ada@gmail.com",
       displayName: name,

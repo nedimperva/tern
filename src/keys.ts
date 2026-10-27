@@ -13,6 +13,8 @@ export type Binding = {
   run: () => unknown;
   /** Left out of the palette (arrow-key twins of letter keys and the like). */
   hidden?: boolean;
+  /** Acts again while the key is held. Only moving around does: a held `e` must not archive row after row. */
+  repeat?: boolean;
 };
 
 /** A keydown as bindings name it. Shift shows in a letter's case ("J"); for named keys it is spelt out
@@ -65,6 +67,7 @@ export function keyHandler(bindings: () => Binding[], context: () => Context, bl
     const found = all.find((b) => fits(b) && b.context) ?? all.find((b) => fits(b));
     if (found) {
       e.preventDefault();
+      if (e.repeat && !found.repeat) return;
       found.run();
       return;
     }

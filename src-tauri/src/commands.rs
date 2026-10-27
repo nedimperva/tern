@@ -61,6 +61,64 @@ pub async fn add_account(
     Ok(account)
 }
 
+/// A new password for an account, when the old one changed and the server refuses it. Checked against the server
+/// before it replaces the one in the keychain; the worker reads the keychain at each connect, so waking it is
+/// enough.
+#[tauri::command]
+pub async fn set_password(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    password: String,
+) -> Reply<()> {
+    let account = state.store.account(id).map_err(text)?.ok_or("That account is gone")?;
+    if account.config.auth == Auth::Google {
+        return Err("This account signs in with Google; sign in again instead".into());
+    }
+    sync::check_login(&account.config, &secrets::Credential::Password(password.clone()))
+        .await
+        .map_err(text)?;
+    secrets::set_password(&account.config.email, &password).map_err(text)?;
+    if state.wakers.lock().unwrap().contains_key(&id) {
+        state.wake(id);
+    } else {
+        // Started without a password (it was missing from the keychain): start now.
+        start_account(&app, &state, account);
+    }
+    Ok(())
+}
+
+/// Removes an account from Tern: its mail, folders, drafts and queued changes here, its saved password or Google
+/// sign-in, and its downloaded files. Nothing on the server changes.
+#[tauri::command]
+pub async fn remove_account(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<()> {
+    let account = state.store.account(id).map_err(text)?.ok_or("That account is gone")?;
+    let store = state.store.clone();
+    blocking(move || store.remove_account(id)).await?;
+    // Its worker wakes, finds the account gone and stops.
+    if let Some(waker) = state.wakers.lock().unwrap().remove(&id) {
+        waker.notify_one();
+    }
+    state.states.lock().unwrap().remove(&id);
+    let _ = secrets::delete_password(&account.config.email);
+    let _ = secrets::delete_tokens(&account.config.email);
+    crate::cache::forget_account(&app, id);
+    let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
+/// How much the downloaded attachments and inline images take on disk, in bytes.
+#[tauri::command]
+pub async fn received_cache_size(app: AppHandle) -> Reply<u64> {
+    blocking(move || Ok(crate::cache::size(&app))).await
+}
+
+/// Deletes the downloaded attachments and inline images; they come down again when next opened.
+#[tauri::command]
+pub async fn clear_received_cache(app: AppHandle) -> Reply<()> {
+    blocking(move || crate::cache::clear(&app).map_err(anyhow::Error::msg)).await
+}
+
 /// Whether this build can sign in with Google (it has a Google client; see build.rs).
 #[tauri::command]
 pub fn google_available() -> bool {
@@ -292,7 +350,7 @@ pub async fn send(
     at: Option<i64>,
     follow_up: Option<i64>,
 ) -> Reply<Vec<i64>> {
-    // The undo window for sending is a setting (0 to 20 s); other actions keep UNDO_SECONDS.
+    // The undo window for sending is a setting (0 to 20 s, capped at 60 here); other actions keep UNDO_SECONDS.
     let delay = delay.unwrap_or(UNDO_SECONDS).clamp(0, 60);
     // Sent from a saved draft: the message keeps the draft's Message-ID, and the draft leaves Drafts.
     if let Some(saved) = draft_id.map(|id| state.store.draft(id)).transpose().map_err(text)?.flatten() {
@@ -469,6 +527,11 @@ pub async fn contact_card(state: State<'_, AppState>, email: String) -> Reply<Co
     state.store.contact_card(&email, 5).map_err(text)
 }
 
+/// Where a received message's downloaded files are kept: per account, under a name only that message gets.
+fn received_dir(app: &AppHandle, account_id: i64, at: &tern_core::ForwardOf) -> Reply<std::path::PathBuf> {
+    Ok(crate::cache::received(app)?.join(format!("a{account_id}")).join(at.cache_key(account_id)))
+}
+
 /// The `index`-th attachment of a message as a file on disk. The first time, the message comes down from the server
 /// on a connection of its own (the one read the UI waits on the network for: Tern keeps no attachment bytes in the
 /// store); its attachments are then kept in the cache folder, so opening one again is instant and works offline.
@@ -484,7 +547,7 @@ async fn received_file(
         .map_err(text)?
         .ok_or("This message is not on the server yet; try again once it has synced")?;
     let name = listed.get(index).ok_or("That attachment is not in this message")?;
-    let base = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("received").join(id.to_string());
+    let base = received_dir(app, account_id, &at)?;
     let place = |i: usize| base.join(i.to_string()).join(mime::safe_file_name(&listed[i]));
     if place(index).is_file() {
         return Ok(place(index));
@@ -527,7 +590,9 @@ pub async fn attachment_preview(
     id: i64,
     index: usize,
 ) -> Reply<Option<String>> {
-    let Some((_, _, listed)) = state.store.attachment_source(id).map_err(text)? else { return Ok(None) };
+    let Some((account_id, at, listed)) = state.store.attachment_source(id).map_err(text)? else {
+        return Ok(None);
+    };
     let Some(name) = listed.get(index) else { return Ok(None) };
     let mime = match name.rsplit('.').next().map(str::to_ascii_lowercase).as_deref() {
         Some("png") => "image/png",
@@ -536,14 +601,7 @@ pub async fn attachment_preview(
         Some("webp") => "image/webp",
         _ => return Ok(None),
     };
-    let path = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| e.to_string())?
-        .join("received")
-        .join(id.to_string())
-        .join(index.to_string())
-        .join(mime::safe_file_name(name));
+    let path = received_dir(&app, account_id, &at)?.join(index.to_string()).join(mime::safe_file_name(name));
     match std::fs::metadata(&path) {
         Ok(meta) if meta.is_file() && meta.len() <= PREVIEW_LIMIT => {
             let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
@@ -590,16 +648,16 @@ pub async fn inline_images(
     state: State<'_, AppState>,
     id: i64,
 ) -> Reply<HashMap<String, String>> {
-    let cache = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("received").join(id.to_string());
+    let Some((account_id, at, _)) = state.store.attachment_source(id).map_err(text)? else {
+        return Ok(HashMap::new());
+    };
+    let cache = received_dir(&app, account_id, &at)?;
     let file = cache.join("inline.json");
     if let Ok(saved) = std::fs::read(&file) {
         if let Ok(images) = serde_json::from_slice(&saved) {
             return Ok(images);
         }
     }
-    let Some((account_id, at, _)) = state.store.attachment_source(id).map_err(text)? else {
-        return Ok(HashMap::new());
-    };
     let account = state
         .store
         .accounts()

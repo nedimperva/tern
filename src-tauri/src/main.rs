@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod cache;
 mod commands;
 mod desktop;
 mod diagnostics;
@@ -173,6 +174,8 @@ fn main() {
             desktop::mail_changed(app.handle());
             desktop::watch_snoozes(app.handle());
             update::watch(app.handle());
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || cache::tidy(&handle));
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -186,6 +189,10 @@ fn main() {
             commands::folders,
             commands::preset,
             commands::add_account,
+            commands::set_password,
+            commands::remove_account,
+            commands::received_cache_size,
+            commands::clear_received_cache,
             commands::google_available,
             commands::google_sign_in,
             commands::list_messages,

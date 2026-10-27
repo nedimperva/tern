@@ -138,8 +138,8 @@ policy review. No implementation or real-provider acceptance was completed by th
 - Rust: `anyhow::Result` in the engine and commands; commands return `Result<T, String>` to the UI. Serde types are
   `camelCase` on the wire. Store methods are synchronous (rusqlite behind a `Mutex`); call them from async code via
   `spawn_blocking` if they grow slow.
-- UI: SolidJS signals, no state library. Keyboard handling lives in `App.tsx`. Keep the JS bundle small (currently
-  about 34 kB); avoid adding UI frameworks.
+- UI: SolidJS signals, no state library. Keyboard handling lives in `App.tsx`. Keep the JS bundle small (about 250 kB,
+  85 kB gzipped, at 1.3); avoid adding UI frameworks.
 - Comments explain why, not what. Short, plain sentences in docs and UI text.
 
 ## Roadmap

@@ -1429,6 +1429,11 @@ span.tool {
   margin: 0;
   overflow-wrap: anywhere;
 }
+.plain a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .plain.quoted {
   margin-top: var(--s-2);
   padding: 2px 0 2px var(--s-3);

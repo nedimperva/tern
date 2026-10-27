@@ -69,6 +69,12 @@ export function DayDeck(props: {
   const onKey = (e: KeyboardEvent) => {
     if (props.paused() || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key;
+    // A held key repeats only moving between cards; a held `e` would otherwise finish card after card.
+    if (e.repeat && !["j", "k", "ArrowRight", "ArrowLeft"].includes(k)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (k === "Escape") props.onClose();
     else if (finished()) {
       if (k === "Enter") props.onClose();

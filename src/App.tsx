@@ -56,6 +56,10 @@ const SettingsPage = lazy(() => import("./components/SettingsPage").then((m) => 
 
 const PAGE = 100;
 const UNDO_MS = 5000;
+
+/** The status strip's note. `after` runs when its change is undone (unmute after undoing a mute); `undo` takes
+ * back something that is not queued work (a discarded draft). `until` is when its undo window ends. */
+type Toast = { text: string; token: number[]; after?: () => unknown; undo?: () => unknown; until: number };
 // Missing messages below this are new mail arriving, not a backlog worth a "Downloading mail" sentence.
 const BACKLOG = 100;
 /** With the "auto" open mode, from this width an open conversation sits beside the list; narrower, it covers it. */
@@ -124,14 +128,7 @@ export default function App() {
   const [focusMode, setFocusMode] = createSignal(false);
   // A downloaded update waiting for "Restart to update" (AppImage and Windows builds only).
   const [update, setUpdate] = createSignal<string | null>(null);
-  // `after` runs when the toast's change is undone (unmute after undoing a mute).
-  // `undo` takes back something that is not queued work (a discarded draft).
-  const [toast, setToast] = createSignal<{
-    text: string;
-    token: number[];
-    after?: () => unknown;
-    undo?: () => unknown;
-  } | null>(null);
+  const [toast, setToast] = createSignal<Toast | null>(null);
   const [compose, setCompose] = createSignal<ComposeInit | null>(null);
   // New mail folded into a corner card while the person reads; a new compose always opens unfolded.
   const [composeMin, setComposeMin] = createSignal(false);
@@ -570,21 +567,32 @@ export default function App() {
     }
   }
 
-  function showToast(text: string, token: number[], after?: () => unknown, undoAction?: () => unknown) {
+  // Every change still in its undo window, newest last: z takes back the newest, then the one before it, so a
+  // second action within five seconds no longer costs the first its undo.
+  let undoable: Toast[] = [];
+  const stillUndoable = () => (undoable = undoable.filter((t) => t.until > Date.now()));
+
+  function showToast(text: string, token: number[], after?: () => unknown, undoAction?: () => unknown, ms = UNDO_MS) {
+    const t = { text, token, after, undo: undoAction, until: Date.now() + ms };
+    if (token.length || undoAction) undoable = [...stillUndoable(), t];
+    putToast(t);
+  }
+
+  function putToast(t: Toast | null) {
     clearTimeout(toastTimer);
-    setToast({ text, token, after, undo: undoAction });
-    toastTimer = window.setTimeout(() => setToast(null), UNDO_MS);
+    setToast(t);
+    if (t) toastTimer = window.setTimeout(() => setToast(null), Math.max(0, t.until - Date.now()));
   }
 
   async function undo() {
-    const t = toast();
-    if (t?.undo) {
-      setToast(null);
+    const t = stillUndoable().pop();
+    // The one before it shows again, with what is left of its window.
+    putToast(undoable.at(-1) ?? null);
+    if (!t) return;
+    if (t.undo) {
       await t.undo();
       return;
     }
-    if (!t?.token.length) return;
-    setToast(null);
     const undone = await api.undo(t.token);
     if (!undone) showToast("Too late to undo", []);
     else await t.after?.();
@@ -690,7 +698,9 @@ export default function App() {
           : "Sent";
       // Undo brings the message back into compose, as it was.
       const reopen = () => setCompose({ ...sending, accountId, ...draft, draftId, focus: "body", unsaved: true });
-      showToast(done && answering ? `${text} and marked done` : text, [...token, ...doneToken], reopen);
+      // Undo send can wait up to 20 s (Settings), longer than other changes.
+      const undoMs = Math.max(UNDO_MS, settings.sendDelay * 1000);
+      showToast(done && answering ? `${text} and marked done` : text, [...token, ...doneToken], reopen, undefined, undoMs);
     } catch (e) {
       showToast(String(e), []);
     }
@@ -932,12 +942,12 @@ export default function App() {
   // MARK: Keys
 
   const bindings = createMemo<Binding[]>(() => [
-    { keys: "j", name: "Next conversation", run: () => move(1) },
-    { keys: "k", name: "Previous conversation", run: () => move(-1) },
-    { keys: "ArrowDown", name: "Next conversation", run: () => move(1), hidden: true },
-    { keys: "ArrowUp", name: "Previous conversation", run: () => move(-1), hidden: true },
-    { keys: "PageDown", name: "Down a page", run: () => move(15), hidden: true },
-    { keys: "PageUp", name: "Up a page", run: () => move(-15), hidden: true },
+    { keys: "j", name: "Next conversation", run: () => move(1), repeat: true },
+    { keys: "k", name: "Previous conversation", run: () => move(-1), repeat: true },
+    { keys: "ArrowDown", name: "Next conversation", run: () => move(1), hidden: true, repeat: true },
+    { keys: "ArrowUp", name: "Previous conversation", run: () => move(-1), hidden: true, repeat: true },
+    { keys: "PageDown", name: "Down a page", run: () => move(15), hidden: true, repeat: true },
+    { keys: "PageUp", name: "Up a page", run: () => move(-15), hidden: true, repeat: true },
     { keys: "Home", name: "First conversation", run: () => move(-focus()), hidden: true },
     { keys: "End", name: "Last conversation", run: () => move(rows().length), hidden: true },
     { keys: "Enter", name: "Open conversation", context: "list", run: () => open(current()) },
@@ -960,16 +970,16 @@ export default function App() {
     { keys: "s", name: "Star or unstar", run: toggleStar },
     { keys: "u", name: "Mark read or unread", run: toggleRead },
     { keys: "x", name: "Select conversation", context: "list", run: () => toggleSelected() },
-    { keys: "J", name: "Select and move down", context: "list", run: () => extend(1) },
-    { keys: "K", name: "Select and move up", context: "list", run: () => extend(-1) },
+    { keys: "J", name: "Select and move down", context: "list", run: () => extend(1), repeat: true },
+    { keys: "K", name: "Select and move up", context: "list", run: () => extend(-1), repeat: true },
     { keys: "Ctrl+a", name: "Select all", context: "list", run: () => setSelection(new Set(rows().map(keyOf))) },
-    { keys: "n", name: "Next message", context: "conversation", run: () => moveMessage(1) },
-    { keys: "p", name: "Previous message", context: "conversation", run: () => moveMessage(-1) },
+    { keys: "n", name: "Next message", context: "conversation", run: () => moveMessage(1), repeat: true },
+    { keys: "p", name: "Previous message", context: "conversation", run: () => moveMessage(-1), repeat: true },
     { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
-    { keys: "]", name: "Next mark", context: "conversation", run: () => jumpMark(1) },
+    { keys: "]", name: "Next mark", context: "conversation", run: () => jumpMark(1), repeat: true },
     { keys: "B", name: "Reading view or the original look", context: "conversation", run: switchReading },
     { keys: "i", name: "Show or hide the column beside the messages", context: "conversation", run: () => setSetting("readingColumn", !settings.readingColumn) },
-    { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1) },
+    { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1), repeat: true },
     { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },
     { keys: "f", name: "Forward", context: "conversation", run: () => respond(messages[messageFocus()], "forward") },
     { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
@@ -1176,7 +1186,8 @@ export default function App() {
 
   /** One sentence for every account together, naming the account when only some are in trouble. */
   const syncSentence = () => {
-    const entries = Object.entries(syncStates());
+    // A removed account's last state may linger until its worker stops.
+    const entries = Object.entries(syncStates()).filter(([id]) => accounts().some((a) => a.id === Number(id)));
     const several = entries.length > 1;
     const inState = (s: SyncState) =>
       entries.filter(([, state]) => state === s).map(([id]) => accounts().find((a) => a.id === Number(id)));
@@ -1185,7 +1196,7 @@ export default function App() {
       const who = several && refused.length === 1 && refused[0] ? refused[0].email : "The server";
       if (refused.every((a) => a?.auth === "google"))
         return { text: `Google sign-in ended${several ? ` for ${refused[0]?.email}` : ""}. Sign in again in Settings (Ctrl+,).`, tone: "danger" };
-      return { text: `${who} refused the password. Open accounts with Ctrl+\\.`, tone: "danger" };
+      return { text: `${who} refused the password. Enter the new one in Settings (Ctrl+,).`, tone: "danger" };
     }
     const unreachable = inState("offline");
     if (unreachable.length) {

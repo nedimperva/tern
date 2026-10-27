@@ -21,7 +21,7 @@ Linux and Windows · Rust · Tauri 2 · SolidJS · SQLite
 | ![Writing a message in the dark theme](docs/images/compose.png) | ![Inbox Zero: the tern's migration from pole to pole](docs/images/inbox-zero.png) |
 
 > [!WARNING]
-> **Tern is beta software (0.3.x).** It syncs and sends real mail and its author uses it every day on Linux and
+> **Tern is young software (1.x).** It syncs and sends real mail and its author uses it every day on Linux and
 > Windows, but expect rough edges. Try it with a test account, or keep another mail client around. Installers are
 > not code-signed yet.
 
@@ -187,7 +187,7 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 | `l` | put a Gmail label on or take it off |
 | `#` | move to Trash |
 | `s` | star |
-| `Shift I` / `Shift U` | mark read / unread |
+| `u` | mark read / unread |
 | `z` | undo |
 | `h` / `Shift H` | snooze / back from snooze now |
 | `Tab` | next split (Important, Other, Starred) |
@@ -232,9 +232,8 @@ src/                     the UI (SolidJS): virtualized list, thread view, compos
 ## Roadmap
 
 Delivery follows milestones: safe foundation → Linux private alpha → focused Linux beta → Windows release (1.0) →
-expansion. Tern is in the beta now, tested on Linux and Windows; [what 1.0 still needs](docs/release-1.0.md) is
-mostly testing with real accounts and testers. Optional AI (off by default), calendar and more providers come
-later. See [docs/PLAN.md](docs/PLAN.md).
+expansion. Tern 1.x is out for Linux and Windows and in the expansion stage now: optional AI (off by default)
+is in, calendar and more providers come later. See [docs/PLAN.md](docs/PLAN.md).
 
 ## Contributing
 
