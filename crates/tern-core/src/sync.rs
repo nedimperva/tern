@@ -190,7 +190,7 @@ pub async fn run_account(
     loop {
         // The account was removed (its waker fires once more so this is seen): the worker and its watch end.
         if matches!(store.account(account.id), Ok(None)) {
-            log::info!("account {}: removed; its sync stops", account.id);
+            log::info!("an account was removed; its sync stops");
             watcher.abort();
             if let Some(s) = session.take() {
                 let _ = within(s.logout()).await;
