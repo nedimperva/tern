@@ -31,6 +31,12 @@ export type Settings = {
   quietTo: string;
   /** The inbox in two splits, Important and Other, rather than one list. */
   splitInbox: boolean;
+  /** The column beside a conversation is shown (`i` hides it until shown again). */
+  readingColumn: boolean;
+  /** The column beside a conversation: when, where, what is asked, codes and links found in the newest message. */
+  readingFacts: boolean;
+  /** Newsletters (designed mail from a list) open in reading view. */
+  newsletterReading: boolean;
   /** In dark mode, designed mail (newsletters, receipts) darkened like the rest, or left in its own colours. */
   darkMail: "darken" | "original";
   /** Company logos in place of initials, fetched from each sender's own website. Off: it tells them you read. */
@@ -95,6 +101,9 @@ export const DEFAULTS: Settings = {
   quietTo: "",
   splitInbox: true,
   darkMail: "darken",
+  readingColumn: true,
+  readingFacts: true,
+  newsletterReading: true,
   senderLogos: false,
   attachmentCheck: true,
   attachmentWords: [],
@@ -143,6 +152,9 @@ export function aiRoute(s: AiSettings, feature: AiFeatureKey): AiRoute {
 /** Whether AI may be offered for this feature on this account (the engine checks again). */
 export const aiOn = (feature: "summaries" | "writing" | "replies", accountId: number | undefined) =>
   settings.ai.enabled && settings.ai[feature] && accountId != null && settings.ai.accounts.includes(accountId);
+
+/** Beside an open conversation a row takes two lines (names and date, then the subject): this much taller. */
+export const SPLIT_ROW_EXTRA = 20;
 
 export const ROW_HEIGHTS: Record<Settings["density"], number> = { dense: 36, comfortable: 44, spacious: 52 };
 

@@ -30,6 +30,8 @@ export type AiStats = { tokensToday: number; kept: Record<string, number> };
 export type AiProvider = "anthropic" | "openai" | "gemini";
 /** How someone writes from an account, learned from their sent mail when they asked. */
 export type AiStyle = { accountId: number; note: string; samples: number; updated: number };
+/** A passage marked while reading, with an optional note; `message` is its message in the conversation asked. */
+export type Mark = { id: number; message: number; text: string; note: string; created: number };
 /** What Write with AI sends: the person's own text so far (may be empty), what they ask now, the conversation it
  * answers (by Message-ID; the quote when that is not here), the talk so far, and whether it is new mail. */
 export type AiWriteInput = {
@@ -326,6 +328,8 @@ export interface Api {
   /** Snoozes these conversations until `due` (Unix seconds); they come back unread. */
   snooze(ids: number[], due: number): Promise<void>;
   unsnooze(ids: number[]): Promise<void>;
+  /** Puts the conversations on the Read later shelf, or takes them off it. */
+  readLater(ids: number[], on: boolean): Promise<void>;
   /** What a typed snooze time means ("tomorrow 9am", "3h", "mon"), in Unix seconds; null if unreadable or past. */
   parseWhen(text: string): Promise<number | null>;
   /** Saved snippets, the most used first. */
@@ -424,6 +428,10 @@ export interface Api {
   aiLearnStyle(accountId: number): Promise<AiLearned>;
   /** Saves the person's own edit of the note; an empty one removes it. */
   aiSetStyle(accountId: number, note: string): Promise<void>;
+  marks(messageIds: number[]): Promise<Mark[]>;
+  addMark(messageId: number, text: string, note: string): Promise<Mark>;
+  setMarkNote(id: number, note: string): Promise<void>;
+  deleteMark(id: number): Promise<void>;
 }
 
 // Everything that must be saved before the window goes (an open compose), and whether closing only hides it. One
@@ -547,6 +555,7 @@ const tauri: Api = {
   splitUnread: () => invoke("split_unread"),
   snooze: (ids, due) => invoke("snooze", { ids, due }),
   unsnooze: (ids) => invoke("unsnooze", { ids }),
+  readLater: (ids, on) => invoke("read_later", { ids, on }),
   parseWhen: (text) => invoke("parse_when", { text, offset: -new Date().getTimezoneOffset() }),
   snippets: () => invoke("snippets"),
   saveSnippet: (snippet) => invoke("save_snippet", { snippet }),
@@ -591,6 +600,10 @@ const tauri: Api = {
   aiStyle: (accountId) => invoke("ai_style", { accountId }),
   aiLearnStyle: (accountId) => invoke("ai_learn_style", { accountId }),
   aiSetStyle: (accountId, note) => invoke("ai_set_style", { accountId, note }),
+  marks: (messageIds) => invoke("marks", { messageIds }),
+  addMark: (messageId, text, note) => invoke("add_mark", { messageId, text, note }),
+  setMarkNote: (id, note) => invoke("set_mark_note", { id, note }),
+  deleteMark: (id) => invoke("delete_mark", { id }),
 };
 
 /** A channel the engine streams text through. */
@@ -611,7 +624,10 @@ function newsletter(subject: string): string {
 <tr><td><img width="600" alt="Mountains" src="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="160"><defs><linearGradient id="g" x2="1"><stop offset="0" stop-color="#d7b58a"/><stop offset=".6" stop-color="#a8c3a0"/><stop offset="1" stop-color="#6f9c8a"/></linearGradient></defs><rect width="600" height="160" fill="url(#g)"/></svg>')}"></td></tr>
 <tr><td style="padding:20px 28px;font-size:16px;line-height:1.6"><p>This week we walked the old railway line from Mostar toward Konjic, now a gravel trail along the Neretva.</p>
 <p>Below: three day trips, where to sleep, and what the <b>October weather</b> really does up there.</p>
-<p><a href="https://example.com/guide" style="display:inline-block;background:#0f4c3a;color:#ffffff;padding:10px 18px;text-decoration:none;font-family:Arial">Read the full guide</a></p></td></tr>
+<p><a href="https://example.com/guide" style="display:inline-block;background:#0f4c3a;color:#ffffff;padding:10px 18px;text-decoration:none;font-family:Arial">Read the full guide</a></p>
+<h2 style="font-size:19px">Three day trips</h2><p>Start at Jablanica and follow the river south; the <a href="https://example.com/trips/jablanica">Jablanica loop</a> takes four hours.</p>
+<h2 style="font-size:19px">Where to sleep</h2><p>Two guesthouses stay open in autumn. <a href="https://example.com/stay">Our list, with prices</a>.</p>
+<h2 style="font-size:19px">The weather</h2><p>Mornings are cold, afternoons warm. The <a href="https://example.com/weather">week ahead</a> looks dry.</p></td></tr>
 <tr><td style="background:#f2efe7;color:#777777;font:12px Arial;padding:14px 28px">You get this because you signed up at fieldnotes.example. <a href="https://example.com/u" style="color:#777777">Unsubscribe</a></td></tr>
 </table></td></tr></table>`;
 }
@@ -662,7 +678,12 @@ function fake(): Api {
     const subject = `${words[i % words.length]} ${words[(i * 7) % words.length]} #${size - i}`;
     // Replies quote what they answer, as mail does, so folding can be worked on.
     const quote = i % 5 > 0 && i % 5 < 3 ? `\n\nOn Mon, ${names[(i + 1) % names.length]} wrote:\n> Earlier message about ${subject}.\n> ${words.join(" ")}.` : "";
-    const body = `Hi,\n\nThis is about the ${subject}. ${words.join(" ")}.\n\nThanks,\n${name.split(" ")[0]}\n-- \n${name}, Example Corp${quote}`;
+    // The newest conversation names a day, a place, an ask and a code, for the column beside it (ui.md §4.2a).
+    const day = new Date((now + 10 * 86_400) * 1000).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+    const body =
+      i === 0
+        ? `Hi,\n\nThe offsite is set for ${day}, 10:00 to 16:00, at Studio 4, Keizersgracht 120, Amsterdam. Lunch is on us.\n\nThe plan for the day is in the offsite doc: https://docs.example.com/offsite\n\nCan you bring the Q3 deck and walk us through it in 20 minutes?\n\nTrain tickets are booked; the booking code is QX7-44K.\n\nSee you there,\n${name.split(" ")[0]}`
+        : `Hi,\n\nThis is about the ${subject}. ${words.join(" ")}.\n\nThanks,\n${name.split(" ")[0]}\n-- \n${name}, Example Corp${quote}`;
     return {
       id: i + 1,
       accountId: 1,
@@ -747,6 +768,7 @@ function fake(): Api {
   const otherSenders = new Map<string, boolean>();
   const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
   const snoozed = new Map<string, number>();
+  const shelved = new Set<string>();
   const inInbox = (m: ThreadMessage) => folders.find((f) => f.id === m.folderId)?.role === "inbox";
   const labelsOf = (m: ThreadMessage) => {
     const n = Number(m.threadId.slice(1));
@@ -756,17 +778,22 @@ function fake(): Api {
     if ("folder" in t) return m.folderId === t.folder;
     if ("label" in t) return labelsOf(m).length > 0;
     const asleep = snoozed.has(m.threadId);
+    const away = asleep || shelved.has(m.threadId);
     switch (t.role) {
       case "inbox":
-        return inInbox(m) && !asleep;
+        return inInbox(m) && !away;
       case "starred":
-        return m.flagged && inInbox(m) && !asleep;
+        return m.flagged && inInbox(m) && !away;
       case "important":
-        return inInbox(m) && !asleep && !isOther(m);
+        return inInbox(m) && !away && !isOther(m);
       case "bulk":
-        return inInbox(m) && !asleep && isOther(m);
+        return inInbox(m) && !away && isOther(m);
       case "snoozed":
         return inInbox(m) && asleep;
+      case "later":
+        return inInbox(m) && !asleep && shelved.has(m.threadId);
+      case "marked":
+        return fakeMarks.some((k) => k.message === m.id) && folders.find((f) => f.id === m.folderId)?.role !== "trash";
       default:
         return folders.find((f) => f.id === m.folderId)?.role === t.role;
     }
@@ -851,10 +878,14 @@ function fake(): Api {
       return api.apply(chosen, action);
     },
     search: async (query, limit) => {
-      // Words only; the filters live in the engine. Shown as partial so the note can be worked on here.
-      const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      // Words and is:marked only; the filters live in the engine. Shown as partial so the note can be worked on here.
+      let terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      const marked = terms.includes("is:marked");
+      terms = terms.filter((t) => t !== "is:marked");
+      const notes = (m: ThreadMessage) => fakeMarks.filter((k) => k.message === m.id).map((k) => `${k.text} ${k.note}`).join(" ");
       const rows = messages
-        .filter((m) => terms.every((t) => `${m.subject} ${m.fromName} ${m.bodyText}`.toLowerCase().includes(t)))
+        .filter((m) => !marked || fakeMarks.some((k) => k.message === m.id))
+        .filter((m) => terms.every((t) => `${m.subject} ${m.fromName} ${m.bodyText} ${notes(m)}`.toLowerCase().includes(t)))
         .slice(0, limit)
         .map(row);
       return { rows, partial: terms.length > 0 };
@@ -1012,7 +1043,7 @@ function fake(): Api {
       for (const m of messages.filter((m) => ids.includes(m.id))) otherSenders.set(m.fromAddr, other);
     },
     splitUnread: async () => {
-      const unread = messages.filter((m) => !m.seen && inInbox(m) && !snoozed.has(m.threadId));
+      const unread = messages.filter((m) => !m.seen && inInbox(m) && !snoozed.has(m.threadId) && !shelved.has(m.threadId));
       const other = unread.filter(isOther).length;
       return [unread.length - other, other];
     },
@@ -1021,6 +1052,9 @@ function fake(): Api {
     },
     unsnooze: async (ids) => {
       for (const m of messages.filter((m) => ids.includes(m.id))) snoozed.delete(m.threadId);
+    },
+    readLater: async (ids, on) => {
+      for (const m of messages.filter((m) => ids.includes(m.id))) (on ? shelved.add(m.threadId) : shelved.delete(m.threadId));
     },
     // Enough to try the picker: a number of hours, or tomorrow at 8.
     parseWhen: async (text) => {
@@ -1196,6 +1230,20 @@ function fake(): Api {
         },
       };
     },
+    marks: async (messageIds) => fakeMarks.filter((m) => messageIds.includes(m.message)),
+    addMark: async (messageId, text, note) => {
+      const mark = { id: fakeMarks.length + 1, message: messageId, text: text.trim(), note: note.trim(), created: Math.floor(Date.now() / 1000) };
+      fakeMarks.push(mark);
+      return mark;
+    },
+    setMarkNote: async (id, note) => {
+      const mark = fakeMarks.find((m) => m.id === id);
+      if (mark) mark.note = note.trim();
+    },
+    deleteMark: async (id) => {
+      const at = fakeMarks.findIndex((m) => m.id === id);
+      if (at >= 0) fakeMarks.splice(at, 1);
+    },
     aiSetStyle: async (accountId, note) => {
       if (!note.trim()) fakeStyles.delete(accountId);
       else fakeStyles.set(accountId, { ...(fakeStyles.get(accountId) ?? { accountId, samples: 0 }), note, updated: Math.floor(Date.now() / 1000) });
@@ -1230,6 +1278,7 @@ function fake(): Api {
 
 const fakeSummaries = new Map<number, AiSummary>();
 const fakeStyles = new Map<number, AiStyle>();
+const fakeMarks: Mark[] = [];
 async function stream(text: string, onText: (t: string) => void) {
   await new Promise((r) => setTimeout(r, 600));
   for (const word of text.match(/\S+\s*/g) ?? []) {

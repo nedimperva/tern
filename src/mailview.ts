@@ -225,12 +225,34 @@ export function darken(doc: Document) {
 
 // MARK: Reading view
 
+/** A link that says what to do rather than what it is ("Read more", "Add article to Reader", "View online"). */
+export const ACTION_WORDS =
+  /^[^\p{L}\p{N}]*(add|save|open|view|read|learn|see|click|tap|get|download|watch|listen|share|forward|reply|more|here|link|continue|go|sign|log|buy|shop|order|start|try|join|register|subscribe)\b.{0,32}$|^(here|this|link|more)$/iu;
+
+/** A line a newsletter sets as a title without a heading tag: large type (18 px or more) or bold all through, short,
+ * and not a sentence. */
+function titleLike(el: Element): boolean {
+  const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+  if (text.length < 4 || text.length > 140 || /[.:,;!]$/.test(text) || ACTION_WORDS.test(text)) return false;
+  // Its own style, or that of the element holding all its words.
+  return [el, ...el.querySelectorAll("*")]
+    .filter((e) => (e.textContent ?? "").replace(/\s+/g, " ").trim() === text)
+    .some((e) => {
+      const style = e.getAttribute("style") ?? "";
+      const size = /font-size:\s*(\d+(?:\.\d+)?)px/i.exec(style);
+      return (size && Number(size[1]) >= 18) || /^(B|STRONG)$/.test(e.tagName) || /font-weight:\s*(bold|[6-9]00)/i.test(style);
+    });
+}
+
 const KEEP_INLINE = new Set(["A", "B", "STRONG", "I", "EM", "U", "BR", "SPAN", "FONT", "SMALL", "SUP", "SUB", "CODE", "ABBR", "LABEL"]);
 const BLOCKS = "h1,h2,h3,h4,h5,h6,p,li,td,th,div,blockquote,pre";
 
 /** A designed mail's words, headings, links and pictures, without its layout: for reading a long newsletter in
  * Tern's type. Small pictures (spacers, icons, tracking pixels) are dropped. */
-export function readingView(html: string): string {
+export function readingView(html: string, title = ""): string {
+  // The title the reader shows above the mail, when the mail repeats it as a heading.
+  const flat = (t: string) => t.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const same = (t: string) => !!title && flat(t) === flat(title);
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("style, script, head, title, meta, [hidden]").forEach((el) => el.remove());
   const out: string[] = [];
@@ -249,33 +271,48 @@ export function readingView(html: string): string {
   };
   const push = (tag: string, html: string) => {
     const text = html.replace(/\s+/g, " ").trim();
+    if (tag !== "p" && same(text)) return;
+    // The list's footer ("You get this because… Unsubscribe"): the header's icon already offers to leave.
+    if (/<a [^>]*>[^<]*(unsubscribe|odjav|preferences)[^<]*<\/a>/i.test(text) && text.length < 600) return;
     if (text.replace(/<[^>]+>|<br>/g, "").trim()) out.push(`<${tag}>${text}</${tag}>`);
   };
   const walk = (el: Element) => {
     let run = "";
+    // The nodes of the run, to tell a title set in large or bold type (a linked article's name) from a paragraph.
+    let nodes: Node[] = [];
+    const flush = () => {
+      const box = doc.createElement("div");
+      for (const n of nodes) box.append(n.cloneNode(true));
+      push(nodes.some((n) => n instanceof Element) && titleLike(box) ? "h2" : "p", run);
+      run = "";
+      nodes = [];
+    };
     for (const node of el.childNodes) {
       if (node.nodeType === Node.TEXT_NODE || (node instanceof Element && KEEP_INLINE.has(node.tagName) && !nested(node))) {
         run += fragment(node);
+        nodes.push(node);
         continue;
       }
       if (!(node instanceof Element)) continue;
-      push("p", run);
-      run = "";
+      flush();
       if (node.tagName === "IMG") {
         const w = Number.parseInt(node.getAttribute("width") ?? "0", 10);
         const src = node.getAttribute("src") ?? "";
         if ((w === 0 || w >= 200) && /^(https?|data|cid):/i.test(src)) {
           out.push(`<p><img src="${escape(src)}" alt="${escape(node.getAttribute("alt") ?? "")}"></p>`);
         }
-      } else if (/^H[1-6]$/.test(node.tagName) && !nested(node)) {
-        push(/^H[1-3]$/.test(node.tagName) ? "h2" : "h3", fragment(node));
+      } else if (/^H[1-6]$/.test(node.tagName) && (!nested(node) || (node.textContent ?? "").trim().length <= 140)) {
+        // A heading with blocks inside (a table, a div) still reads as its words.
+        push(/^H[1-3]$/.test(node.tagName) ? "h2" : "h3", nested(node) ? escape(node.textContent ?? "") : fragment(node));
+      } else if (!nested(node) && titleLike(node)) {
+        push("h2", fragment(node));
       } else if (node.tagName === "LI" && !nested(node)) {
         push("p", `• ${fragment(node)}`);
       } else {
         walk(node);
       }
     }
-    push("p", run);
+    flush();
   };
   if (doc.body) walk(doc.body);
   return out.join("\n");

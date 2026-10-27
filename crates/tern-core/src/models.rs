@@ -163,6 +163,19 @@ pub struct DayStart {
     pub rest: i64,
 }
 
+/// A passage the person marked while reading, with an optional note. Only on this computer.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Mark {
+    pub id: i64,
+    /// The message it is in (its row in the conversation that asked).
+    pub message: i64,
+    pub text: String,
+    pub note: String,
+    /// Unix seconds.
+    pub created: i64,
+}
+
 /// How someone writes from an account (package 10), as a note the AI follows when they ask it to.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]

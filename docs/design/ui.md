@@ -95,7 +95,10 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - **Window minimum** 720 × 480. At < 960 px wide the conversation always opens full-width over the list.
 - **Rail** (`Ctrl+\`): 240 px slide-over from the left with a scrim; accounts (avatar dot + name + unread), labels, settings. It never stays open by default. On ≥ 1440 px the user can pin it (setting).
 - **Split bar**: tabs with unread counts, active tab has a 2 px `--accent` underline; search field right-aligned (`/` focuses it; it expands to 320 px on focus).
-- **List**: full width when nothing is open. With the conversation open in split mode the list narrows to 40 % (min 360 px) and rows drop the snippet.
+- **List**: full width when nothing is open. With the conversation open in split mode the list is a 340 px column
+  (canvas "Tern reading ideas", R2) of two-line rows, 20 px taller: names, chips, icons and the date on top, the
+  subject and labels under them, no snippet. Its search is a "/" key after the tabs that spreads over the header
+  when focused; `Ctrl K` is not shown there (the key still works).
 - **Conversation pane**: opens with `Enter`, closes with `Esc`. Mode setting: `split` (beside the list) or `full` (over it). Default `split` ≥ 1200 px, else `full`.
 - **Status strip**: left = sync state sentence with a dot (`--ok/--warn/--danger`), right = the current undo toast or the three most useful keys for the current context, shown after 2 s of inactivity and hidden on the next keypress.
   A downloaded update shows as a filled `--accent` pill ("Update ready · Restart"), the one control in the strip
@@ -186,6 +189,64 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   text, each person matched in the contacts on this computer (the contacts never go to the AI): a found one on
   `--accent-soft` with the address, "also …" to pick another with the same name, "No one called “Zed” in your
   contacts" on `--warn-soft`. Tab fills the fields (Subject only when empty).
+
+### 4.2a Beside the messages: what the newest message holds
+
+Picked from the canvas "Tern reading ideas" (R2, R5, R6), 2026-10-27. A column 260 px wide beside the messages when
+the pane is 880 px or wider, sticky as the messages scroll (its own scroll bar shows only on hover); in a narrower
+pane the same sections sit in a row above the messages. The messages keep their place: they stay centred as they
+would be without the column, which sits against the pane's right edge; a narrower pane gives up the left space
+first.
+An inline reply lines up with the messages. It shows only what it found. Beside the messages it stays when it found nothing, saying so with how marks are made, so it does not come and go between conversations; above them (a narrow pane) it shows only when it has something. `i`, the header's
+panel icon or the column's own × hides it, for every conversation until shown again (`readingColumn`).
+
+- **In this message** (Settings → Reading → In this message, on by default), from the newest message's own words
+  (no quote, no signature), found on this computer by `src/facts.ts`, in English and Bosnian/Croatian/Serbian:
+  When (a day named in the text, with the times beside it; "Snooze until then" brings the mail back an hour before,
+  or at 08:00 on a day with no time), Where (a street address; "Open the map" opens OpenStreetMap in the browser),
+  Asked of you (up to three questions put to the person, and their "please"s, on `--accent-soft`; not for your
+  own mail or a list's), and codes to copy (booking, order, tracking, confirmation numbers). Cards on `--soft`,
+  `--r-lg`, a small label over the value.
+- **Links** (up to 6, 12 in a newsletter; five shown, then "N more"): links that say what they are, each its words
+  and its host; a click opens it in the browser. Left out: the quote and signature's links (seen before in a long
+  thread), the footer's (unsubscribe, privacy, social), actions ("Read more", "Add article to Reader"), words used
+  for links to different places, and pictures with no words. One per address (tracking parameters aside) and one
+  per title.
+- A quiet line closes the column: "Found on this computer, from the words of the mail."
+
+### 4.2b Marks and notes
+
+- Selecting text in a message shows a dark bar over it (`--tip`): Quote in reply (`R`), Mark, Note, Copy. Pressing
+  it never takes the selection away first.
+- A mark is drawn in the message with the CSS Custom Highlight API (`--mark-soft`; the current one in the accent),
+  so the mail's own markup is never touched. Marks are kept by the message's Message-ID (schema v27, `marks`), so
+  Gmail's copies in two folders show the same marks; only on this computer.
+- "Your marks · N" in the column lists them in the order they were made (`--mark-soft` cards), each with a note
+  field ("Add a note"; Enter or Esc saves) and a remove button on hover. A click, `]` or `[` goes to a mark,
+  opening its message when it is folded. A narrow pane shows only the count and the keys.
+- **Marks** (`g m`, the rail): every conversation with a mark, in any folder but the bin, newest first. Its row
+  reads as what was marked and the notes ("quote" note · …) instead of the message's start. Search finds the words
+  of marks and notes too, and `is:marked` keeps to marked mail.
+
+### 4.2c Newsletters as reading
+
+- Mail its sender designed and sent to a list (List-Unsubscribe) opens in reading view (Settings → Reading →
+  Newsletters, on by default); the book icon still switches to the original.
+- Reading view leaves out the list's footer (a short block with an unsubscribe or preferences link): the header's
+  leave icon already offers it.
+- The column shows **In this issue**, the issue's headings (a click scrolls to one), and **Links in this issue**.
+  Headings are the mail's own, or lines it sets as titles without a heading tag: 18 px type or bold all through,
+  short and not a sentence (a digest's linked article names). One-word lines (the sender's name) and the subject itself are
+  left out of the list.
+- The reader bar (canvas board R6) takes the header's place: the sender, then "8 min read · 4 parts" in `--fg-1`,
+  "Original look" (`Shift B`, on `--soft`), and the conversation's tools (shield, column, leave, Done, `…`,
+  close). Under it the subject in the reading face, 34 px bold, with its labels; the byline and the mail's own copy
+  of the subject as a heading are left out. `Shift B` switches reading view in any designed mail.
+- **Read later** (`Shift L`, the reader bar's button, the `…` menu): the conversation goes on the shelf, out of the
+  inbox's lists, counts and notifications, with Undo. `g r` or the rail's "Read later" lists the shelf; there the
+  key and button say "Back to the inbox". Done from the shelf takes it off too. Like snooze it is Tern's alone:
+  the conversation stays in the server's inbox, and a reply from someone else brings it back (schema v28,
+  `read_later`).
 
 ### 4.3 Command palette (`Ctrl+K`)
 

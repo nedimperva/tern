@@ -11,7 +11,10 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 26;
+const SCHEMA_VERSION: i64 = 28;
+
+/// What a mark is kept by: the message's Message-ID, or its row for mail without one.
+const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -447,6 +450,22 @@ fn migrate(conn: &Connection) -> Result<()> {
                                          note TEXT NOT NULL, samples INTEGER NOT NULL DEFAULT 0,
                                          updated INTEGER NOT NULL);"
             }
+            // Passages the person marked while reading (package 05, reading R5), each with an optional note. Kept
+            // by the message's Message-ID, so a message in two folders (Gmail labels) shows the same marks.
+            26 => {
+                "CREATE TABLE marks (id INTEGER PRIMARY KEY,
+                                     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                     message_key TEXT NOT NULL, text TEXT NOT NULL,
+                                     note TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL);
+                 CREATE INDEX marks_by_message ON marks (account_id, message_key);"
+            }
+            // The Read later shelf (package 05, reading R6): conversations kept to read later, out of the inbox's
+            // lists until taken off or answered. Tern's alone, like snooze.
+            27 => {
+                "CREATE TABLE read_later (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                          thread_id TEXT NOT NULL, added INTEGER NOT NULL,
+                                          PRIMARY KEY (account_id, thread_id));"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -610,6 +629,10 @@ pub const IMPORTANT: &str = "important";
 /// The Other split. Not "other": that is the role of every folder without a special one.
 pub const OTHER: &str = "bulk";
 pub const SNOOZED: &str = "snoozed";
+/// The Read later shelf.
+pub const LATER: &str = "later";
+/// Conversations with something marked in them, in any folder.
+pub const MARKED: &str = "marked";
 
 /// The message goes to Other: its sender was moved there, or (with no choice made) it is bulk mail.
 const IS_OTHER: &str = "COALESCE((SELECT s.other FROM sender_splits s
@@ -620,6 +643,18 @@ const FOLLOW_UP_THREAD: &str = "(SELECT f.thread_id FROM messages f
 /// Its conversation is snoozed.
 const IS_SNOOZED: &str = "EXISTS (SELECT 1 FROM reminders r
                                  WHERE r.account_id = m.account_id AND r.thread_id = m.thread_id AND r.kind = 'snooze')";
+
+/// Its conversation is on the Read later shelf, and nobody has written in it since it was put there: a reply from
+/// someone else takes it off, back to the inbox.
+const IS_LATER: &str = "EXISTS (SELECT 1 FROM read_later l
+                               WHERE l.account_id = m.account_id AND l.thread_id = m.thread_id
+                                 AND NOT EXISTS (SELECT 1 FROM messages x JOIN accounts a ON a.id = x.account_id
+                                                 WHERE x.account_id = l.account_id AND x.thread_id = l.thread_id
+                                                   AND x.date > l.added AND lower(x.from_addr) <> lower(a.email)))";
+
+/// The message (any copy of it) has marks. Taken from the marks, so a few marks in a big mailbox stay quick.
+const IS_MARKED: &str = "m.id IN (SELECT x.id FROM marks k JOIN messages x
+                                  ON x.account_id = k.account_id AND COALESCE(x.message_id, '#' || x.id) = k.message_key)";
 
 fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
     let inbox = format!("m.folder_id IN (SELECT id FROM folders WHERE role = ?{n})");
@@ -638,13 +673,21 @@ fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
         }
         ListTarget::Role(role) => role.as_str(),
     };
-    // Snoozed conversations stay in the inbox folder (snoozing is Tern's alone) but out of its lists.
+    // Snoozed and shelved conversations stay in the inbox folder (both are Tern's alone) but out of its lists.
     let filter = match role {
-        "inbox" => format!("{inbox} AND NOT {IS_SNOOZED}"),
-        STARRED => format!("m.flagged AND {inbox} AND NOT {IS_SNOOZED}"),
-        IMPORTANT => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_OTHER}"),
-        OTHER => format!("{inbox} AND NOT {IS_SNOOZED} AND {IS_OTHER}"),
+        "inbox" => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"),
+        STARRED => format!("m.flagged AND {inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"),
+        IMPORTANT => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND NOT {IS_OTHER}"),
+        OTHER => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND {IS_OTHER}"),
         SNOOZED => format!("{inbox} AND {IS_SNOOZED}"),
+        LATER => format!("{inbox} AND {IS_LATER} AND NOT {IS_SNOOZED}"),
+        // Wherever the conversation went, except the bin.
+        MARKED => {
+            return (
+                format!("{IS_MARKED} AND m.folder_id NOT IN (SELECT id FROM folders WHERE role = ?{n})"),
+                Value::Text("trash".into()),
+            )
+        }
         _ => return (inbox, Value::Text(role.into())),
     };
     (filter, Value::Text("inbox".into()))
@@ -882,6 +925,65 @@ impl Store {
 
     pub fn delete_ai_style(&self, account_id: i64) -> Result<()> {
         self.conn().execute("DELETE FROM ai_styles WHERE account_id = ?1", [account_id])?;
+        Ok(())
+    }
+
+    // MARK: Marks (reading)
+
+    /// The marks on these messages, in the order they were made. `message` is the first of the given ids that
+    /// carries the marked message.
+    pub fn marks(&self, message_ids: &[i64]) -> Result<Vec<Mark>> {
+        if message_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn();
+        let ids = message_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let mut stmt = conn.prepare(&format!(
+            "SELECT k.id, MIN(m.id), k.text, k.note, k.created FROM marks k
+             JOIN messages m ON m.account_id = k.account_id AND {KEY} = k.message_key
+             WHERE m.id IN ({ids}) GROUP BY k.id ORDER BY k.created, k.id"
+        ))?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Mark {
+                id: r.get(0)?,
+                message: r.get(1)?,
+                text: r.get(2)?,
+                note: r.get(3)?,
+                created: r.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn add_mark(&self, message_id: i64, text: &str, note: &str) -> Result<Mark> {
+        let conn = self.conn();
+        let created = now();
+        conn.execute(
+            &format!(
+                "INSERT INTO marks (account_id, message_key, text, note, created)
+                 SELECT m.account_id, {KEY}, ?2, ?3, ?4 FROM messages m WHERE m.id = ?1"
+            ),
+            params![message_id, text, note, created],
+        )?;
+        if conn.changes() == 0 {
+            bail!("That message is no longer here.");
+        }
+        Ok(Mark {
+            id: conn.last_insert_rowid(),
+            message: message_id,
+            text: text.into(),
+            note: note.into(),
+            created,
+        })
+    }
+
+    pub fn set_mark_note(&self, id: i64, note: &str) -> Result<()> {
+        self.conn().execute("UPDATE marks SET note = ?2 WHERE id = ?1", params![id, note])?;
+        Ok(())
+    }
+
+    pub fn delete_mark(&self, id: i64) -> Result<()> {
+        self.conn().execute("DELETE FROM marks WHERE id = ?1", [id])?;
         Ok(())
     }
 
@@ -1683,6 +1785,28 @@ impl Store {
             latests.push(latest);
         }
         let mut rows = conversations(&conn, latests)?;
+        // On the Marks list a conversation reads as what was marked in it and the notes, newest first.
+        if matches!(target, ListTarget::Role(r) if r == MARKED) {
+            let mut stmt = conn.prepare_cached(
+                "SELECT k.text, k.note FROM marks k
+                 WHERE k.account_id = ?1 AND k.message_key IN (
+                     SELECT COALESCE(x.message_id, '#' || x.id) FROM messages x WHERE x.account_id = ?1 AND x.thread_id = ?2)
+                 ORDER BY k.created DESC, k.id DESC",
+            )?;
+            for t in &mut rows {
+                let marks: Vec<String> = stmt
+                    .query_map(params![t.latest.account_id, t.latest.thread_id], |r| {
+                        let (text, note): (String, String) = (r.get(0)?, r.get(1)?);
+                        Ok(if note.is_empty() {
+                            format!("\u{201c}{text}\u{201d}")
+                        } else {
+                            format!("\u{201c}{text}\u{201d} {note}")
+                        })
+                    })?
+                    .collect::<rusqlite::Result<_>>()?;
+                t.latest.snippet = marks.join("  \u{b7}  ");
+            }
+        }
         // Follow-ups that came due sit at the top of the inbox (and Important) until done or answered.
         let inbox = matches!(target, ListTarget::Role(r) if r == "inbox" || r == IMPORTANT);
         if inbox && before.is_none() {
@@ -1745,7 +1869,7 @@ impl Store {
              WHERE m.id > ?1 AND m.id <= ?3 AND m.date >= ?2 AND f.role = 'inbox' AND NOT m.seen
                AND lower(m.from_addr) <> lower(a.email)
                AND NOT EXISTS (SELECT 1 FROM muted u WHERE u.account_id = m.account_id AND u.thread_id = m.thread_id)
-               AND (?4 OR NOT {IS_OTHER}) AND NOT {IS_SNOOZED}
+               AND (?4 OR NOT {IS_OTHER}) AND NOT {IS_SNOOZED} AND NOT {IS_LATER}
              ORDER BY m.id"
         ))?;
         let mail = stmt
@@ -1789,6 +1913,23 @@ impl Store {
         )?;
         for id in ids {
             stmt.execute(params![id, due, now])?;
+        }
+        Ok(())
+    }
+
+    /// Puts the conversations of these messages on the Read later shelf, or takes them off it.
+    pub fn read_later(&self, ids: &[i64], on: bool, now: i64) -> Result<()> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(if on {
+            "INSERT INTO read_later (account_id, thread_id, added)
+             SELECT account_id, thread_id, ?2 FROM messages WHERE id = ?1
+             ON CONFLICT (account_id, thread_id) DO UPDATE SET added = excluded.added"
+        } else {
+            "DELETE FROM read_later
+             WHERE (account_id, thread_id) = (SELECT account_id, thread_id FROM messages WHERE id = ?1) AND ?2 = ?2"
+        })?;
+        for id in ids {
+            stmt.execute(params![id, now])?;
         }
         Ok(())
     }
@@ -1877,7 +2018,7 @@ impl Store {
             &format!(
                 "SELECT count(*) FILTER (WHERE NOT {IS_OTHER}), count(*) FILTER (WHERE {IS_OTHER})
                  FROM messages m JOIN folders f ON f.id = m.folder_id
-                 WHERE f.role = 'inbox' AND NOT m.seen AND NOT {IS_SNOOZED}"
+                 WHERE f.role = 'inbox' AND NOT m.seen AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"
             ),
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
@@ -2700,13 +2841,14 @@ impl Store {
         }
         conditions.extend(q.conditions);
         values.extend(q.params);
+        let noted = self.noted(&conn, &q.words, &conditions, &values, limit)?;
         let mut rows = None;
         if !q.fts.is_empty() {
             rows = self.newest_matches(&conn, &q.fts, &conditions, &values, limit)?;
             conditions.insert(0, "messages_fts MATCH ?".to_string());
             values.insert(0, Value::Text(q.fts.clone()));
         }
-        let rows = match rows {
+        let mut rows = match rows {
             Some(rows) => rows,
             None => {
                 let mut sql = format!("SELECT {ROW} FROM messages m");
@@ -2725,6 +2867,13 @@ impl Store {
                 rows
             }
         };
+        // Messages whose marks or notes hold the words, among what the words found in the mail itself.
+        if !noted.is_empty() {
+            let found: HashSet<i64> = rows.iter().map(|r| r.id).collect();
+            rows.extend(noted.into_iter().filter(|r| !found.contains(&r.id)));
+            rows.sort_by_key(|a| std::cmp::Reverse((a.date, a.id)));
+            rows.truncate(limit as usize);
+        }
         // Words are only found in bodies that are here; mail older than the download window has headers alone.
         let words = !q.fts.is_empty() || !q.fts_not.is_empty();
         let partial = words
@@ -2744,6 +2893,37 @@ impl Store {
             }
         }
         Ok(SearchResult { rows: kept, partial })
+    }
+
+    /// Messages with a mark or note that holds every word (as typed, any case), and that pass the filters. Empty
+    /// without words, or when the words are joined with OR.
+    fn noted(
+        &self,
+        conn: &Connection,
+        words: &[String],
+        conditions: &[String],
+        values: &[Value],
+        limit: i64,
+    ) -> Result<Vec<MessageRow>> {
+        if words.is_empty() {
+            return Ok(Vec::new());
+        }
+        let found = vec!["instr(lower(k.text || ' ' || k.note), ?) > 0"; words.len()].join(" AND ");
+        let mut wheres = vec![format!(
+            "m.id IN (SELECT x.id FROM marks k JOIN messages x
+                      ON x.account_id = k.account_id AND COALESCE(x.message_id, '#' || x.id) = k.message_key
+                      WHERE {found})"
+        )];
+        wheres.extend(conditions.iter().cloned());
+        let mut all: Vec<Value> = words.iter().map(|w| Value::Text(w.to_lowercase())).collect();
+        all.extend(values.iter().cloned());
+        all.push(Value::Integer(limit));
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {ROW} FROM messages m WHERE {} ORDER BY m.date DESC, m.id DESC LIMIT ?",
+            wheres.join(" AND ")
+        ))?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(all), row)?.collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
     }
 
     /// Search words found in much of the mailbox. Joining every match and sorting them by date took 70 ms when a
@@ -4065,6 +4245,89 @@ Engines Ltd"
     }
 
     #[test]
+    fn migration_27_keeps_marks_by_message_id() {
+        let (store, account, inbox, _) = setup();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 26);
+        let store = Store::init(conn).unwrap();
+        store
+            .insert_messages(account, inbox, &[message(1, "Contract", 10), message(2, "Other", 20)])
+            .unwrap();
+        let ids: Vec<i64> = {
+            let conn = store.conn();
+            let mut stmt =
+                conn.prepare("SELECT id FROM messages WHERE account_id = ?1 ORDER BY date").unwrap();
+            stmt.query_map([account], |r| r.get(0)).unwrap().map(Result::unwrap).collect()
+        };
+        let mark = store.add_mark(ids[0], "two months", "").unwrap();
+        store.add_mark(ids[1], "elsewhere", "").unwrap();
+        store.set_mark_note(mark.id, "Check with legal").unwrap();
+        let marks = store.marks(&ids[..1]).unwrap();
+        assert_eq!(marks.len(), 1, "only the marks on the messages asked for");
+        assert_eq!(
+            (marks[0].text.as_str(), marks[0].note.as_str(), marks[0].message),
+            ("two months", "Check with legal", ids[0])
+        );
+        store.delete_mark(mark.id).unwrap();
+        assert!(store.marks(&ids[..1]).unwrap().is_empty());
+        assert!(store.add_mark(-1, "gone", "").is_err());
+    }
+
+    #[test]
+    fn migration_28_shelves_conversations_until_taken_off_or_answered() {
+        let (store, account, inbox, _) = setup();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 27);
+        let store = Store::init(conn).unwrap();
+        store
+            .insert_messages(account, inbox, &[message(1, "Issue 112", 100), message(2, "Lunch", 200)])
+            .unwrap();
+        let list = |role: &str| -> Vec<String> {
+            let rows = store.list_threads(&ListTarget::Role(role.into()), None, 9).unwrap();
+            rows.into_iter().map(|t| t.latest.subject).collect()
+        };
+        let issue = store.list_threads(&ListTarget::Role("inbox".into()), None, 9).unwrap()[1].latest.id;
+        store.read_later(&[issue], true, 300).unwrap();
+        assert_eq!(list("inbox"), ["Lunch"], "off the inbox's lists");
+        assert_eq!(list(LATER), ["Issue 112"]);
+        let (important, other) = store.split_unread().unwrap();
+        assert_eq!(important + other, 1, "unread counts leave it out");
+        store.read_later(&[issue], false, 400).unwrap();
+        assert_eq!(list(LATER), Vec::<String>::new(), "taken off");
+        assert_eq!(list("inbox").len(), 2);
+        store.read_later(&[issue], true, 500).unwrap();
+        let reply =
+            NewMessage { in_reply_to: Some("1@example.com".into()), ..message(3, "Re: Issue 112", 600) };
+        store.insert_messages(account, inbox, &[reply]).unwrap();
+        assert_eq!(list(LATER), Vec::<String>::new(), "a reply from someone else brings it back");
+    }
+
+    #[test]
+    fn marks_list_and_search_find_marked_conversations() {
+        let (store, account, inbox, _) = setup();
+        store
+            .insert_messages(account, inbox, &[message(1, "Issue 112", 100), message(2, "Lunch", 200)])
+            .unwrap();
+        let rows = store.list_threads(&ListTarget::Role("inbox".into()), None, 9).unwrap();
+        let issue = rows.iter().find(|t| t.latest.subject == "Issue 112").unwrap().latest.id;
+        assert!(store.list_threads(&ListTarget::Role(MARKED.into()), None, 9).unwrap().is_empty());
+        let mark = store.add_mark(issue, "the deadline moved", "").unwrap();
+        store.set_mark_note(mark.id, "Ask Ada about Friday").unwrap();
+        let marked = store.list_threads(&ListTarget::Role(MARKED.into()), None, 9).unwrap();
+        assert_eq!(marked.len(), 1);
+        assert_eq!(marked[0].latest.subject, "Issue 112");
+        assert_eq!(marked[0].latest.snippet, "\u{201c}the deadline moved\u{201d} Ask Ada about Friday");
+        let subjects = |q: &str| -> Vec<String> {
+            store.search(q, 10).unwrap().rows.into_iter().map(|r| r.subject).collect()
+        };
+        assert_eq!(subjects("is:marked"), ["Issue 112"]);
+        assert_eq!(subjects("-is:marked"), ["Lunch"]);
+        assert_eq!(subjects("ada friday"), ["Issue 112"], "words in a note");
+        assert_eq!(subjects("deadline is:unread"), ["Issue 112"], "words in a mark, with filters");
+        assert!(subjects("deadline is:read").is_empty());
+    }
+
+    #[test]
     fn search_says_when_bodies_were_not_all_searched() {
         let (store, account, inbox, _) = setup();
         let headers = NewMessage { headers_only: true, body_text: None, ..message(1, "Plans", 1) };
@@ -4921,6 +5184,8 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                27 => "DROP TABLE read_later;",
+                26 => "DROP TABLE marks;",
                 25 => "DROP TABLE ai_styles;",
                 24 => "DROP TABLE ai_cache; DROP TABLE ai_usage;",
                 23 => "",

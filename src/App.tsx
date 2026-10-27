@@ -29,7 +29,7 @@ import { Compose, defaultSignature, type ComposeInit } from "./components/Compos
 import { ConversationRow } from "./components/ConversationRow";
 import type { MenuItem } from "./components/ActionMenu";
 import type { PersonActions } from "./components/PersonCard";
-import { ConversationView, takeQuote } from "./components/ConversationView";
+import { ConversationView, switchReading, takeQuote } from "./components/ConversationView";
 import { ProblemsDialog } from "./components/Problems";
 import { Rail, ROLE_NAMES, targetOf } from "./components/Rail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
@@ -39,8 +39,9 @@ import { AttachmentViewer } from "./components/AttachmentViewer";
 import { until } from "./components/ConversationRow";
 import { PerfOverlay } from "./components/PerfOverlay";
 import { timeKey, timeQuery } from "./perf";
-import { aiOn, loadSettings, ROW_HEIGHTS, setSetting, settings } from "./settings";
+import { aiOn, loadSettings, ROW_HEIGHTS, setSetting, settings, SPLIT_ROW_EXTRA } from "./settings";
 import { askReplies, suggestions, summon } from "./ai";
+import { jumpMark } from "./marks";
 import { closeScreen, deck, lineShown, refreshStart, screen, setDeck, start, startDay } from "./day";
 import { DayDeck } from "./components/DayDeck";
 import { DayLine } from "./components/DayLine";
@@ -425,6 +426,25 @@ export default function App() {
     });
   }
 
+  const onShelf = () => "role" in target() && (target() as { role: string }).role === "later";
+  /** Puts the target conversations on the Read later shelf (Shift+L), or, on the shelf, back in the inbox. */
+  async function shelve(hit = targets()) {
+    if (!hit.length) return;
+    const ids = hit.map((r) => r.id);
+    const on = !onShelf();
+    dropRows(hit);
+    try {
+      await api.readLater(ids, on);
+    } catch (e) {
+      return showToast(String(e), []);
+    }
+    const said = hit.length === 1 ? (on ? "On the Read later shelf" : "Back in the inbox") : `${hit.length} conversations ${on ? "on the Read later shelf" : "back in the inbox"}`;
+    showToast(said, [], undefined, async () => {
+      await api.readLater(ids, !on);
+      void load();
+    });
+  }
+
   /** Brings snoozed conversations back now (Shift+H). */
   async function wake() {
     const hit = targets().filter((r) => r.snoozedUntil != null);
@@ -459,6 +479,8 @@ export default function App() {
     const keys = new Set(hit.map(keyOf));
     if (moves(action)) {
       dropRows(hit);
+      // Done or moved away from the shelf: off it, so it does not hide again if it comes back to the inbox.
+      if (onShelf()) void api.readLater(hit.map((r) => r.id), false);
     } else {
       const patch = (r: ThreadRow): ThreadRow =>
         action === "markRead"
@@ -944,6 +966,10 @@ export default function App() {
     { keys: "n", name: "Next message", context: "conversation", run: () => moveMessage(1) },
     { keys: "p", name: "Previous message", context: "conversation", run: () => moveMessage(-1) },
     { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
+    { keys: "]", name: "Next mark", context: "conversation", run: () => jumpMark(1) },
+    { keys: "B", name: "Reading view or the original look", context: "conversation", run: switchReading },
+    { keys: "i", name: "Show or hide the column beside the messages", context: "conversation", run: () => setSetting("readingColumn", !settings.readingColumn) },
+    { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1) },
     { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },
     { keys: "f", name: "Forward", context: "conversation", run: () => respond(messages[messageFocus()], "forward") },
     { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
@@ -965,6 +991,7 @@ export default function App() {
     { keys: "F", name: focusMode() ? "Show the list again" : "Focus mode (hide the list)", context: "conversation", run: () => setFocusMode(!focusMode()) },
     { keys: "z", name: "Undo", run: undo },
     { keys: "h", name: "Snooze", run: () => targets().length > 0 && setSnoozing(targets()) },
+    { keys: "L", name: "Read later (on the shelf: back to the inbox)", run: () => void shelve() },
     { keys: "l", name: "Label", run: startLabel },
     { keys: "H", name: "Back from snooze now", run: () => void wake() },
     { keys: "c", name: "Compose", run: newMessage },
@@ -973,6 +1000,8 @@ export default function App() {
     { keys: "Shift+Tab", name: "Previous split", context: "list", run: () => nextSplit(-1) },
     { keys: "g i", name: "Go to Inbox", run: () => go(home()) },
     { keys: "g h", name: "Go to Snoozed", run: () => go({ role: "snoozed" }) },
+    { keys: "g r", name: "Go to Read later", run: () => go({ role: "later" }) },
+    { keys: "g m", name: "Go to Marks (what you marked and noted)", run: () => go({ role: "marked" }) },
     { keys: "g s", name: "Go to Starred", run: () => go({ role: "starred" }) },
     { keys: "g e", name: "Go to Done (Archive)", run: () => go({ role: "archive" }) },
     { keys: "g t", name: "Go to Sent", run: () => go({ role: "sent" }) },
@@ -998,7 +1027,7 @@ export default function App() {
   ]);
 
   /** The conversation's `…` menu: its actions in the order people reach for them, each with its key. */
-  const MENU_KEYS = ["r", "Enter", "f", "v", "e", "h", "s", "u", "m", "!", "#", "O", "F"];
+  const MENU_KEYS = ["r", "Enter", "f", "v", "e", "h", "L", "s", "u", "m", "!", "#", "O", "F"];
   const menu = () => {
     const all = bindings();
     const items: MenuItem[] = MENU_KEYS.flatMap((k) => {
@@ -1201,7 +1230,7 @@ export default function App() {
           <input
             ref={searchInput}
             class="search"
-            placeholder="Search   /"
+            placeholder={split() ? "/" : "Search   /"}
             value={query()}
             onInput={(e) => setQuery(e.currentTarget.value)}
             onKeyDown={onSearchKey}
@@ -1227,7 +1256,7 @@ export default function App() {
                     <p>Nothing found.</p>
                     <p>
                       Search also takes filters: <code>from:</code> <code>to:</code> <code>subject:</code> <code>is:unread</code>{" "}
-                      <code>is:starred</code> <code>has:attachment</code> <code>in:sent</code>{" "}
+                      <code>is:starred</code> <code>is:marked</code> <code>has:attachment</code> <code>in:sent</code>{" "}
                       <code>before:2026-01-31</code> <code>newer_than:7d</code> <code>larger:5m</code>. Quote a
                       phrase, put <code>-</code> before what to leave out, <code>OR</code> between words for either.
                     </p>
@@ -1239,7 +1268,7 @@ export default function App() {
             </Show>
           }
         >
-          <VirtualList items={rows()} rowHeight={ROW_HEIGHTS[settings.density]} selected={focus()} onEnd={loadMore}>
+          <VirtualList items={rows()} rowHeight={ROW_HEIGHTS[settings.density] + (split() ? SPLIT_ROW_EXTRA : 0)} selected={focus()} onEnd={loadMore}>
             {(row, index) => (
               <ConversationRow
                 row={row}
@@ -1340,6 +1369,13 @@ export default function App() {
             onMailto={fromLink}
             onDone={() => act("archive")}
             onClose={close}
+            onQuote={() => void reply()}
+            shelf={{ on: onShelf(), toggle: () => void shelve() }}
+            onSnoozeUntil={(due) => {
+              if (!targets().length) return;
+              setSnoozing(targets());
+              void snoozeUntil(due);
+            }}
             menu={menu}
             person={person}
           />

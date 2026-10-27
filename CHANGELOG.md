@@ -7,6 +7,26 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-27
+
+### Added
+
+- Beside a conversation, what its newest message holds: the day and time it names (snooze it until then), an
+  address (open the map), what it asks of you, codes to copy and its links. Found on this computer; Settings →
+  Reading turns it off.
+- Marks and notes. Select text in a message to quote it in a reply, mark it, add a note or copy it. Marks show in
+  the message and beside it; `[` and `]` go from one to the next. `g m` lists everything you marked, search finds
+  the words of your marks and notes, and `is:marked` keeps to marked mail. They stay on this computer.
+- Newsletters open in reading view, without the list's footer, with their parts and links beside them. The book
+  icon switches back; Settings → Reading changes the default.
+- Read later. `Shift L` puts a conversation on the shelf, out of the inbox until you take it off or someone
+  replies; `g r` shows the shelf. It stays in your inbox on the server.
+
+### Fixed
+
+- One at a time: a long message no longer pushes its card off the bottom of the window, and Reply and Snooze open
+  over the cards instead of behind them.
+
 ## [1.2.0] - 2026-10-26
 
 ### Added
