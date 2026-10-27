@@ -7,6 +7,8 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-27
+
 ### Added
 
 - Settings → your account: Change password (checked with the server before it is saved) and Remove from Tern,
