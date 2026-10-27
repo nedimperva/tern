@@ -1,3 +1,5 @@
+import { ACTION_WORDS } from "./mailview";
+
 // What a message holds, for the column beside it (docs/design/ui.md §4.2a): when, where, what it asks of the
 // person, codes to copy and its links. Found on this computer from the message's own words; nothing is sent.
 // English and Bosnian/Croatian/Serbian words, as that is the mail Tern sees most; anything not found is left out.
@@ -152,10 +154,20 @@ export function findCodes(text: string): Code[] {
 const NOT_A_LINK = /unsubscribe|odjav|preferences|manage your|view (it )?in (your )?browser|web version|privacy|terms/i;
 const SOCIAL = /(^|\.)(facebook|twitter|x|instagram|linkedin|youtube|tiktok|pinterest)\.com$/i;
 
-/** The links worth opening: not the footer's (unsubscribe, privacy, social), each once. */
+/** An address without what only tracks the click (utm_…, ref, fbclid), for telling two links apart. */
+function plainUrl(url: URL): string {
+  const u = new URL(url);
+  for (const k of [...u.searchParams.keys()]) if (/^(utm_|mc_|ref$|fbclid$|gclid$|_hs)/i.test(k)) u.searchParams.delete(k);
+  u.hash = "";
+  return u.toString().replace(/\/$/, "");
+}
+
+/** The links worth opening: each says what it is (not "Read more" or "Add to Reader", not a picture with no words,
+ * not the footer's unsubscribe, privacy or social links), each once by its words and by its address. */
 export function findLinks(html: string | null, text: string, limit = 6): Link[] {
   const out: Link[] = [];
-  const add = (href: string, label: string) => {
+  const seen = new Set<string>();
+  const add = (href: string, label: string, repeated = false) => {
     let url: URL;
     try {
       url = new URL(href);
@@ -163,19 +175,39 @@ export function findLinks(html: string | null, text: string, limit = 6): Link[] 
       return;
     }
     if (!/^https?:$/.test(url.protocol) || SOCIAL.test(url.hostname) || NOT_A_LINK.test(label) || NOT_A_LINK.test(href)) return;
-    if (out.some((l) => l.href === href)) return;
-    const host = url.hostname.replace(/^www\./, "");
     const words = label.replace(/\s+/g, " ").trim();
-    out.push({ text: words && words !== href && words.length <= 90 ? words : host + url.pathname.replace(/\/$/, ""), href, host });
+    if (repeated || ACTION_WORDS.test(words)) return;
+    const host = url.hostname.replace(/^www\./, "");
+    const shown = words && words !== href && words.length <= 90 ? words : host + url.pathname.replace(/\/$/, "");
+    const plain = plainUrl(url);
+    if (seen.has(plain) || seen.has(shown.toLowerCase())) return;
+    seen.add(plain).add(shown.toLowerCase());
+    out.push({ text: shown, href, host });
   };
   if (html) {
     const doc = new DOMParser().parseFromString(html, "text/html");
-    for (const a of doc.querySelectorAll("a[href]")) {
-      // A picture link has no words; its alt text stands in.
-      const label = a.textContent?.trim() || a.querySelector("img")?.getAttribute("alt") || "";
-      if (label) add(a.getAttribute("href")!, label);
+    const anchors = [...doc.querySelectorAll("a[href]")].map((a) => ({
+      href: a.getAttribute("href")!,
+      // A picture link's alt text stands in for its words; one with neither says nothing.
+      label: (a.textContent?.trim() || a.querySelector("img")?.getAttribute("alt") || "").replace(/\s+/g, " "),
+    }));
+    // Words used for links to different places ("Add article to Reader" under every article) name none of them.
+    const places = new Map<string, Set<string>>();
+    for (const a of anchors) {
+      let place = a.href;
+      try {
+        place = plainUrl(new URL(a.href));
+      } catch {
+        // Not an address; counted as written.
+      }
+      const key = a.label.toLowerCase();
+      places.set(key, (places.get(key) ?? new Set()).add(place));
+    }
+    for (const a of anchors) {
+      if (a.label) add(a.href, a.label, (places.get(a.label.toLowerCase())?.size ?? 0) > 1);
       if (out.length >= limit) return out;
     }
+    return out;
   }
   // Addresses written out in the words, linked or not.
   for (const m of text.matchAll(/https?:\/\/[^\s<>"')\]]+/g)) {

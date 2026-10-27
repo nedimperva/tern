@@ -585,7 +585,7 @@ export function ConversationView(props: {
       setLeft("Unsubscribe mail started.");
     }
   };
-  const anyTool = () => !!(privacy().trackers || privacy().blocked || minutes() >= 2 || listMail() || designed().size);
+  const anyTool = () => !!(privacy().trackers || privacy().blocked || minutes() >= 2 || listMail() || designed().size || hasColumn());
   // Loading images for good is a choice about a sender, so it sits in the menu, beside the conversation's actions.
   const menu = () => {
     const sender = privacy().sender;
@@ -622,6 +622,14 @@ export function ConversationView(props: {
     if (settings.newsletterReading) setReading(true);
   });
 
+  /** A message's own HTML: without the quote it carries or its signature, whose links were seen before. */
+  const ownHtml = (m: ThreadMessage): string | null => {
+    const web = webs().get(m.id);
+    if (!web) return null;
+    const doc = new DOMParser().parseFromString(web.html, "text/html");
+    doc.querySelectorAll(HTML_FOLD_SELECTOR).forEach((n) => n.remove());
+    return doc.body.innerHTML;
+  };
   /** A message's own words: without the quote it carries or its signature. */
   const newWords = (m: ThreadMessage): string => {
     if (m.bodyText?.trim()) {
@@ -638,7 +646,7 @@ export function ConversationView(props: {
   const facts = createMemo(() => {
     const m = last();
     if (!m?.bodyLoaded || !settings.readingFacts) return null;
-    const found = factsOf(newWords(m), webs().get(m.id)?.html ?? null, m.date, newsletter() ? 12 : 6);
+    const found = factsOf(newWords(m), ownHtml(m), m.date, newsletter() ? 12 : 6);
     if (m.listUnsubscribe || props.mine(m.fromAddr)) found.asks = [];
     return found;
   });
@@ -744,7 +752,8 @@ export function ConversationView(props: {
 
   // Beside the messages when the pane has room for both, else above them.
   const [wide, setWide] = createSignal(true);
-  const hasMargin = () => contents().length > 1 || !!(facts() && anyFact(facts()!)) || marks().length > 0;
+  const hasColumn = () => contents().length > 1 || !!(facts() && anyFact(facts()!)) || marks().length > 0;
+  const hasMargin = () => hasColumn() && settings.readingColumn;
   const margin = () => (
     <ReadingMargin
       narrow={!wide()}
@@ -759,6 +768,7 @@ export function ConversationView(props: {
       onShowMark={showMark}
       onChanged={() => void refetchMarks()}
       noting={noting()}
+      onHide={() => setSetting("readingColumn", false)}
     />
   );
   /** "3 days later" above the message at `i`, when the one before it is days older. */
@@ -884,6 +894,18 @@ export function ConversationView(props: {
                 onClick={() => setReading(!reading())}
               >
                 <Icon name="book-open" size={15} />
+              </button>
+            </Show>
+            <Show when={hasColumn()}>
+              <button
+                class="tool"
+                classList={{ on: settings.readingColumn }}
+                aria-pressed={settings.readingColumn}
+                data-tip={settings.readingColumn ? "Hide the column (I)" : "Show what's in it, links and marks (I)"}
+                aria-label="The column beside the messages"
+                onClick={() => setSetting("readingColumn", !settings.readingColumn)}
+              >
+                <Icon name="panel-right" size={15} />
               </button>
             </Show>
             <Show when={listMail()}>

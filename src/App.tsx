@@ -946,6 +946,7 @@ export default function App() {
     { keys: "p", name: "Previous message", context: "conversation", run: () => moveMessage(-1) },
     { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
     { keys: "]", name: "Next mark", context: "conversation", run: () => jumpMark(1) },
+    { keys: "i", name: "Show or hide the column beside the messages", context: "conversation", run: () => setSetting("readingColumn", !settings.readingColumn) },
     { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1) },
     { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },
     { keys: "f", name: "Forward", context: "conversation", run: () => respond(messages[messageFocus()], "forward") },

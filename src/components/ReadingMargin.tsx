@@ -1,4 +1,4 @@
-import { createEffect, For, Show } from "solid-js";
+import { createEffect, createSignal, For, Show } from "solid-js";
 import { api, type Mark } from "../api";
 import type { Facts, Link } from "../facts";
 import { Icon } from "./Icon";
@@ -48,15 +48,22 @@ export function ReadingMargin(props: {
   onChanged: () => void;
   /** A mark just made with "Note": its field takes the keys. */
   noting: number | null;
+  onHide: () => void;
 }) {
   const facts = () => props.facts;
   const links = (): Link[] => facts()?.links ?? [];
+  // Five links, then the rest on asking: a newsletter can carry a dozen.
+  const [allLinks, setAllLinks] = createSignal(false);
+  const shownLinks = () => (allLinks() || links().length <= 6 ? links() : links().slice(0, 5));
   const future = () => {
     const w = facts()?.when;
     return w && snoozeFor(w) > Date.now() / 1000 ? w : null;
   };
   return (
     <aside class="reading-margin" classList={{ narrow: props.narrow }} aria-label="In this conversation">
+      <button class="hide" onClick={props.onHide} title="Hide the column (I)" aria-label="Hide the column">
+        <Icon name="x" size={13} />
+      </button>
       <Show when={props.contents.length > 1}>
         <section>
           <h2>In this issue</h2>
@@ -121,7 +128,7 @@ export function ReadingMargin(props: {
             {props.issue ? "Links in this issue" : "Links"} · {links().length}
           </h2>
           <div class="links">
-            <For each={links()}>
+            <For each={shownLinks()}>
               {(l) => (
                 <button class="link-card" title={l.href} onClick={() => api.openUrl(l.href)}>
                   <span class="text">{l.text}</span>
@@ -129,6 +136,11 @@ export function ReadingMargin(props: {
                 </button>
               )}
             </For>
+            <Show when={shownLinks().length < links().length}>
+              <button class="more" onClick={() => setAllLinks(true)}>
+                {links().length - shownLinks().length} more
+              </button>
+            </Show>
           </div>
         </section>
       </Show>

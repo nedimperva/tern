@@ -191,7 +191,8 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 
 Picked from the canvas "Tern reading ideas" (R2, R5, R6), 2026-10-27. A column 260 px wide beside the messages when
 the pane is 940 px or wider, sticky as the messages scroll; in a narrower pane the same sections sit in a row
-above the messages. It shows only what it found, and nothing at all when it found nothing.
+above the messages. It shows only what it found, and nothing at all when it found nothing. `i`, the header's
+panel icon or the column's own × hides it, for every conversation until shown again (`readingColumn`).
 
 - **In this message** (Settings → Reading → In this message, on by default), from the newest message's own words
   (no quote, no signature), found on this computer by `src/facts.ts`, in English and Bosnian/Croatian/Serbian:
@@ -200,8 +201,11 @@ above the messages. It shows only what it found, and nothing at all when it foun
   Asked of you (up to three questions put to the person, and their "please"s, on `--accent-soft`; not for your
   own mail or a list's), and codes to copy (booking, order, tracking, confirmation numbers). Cards on `--soft`,
   `--r-lg`, a small label over the value.
-- **Links** (up to 6, 12 in a newsletter): the mail's links without the footer's (unsubscribe, privacy, social),
-  each its words and its host; a click opens it in the browser.
+- **Links** (up to 6, 12 in a newsletter; five shown, then "N more"): links that say what they are, each its words
+  and its host; a click opens it in the browser. Left out: the quote and signature's links (seen before in a long
+  thread), the footer's (unsubscribe, privacy, social), actions ("Read more", "Add article to Reader"), words used
+  for links to different places, and pictures with no words. One per address (tracking parameters aside) and one
+  per title.
 - A quiet line closes the column: "Found on this computer, from the words of the mail."
 
 ### 4.2b Marks and notes
@@ -222,6 +226,8 @@ above the messages. It shows only what it found, and nothing at all when it foun
 - Reading view leaves out the list's footer (a short block with an unsubscribe or preferences link): the header's
   leave icon already offers it.
 - The column shows **In this issue**, the issue's headings (a click scrolls to one), and **Links in this issue**.
+  Headings are the mail's own, or lines it sets as titles without a heading tag: 18 px type or bold all through,
+  short and not a sentence (a digest's linked article names).
 - Not built yet: a Read later shelf.
 
 ### 4.3 Command palette (`Ctrl+K`)

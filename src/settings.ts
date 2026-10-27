@@ -31,6 +31,8 @@ export type Settings = {
   quietTo: string;
   /** The inbox in two splits, Important and Other, rather than one list. */
   splitInbox: boolean;
+  /** The column beside a conversation is shown (`i` hides it until shown again). */
+  readingColumn: boolean;
   /** The column beside a conversation: when, where, what is asked, codes and links found in the newest message. */
   readingFacts: boolean;
   /** Newsletters (designed mail from a list) open in reading view. */
@@ -99,6 +101,7 @@ export const DEFAULTS: Settings = {
   quietTo: "",
   splitInbox: true,
   darkMail: "darken",
+  readingColumn: true,
   readingFacts: true,
   newsletterReading: true,
   senderLogos: false,
