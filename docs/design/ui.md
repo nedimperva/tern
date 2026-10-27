@@ -231,6 +231,10 @@ panel icon or the column's own × hides it, for every conversation until shown a
   Headings are the mail's own, or lines it sets as titles without a heading tag: 18 px type or bold all through,
   short and not a sentence (a digest's linked article names). One-word lines (the sender's name) and the subject itself are
   left out of the list.
+- The reader bar (canvas board R6) takes the header's place: the sender, then "8 min read · 4 parts" in `--fg-1`,
+  "Original look" (`Shift B`, on `--soft`), and the conversation's tools (shield, column, leave, Done, `…`,
+  close). Under it the subject in the reading face, 34 px bold, with its labels; the byline and the mail's own copy
+  of the subject as a heading are left out. `Shift B` switches reading view in any designed mail.
 - Not built yet: a Read later shelf.
 
 ### 4.3 Command palette (`Ctrl+K`)

@@ -249,7 +249,10 @@ const BLOCKS = "h1,h2,h3,h4,h5,h6,p,li,td,th,div,blockquote,pre";
 
 /** A designed mail's words, headings, links and pictures, without its layout: for reading a long newsletter in
  * Tern's type. Small pictures (spacers, icons, tracking pixels) are dropped. */
-export function readingView(html: string): string {
+export function readingView(html: string, title = ""): string {
+  // The title the reader shows above the mail, when the mail repeats it as a heading.
+  const flat = (t: string) => t.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const same = (t: string) => !!title && flat(t) === flat(title);
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("style, script, head, title, meta, [hidden]").forEach((el) => el.remove());
   const out: string[] = [];
@@ -268,6 +271,7 @@ export function readingView(html: string): string {
   };
   const push = (tag: string, html: string) => {
     const text = html.replace(/\s+/g, " ").trim();
+    if (tag !== "p" && same(text)) return;
     // The list's footer ("You get this because… Unsubscribe"): the header's icon already offers to leave.
     if (/<a [^>]*>[^<]*(unsubscribe|odjav|preferences)[^<]*<\/a>/i.test(text) && text.length < 600) return;
     if (text.replace(/<[^>]+>|<br>/g, "").trim()) out.push(`<${tag}>${text}</${tag}>`);

@@ -47,6 +47,10 @@ function picked(doc: Document, messageId: number | null, offset: { left: number;
   return { messageId: id, text, x: offset.left + box.left + box.width / 2, y: offset.top + box.top };
 }
 
+// Shift+B is the app's key (App.tsx); the open conversation switches reading view.
+let readingSwitch: (() => void) | null = null;
+export const switchReading = () => readingSwitch?.();
+
 /** Frames tell the conversation they have (re)loaded, so marks are drawn in them again. */
 const FRAME_LOADED = "tern-frame-loaded";
 
@@ -60,6 +64,8 @@ function HtmlBody(props: {
   reading: boolean;
   messageId: number;
   large?: boolean;
+  /** Shown above it by the reader bar: reading view leaves out the mail's own copy. */
+  title?: string;
   onPick?: (p: Picked | null) => void;
 }) {
   const remote = () => props.remote;
@@ -84,7 +90,7 @@ function HtmlBody(props: {
   const darkened = () => designed() && !reading() && isDark() && settings.darkMail === "darken";
   const srcdoc = () =>
     reading()
-      ? readingFrame(readingView(html()), remote(), theme())
+      ? readingFrame(readingView(html(), props.title), remote(), theme())
       : designed()
         ? designedFrame(html(), remote()) + (darkened() ? "<!-- dark -->" : "")
         : textFrame(html(), remote(), theme(), props.large ? 16 : 15);
@@ -467,6 +473,7 @@ function MessageBody(props: {
   large?: boolean;
   onView: (index: number) => void;
   onPick: (p: Picked | null) => void;
+  title?: string;
 }) {
   return (
     <>
@@ -480,6 +487,7 @@ function MessageBody(props: {
               reading={props.reading}
               messageId={props.m.id}
               large={props.large}
+              title={props.title}
               onPick={props.onPick}
             />
           )}
@@ -707,6 +715,13 @@ export function ConversationView(props: {
     const i = props.messages.findIndex((m) => m.id === mark?.message);
     if (i >= 0 && i < props.messages.length - 1 && !props.expanded(props.messages[i].id)) props.onToggle(i);
   };
+  // The reader (§4.2c): a newsletter in reading view gets the reader bar and its title in the reading face.
+  const reader = () => reading() && newsletter();
+  const readerMeta = () =>
+    [minutes() ? `${minutes()} min read` : "", contents().length > 1 ? `${contents().length} parts` : ""].filter(Boolean).join(" · ");
+  readingSwitch = () => designed().size > 0 && setReading(!reading());
+  onCleanup(() => (readingSwitch = null));
+
   setJumper((step) => {
     const list = marks();
     if (!list.length) return;
@@ -836,6 +851,63 @@ export function ConversationView(props: {
     </Show>
   );
 
+  // The conversation's tools: in the header, or in the reader bar, where reading time is said in words and the book
+  // is "Original look".
+  const tools = () => (
+    <div class="tools">
+      <Show when={privacy().trackers || privacy().blocked}>
+        <button class="tool safe" data-tip={shieldTip()} aria-label={shieldTip()} onClick={() => privacy().blocked && setAsked(true)}>
+          <Icon name="shield-check" size={15} />
+          <Show when={privacy().trackers}>{privacy().trackers}</Show>
+        </button>
+      </Show>
+      <Show when={minutes() >= 2 && !reader()}>
+        <span class="tool" tabIndex={0} data-tip={`${minutes()} min read`} aria-label={`${minutes()} min read`}>
+          <Icon name="clock" size={15} />
+        </span>
+      </Show>
+      <Show when={designed().size && !reader()}>
+        <button
+          class="tool"
+          classList={{ on: reading() }}
+          aria-pressed={reading()}
+          data-tip={reading() ? "Show the original" : "Reading view: the words and pictures in Tern's type"}
+          aria-label="Reading view"
+          onClick={() => setReading(!reading())}
+        >
+          <Icon name="book-open" size={15} />
+        </button>
+      </Show>
+      <Show when={hasColumn()}>
+        <button
+          class="tool"
+          classList={{ on: settings.readingColumn }}
+          aria-pressed={settings.readingColumn}
+          data-tip={settings.readingColumn ? "Hide the column (I)" : "Show what's in it, links and marks (I)"}
+          aria-label="The column beside the messages"
+          onClick={() => setSetting("readingColumn", !settings.readingColumn)}
+        >
+          <Icon name="panel-right" size={15} />
+        </button>
+      </Show>
+      <Show when={listMail()}>
+        <button class="tool" data-tip={left() || "Unsubscribe from this list"} aria-label={left() || "Unsubscribe"} onClick={unsubscribe}>
+          <Icon name={left() ? "check" : "mail-x"} size={15} />
+        </button>
+      </Show>
+      <Show when={anyTool()}>
+        <span class="vsep" />
+      </Show>
+      <button class="primary" onClick={props.onDone}>
+        Done <kbd>E</kbd>
+      </button>
+      <ActionMenu items={menu} />
+      <button class="tool" data-tip="Close (Esc)" aria-label="Close" onClick={props.onClose}>
+        <Icon name="x" size={15} />
+      </button>
+    </div>
+  );
+
   return (
     <div class="reading" classList={{ "has-margin": hasMargin() && wide() }}>
       <div
@@ -851,7 +923,18 @@ export function ConversationView(props: {
             </button>
           </div>
         </div>
-        <header class="conversation-head">
+        <Show when={reader()}>
+          <div class="reader-bar">
+            <strong>{last().fromName || last().fromAddr}</strong>
+            <span class="meta">{readerMeta()}</span>
+            <span class="spacer" />
+            <button class="soft" onClick={() => setReading(false)} title="The mail as its sender made it (Shift+B)">
+              Original look <kbd>Shift B</kbd>
+            </button>
+            {tools()}
+          </div>
+        </Show>
+        <header class="conversation-head" classList={{ reader: reader() }}>
           <div class="title">
             <h1 ref={title}>{subject()}</h1>
             <Show when={props.labels.length}>
@@ -877,58 +960,7 @@ export function ConversationView(props: {
             </Show>
             <Show when={last() && aiOn("summaries", last().accountId) && last()}>{(m) => <AiSummary id={m().id} />}</Show>
           </div>
-          <div class="tools">
-            <Show when={privacy().trackers || privacy().blocked}>
-              <button class="tool safe" data-tip={shieldTip()} aria-label={shieldTip()} onClick={() => privacy().blocked && setAsked(true)}>
-                <Icon name="shield-check" size={15} />
-                <Show when={privacy().trackers}>{privacy().trackers}</Show>
-              </button>
-            </Show>
-            <Show when={minutes() >= 2}>
-              <span class="tool" tabIndex={0} data-tip={`${minutes()} min read`} aria-label={`${minutes()} min read`}>
-                <Icon name="clock" size={15} />
-              </span>
-            </Show>
-            <Show when={designed().size}>
-              <button
-                class="tool"
-                classList={{ on: reading() }}
-                aria-pressed={reading()}
-                data-tip={reading() ? "Show the original" : "Reading view: the words and pictures in Tern's type"}
-                aria-label="Reading view"
-                onClick={() => setReading(!reading())}
-              >
-                <Icon name="book-open" size={15} />
-              </button>
-            </Show>
-            <Show when={hasColumn()}>
-              <button
-                class="tool"
-                classList={{ on: settings.readingColumn }}
-                aria-pressed={settings.readingColumn}
-                data-tip={settings.readingColumn ? "Hide the column (I)" : "Show what's in it, links and marks (I)"}
-                aria-label="The column beside the messages"
-                onClick={() => setSetting("readingColumn", !settings.readingColumn)}
-              >
-                <Icon name="panel-right" size={15} />
-              </button>
-            </Show>
-            <Show when={listMail()}>
-              <button class="tool" data-tip={left() || "Unsubscribe from this list"} aria-label={left() || "Unsubscribe"} onClick={unsubscribe}>
-                <Icon name={left() ? "check" : "mail-x"} size={15} />
-              </button>
-            </Show>
-            <Show when={anyTool()}>
-              <span class="vsep" />
-            </Show>
-            <button class="primary" onClick={props.onDone}>
-              Done <kbd>E</kbd>
-            </button>
-            <ActionMenu items={menu} />
-            <button class="tool" data-tip="Close (Esc)" aria-label="Close" onClick={props.onClose}>
-              <Icon name="x" size={15} />
-            </button>
-          </div>
+          <Show when={!reader()}>{tools()}</Show>
         </header>
         <Show when={hasMargin() && !wide()}>{margin()}</Show>
         {/* Every earlier message as one line, all of them there: a click opens one in place. */}
@@ -994,7 +1026,7 @@ export function ConversationView(props: {
         <Show when={last()}>
           {(m) => (
             <article class="card stage-msg" data-message={m().id} classList={{ unread: !m().seen, mine: props.mine(m().fromAddr) }}>
-              <div class="byline">
+              <div class="byline" classList={{ gone: reader() }}>
                 <Avatar addr={m().fromAddr} name={m().fromName} />
                 <div class="who">
                   <div class="line">
@@ -1016,6 +1048,7 @@ export function ConversationView(props: {
                   designed={designed().has(m().id)}
                   reading={reading()}
                   large
+                  title={reader() ? subject() : undefined}
                   onView={(index) => props.onView(m(), index)}
                   onPick={setPick}
                 />

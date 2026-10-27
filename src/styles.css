@@ -972,7 +972,8 @@ button.primary kbd {
 }
 /* What Tern blocked, how long the mail is and how to leave its list: icons that each show only when they apply
    and say more on hover. Then Done, the menu and close. */
-.conversation-head .tools {
+.conversation-head .tools,
+.reader-bar .tools {
   flex: none;
   display: flex;
   align-items: center;
@@ -4933,6 +4934,56 @@ button.link.danger {
 .ai-talk .ai-chips .chip:hover:not(:disabled) {
   background: var(--bg-3);
   color: var(--fg-0);
+}
+
+/* The reader (§4.2c): a newsletter in reading view. Who sent it and how long it reads, then its tools; the title
+   under it in the reading face. */
+.reader-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-5) 0 0;
+  font-size: var(--t-md);
+  color: var(--fg-1);
+}
+.reader-bar .meta {
+  white-space: nowrap;
+}
+.reader-bar strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.reader-bar .spacer {
+  flex: 1;
+}
+.reader-bar .soft {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  border: none;
+  background: var(--soft);
+  font-size: var(--t-md);
+  padding: 5px var(--s-3);
+}
+.reader-bar .soft:hover {
+  background: var(--soft-hover);
+}
+.byline.gone {
+  display: none;
+}
+.conversation-head.reader {
+  padding-top: var(--s-4);
+}
+.conversation-head.reader h1 {
+  font-family: "Source Serif 4", "Iowan Old Style", "Charter", Georgia, serif;
+  font-size: 34px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 /* MARK: Beside the messages (§4.2a–c): what the newest message holds, a newsletter's parts, the person's marks. */

@@ -29,7 +29,7 @@ import { Compose, defaultSignature, type ComposeInit } from "./components/Compos
 import { ConversationRow } from "./components/ConversationRow";
 import type { MenuItem } from "./components/ActionMenu";
 import type { PersonActions } from "./components/PersonCard";
-import { ConversationView, takeQuote } from "./components/ConversationView";
+import { ConversationView, switchReading, takeQuote } from "./components/ConversationView";
 import { ProblemsDialog } from "./components/Problems";
 import { Rail, ROLE_NAMES, targetOf } from "./components/Rail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
@@ -946,6 +946,7 @@ export default function App() {
     { keys: "p", name: "Previous message", context: "conversation", run: () => moveMessage(-1) },
     { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
     { keys: "]", name: "Next mark", context: "conversation", run: () => jumpMark(1) },
+    { keys: "B", name: "Reading view or the original look", context: "conversation", run: switchReading },
     { keys: "i", name: "Show or hide the column beside the messages", context: "conversation", run: () => setSetting("readingColumn", !settings.readingColumn) },
     { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1) },
     { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },
