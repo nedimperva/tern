@@ -593,7 +593,7 @@ export function ConversationView(props: {
       setLeft("Unsubscribe mail started.");
     }
   };
-  const anyTool = () => !!(privacy().trackers || privacy().blocked || minutes() >= 2 || listMail() || designed().size || hasColumn());
+  const anyTool = () => !!(privacy().trackers || privacy().blocked || minutes() >= 2 || listMail() || designed().size || wide() || hasColumn());
   // Loading images for good is a choice about a sender, so it sits in the menu, beside the conversation's actions.
   const menu = () => {
     const sender = privacy().sender;
@@ -773,7 +773,9 @@ export function ConversationView(props: {
   // Beside the messages when the pane has room for both, else above them.
   const [wide, setWide] = createSignal(true);
   const hasColumn = () => contents().length > 1 || !!(facts() && anyFact(facts()!)) || marks().length > 0;
-  const hasMargin = () => hasColumn() && settings.readingColumn;
+  // Beside the messages it stays, found something or not, so it does not come and go between conversations; in a
+  // narrow pane, where it sits above them, only when it has something to show.
+  const hasMargin = () => settings.readingColumn && (hasColumn() || wide());
   const margin = () => (
     <ReadingMargin
       narrow={!wide()}
@@ -878,7 +880,7 @@ export function ConversationView(props: {
           <Icon name="book-open" size={15} />
         </button>
       </Show>
-      <Show when={hasColumn()}>
+      <Show when={wide() || hasColumn()}>
         <button
           class="tool"
           classList={{ on: settings.readingColumn }}

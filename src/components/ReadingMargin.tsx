@@ -1,6 +1,6 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
 import { api, type Mark } from "../api";
-import type { Facts, Link } from "../facts";
+import { anyFact, type Facts, type Link } from "../facts";
 import { Icon } from "./Icon";
 
 const day = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
@@ -162,7 +162,14 @@ export function ReadingMargin(props: {
           </Show>
         </section>
       </Show>
-      <Show when={facts() && !props.narrow}>
+      <Show when={props.contents.length < 2 && !(facts() && anyFact(facts()!)) && !props.marks.length}>
+        <section>
+          <h2>In this message</h2>
+          <p class="nothing">No day, place, question, code or link to pick out.</p>
+          <p class="nothing">Select text in a message to quote it in a reply, mark it or add a note.</p>
+        </section>
+      </Show>
+      <Show when={facts() && anyFact(facts()!) && !props.narrow}>
         <p class="found-here">Found on this computer, from the words of the mail.</p>
       </Show>
     </aside>
