@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod cache;
 mod commands;
 mod desktop;
 mod diagnostics;
@@ -121,6 +122,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(desktop::Desktop::new())
         .manage(update::Updates::default())
+        .manage(commands::Offered::default())
         .setup(|app| {
             // First, so everything after it is in the log file too.
             diagnostics::start_logging(&diagnostics::log_dir(app.handle()));
@@ -173,12 +175,16 @@ fn main() {
             desktop::mail_changed(app.handle());
             desktop::watch_snoozes(app.handle());
             update::watch(app.handle());
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || cache::tidy(&handle));
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::Focused(true) = event {
-                window.state::<AppState>().wake_all();
+        .on_window_event(|window, event| match event {
+            WindowEvent::Focused(true) => window.state::<AppState>().wake_all(),
+            WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
+                commands::files_dropped(window.app_handle(), paths)
             }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             commands::accounts,
@@ -186,6 +192,10 @@ fn main() {
             commands::folders,
             commands::preset,
             commands::add_account,
+            commands::set_password,
+            commands::remove_account,
+            commands::received_cache_size,
+            commands::clear_received_cache,
             commands::google_available,
             commands::google_sign_in,
             commands::list_messages,
@@ -238,6 +248,7 @@ fn main() {
             commands::undo_discard,
             commands::problem_to_draft,
             commands::add_attachments,
+            commands::pick_files,
             commands::open_attachment,
             commands::inline_images,
             commands::save_attachment,

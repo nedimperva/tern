@@ -368,11 +368,18 @@ fn notice_icon(app: &AppHandle) -> Option<String> {
     .clone()
 }
 
+/// A notification body may hold markup (`<b>`, `<a href>`, `<img>`) that the daemon renders, and a subject or
+/// snippet comes from whoever sent the mail: it is shown as text.
+#[cfg(target_os = "linux")]
+fn escape_markup(text: &str) -> String {
+    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
 /// Shows one notification; a click opens the conversation, and one conversation also gets Archive and Reply.
 #[cfg(target_os = "linux")]
 fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest: NewMail) {
     let mut note = notify_rust::Notification::new();
-    note.summary(&summary).body(&body).appname("Tern");
+    note.summary(&summary).body(&escape_markup(&body)).appname("Tern");
     match notice_icon(app) {
         Some(path) => note.icon(&path),
         None => note.icon("mail-unread"),
@@ -416,7 +423,7 @@ pub fn notify_held(app: &AppHandle, held: usize) {
 #[cfg(target_os = "linux")]
 fn show_plain(app: &AppHandle, summary: String, body: String) {
     let mut note = notify_rust::Notification::new();
-    note.summary(&summary).body(&body).appname("Tern");
+    note.summary(&summary).body(&escape_markup(&body)).appname("Tern");
     match notice_icon(app) {
         Some(path) => note.icon(&path),
         None => note.icon("mail-send"),
@@ -526,5 +533,16 @@ fn noticed(app: &AppHandle, action: Option<&str>, latest: &NewMail) {
             }
         }
         Some(_) => {}
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    #[test]
+    fn notification_text_is_not_markup() {
+        assert_eq!(
+            super::escape_markup("<a href=\"x\">Win</a> & more"),
+            "&lt;a href=\"x\"&gt;Win&lt;/a&gt; &amp; more"
+        );
     }
 }

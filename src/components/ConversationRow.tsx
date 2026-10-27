@@ -9,6 +9,8 @@ const dayMonth = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "sh
 
 /** A list date: the time today, the weekday within the last six days, day and month this year, else the year. */
 export function when(seconds: number): string {
+  // A message with no Date header, from before the server's date stood in for it.
+  if (seconds <= 0) return "(no date)";
   const d = new Date(seconds * 1000);
   const now = new Date();
   if (d.toDateString() === now.toDateString()) return time.format(d);

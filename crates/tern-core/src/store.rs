@@ -3853,8 +3853,12 @@ fn thread_for(conn: &Connection, account_id: i64, folder_id: i64, m: &NewMessage
             return Ok(id.clone());
         }
     }
-    if let Some(thread) = thread_by_subject(conn, account_id, m)? {
-        return Ok(thread);
+    // Lists and bulk senders repeat one subject on purpose (a weekly report, an alert): those stay apart.
+    let bulk = m.list_id.is_some() || m.precedence_bulk;
+    if !bulk {
+        if let Some(thread) = thread_by_subject(conn, account_id, m)? {
+            return Ok(thread);
+        }
     }
     Ok(m.message_id.clone().unwrap_or_else(|| format!("uid:{folder_id}:{}", m.uid)))
 }
@@ -4564,6 +4568,44 @@ Engines Ltd"
         assert_eq!(t[0], t[1]);
         assert_ne!(t[0], t[2]);
         assert_ne!(t[0], t[3]);
+    }
+
+    #[test]
+    fn removing_an_account_takes_its_mail_and_search_with_it() {
+        let (store, account, inbox, _) = setup();
+        store.insert_messages(account, inbox, &[message(1, "zeppelin", 100)]).unwrap();
+        assert_eq!(store.search("zeppelin", 10).unwrap().rows.len(), 1);
+        store.remove_account(account).unwrap();
+        assert!(store.accounts().unwrap().is_empty());
+        assert!(store.folders().unwrap().is_empty());
+        assert!(store.search("zeppelin", 10).unwrap().rows.is_empty());
+        let left: i64 = store.conn().query_row("SELECT count(*) FROM messages", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0);
+    }
+
+    #[test]
+    fn list_mail_with_one_subject_stays_apart() {
+        let (store, account, inbox, _) = setup();
+        let day = 86_400;
+        let weekly = |uid: u32, date: i64| NewMessage {
+            list_id: Some("<report.example.com>".into()),
+            ..mail(uid, "Weekly report", date, "reports@example.com", "me@example.com")
+        };
+        let alert = |uid: u32, date: i64| NewMessage {
+            precedence_bulk: true,
+            ..mail(uid, "Disk almost full", date, "alerts@example.com", "me@example.com")
+        };
+        store
+            .insert_messages(
+                account,
+                inbox,
+                &[weekly(1, day), weekly(2, 7 * day), alert(3, day), alert(4, 2 * day)],
+            )
+            .unwrap();
+        let rows = store.list(&ListTarget::Folder(inbox), None, 10).unwrap();
+        let thread = |uid: i64| rows.iter().find(|r| r.id == uid).unwrap().thread_id.clone();
+        assert_ne!(thread(1), thread(2));
+        assert_ne!(thread(3), thread(4));
     }
 
     #[test]

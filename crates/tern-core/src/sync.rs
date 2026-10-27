@@ -169,7 +169,13 @@ pub async fn run_account(
     on_state: Arc<dyn Fn(SyncState) + Send + Sync>,
 ) {
     let mut resumed = watch_clock();
-    tokio::spawn(watch_inbox(account.clone(), login.clone(), wake.clone(), resumed.clone(), paused.clone()));
+    let watcher = tokio::spawn(watch_inbox(
+        account.clone(),
+        login.clone(),
+        wake.clone(),
+        resumed.clone(),
+        paused.clone(),
+    ));
     let mut session: Option<Session> = None;
     let mut schedule = Schedule::default();
     let mut failures: u32 = 0;
@@ -182,6 +188,15 @@ pub async fn run_account(
         }
     };
     loop {
+        // The account was removed (its waker fires once more so this is seen): the worker and its watch end.
+        if matches!(store.account(account.id), Ok(None)) {
+            log::info!("an account was removed; its sync stops");
+            watcher.abort();
+            if let Some(s) = session.take() {
+                let _ = within(s.logout()).await;
+            }
+            return;
+        }
         if *paused.borrow_and_update() {
             if let Some(s) = session.take() {
                 let _ = within(s.logout()).await;
@@ -717,14 +732,16 @@ async fn sync_folder<S: Stream>(
         let batch: Vec<NewMessage> = fetched
             .iter()
             .filter_map(|f| {
-                mime::parse_headers(
+                let mut m = mime::parse_headers(
                     f.uid,
                     f.header.as_deref()?,
                     f.seen,
                     f.flagged,
                     f.size,
                     f.structure.clone(),
-                )
+                )?;
+                m.date = mime::sort_date(m.date, f.received, now());
+                Some(m)
             })
             .collect();
         store.insert_messages(account_id, folder_id, &batch)?;

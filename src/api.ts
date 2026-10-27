@@ -44,7 +44,8 @@ export type AiWriteInput = {
   newMail: boolean;
 };
 /** Someone the AI named in new mail, as said ("Tom"), and who that is in the contacts on this computer. */
-export type AiRecipient = { asked: string; address: string | null; name: string; others: Contact[] };
+/** `stranger`: an address the AI wrote that is neither a contact nor typed by the person; never added by itself. */
+export type AiRecipient = { asked: string; address: string | null; name: string; others: Contact[]; stranger: boolean };
 /** What Write with AI wrote: the text, and for new mail its subject and people. */
 export type AiWritten = { body: string; subject: string | null; to: AiRecipient[]; cc: AiRecipient[] };
 
@@ -268,6 +269,13 @@ export interface Api {
   googleAvailable(): Promise<boolean>;
   /** Signs in with Google in the browser: adds the account, or switches an existing one (`hint`) to it. */
   googleSignIn(name: string, hint?: string): Promise<Account>;
+  /** A new password for an account whose server refuses the old one; checked against the server first. */
+  setPassword(id: number, password: string): Promise<void>;
+  /** Removes the account and everything Tern keeps of it. The server keeps its mail. */
+  removeAccount(id: number): Promise<void>;
+  /** Bytes of downloaded attachments and inline images kept on disk. */
+  receivedCacheSize(): Promise<number>;
+  clearReceivedCache(): Promise<void>;
   list(target: Target, before: Cursor | null, limit: number): Promise<MessageRow[]>;
   /** Conversations with a message in `target`, newest first; `before` is the last row's (date, id). */
   listThreads(target: Target, before: Cursor | null, limit: number): Promise<ThreadRow[]>;
@@ -304,7 +312,7 @@ export interface Api {
   /** Opens a received attachment with the system's program for it (it comes from the server the first time). */
   openAttachment(id: number, index: number): Promise<void>;
   /** Asks where to save a received attachment and saves it there; false if the person cancelled. */
-  saveAttachment(id: number, index: number, name: string): Promise<boolean>;
+  saveAttachment(id: number, index: number): Promise<boolean>;
   /** Images the message's HTML shows from its own parts, by Content-ID, as data: URIs (fetched the first time). */
   inlineImages(id: number): Promise<Record<string, string>>;
   /** A sender's logo (data: URI) when cached; the first ask fetches it in the background and `onLogo` follows. */
@@ -463,6 +471,10 @@ const tauri: Api = {
   addAccount: (config, password) => invoke("add_account", { config, password }),
   googleAvailable: () => invoke("google_available"),
   googleSignIn: (name, hint) => invoke("google_sign_in", { name, hint: hint ?? null }),
+  setPassword: (id, password) => invoke("set_password", { id, password }),
+  removeAccount: (id) => invoke("remove_account", { id }),
+  receivedCacheSize: () => invoke("received_cache_size"),
+  clearReceivedCache: () => invoke("clear_received_cache"),
   list: (target, before, limit) => invoke("list_messages", { target, before, limit }),
   listThreads: (target, before, limit) => invoke("list_threads", { target, before, limit }),
   applyConversations: (ids, action, target) => invoke("apply_conversations", { ids, action, target }),
@@ -486,11 +498,8 @@ const tauri: Api = {
   discardDraft: (id) => invoke("discard_draft", { id }),
   undoDiscard: (id) => invoke("undo_discard", { id }),
   problemToDraft: (id) => invoke("problem_to_draft", { id }),
-  pickFiles: async () => {
-    const { open } = await import("@tauri-apps/plugin-dialog");
-    const chosen = await open({ multiple: true, title: "Attach files" });
-    return chosen == null ? [] : Array.isArray(chosen) ? chosen : [chosen];
-  },
+  // The picker and the save dialog open from Rust: the engine only takes paths the system handed over.
+  pickFiles: () => invoke("pick_files"),
   addAttachments: (paths) => invoke("add_attachments", { paths }),
   openAttachment: (id, index) => invoke("open_attachment", { id, index }),
   inlineImages: (id) => invoke("inline_images", { id }),
@@ -499,28 +508,25 @@ const tauri: Api = {
   attachmentPreview: (id, index) => invoke("attachment_preview", { id, index }),
   outgoingPreview: (path) => invoke("outgoing_preview", { path }),
   attachmentBytes: (id, index) => invoke("attachment_bytes", { id, index }),
-  saveAttachment: async (id, index, name) => {
-    const { save } = await import("@tauri-apps/plugin-dialog");
-    const path = await save({ title: "Save attachment", defaultPath: name });
-    if (path == null) return false;
-    await invoke("save_attachment", { id, index, path });
-    return true;
-  },
+  saveAttachment: (id, index) => invoke("save_attachment", { id, index }),
   contacts: (query) => invoke("contacts", { query }),
   contactCard: (email) => invoke("contact_card", { email }),
   onFilesDropped: (f, hover) => {
-    let stop: (() => void) | undefined;
+    const stops: (() => void)[] = [];
     let stopped = false;
+    const keep = (unlisten: () => void) => (stopped ? unlisten() : stops.push(unlisten));
+    // The drop itself comes from Rust, which offers those paths for attaching first; the webview's own event
+    // only shows and hides the drop zone.
+    void listen<string[]>("files-dropped", (e) => f(e.payload)).then(keep);
     void import("@tauri-apps/api/webview").then(({ getCurrentWebview }) =>
       getCurrentWebview()
         .onDragDropEvent((e) => {
-          if (e.payload.type === "drop") (hover?.(false), f(e.payload.paths));
-          else if (e.payload.type === "enter") hover?.(true);
-          else if (e.payload.type === "leave") hover?.(false);
+          if (e.payload.type === "enter") hover?.(true);
+          else if (e.payload.type === "leave" || e.payload.type === "drop") hover?.(false);
         })
-        .then((unlisten) => (stopped ? unlisten() : (stop = unlisten))),
+        .then(keep),
     );
-    return () => ((stopped = true), stop?.());
+    return () => ((stopped = true), stops.forEach((s) => s()));
   },
   onCloseRequested: (f) => {
     flushers.add(f);
@@ -815,6 +821,12 @@ function fake(): Api {
     }),
     addAccount: async (config) => ({ ...config, id: 1 }),
     googleAvailable: async () => true,
+    setPassword: async (_, password) => {
+      if (password.length < 4) throw new Error("The server refused the password");
+    },
+    removeAccount: async () => {},
+    receivedCacheSize: async () => 48_200_000,
+    clearReceivedCache: async () => {},
     googleSignIn: async (name, hint) => ({
       email: hint ?? "ada@gmail.com",
       displayName: name,
@@ -1263,8 +1275,11 @@ function fake(): Api {
       return {
         body,
         subject: "Region split by Friday",
-        to: [{ asked: "Tom", address: "tom@example.com", name: "Tom Berg", others: [] }],
-        cc: [{ asked: "Ana", address: "ana.rossi@example.com", name: "Ana Rossi", others: [{ email: "ana.b@example.com", name: "Ana Bilic" }] }],
+        to: [{ asked: "Tom", address: "tom@example.com", name: "Tom Berg", others: [], stranger: false }],
+        cc: [
+          { asked: "Ana", address: "ana.rossi@example.com", name: "Ana Rossi", others: [{ email: "ana.b@example.com", name: "Ana Bilic" }], stranger: false },
+          { asked: "audit@unknown.example", address: "audit@unknown.example", name: "", others: [], stranger: true },
+        ],
       };
     },
     aiStats: async () => ({ tokensToday: 36_400, kept: { summary: fakeSummaries.size, style: fakeStyles.size } }),

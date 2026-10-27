@@ -261,6 +261,8 @@ const ISSUES = "https://github.com/nedimperva/tern/issues/new?template=bug_repor
 const BETA_GUIDE = "https://github.com/nedimperva/tern/blob/main/docs/beta.md";
 
 /** The version, and what a bug report needs: details without addresses, the log, the issue form. */
+const megabytes = (bytes: number) => (bytes < 1_000_000 ? `${Math.round(bytes / 1000)} KB` : `${Math.round(bytes / 1_000_000)} MB`);
+
 function AboutSettings() {
   const [about] = createResource(() => api.about());
   const [copied, setCopied] = createSignal<"yes" | "no" | null>(null);
@@ -274,6 +276,11 @@ function AboutSettings() {
     if (!done && details) window.getSelection()?.selectAllChildren(details);
     setCopied(done ? "yes" : "no");
     setTimeout(() => setCopied(null), 3000);
+  };
+  const [cacheSize, { refetch: weighCache }] = createResource(() => api.receivedCacheSize().catch(() => 0));
+  const clearCache = async () => {
+    await api.clearReceivedCache().catch(() => {});
+    void weighCache();
   };
   return (
     <Show when={about()}>
@@ -305,6 +312,19 @@ function AboutSettings() {
             <span class="title">Log</span>
             <button onClick={() => void api.openLogs()}>Open folder</button>
             <span class="help about-path">{a().logFile}</span>
+          </div>
+          <div class="setting">
+            <span class="title">Downloaded attachments</span>
+            <span class="value-action">
+              {cacheSize() == null ? "…" : megabytes(cacheSize()!)}
+              <button disabled={!cacheSize()} onClick={() => void clearCache()}>
+                Clear
+              </button>
+            </span>
+            <span class="help">
+              Files and pictures from received mail, kept after the first open so they open at once and offline. Tern
+              keeps up to 1 GB; cleared files download again when opened.
+            </span>
           </div>
         </>
       )}
@@ -1829,7 +1849,7 @@ function SignatureSettings(props: { accounts: Account[]; account: number | null;
 }
 
 /** One account: its name on sent mail, what else Tern knows of it, and a way to its signatures. */
-function AccountPage(props: { account: Account; onSignatures: () => void; onRenamed: () => void }) {
+function AccountPage(props: { account: Account; onSignatures: () => void; onRenamed: () => void; onRemoved: () => void }) {
   const security = (s: string) => (s === "tls" ? "TLS" : "STARTTLS");
   const [error, setError] = createSignal("");
   const rename = async (name: string) => {
@@ -1858,6 +1878,37 @@ function AccountPage(props: { account: Account; onSignatures: () => void; onRena
       setSigning(false);
     }
   };
+  // A new password: the field shows on "Change password", and saving checks it with the server first.
+  const [changing, setChanging] = createSignal(false);
+  const [password, setPassword] = createSignal("");
+  const [checking, setChecking] = createSignal(false);
+  const [passwordNote, setPasswordNote] = createSignal("");
+  const savePassword = async () => {
+    setError("");
+    setPasswordNote("");
+    setChecking(true);
+    try {
+      await api.setPassword(props.account.id, password());
+      setChanging(false);
+      setPassword("");
+      setPasswordNote("Saved. Tern signs in with it now.");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setChecking(false);
+    }
+  };
+  const [removing, setRemoving] = createSignal(false);
+  const remove = async () => {
+    setError("");
+    try {
+      await api.removeAccount(props.account.id);
+      props.onRemoved();
+    } catch (e) {
+      setError(String(e));
+      setRemoving(false);
+    }
+  };
   return (
     <>
       <label class="setting">
@@ -1884,6 +1935,9 @@ function AccountPage(props: { account: Account; onSignatures: () => void; onRena
         <span class="title">Sign-in</span>
         <span class="value-action">
           {props.account.auth === "google" ? "With Google, in the browser" : gmail() ? "App password" : "Password"}
+          <Show when={props.account.auth !== "google" && !changing()}>
+            <button onClick={() => (setChanging(true), setPasswordNote(""))}>Change password</button>
+          </Show>
           <Show when={google() && (props.account.auth === "google" || gmail())}>
             <button onClick={() => void signIn()} disabled={signing()}>
               {signing() ? "Waiting for the browser…" : props.account.auth === "google" ? "Sign in again" : "Switch to Google sign-in"}
@@ -1896,6 +1950,30 @@ function AccountPage(props: { account: Account; onSignatures: () => void; onRena
               ? "Opens Google in your browser. Use it if Tern says the sign-in expired or was removed."
               : "Opens Google in your browser. Tern then forgets the app password; remove it in your Google account too."}
           </span>
+        </Show>
+        <Show when={changing()}>
+          <span class="ai-key">
+            <input
+              type="password"
+              aria-label={gmail() ? "New app password" : "New password"}
+              placeholder={gmail() ? "New app password" : "New password"}
+              value={password()}
+              onInput={(e) => setPassword(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && password()) void savePassword();
+                else if (e.key === "Escape") (e.stopPropagation(), setChanging(false));
+              }}
+              ref={(el) => queueMicrotask(() => el.focus())}
+            />
+            <button onClick={() => (setChanging(false), setPassword(""))}>Cancel</button>
+            <button class="primary" disabled={!password() || checking()} onClick={() => void savePassword()}>
+              {checking() ? "Checking…" : "Save"}
+            </button>
+          </span>
+          <span class="help">For when the password changed and the server refuses the old one. Tern checks it with the server before saving it in the system keyring.</span>
+        </Show>
+        <Show when={passwordNote()}>
+          <span class="help">{passwordNote()}</span>
         </Show>
       </div>
       <div class="setting">
@@ -1913,6 +1991,24 @@ function AccountPage(props: { account: Account; onSignatures: () => void; onRena
       <div class="setting">
         <span class="title">Signatures</span>
         <button onClick={props.onSignatures}>Edit signatures</button>
+      </div>
+      <div class="setting">
+        <span class="title">Remove account</span>
+        <span class="value-action">
+          <Show
+            when={removing()}
+            fallback={<button onClick={() => setRemoving(true)}>Remove from Tern…</button>}
+          >
+            <button class="danger" onClick={() => void remove()}>
+              Remove {props.account.email}
+            </button>
+            <button onClick={() => setRemoving(false)}>Cancel</button>
+          </Show>
+        </span>
+        <span class="help">
+          Tern deletes its copy of this account's mail, drafts and changes still waiting to go out, and forgets its
+          password. The mail stays on the server.
+        </span>
       </div>
     </>
   );
@@ -1962,7 +2058,7 @@ export function SettingsPage(props: {
       words: "ai claude anthropic openai gpt gemini google api key summary summarize replies suggest write rewrite style voice model privacy",
       body: () => <AiSettingsPage accounts={props.accounts} />,
     },
-    { id: "About", name: "About", group: "General", words: "version log bug report problem help beta", body: () => <AboutSettings /> },
+    { id: "About", name: "About", group: "General", words: "version log bug report problem help beta downloaded attachments cache disk space clear", body: () => <AboutSettings /> },
     { id: "Compose", name: "Compose", group: "Writing", words: "undo send delay attachment forgotten attached prilog anhang", body: () => <ComposeSettings /> },
     { id: "Snippets", name: "Snippets", group: "Writing", words: "saved replies templates shortcut text", body: () => <SnippetSettings accounts={props.accounts} /> },
     {
@@ -1984,6 +2080,7 @@ export function SettingsPage(props: {
             account={props.accounts.find((x) => x.id === a.id) ?? a}
             onSignatures={() => (setSignatureAccount(a.id), setSection("Signatures"))}
             onRenamed={props.onAccountsChanged}
+            onRemoved={() => (setSection("Appearance"), props.onAccountsChanged())}
           />
         ),
       }),

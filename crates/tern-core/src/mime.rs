@@ -211,6 +211,19 @@ pub fn runs_as_program(name: &str) -> bool {
         "app",
         "pkg",
         "dmg",
+        // Open in a browser from disk, where their scripts run and a fake sign-in page looks real.
+        "html",
+        "htm",
+        "xhtml",
+        "shtml",
+        "mht",
+        "mhtml",
+        "svg",
+        // Excel add-ins, compiled help and troubleshooting packs: each has carried malware by mail.
+        "xll",
+        "chm",
+        "diagcab",
+        "one",
     ];
     let lower = name.trim_end_matches(['.', ' ']).to_ascii_lowercase();
     lower.rsplit_once('.').is_some_and(|(_, ext)| RISKY.contains(&ext))
@@ -298,6 +311,19 @@ fn raw_header(msg: &mail_parser::Message, name: &str) -> Option<String> {
     (!one_line.is_empty()).then_some(one_line)
 }
 
+/// The date a message sorts by: its Date header, unless that is missing or more than a day after the server got
+/// it (`received`, INTERNALDATE), which then stands in. A missing Date sank the message to the bottom of the
+/// list; a date years ahead pinned it to the top. Without `received`, a date ahead of `now` is cut to `now`.
+pub fn sort_date(header: i64, received: Option<i64>, now: i64) -> i64 {
+    const DAY: i64 = 86_400;
+    match received.filter(|r| *r > 0) {
+        Some(r) if header <= 0 || header > r + DAY => r,
+        Some(_) => header,
+        None if header > now + DAY => now,
+        None => header,
+    }
+}
+
 /// Parses just the header block of a message (from a HEADER.FIELDS fetch): enough for the list, no body yet.
 pub fn parse_headers(
     uid: u32,
@@ -364,6 +390,18 @@ pub fn snippet(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_or_future_date_gives_way_to_when_the_server_got_it() {
+        let (got, now) = (1_000_000, 2_000_000);
+        assert_eq!(sort_date(999_000, Some(got), now), 999_000);
+        // Clocks drift: a few hours ahead of the server is still the sender's date.
+        assert_eq!(sort_date(got + 3_600, Some(got), now), got + 3_600);
+        assert_eq!(sort_date(0, Some(got), now), got);
+        assert_eq!(sort_date(4_000_000_000, Some(got), now), got);
+        assert_eq!(sort_date(4_000_000_000, None, now), now);
+        assert_eq!(sort_date(0, None, now), 0);
+    }
 
     #[test]
     fn inline_images_come_out_as_data_uris() {
@@ -452,7 +490,12 @@ Date: Mon, 12 Oct 2026 10:00:00 +0000\r\n\r\n";
         let long = format!("{}.pdf", "x".repeat(300));
         assert!(safe_file_name(&long).ends_with("x.pdf") && safe_file_name(&long).chars().count() == 150);
         assert!(
-            runs_as_program("invoice.pdf.exe") && runs_as_program("Setup.MSI") && runs_as_program("x.lnk. ")
+            runs_as_program("invoice.pdf.exe")
+                && runs_as_program("Setup.MSI")
+                && runs_as_program("x.lnk. ")
+                && runs_as_program("Sign in.html")
+                && runs_as_program("chart.svg")
+                && runs_as_program("q.xll")
         );
         assert!(
             !runs_as_program("invoice.pdf") && !runs_as_program("route.gpx") && !runs_as_program("README")
