@@ -7,6 +7,8 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-27
+
 ### Added
 
 - Beside a conversation, what its newest message holds: the day and time it names (snooze it until then), an
