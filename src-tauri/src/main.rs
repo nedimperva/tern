@@ -284,6 +284,15 @@ fn main() {
             commands::set_signature_default,
             commands::delete_signature,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Tern");
+        .build(tauri::generate_context!())
+        .expect("error while building Tern")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                if let Some(state) = app.try_state::<AppState>() {
+                    if let Err(e) = state.store.tidy_on_exit() {
+                        log::warn!("tidying the database on exit: {e:#}");
+                    }
+                }
+            }
+        });
 }
