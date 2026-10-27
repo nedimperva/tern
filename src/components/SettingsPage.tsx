@@ -174,6 +174,24 @@ function ReadingSettings() {
         ]}
       />
       <Select
+        name="readingFacts"
+        title="In this message"
+        help="Beside a conversation: the day and time it names, an address, what it asks of you, codes to copy and its links. Found on this computer."
+        choices={[
+          { label: "Show them", value: true },
+          { label: "Don't show them", value: false },
+        ]}
+      />
+      <Select
+        name="newsletterReading"
+        title="Newsletters"
+        help="Mail its sender designed, sent to a list. Reading view shows its words and pictures in Tern's type, with its parts and links beside it. The book icon switches."
+        choices={[
+          { label: "Open in reading view", value: true },
+          { label: "Open as sent", value: false },
+        ]}
+      />
+      <Select
         name="darkMail"
         title="Designed mail in dark mode"
         help="Newsletters and receipts come with their own colours. Darkened, their backgrounds go dark and their text light; pictures stay as they are."

@@ -7,6 +7,16 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Beside a conversation, what its newest message holds: the day and time it names (snooze it until then), an
+  address (open the map), what it asks of you, codes to copy and its links. Found on this computer; Settings →
+  Reading turns it off.
+- Marks and notes. Select text in a message to quote it in a reply, mark it, add a note or copy it. Marks show in
+  the message and beside it; `[` and `]` go from one to the next. They stay on this computer.
+- Newsletters open in reading view, without the list's footer, with their parts and links beside them. The book
+  icon switches back; Settings → Reading changes the default.
+
 ### Fixed
 
 - One at a time: a long message no longer pushes its card off the bottom of the window, and Reply and Snooze open

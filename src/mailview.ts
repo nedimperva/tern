@@ -249,6 +249,8 @@ export function readingView(html: string): string {
   };
   const push = (tag: string, html: string) => {
     const text = html.replace(/\s+/g, " ").trim();
+    // The list's footer ("You get this because… Unsubscribe"): the header's icon already offers to leave.
+    if (/<a [^>]*>[^<]*(unsubscribe|odjav|preferences)[^<]*<\/a>/i.test(text) && text.length < 600) return;
     if (text.replace(/<[^>]+>|<br>/g, "").trim()) out.push(`<${tag}>${text}</${tag}>`);
   };
   const walk = (el: Element) => {

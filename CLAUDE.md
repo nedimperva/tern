@@ -28,6 +28,10 @@ decisions that aren't visible from the code.
   manual summaries and Write with AI, off by default (`crates/tern-core/src/ai/`). No local model yet (owner).
   Then OpenAI and Gemini, suggested replies (Q) and a per-account style note (schema v26), all on request.
   `store_bench` exits non-zero on a missed target and runs in CI with `TERN_BENCH_SLACK=3`.
+  Reading (2026-10-27, branch `sprint/05-morning`, ui.md §4.2a–c): the column beside a conversation with what the
+  newest message holds (`src/facts.ts`, local only), marks and notes (schema v27, CSS Custom Highlight API in
+  `src/marks.ts`), newsletters in reading view by default. The fake's newest conversation and its newsletter carry
+  facts and parts to try them on.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items. Gmail still goes through IMAP, signed in with Google (XOAUTH2), with labels

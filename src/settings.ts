@@ -31,6 +31,10 @@ export type Settings = {
   quietTo: string;
   /** The inbox in two splits, Important and Other, rather than one list. */
   splitInbox: boolean;
+  /** The column beside a conversation: when, where, what is asked, codes and links found in the newest message. */
+  readingFacts: boolean;
+  /** Newsletters (designed mail from a list) open in reading view. */
+  newsletterReading: boolean;
   /** In dark mode, designed mail (newsletters, receipts) darkened like the rest, or left in its own colours. */
   darkMail: "darken" | "original";
   /** Company logos in place of initials, fetched from each sender's own website. Off: it tells them you read. */
@@ -95,6 +99,8 @@ export const DEFAULTS: Settings = {
   quietTo: "",
   splitInbox: true,
   darkMail: "darken",
+  readingFacts: true,
+  newsletterReading: true,
   senderLogos: false,
   attachmentCheck: true,
   attachmentWords: [],

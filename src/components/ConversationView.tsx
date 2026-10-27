@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
-import { api, type Mailto, type ThreadMessage } from "../api";
+import { api, type Mailto, type Mark, type ThreadMessage } from "../api";
 import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
@@ -16,6 +16,8 @@ import {
   textFrame,
   withoutTrackers,
 } from "../mailview";
+import { anyFact, factsOf } from "../facts";
+import { drawMarks, FRAME_MARK_STYLE, setJumper, showRange } from "../marks";
 import { aiOn, isDark, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
 import { ActionMenu, type MenuItem } from "./ActionMenu";
@@ -23,15 +25,43 @@ import { AiReplies } from "./AiReplies";
 import { AiSummary } from "./AiSummary";
 import { Icon } from "./Icon";
 import { PersonCard, type PersonActions } from "./PersonCard";
+import { ReadingMargin } from "./ReadingMargin";
 import { logoFor } from "../logos";
 
 /** Images the HTML shows from the message's own parts. */
 const CID = /(["'])cid:([^"']+)\1/gi;
 
+/** Text selected in a message, where the bar for it goes (window coordinates of the selection's top middle). */
+type Picked = { messageId: number; text: string; x: number; y: number };
+
+/** The selection in `doc` when it lies in one message's words; `offset` places a frame's coordinates in the window. */
+function picked(doc: Document, messageId: number | null, offset: { left: number; top: number }): Picked | null {
+  const sel = doc.getSelection();
+  const text = sel && !sel.isCollapsed ? sel.toString().trim() : "";
+  if (!text || text.length > 2000) return null;
+  const range = sel!.getRangeAt(0);
+  const node = range.commonAncestorContainer;
+  const id = messageId ?? Number((node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>(".card[data-message] .body")?.closest<HTMLElement>(".card")?.dataset.message);
+  if (!id) return null;
+  const box = range.getBoundingClientRect();
+  return { messageId: id, text, x: offset.left + box.left + box.width / 2, y: offset.top + box.top };
+}
+
+/** Frames tell the conversation they have (re)loaded, so marks are drawn in them again. */
+const FRAME_LOADED = "tern-frame-loaded";
+
 // Mail is untrusted: it renders in a frame with no scripts, and no remote content until asked for. What it would
 // fetch (`web`, tracking pixels already taken out) is worked out by the conversation, whose header says what was
 // blocked and loads images when asked.
-function HtmlBody(props: { web: Remote; remote: boolean; designed: boolean; reading: boolean; messageId: number; large?: boolean }) {
+function HtmlBody(props: {
+  web: Remote;
+  remote: boolean;
+  designed: boolean;
+  reading: boolean;
+  messageId: number;
+  large?: boolean;
+  onPick?: (p: Picked | null) => void;
+}) {
   const remote = () => props.remote;
   // Pictures pasted into the mail come with it as parts; fetched (once, then cached) and drawn in place.
   const [inline, setInline] = createSignal<Record<string, string>>({});
@@ -92,6 +122,19 @@ function HtmlBody(props: { web: Remote; remote: boolean; designed: boolean; read
     fit();
     new ResizeObserver(fit).observe(doc.body);
     quietMenu(doc);
+    const marks = doc.createElement("style");
+    marks.textContent = FRAME_MARK_STYLE;
+    doc.head?.append(marks);
+    window.dispatchEvent(new Event(FRAME_LOADED));
+    // A selection in the message offers Quote, Mark, Note and Copy; the frame's own coordinates are moved into the
+    // window's, where the bar is drawn.
+    doc.addEventListener("mouseup", () =>
+      setTimeout(() => {
+        const box = frame!.getBoundingClientRect();
+        props.onPick?.(picked(doc, props.messageId, box));
+      }),
+    );
+    doc.addEventListener("mousedown", () => props.onPick?.(null));
     // Keys typed while the message has focus (after selecting text in it) still reach Tern's shortcuts.
     doc.addEventListener("keydown", (ev) => {
       // A form field in the mail keeps its typing.
@@ -423,6 +466,7 @@ function MessageBody(props: {
   reading: boolean;
   large?: boolean;
   onView: (index: number) => void;
+  onPick: (p: Picked | null) => void;
 }) {
   return (
     <>
@@ -436,6 +480,7 @@ function MessageBody(props: {
               reading={props.reading}
               messageId={props.m.id}
               large={props.large}
+              onPick={props.onPick}
             />
           )}
         </Show>
@@ -467,6 +512,10 @@ export function ConversationView(props: {
   onMailto: (m: Mailto) => void;
   onDone: () => void;
   onClose: () => void;
+  /** Reply quoting the text selected in a message (the selection bar's "Quote in reply"). */
+  onQuote: () => void;
+  /** Snooze the conversation until then (the column's "Snooze until then"). */
+  onSnoozeUntil: (due: number) => void;
   menu: () => MenuItem[];
   person: PersonActions;
 }) {
@@ -556,7 +605,162 @@ export function ConversationView(props: {
     setAsked(false);
     setLeft("");
     setReading(false);
+    readingChosen = false;
+    setCurrentMark(null);
+    setPick(null);
   });
+
+  // MARK: The column beside the messages (docs/design/ui.md §4.2a–c)
+
+  /** A newsletter: mail its sender designed, sent to a list. It opens in reading view unless Settings → Reading
+   * says otherwise; the book icon still switches. Decided once per conversation, when its body is here. */
+  const newsletter = () => !!last() && designed().has(last().id) && !!last().listUnsubscribe;
+  let readingChosen = false;
+  createEffect(() => {
+    if (readingChosen || !newsletter()) return;
+    readingChosen = true;
+    if (settings.newsletterReading) setReading(true);
+  });
+
+  /** A message's own words: without the quote it carries or its signature. */
+  const newWords = (m: ThreadMessage): string => {
+    if (m.bodyText?.trim()) {
+      const at = foldAt(m.bodyText);
+      return at < 0 ? m.bodyText : m.bodyText.slice(0, at);
+    }
+    if (!m.bodyHtml) return "";
+    const doc = new DOMParser().parseFromString(m.bodyHtml, "text/html");
+    doc.querySelectorAll(`style, script, ${HTML_FOLD_SELECTOR}`).forEach((n) => n.remove());
+    doc.querySelectorAll("br, p, div, li, tr, h1, h2, h3").forEach((n) => n.append("\n"));
+    return doc.body.textContent ?? "";
+  };
+  /** What the newest message holds. A list's mail asks nothing of anyone in particular, and neither does your own. */
+  const facts = createMemo(() => {
+    const m = last();
+    if (!m?.bodyLoaded || !settings.readingFacts) return null;
+    const found = factsOf(newWords(m), webs().get(m.id)?.html ?? null, m.date, newsletter() ? 12 : 6);
+    if (m.listUnsubscribe || props.mine(m.fromAddr)) found.asks = [];
+    return found;
+  });
+  /** A newsletter's parts, by its headings, while it shows in reading view. */
+  const contents = createMemo(() => {
+    const m = last();
+    const web = m && reading() ? webs().get(m.id) : undefined;
+    if (!web || !designed().has(m!.id)) return [];
+    const doc = new DOMParser().parseFromString(readingView(web.html), "text/html");
+    return [...doc.querySelectorAll("h2")].map((h) => h.textContent?.trim() ?? "").filter(Boolean).slice(0, 12);
+  });
+  const toPart = (i: number) => {
+    const frame = document.querySelector<HTMLIFrameElement>(`.card[data-message="${last().id}"] iframe`);
+    const heading = frame?.contentDocument?.querySelectorAll("h2")[i];
+    if (!heading) return;
+    const range = heading.ownerDocument.createRange();
+    range.selectNode(heading);
+    showRange(range, 0.1);
+  };
+
+  // Marks: fetched for the conversation's messages, drawn into them, and stepped through with [ and ].
+  const ids = createMemo(() => props.messages.map((m) => m.id).join(","));
+  const [marks, { refetch: refetchMarks }] = createResource(
+    ids,
+    (list) => (list ? api.marks(list.split(",").map(Number)) : Promise.resolve([] as Mark[])),
+    { initialValue: [] },
+  );
+  const [currentMark, setCurrentMark] = createSignal<number | null>(null);
+  const [placed, setPlaced] = createSignal(new Map<number, Range | null>());
+  const [loads, setLoads] = createSignal(0);
+  const frameLoaded = () => setLoads((n) => n + 1);
+  // A mark asked for whose message was folded: shown once its message is open and drawn.
+  let wanted: number | null = null;
+  createEffect(() => {
+    const list = marks();
+    const on = currentMark();
+    loads();
+    reading();
+    for (const m of props.messages) props.expanded(m.id);
+    requestAnimationFrame(() => {
+      const found = drawMarks(list, on);
+      setPlaced(found);
+      const range = wanted !== null ? found.get(wanted) : null;
+      if (range) (wanted = null), showRange(range);
+    });
+  });
+  const showMark = (id: number) => {
+    setCurrentMark(id);
+    const range = placed().get(id);
+    if (range) return showRange(range);
+    wanted = id;
+    const mark = marks().find((k) => k.id === id);
+    const i = props.messages.findIndex((m) => m.id === mark?.message);
+    if (i >= 0 && i < props.messages.length - 1 && !props.expanded(props.messages[i].id)) props.onToggle(i);
+  };
+  setJumper((step) => {
+    const list = marks();
+    if (!list.length) return;
+    const at = list.findIndex((k) => k.id === currentMark());
+    const next = at < 0 ? (step > 0 ? 0 : list.length - 1) : (at + step + list.length) % list.length;
+    showMark(list[next].id);
+  });
+  onCleanup(() => {
+    setJumper(null);
+    drawMarks([], null);
+  });
+
+  // The selection bar: Quote in reply, Mark, Note, Copy, over text selected in a message.
+  const [pick, setPick] = createSignal<Picked | null>(null);
+  const [noting, setNoting] = createSignal<number | null>(null);
+  const [markProblem, setMarkProblem] = createSignal("");
+  const unselect = () => {
+    document.getSelection()?.removeAllRanges();
+    for (const f of document.querySelectorAll<HTMLIFrameElement>(".card iframe")) f.contentWindow?.getSelection()?.removeAllRanges();
+  };
+  const markIt = async (withNote: boolean) => {
+    const p = pick();
+    if (!p) return;
+    setPick(null);
+    unselect();
+    try {
+      const mark = await api.addMark(p.messageId, p.text, "");
+      await refetchMarks();
+      setCurrentMark(mark.id);
+      if (withNote) setNoting(mark.id);
+    } catch (e) {
+      setMarkProblem(String(e));
+    }
+  };
+  const dropPick = () => setPick(null);
+  onMount(() => {
+    window.addEventListener(FRAME_LOADED, frameLoaded);
+    window.addEventListener("mousedown", dropPick);
+    window.addEventListener("keydown", dropPick);
+    window.addEventListener("resize", dropPick);
+  });
+  onCleanup(() => {
+    window.removeEventListener(FRAME_LOADED, frameLoaded);
+    window.removeEventListener("mousedown", dropPick);
+    window.removeEventListener("keydown", dropPick);
+    window.removeEventListener("resize", dropPick);
+  });
+
+  // Beside the messages when the pane has room for both, else above them.
+  const [wide, setWide] = createSignal(true);
+  const hasMargin = () => contents().length > 1 || !!(facts() && anyFact(facts()!)) || marks().length > 0;
+  const margin = () => (
+    <ReadingMargin
+      narrow={!wide()}
+      facts={facts()}
+      contents={contents()}
+      onContents={toPart}
+      issue={newsletter()}
+      onSnooze={props.onSnoozeUntil}
+      marks={marks()}
+      current={currentMark()}
+      hidden={(id) => !placed().get(id)}
+      onShowMark={showMark}
+      onChanged={() => void refetchMarks()}
+      noting={noting()}
+    />
+  );
   /** "3 days later" above the message at `i`, when the one before it is days older. */
   const gap = (i: number) => (i > 0 ? later(props.messages[i - 1].date, props.messages[i].date) : null);
 
@@ -565,9 +769,20 @@ export function ConversationView(props: {
   let title!: HTMLHeadingElement;
   const [compact, setCompact] = createSignal(false);
   onMount(() => {
-    const watch = new IntersectionObserver(([e]) => setCompact(!e.isIntersecting), { root: title.closest(".conversation-pane") });
+    const pane = title.closest(".conversation-pane");
+    const watch = new IntersectionObserver(([e]) => setCompact(!e.isIntersecting), { root: pane });
     watch.observe(title);
-    onCleanup(() => watch.disconnect());
+    // Room for the messages (560 px at least) and the column beside them.
+    // Moving the column resizes the message frames, which have observers of their own: wait for the next frame.
+    const room = new ResizeObserver(([e]) => requestAnimationFrame(() => setWide(e.contentRect.width >= 940)));
+    if (pane) room.observe(pane);
+    const scrolled = () => setPick(null);
+    pane?.addEventListener("scroll", scrolled, { passive: true });
+    onCleanup(() => {
+      watch.disconnect();
+      room.disconnect();
+      pane?.removeEventListener("scroll", scrolled);
+    });
   });
 
   const name = (m: ThreadMessage) => (props.mine(m.fromAddr) ? "You" : m.fromName || m.fromAddr);
@@ -607,173 +822,207 @@ export function ConversationView(props: {
   );
 
   return (
-    <div class="conversation" classList={{ replying: props.replying }}>
-      <div class="compact" classList={{ shown: compact() }} aria-hidden={!compact()}>
-        <div class="bar">
-          <span class="subject">{subject()}</span>
-          <button class="primary" tabIndex={compact() ? 0 : -1} onClick={props.onDone}>
-            Done <kbd>E</kbd>
-          </button>
+    <div class="reading" classList={{ "has-margin": hasMargin() && wide() }}>
+      <div
+        class="conversation"
+        classList={{ replying: props.replying }}
+        onMouseUp={() => setTimeout(() => setPick(picked(document, null, { left: 0, top: 0 })))}
+      >
+        <div class="compact" classList={{ shown: compact() }} aria-hidden={!compact()}>
+          <div class="bar">
+            <span class="subject">{subject()}</span>
+            <button class="primary" tabIndex={compact() ? 0 : -1} onClick={props.onDone}>
+              Done <kbd>E</kbd>
+            </button>
+          </div>
         </div>
-      </div>
-      <header class="conversation-head">
-        <div class="title">
-          <h1 ref={title}>{subject()}</h1>
-          <Show when={props.labels.length}>
-            <div class="labels">
-              <For each={props.labels}>
-                {(l) => (
-                  <span class="label-chip" style={{ "--label": labelColour(l) }}>
-                    {l}
-                  </span>
-                )}
-              </For>
-            </div>
-          </Show>
-          <Show when={!stage()}>
-            <div class="people">
-              <span class="stack">
-                <For each={senders()}>{(m) => <Avatar addr={m.fromAddr} name={m.fromName} />}</For>
+        <header class="conversation-head">
+          <div class="title">
+            <h1 ref={title}>{subject()}</h1>
+            <Show when={props.labels.length}>
+              <div class="labels">
+                <For each={props.labels}>
+                  {(l) => (
+                    <span class="label-chip" style={{ "--label": labelColour(l) }}>
+                      {l}
+                    </span>
+                  )}
+                </For>
+              </div>
+            </Show>
+            <Show when={!stage()}>
+              <div class="people">
+                <span class="stack">
+                  <For each={senders()}>{(m) => <Avatar addr={m.fromAddr} name={m.fromName} />}</For>
+                </span>
+                <span>
+                  {people()} · {props.messages.length} messages
+                </span>
+              </div>
+            </Show>
+            <Show when={last() && aiOn("summaries", last().accountId) && last()}>{(m) => <AiSummary id={m().id} />}</Show>
+          </div>
+          <div class="tools">
+            <Show when={privacy().trackers || privacy().blocked}>
+              <button class="tool safe" data-tip={shieldTip()} aria-label={shieldTip()} onClick={() => privacy().blocked && setAsked(true)}>
+                <Icon name="shield-check" size={15} />
+                <Show when={privacy().trackers}>{privacy().trackers}</Show>
+              </button>
+            </Show>
+            <Show when={minutes() >= 2}>
+              <span class="tool" tabIndex={0} data-tip={`${minutes()} min read`} aria-label={`${minutes()} min read`}>
+                <Icon name="clock" size={15} />
               </span>
-              <span>
-                {people()} · {props.messages.length} messages
-              </span>
-            </div>
-          </Show>
-          <Show when={last() && aiOn("summaries", last().accountId) && last()}>{(m) => <AiSummary id={m().id} />}</Show>
-        </div>
-        <div class="tools">
-          <Show when={privacy().trackers || privacy().blocked}>
-            <button class="tool safe" data-tip={shieldTip()} aria-label={shieldTip()} onClick={() => privacy().blocked && setAsked(true)}>
-              <Icon name="shield-check" size={15} />
-              <Show when={privacy().trackers}>{privacy().trackers}</Show>
+            </Show>
+            <Show when={designed().size}>
+              <button
+                class="tool"
+                classList={{ on: reading() }}
+                aria-pressed={reading()}
+                data-tip={reading() ? "Show the original" : "Reading view: the words and pictures in Tern's type"}
+                aria-label="Reading view"
+                onClick={() => setReading(!reading())}
+              >
+                <Icon name="book-open" size={15} />
+              </button>
+            </Show>
+            <Show when={listMail()}>
+              <button class="tool" data-tip={left() || "Unsubscribe from this list"} aria-label={left() || "Unsubscribe"} onClick={unsubscribe}>
+                <Icon name={left() ? "check" : "mail-x"} size={15} />
+              </button>
+            </Show>
+            <Show when={anyTool()}>
+              <span class="vsep" />
+            </Show>
+            <button class="primary" onClick={props.onDone}>
+              Done <kbd>E</kbd>
             </button>
-          </Show>
-          <Show when={minutes() >= 2}>
-            <span class="tool" tabIndex={0} data-tip={`${minutes()} min read`} aria-label={`${minutes()} min read`}>
-              <Icon name="clock" size={15} />
-            </span>
-          </Show>
-          <Show when={designed().size}>
-            <button
-              class="tool"
-              classList={{ on: reading() }}
-              aria-pressed={reading()}
-              data-tip={reading() ? "Show the original" : "Reading view: the words and pictures in Tern's type"}
-              aria-label="Reading view"
-              onClick={() => setReading(!reading())}
-            >
-              <Icon name="book-open" size={15} />
+            <ActionMenu items={menu} />
+            <button class="tool" data-tip="Close (Esc)" aria-label="Close" onClick={props.onClose}>
+              <Icon name="x" size={15} />
             </button>
-          </Show>
-          <Show when={listMail()}>
-            <button class="tool" data-tip={left() || "Unsubscribe from this list"} aria-label={left() || "Unsubscribe"} onClick={unsubscribe}>
-              <Icon name={left() ? "check" : "mail-x"} size={15} />
-            </button>
-          </Show>
-          <Show when={anyTool()}>
-            <span class="vsep" />
-          </Show>
-          <button class="primary" onClick={props.onDone}>
-            Done <kbd>E</kbd>
-          </button>
-          <ActionMenu items={menu} />
-          <button class="tool" data-tip="Close (Esc)" aria-label="Close" onClick={props.onClose}>
-            <Icon name="x" size={15} />
-          </button>
-        </div>
-      </header>
-      {/* Every earlier message as one line, all of them there: a click opens one in place. */}
-      <Show when={!stage()}>
-        <div class="history">
-          <For each={props.messages.slice(0, -1)}>
-            {(m, i) => {
-              const open = () => props.expanded(m.id);
-              return (
-                <>
-                  <Show when={gap(i())}>{(g) => <div class="gap">{g()}</div>}</Show>
-                  <article
-                    class="card row"
-                    data-message={m.id}
-                    classList={{ focused: i() === props.focused, open: open(), unread: !m.seen, mine: props.mine(m.fromAddr) }}
-                  >
-                    <header onClick={() => props.onToggle(i())}>
-                      <Avatar addr={m.fromAddr} name={m.fromName} />
-                      <span class="line">
-                        {sender(m)}
-                        <Show when={m.draftId != null}>
-                          <span class="draft-label">Draft · R to continue</span>
-                        </Show>
-                        <Show when={open()} fallback={<span class="snippet">{m.snippet}</span>}>
-                          <span class="detail">
-                            {[recipients(m.toAddrs, props.mine, names()), full(m.date)].filter(Boolean).join(" · ")}
+          </div>
+        </header>
+        <Show when={hasMargin() && !wide()}>{margin()}</Show>
+        {/* Every earlier message as one line, all of them there: a click opens one in place. */}
+        <Show when={!stage()}>
+          <div class="history">
+            <For each={props.messages.slice(0, -1)}>
+              {(m, i) => {
+                const open = () => props.expanded(m.id);
+                return (
+                  <>
+                    <Show when={gap(i())}>{(g) => <div class="gap">{g()}</div>}</Show>
+                    <article
+                      class="card row"
+                      data-message={m.id}
+                      classList={{ focused: i() === props.focused, open: open(), unread: !m.seen, mine: props.mine(m.fromAddr) }}
+                    >
+                      <header onClick={() => props.onToggle(i())}>
+                        <Avatar addr={m.fromAddr} name={m.fromName} />
+                        <span class="line">
+                          {sender(m)}
+                          <Show when={m.draftId != null}>
+                            <span class="draft-label">Draft · R to continue</span>
+                          </Show>
+                          <Show when={open()} fallback={<span class="snippet">{m.snippet}</span>}>
+                            <span class="detail">
+                              {[recipients(m.toAddrs, props.mine, names()), full(m.date)].filter(Boolean).join(" · ")}
+                            </span>
+                          </Show>
+                        </span>
+                        <Show when={m.attachments.length || m.hasAttachments}>
+                          <span
+                            class="clip"
+                            title={m.attachments.length === 1 ? "1 attachment" : m.attachments.length ? `${m.attachments.length} attachments` : "Attachments"}
+                          >
+                            <Icon name="paperclip" size={13} />
+                            <Show when={m.attachments.length > 1}>{m.attachments.length}</Show>
                           </span>
                         </Show>
-                      </span>
-                      <Show when={m.attachments.length || m.hasAttachments}>
-                        <span
-                          class="clip"
-                          title={m.attachments.length === 1 ? "1 attachment" : m.attachments.length ? `${m.attachments.length} attachments` : "Attachments"}
-                        >
-                          <Icon name="paperclip" size={13} />
-                          <Show when={m.attachments.length > 1}>{m.attachments.length}</Show>
-                        </span>
+                        <time title={full(m.date)}>{when(m.date)}</time>
+                      </header>
+                      <Show when={open()}>
+                        <div class="body">
+                          <MessageBody
+                            m={m}
+                            web={webs().get(m.id)}
+                            remote={remoteFor(m)}
+                            designed={designed().has(m.id)}
+                            reading={reading()}
+                            onView={(index) => props.onView(m, index)}
+                            onPick={setPick}
+                          />
+                        </div>
                       </Show>
-                      <time title={full(m.date)}>{when(m.date)}</time>
-                    </header>
-                    <Show when={open()}>
-                      <div class="body">
-                        <MessageBody
-                          m={m}
-                          web={webs().get(m.id)}
-                          remote={remoteFor(m)}
-                          designed={designed().has(m.id)}
-                          reading={reading()}
-                          onView={(index) => props.onView(m, index)}
-                        />
-                      </div>
+                    </article>
+                  </>
+                );
+              }}
+            </For>
+          </div>
+          <Show when={gap(props.messages.length - 1)}>{(g) => <div class="gap">{g()}</div>}</Show>
+        </Show>
+        {/* The newest message, or the only one, on stage: a byline and the body a size up. */}
+        <Show when={last()}>
+          {(m) => (
+            <article class="card stage-msg" data-message={m().id} classList={{ unread: !m().seen, mine: props.mine(m().fromAddr) }}>
+              <div class="byline">
+                <Avatar addr={m().fromAddr} name={m().fromName} />
+                <div class="who">
+                  <div class="line">
+                    {sender(m())}
+                    <Show when={m().draftId != null}>
+                      <span class="draft-label">Draft · R to continue</span>
                     </Show>
-                  </article>
-                </>
-              );
-            }}
-          </For>
-        </div>
-        <Show when={gap(props.messages.length - 1)}>{(g) => <div class="gap">{g()}</div>}</Show>
-      </Show>
-      {/* The newest message, or the only one, on stage: a byline and the body a size up. */}
-      <Show when={last()}>
-        {(m) => (
-          <article class="card stage-msg" data-message={m().id} classList={{ unread: !m().seen, mine: props.mine(m().fromAddr) }}>
-            <div class="byline">
-              <Avatar addr={m().fromAddr} name={m().fromName} />
-              <div class="who">
-                <div class="line">
-                  {sender(m())}
-                  <Show when={m().draftId != null}>
-                    <span class="draft-label">Draft · R to continue</span>
-                  </Show>
-                </div>
-                <div class="detail" title={full(m().date)}>
-                  {[recipients(m().toAddrs, props.mine, names()), ago(m().date)].filter(Boolean).join(" · ")}
+                  </div>
+                  <div class="detail" title={full(m().date)}>
+                    {[recipients(m().toAddrs, props.mine, names()), ago(m().date)].filter(Boolean).join(" · ")}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div class="body">
-              <MessageBody
-                m={m()}
-                web={webs().get(m().id)}
-                remote={remoteFor(m())}
-                designed={designed().has(m().id)}
-                reading={reading()}
-                large
-                onView={(index) => props.onView(m(), index)}
-              />
-            </div>
-          </article>
+              <div class="body">
+                <MessageBody
+                  m={m()}
+                  web={webs().get(m().id)}
+                  remote={remoteFor(m())}
+                  designed={designed().has(m().id)}
+                  reading={reading()}
+                  large
+                  onView={(index) => props.onView(m(), index)}
+                  onPick={setPick}
+                />
+              </div>
+            </article>
+          )}
+        </Show>
+        {replyRow()}
+      </div>
+      <Show when={hasMargin() && wide()}>{margin()}</Show>
+      <Show when={pick()}>
+        {(p) => (
+          <div
+            class="selection-bar"
+            role="toolbar"
+            aria-label="Selected text"
+            style={{ left: `${Math.max(8, Math.min(p().x - 150, window.innerWidth - 308))}px`, top: `${Math.max(8, p().y - 44)}px` }}
+            // Pressing a button must not take the selection away first.
+            onMouseDown={(e) => (e.preventDefault(), e.stopPropagation())}
+          >
+            <button onClick={() => (setPick(null), props.onQuote())}>
+              Quote in reply <kbd>R</kbd>
+            </button>
+            <button onClick={() => void markIt(false)}>Mark</button>
+            <button onClick={() => void markIt(true)}>Note</button>
+            <button onClick={() => (void navigator.clipboard.writeText(p().text).catch(() => {}), setPick(null))}>Copy</button>
+          </div>
         )}
       </Show>
-      {replyRow()}
+      <Show when={markProblem()}>
+        <p class="attachment-problem" role="alert">
+          {markProblem()}
+        </p>
+      </Show>
     </div>
   );
 }

@@ -7,7 +7,7 @@ use tern_core::ai::{self, providers, Provider};
 use tern_core::presets::{self, Preset};
 use tern_core::{
     logo, mime, secrets, sync, Account, AccountConfig, Action, AiStyle, Applied, Auth, Contact, ContactCard,
-    Cursor, Draft, DraftRecord, Folder, ListTarget, MessageRow, OutboxProblem, OutboxWaiting,
+    Cursor, Draft, DraftRecord, Folder, ListTarget, Mark, MessageRow, OutboxProblem, OutboxWaiting,
     OutgoingAttachment, ReplyInit, ReplyKind, SearchResult, ThreadMessage, ThreadRow,
 };
 
@@ -1016,4 +1016,32 @@ pub async fn ai_set_style(state: State<'_, AppState>, account_id: i64, note: Str
     }
     let samples = state.store.ai_style(account_id).map_err(text)?.map(|s| s.samples).unwrap_or(0);
     state.store.set_ai_style(account_id, note.trim(), samples).map_err(text)
+}
+
+// MARK: Marks (reading)
+
+/// The marks on a conversation's messages.
+#[tauri::command]
+pub async fn marks(state: State<'_, AppState>, message_ids: Vec<i64>) -> Reply<Vec<Mark>> {
+    state.store.marks(&message_ids).map_err(text)
+}
+
+#[tauri::command]
+pub async fn add_mark(
+    state: State<'_, AppState>,
+    message_id: i64,
+    text: String,
+    note: String,
+) -> Reply<Mark> {
+    state.store.add_mark(message_id, text.trim(), note.trim()).map_err(self::text)
+}
+
+#[tauri::command]
+pub async fn set_mark_note(state: State<'_, AppState>, id: i64, note: String) -> Reply<()> {
+    state.store.set_mark_note(id, note.trim()).map_err(text)
+}
+
+#[tauri::command]
+pub async fn delete_mark(state: State<'_, AppState>, id: i64) -> Reply<()> {
+    state.store.delete_mark(id).map_err(text)
 }

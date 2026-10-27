@@ -127,3 +127,12 @@ Team split, "teaches the rule" from Move, RFC 8058 POST (keep mailto/URL).
   Important conversations whose newest message is someone else's, oldest first; snoozed ones that came back
   (`wake_snoozed` now leaves a `woke` reminder, kept two days); fired follow-ups; new since and new in Other.
   `src/day.ts` keeps `lastSeen` while the window shows. Tried in `npm run dev` on the fake.
+- 2026-10-27 (branch `sprint/05-morning`): reading, picked by the owner from the canvas "Tern reading ideas" (R2,
+  R5, R6; ui.md §4.2a–c). The column beside a conversation (`ReadingMargin`), `src/facts.ts` for when, where, asks,
+  codes and links (checked against English and Bosnian samples in the browser; no JS test runner yet), marks
+  (schema v27, `Store::marks/add_mark/set_mark_note/delete_mark`, a migration test) drawn with the CSS Custom
+  Highlight API (`src/marks.ts`), the selection bar, `[`/`]`, newsletters in reading view by default and the
+  footer left out. Not built: Read later, Add to calendar, `is:marked` in search, tinting found facts in the text.
+  Tried in `npm run dev` on the fake (offsite mail and the Field Notes newsletter) at 820–1913 px; a ResizeObserver
+  loop (the conversation's width followed its content beside the column) was found in the Tauri window's log and
+  fixed. Not yet tried against real mail in the Tauri window.

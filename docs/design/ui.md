@@ -187,6 +187,43 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   `--accent-soft` with the address, "also …" to pick another with the same name, "No one called “Zed” in your
   contacts" on `--warn-soft`. Tab fills the fields (Subject only when empty).
 
+### 4.2a Beside the messages: what the newest message holds
+
+Picked from the canvas "Tern reading ideas" (R2, R5, R6), 2026-10-27. A column 260 px wide beside the messages when
+the pane is 940 px or wider, sticky as the messages scroll; in a narrower pane the same sections sit in a row
+above the messages. It shows only what it found, and nothing at all when it found nothing.
+
+- **In this message** (Settings → Reading → In this message, on by default), from the newest message's own words
+  (no quote, no signature), found on this computer by `src/facts.ts`, in English and Bosnian/Croatian/Serbian:
+  When (a day named in the text, with the times beside it; "Snooze until then" brings the mail back an hour before,
+  or at 08:00 on a day with no time), Where (a street address; "Open the map" opens OpenStreetMap in the browser),
+  Asked of you (up to three questions put to the person, and their "please"s, on `--accent-soft`; not for your
+  own mail or a list's), and codes to copy (booking, order, tracking, confirmation numbers). Cards on `--soft`,
+  `--r-lg`, a small label over the value.
+- **Links** (up to 6, 12 in a newsletter): the mail's links without the footer's (unsubscribe, privacy, social),
+  each its words and its host; a click opens it in the browser.
+- A quiet line closes the column: "Found on this computer, from the words of the mail."
+
+### 4.2b Marks and notes
+
+- Selecting text in a message shows a dark bar over it (`--tip`): Quote in reply (`R`), Mark, Note, Copy. Pressing
+  it never takes the selection away first.
+- A mark is drawn in the message with the CSS Custom Highlight API (`--mark-soft`; the current one in the accent),
+  so the mail's own markup is never touched. Marks are kept by the message's Message-ID (schema v27, `marks`), so
+  Gmail's copies in two folders show the same marks; only on this computer.
+- "Your marks · N" in the column lists them in the order they were made (`--mark-soft` cards), each with a note
+  field ("Add a note"; Enter or Esc saves) and a remove button on hover. A click, `]` or `[` goes to a mark,
+  opening its message when it is folded. A narrow pane shows only the count and the keys.
+
+### 4.2c Newsletters as reading
+
+- Mail its sender designed and sent to a list (List-Unsubscribe) opens in reading view (Settings → Reading →
+  Newsletters, on by default); the book icon still switches to the original.
+- Reading view leaves out the list's footer (a short block with an unsubscribe or preferences link): the header's
+  leave icon already offers it.
+- The column shows **In this issue**, the issue's headings (a click scrolls to one), and **Links in this issue**.
+- Not built yet: a Read later shelf.
+
 ### 4.3 Command palette (`Ctrl+K`)
 
 - 560 px wide, centred at 20 % from the top, `--bg-1`, `--r-lg`, `--shadow`. Input at the top with the context on the left as a chip (`Move to`, `Label`, `Snippet`).

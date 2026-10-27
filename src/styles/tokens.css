@@ -17,6 +17,8 @@
   --ok: #2f9e6e;
   --warn: #c98a1b;
   --warn-soft: #fdf3e2;
+  /* A marked passage (§4.2b). */
+  --mark-soft: rgba(242, 201, 76, 0.32);
   --warn-fg: #6b4708;
   --danger: #d0453f;
   --star: #e9b81c;
@@ -105,6 +107,7 @@
   --ok: #3fbf85;
   --warn: #e0a63a;
   --warn-soft: #33270f;
+  --mark-soft: rgba(242, 201, 76, 0.22);
   --warn-fg: #f0c674;
   --danger: #ef6b66;
   --star: #f2c94c;
@@ -133,6 +136,7 @@
     --ok: #3fbf85;
     --warn: #e0a63a;
     --warn-soft: #33270f;
+  --mark-soft: rgba(242, 201, 76, 0.22);
     --warn-fg: #f0c674;
     --danger: #ef6b66;
     --star: #f2c94c;

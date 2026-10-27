@@ -11,7 +11,10 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 26;
+const SCHEMA_VERSION: i64 = 27;
+
+/// What a mark is kept by: the message's Message-ID, or its row for mail without one.
+const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
 /// Seconds a draft rests after its last change before its server copy is replaced, and that a discarded one waits
 /// (for Undo) before its server copy goes.
 const DRAFT_REST: i64 = 30;
@@ -446,6 +449,15 @@ fn migrate(conn: &Connection) -> Result<()> {
                 "CREATE TABLE ai_styles (account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
                                          note TEXT NOT NULL, samples INTEGER NOT NULL DEFAULT 0,
                                          updated INTEGER NOT NULL);"
+            }
+            // Passages the person marked while reading (package 05, reading R5), each with an optional note. Kept
+            // by the message's Message-ID, so a message in two folders (Gmail labels) shows the same marks.
+            26 => {
+                "CREATE TABLE marks (id INTEGER PRIMARY KEY,
+                                     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                     message_key TEXT NOT NULL, text TEXT NOT NULL,
+                                     note TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL);
+                 CREATE INDEX marks_by_message ON marks (account_id, message_key);"
             }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
@@ -882,6 +894,65 @@ impl Store {
 
     pub fn delete_ai_style(&self, account_id: i64) -> Result<()> {
         self.conn().execute("DELETE FROM ai_styles WHERE account_id = ?1", [account_id])?;
+        Ok(())
+    }
+
+    // MARK: Marks (reading)
+
+    /// The marks on these messages, in the order they were made. `message` is the first of the given ids that
+    /// carries the marked message.
+    pub fn marks(&self, message_ids: &[i64]) -> Result<Vec<Mark>> {
+        if message_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn();
+        let ids = message_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let mut stmt = conn.prepare(&format!(
+            "SELECT k.id, MIN(m.id), k.text, k.note, k.created FROM marks k
+             JOIN messages m ON m.account_id = k.account_id AND {KEY} = k.message_key
+             WHERE m.id IN ({ids}) GROUP BY k.id ORDER BY k.created, k.id"
+        ))?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Mark {
+                id: r.get(0)?,
+                message: r.get(1)?,
+                text: r.get(2)?,
+                note: r.get(3)?,
+                created: r.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn add_mark(&self, message_id: i64, text: &str, note: &str) -> Result<Mark> {
+        let conn = self.conn();
+        let created = now();
+        conn.execute(
+            &format!(
+                "INSERT INTO marks (account_id, message_key, text, note, created)
+                 SELECT m.account_id, {KEY}, ?2, ?3, ?4 FROM messages m WHERE m.id = ?1"
+            ),
+            params![message_id, text, note, created],
+        )?;
+        if conn.changes() == 0 {
+            bail!("That message is no longer here.");
+        }
+        Ok(Mark {
+            id: conn.last_insert_rowid(),
+            message: message_id,
+            text: text.into(),
+            note: note.into(),
+            created,
+        })
+    }
+
+    pub fn set_mark_note(&self, id: i64, note: &str) -> Result<()> {
+        self.conn().execute("UPDATE marks SET note = ?2 WHERE id = ?1", params![id, note])?;
+        Ok(())
+    }
+
+    pub fn delete_mark(&self, id: i64) -> Result<()> {
+        self.conn().execute("DELETE FROM marks WHERE id = ?1", [id])?;
         Ok(())
     }
 
@@ -4065,6 +4136,35 @@ Engines Ltd"
     }
 
     #[test]
+    fn migration_27_keeps_marks_by_message_id() {
+        let (store, account, inbox, _) = setup();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 26);
+        let store = Store::init(conn).unwrap();
+        store
+            .insert_messages(account, inbox, &[message(1, "Contract", 10), message(2, "Other", 20)])
+            .unwrap();
+        let ids: Vec<i64> = {
+            let conn = store.conn();
+            let mut stmt =
+                conn.prepare("SELECT id FROM messages WHERE account_id = ?1 ORDER BY date").unwrap();
+            stmt.query_map([account], |r| r.get(0)).unwrap().map(Result::unwrap).collect()
+        };
+        let mark = store.add_mark(ids[0], "two months", "").unwrap();
+        store.add_mark(ids[1], "elsewhere", "").unwrap();
+        store.set_mark_note(mark.id, "Check with legal").unwrap();
+        let marks = store.marks(&ids[..1]).unwrap();
+        assert_eq!(marks.len(), 1, "only the marks on the messages asked for");
+        assert_eq!(
+            (marks[0].text.as_str(), marks[0].note.as_str(), marks[0].message),
+            ("two months", "Check with legal", ids[0])
+        );
+        store.delete_mark(mark.id).unwrap();
+        assert!(store.marks(&ids[..1]).unwrap().is_empty());
+        assert!(store.add_mark(-1, "gone", "").is_err());
+    }
+
+    #[test]
     fn search_says_when_bodies_were_not_all_searched() {
         let (store, account, inbox, _) = setup();
         let headers = NewMessage { headers_only: true, body_text: None, ..message(1, "Plans", 1) };
@@ -4921,6 +5021,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                26 => "DROP TABLE marks;",
                 25 => "DROP TABLE ai_styles;",
                 24 => "DROP TABLE ai_cache; DROP TABLE ai_usage;",
                 23 => "",

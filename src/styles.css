@@ -888,6 +888,28 @@ button.primary kbd {
 .conversation.replying {
   padding-bottom: var(--s-4);
 }
+/* The conversation and, when the pane has room, the column beside it (§4.2a). */
+.reading.has-margin {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-5);
+  max-width: calc(860px + var(--margin-w) + var(--s-5));
+  margin: 0 auto;
+}
+.reading {
+  --margin-w: 260px;
+}
+/* Its width from the room there is, never from its content: the message frames size themselves to their width. */
+.reading.has-margin > .conversation {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+}
+/* An inline reply lines up with the messages, not with the column. */
+.conversation-pane:has(.reading.has-margin) .inline-reply {
+  max-width: calc(860px + var(--margin-w) + var(--s-5));
+  padding-right: calc(var(--s-6) + 260px + var(--s-5));
+}
 .conversation-head {
   display: flex;
   align-items: flex-start;
@@ -4896,4 +4918,274 @@ button.link.danger {
 .ai-talk .ai-chips .chip:hover:not(:disabled) {
   background: var(--bg-3);
   color: var(--fg-0);
+}
+
+/* MARK: Beside the messages (§4.2a–c): what the newest message holds, a newsletter's parts, the person's marks. */
+
+.reading-margin {
+  flex: 0 0 var(--margin-w);
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: var(--s-6) var(--s-5) var(--s-6) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  user-select: none;
+}
+.reading-margin section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.reading-margin h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.reading-margin h2 .keys {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 2px;
+  text-transform: none;
+}
+.reading-margin .facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.reading-margin .fact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: var(--s-3);
+  border-radius: var(--r-lg);
+  background: var(--soft);
+  font-size: var(--t-md);
+  line-height: 1.45;
+}
+.reading-margin .fact.ask {
+  background: var(--accent-soft);
+}
+.reading-margin .fact .kind {
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.reading-margin .fact strong {
+  font-weight: 600;
+}
+.reading-margin .fact .code {
+  font: 500 var(--t-md) / 1.4 "JetBrains Mono", ui-monospace, monospace;
+  user-select: all;
+}
+.reading-margin .fact button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  border: none;
+  background: var(--bg-0);
+  font-size: var(--t-sm);
+  padding: 3px var(--s-2);
+}
+.reading-margin .fact button:hover {
+  background: var(--bg-2);
+}
+.reading-margin .contents {
+  display: flex;
+  flex-direction: column;
+}
+.reading-margin .contents button {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 5px var(--s-2);
+  font-size: var(--t-md);
+  color: var(--fg-1);
+}
+.reading-margin .contents button:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.reading-margin .links {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.reading-margin .link-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 6px var(--s-2);
+  border-radius: var(--r-md);
+}
+.reading-margin .link-card:hover {
+  background: var(--soft);
+}
+.reading-margin .link-card .text {
+  font-size: var(--t-md);
+  color: var(--fg-0);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.reading-margin .link-card .host {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.reading-margin .marks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.reading-margin .mark {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-lg);
+  background: var(--mark-soft);
+}
+.reading-margin .mark.on {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.reading-margin .mark .passage {
+  border: none;
+  background: none;
+  padding: 0 var(--s-4) 0 0;
+  text-align: left;
+  font-size: var(--t-md);
+  line-height: 1.45;
+  color: var(--fg-0);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.reading-margin .mark textarea {
+  font: inherit;
+  font-size: var(--t-sm);
+  line-height: 1.45;
+  color: var(--fg-1);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  padding: 2px 0;
+  resize: none;
+  field-sizing: content;
+  min-height: 0;
+}
+.reading-margin .mark textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  background: var(--bg-0);
+  color: var(--fg-0);
+}
+.reading-margin .mark .remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg-2);
+  opacity: 0;
+}
+.reading-margin .mark:hover .remove,
+.reading-margin .mark .remove:focus-visible {
+  opacity: 1;
+}
+.reading-margin .found-here {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+/* A narrow pane: the column is a row above the messages, and marks show only as their count. */
+.reading-margin.narrow {
+  position: static;
+  max-height: none;
+  overflow: visible;
+  padding: 0 0 var(--s-4);
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.reading-margin.narrow {
+  gap: var(--s-3);
+}
+.reading-margin.narrow section {
+  flex: 1 1 100%;
+}
+.reading-margin.narrow .facts,
+.reading-margin.narrow .links,
+.reading-margin.narrow .contents {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.reading-margin.narrow .fact {
+  flex: 1 1 180px;
+  max-width: 320px;
+}
+.reading-margin.narrow .link-card {
+  flex: 0 1 auto;
+  max-width: 260px;
+  background: var(--soft);
+}
+
+/* Over text selected in a message. */
+.selection-bar {
+  position: fixed;
+  z-index: 8;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--r-md);
+  background: var(--tip);
+  color: var(--tip-fg);
+  box-shadow: var(--shadow);
+}
+.selection-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  color: inherit;
+  padding: 4px var(--s-2);
+  font-size: var(--t-md);
+}
+.selection-bar button:hover {
+  background: color-mix(in srgb, var(--tip-fg) 16%, transparent);
+}
+.selection-bar kbd {
+  background: color-mix(in srgb, var(--tip-fg) 18%, transparent);
+  border-color: transparent;
+  color: inherit;
+}
+::highlight(tern-mark) {
+  background-color: var(--mark-soft);
+  color: inherit;
+}
+::highlight(tern-mark-on) {
+  background-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: inherit;
 }

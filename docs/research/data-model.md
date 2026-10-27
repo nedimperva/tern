@@ -221,6 +221,17 @@ CREATE TABLE ai_styles (account_id INTEGER PRIMARY KEY REFERENCES accounts(id) O
                         note TEXT NOT NULL, samples INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL);
 ```
 
+## v27 — reading, marks (implemented 2026-10-27)
+Passages the person marked while reading, each with an optional note. Kept by the message's Message-ID (its row as
+`#<id>` when it has none), so the same message in two folders shows the same marks.
+```sql
+CREATE TABLE marks (id INTEGER PRIMARY KEY,
+                    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                    message_key TEXT NOT NULL, text TEXT NOT NULL,
+                    note TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL);
+CREATE INDEX marks_by_message ON marks (account_id, message_key);
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN caps TEXT NOT NULL DEFAULT '{}';               -- JSON: condstore, qresync, move, idle, gmail_ext

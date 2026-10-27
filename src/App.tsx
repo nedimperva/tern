@@ -41,6 +41,7 @@ import { PerfOverlay } from "./components/PerfOverlay";
 import { timeKey, timeQuery } from "./perf";
 import { aiOn, loadSettings, ROW_HEIGHTS, setSetting, settings } from "./settings";
 import { askReplies, suggestions, summon } from "./ai";
+import { jumpMark } from "./marks";
 import { closeScreen, deck, lineShown, refreshStart, screen, setDeck, start, startDay } from "./day";
 import { DayDeck } from "./components/DayDeck";
 import { DayLine } from "./components/DayLine";
@@ -944,6 +945,8 @@ export default function App() {
     { keys: "n", name: "Next message", context: "conversation", run: () => moveMessage(1) },
     { keys: "p", name: "Previous message", context: "conversation", run: () => moveMessage(-1) },
     { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
+    { keys: "]", name: "Next mark", context: "conversation", run: () => jumpMark(1) },
+    { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1) },
     { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },
     { keys: "f", name: "Forward", context: "conversation", run: () => respond(messages[messageFocus()], "forward") },
     { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
@@ -1340,6 +1343,12 @@ export default function App() {
             onMailto={fromLink}
             onDone={() => act("archive")}
             onClose={close}
+            onQuote={() => void reply()}
+            onSnoozeUntil={(due) => {
+              if (!targets().length) return;
+              setSnoozing(targets());
+              void snoozeUntil(due);
+            }}
             menu={menu}
             person={person}
           />
