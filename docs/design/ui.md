@@ -197,7 +197,7 @@ the pane is 880 px or wider, sticky as the messages scroll (its own scroll bar s
 pane the same sections sit in a row above the messages. The messages keep their place: they stay centred as they
 would be without the column, which sits against the pane's right edge; a narrower pane gives up the left space
 first.
-An inline reply lines up with the messages. It shows only what it found, and nothing at all when it found nothing. `i`, the header's
+An inline reply lines up with the messages. It shows only what it found. Beside the messages it stays when it found nothing, saying so with how marks are made, so it does not come and go between conversations; above them (a narrow pane) it shows only when it has something. `i`, the header's
 panel icon or the column's own × hides it, for every conversation until shown again (`readingColumn`).
 
 - **In this message** (Settings → Reading → In this message, on by default), from the newest message's own words
