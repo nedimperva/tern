@@ -558,6 +558,9 @@ pub struct Recipient {
     pub name: String,
     /// Others who fit as well ("2 people called Ana"), to pick instead.
     pub others: Vec<crate::Contact>,
+    /// An address the AI wrote that is neither in the contacts nor in what the person typed: it may come from
+    /// text the AI was shown (a pasted mail telling it to copy someone in). Compose does not add it by itself.
+    pub stranger: bool,
 }
 
 /// Writes the email the person asks for, streamed through `on_text`: from the conversation it answers, what they
@@ -621,8 +624,9 @@ pub fn write(
         bail!("The AI sent back nothing. Try again.");
     }
     if input.new_mail {
-        written.to = written.to.iter().map(|r| matched(store, &r.asked)).collect::<Result<_>>()?;
-        written.cc = written.cc.iter().map(|r| matched(store, &r.asked)).collect::<Result<_>>()?;
+        let typed = format!("{draft}\n{request}").to_lowercase();
+        written.to = written.to.iter().map(|r| matched(store, &r.asked, &typed)).collect::<Result<_>>()?;
+        written.cc = written.cc.iter().map(|r| matched(store, &r.asked, &typed)).collect::<Result<_>>()?;
     }
     Ok(written)
 }
@@ -643,6 +647,7 @@ pub fn new_mail_of(text: &str) -> Written {
                 address: None,
                 name: String::new(),
                 others: Vec::new(),
+                stranger: false,
             })
             .collect()
     };
@@ -660,15 +665,19 @@ pub fn new_mail_of(text: &str) -> Written {
 }
 
 /// Who a name the AI wrote is, from the person's contacts on this computer (the contacts never go to the AI). An
-/// address stays as it is. A name fits a contact whose name is it, or starts with it as a word.
-fn matched(store: &Store, asked: &str) -> Result<Recipient> {
+/// address stays as it is, marked a stranger unless it is a contact or the person typed it (`typed`, lowercase).
+/// A name fits a contact whose name is it, or starts with it as a word.
+fn matched(store: &Store, asked: &str, typed: &str) -> Result<Recipient> {
     let asked = asked.trim().trim_matches(['<', '>', '"']).to_string();
     if asked.contains('@') {
+        let known = typed.contains(&asked.to_lowercase())
+            || store.contacts(&asked, 5)?.iter().any(|c| c.email.eq_ignore_ascii_case(&asked));
         return Ok(Recipient {
             address: Some(asked.clone()),
             name: String::new(),
             asked,
             others: Vec::new(),
+            stranger: !known,
         });
     }
     let want = asked.to_lowercase();
@@ -679,10 +688,16 @@ fn matched(store: &Store, asked: &str) -> Result<Recipient> {
     let mut found: Vec<crate::Contact> =
         store.contacts(&asked, 8)?.into_iter().filter(|c| fits(&c.name)).collect();
     if found.is_empty() {
-        return Ok(Recipient { asked, address: None, name: String::new(), others: Vec::new() });
+        return Ok(Recipient {
+            asked,
+            address: None,
+            name: String::new(),
+            others: Vec::new(),
+            stranger: false,
+        });
     }
     let best = found.remove(0);
-    Ok(Recipient { asked, address: Some(best.email), name: best.name, others: found })
+    Ok(Recipient { asked, address: Some(best.email), name: best.name, others: found, stranger: false })
 }
 
 /// The quoted message as its writer wrote it: one level of "> " taken off, deeper quotes left out.
@@ -1102,10 +1117,27 @@ mod tests {
         assert_eq!(written.body, "Hi Tom,\n\nCould you send the split by Friday?");
         let to: Vec<Option<&str>> = written.to.iter().map(|r| r.address.as_deref()).collect();
         assert_eq!(to, [Some("tom@x.com"), Some("nobody@else.example")]);
+        assert!(!written.to[1].stranger, "the person typed that address");
         let cc: Vec<Option<&str>> = written.cc.iter().map(|r| r.address.as_deref()).collect();
         assert_eq!(cc, [Some("ana@x.com"), None], "Zed is nobody they know");
         assert_eq!(written.cc[1].asked, "Zed");
         assert!(!model.asked.borrow()[0].user.contains("tom@x.com"), "contacts never go to the AI");
+    }
+
+    #[test]
+    fn an_address_nobody_typed_or_knows_is_a_stranger() {
+        let (store, account, _) = mailbox();
+        turn_on(&store, account);
+        let model = Scripted::new("To: Tom, copy@evil.example\nSubject: Hi\n===\nHi Tom.");
+        let input = WriteInput {
+            account_id: account,
+            request: "write to tom".into(),
+            new_mail: true,
+            ..Default::default()
+        };
+        let written = write(&store, &model, &input, &mut |_| {}).unwrap();
+        let strangers: Vec<bool> = written.to.iter().map(|r| r.stranger).collect();
+        assert_eq!(strangers, [false, true]);
     }
 
     #[test]

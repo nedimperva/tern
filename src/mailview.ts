@@ -57,20 +57,36 @@ export type Remote = { html: string; trackers: number; images: number };
 /** Takes tracking pixels out of a mail, so they never load, not even once images are allowed, and counts the
  * pictures that wait for "Load images". */
 export function withoutTrackers(html: string): Remote {
-  if (!/https?:/i.test(html)) return { html, trackers: 0, images: 0 };
-  const doc = new DOMParser().parseFromString(html, "text/html");
+  if (!/https?:|\/\//i.test(html)) return { html, trackers: 0, images: 0 };
+  // Pictures load over https only (the frame's CSP): one asked for over http is asked for over https instead,
+  // so neither the picture nor the fact that the mail was opened crosses the network in the clear.
+  const upgraded = html.replace(/url\(\s*(["']?)(?:http:)?\/\//gi, "url($1https://");
+  const doc = new DOMParser().parseFromString(upgraded, "text/html");
+  let changed = upgraded !== html;
   let trackers = 0;
-  let images = (html.match(/url\(\s*["']?https?:|\sbackground=["']?https?:/gi) ?? []).length;
+  let images = (html.match(/url\(\s*["']?(https?:)?\/\/|\sbackground=["']?(https?:)?\/\//gi) ?? []).length;
+  const secure = (url: string) => url.replace(/^\s*(?:http:)?\/\//i, "https://");
+  for (const el of doc.querySelectorAll("[background]")) {
+    const url = el.getAttribute("background")!;
+    if (secure(url) !== url) (el.setAttribute("background", secure(url)), (changed = true));
+  }
   for (const img of [...doc.images]) {
-    if (!/^\s*(https?:)?\/\//i.test(img.getAttribute("src") ?? "")) continue;
+    const srcset = img.getAttribute("srcset");
+    if (srcset && /(^|,)\s*(http:)?\/\//i.test(srcset)) {
+      img.setAttribute("srcset", srcset.replace(/(^|,)(\s*)(?:http:)?\/\//gi, "$1$2https://"));
+      changed = true;
+    }
+    const src = img.getAttribute("src") ?? "";
+    if (!/^\s*(https?:)?\/\//i.test(src)) continue;
     if (isTracker(img)) {
       img.remove();
       trackers++;
-    } else {
-      images++;
+      continue;
     }
+    images++;
+    if (secure(src) !== src) (img.setAttribute("src", secure(src)), (changed = true));
   }
-  return { html: trackers ? doc.documentElement.outerHTML : html, trackers, images };
+  return { html: trackers || changed ? doc.documentElement.outerHTML : html, trackers, images };
 }
 
 /** Minutes a mail takes to read at an unhurried 230 words a minute. */
@@ -82,7 +98,7 @@ export function readingMinutes(html: string): number {
 }
 
 const CSP = (remote: boolean) =>
-  `default-src 'none'; img-src ${remote ? "data: cid: https: http:" : "data: cid:"}; style-src 'unsafe-inline'; font-src data: ${location.origin}`;
+  `default-src 'none'; img-src ${remote ? "data: cid: https:" : "data: cid:"}; style-src 'unsafe-inline'; font-src data: ${location.origin}`;
 
 const FONT_FACES = `
 @font-face{font-family:"Inter Variable";font-weight:100 900;font-display:swap;src:url(${new URL(interLatin, location.href).href}) format("woff2-variations");

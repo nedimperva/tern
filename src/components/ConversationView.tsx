@@ -359,13 +359,13 @@ function Attachments(props: { message: ThreadMessage; onView: (index: number) =>
     <>
       <div class="attachments" aria-label="Attachments">
         <For each={props.message.attachments}>
-          {(a, i) => (
+          {(_, i) => (
             <FileCard
               message={props.message}
               index={i()}
               busy={busy() === i()}
               onOpen={() => props.onView(i())}
-              onSave={() => void run(i(), () => api.saveAttachment(props.message.id, i(), a.name))}
+              onSave={() => void run(i(), () => api.saveAttachment(props.message.id, i()))}
             />
           )}
         </For>

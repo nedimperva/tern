@@ -7,6 +7,35 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Settings → your account: Change password (checked with the server before it is saved) and Remove from Tern,
+  which deletes Tern's copy of the account's mail and forgets its password. The server keeps the mail.
+- Links in plain-text mail open on click.
+- `z` takes back every change still in its undo window, newest first. A sent message's undo lasts as long as
+  Settings → Compose → Undo send says.
+- Settings → About shows how much the downloaded attachments take, with Clear. Tern keeps at most 1 GB of them.
+
+### Fixed
+
+- Mail without a Date header, or with one far in the future, sorts by when the server received it instead of
+  sinking to the bottom or sticking to the top. Old rows without a date say "(no date)".
+- A new message could show an old, deleted message's inline pictures or attachment, when both got the same number
+  in the database. Downloaded files are now kept per message.
+- Newsletters and alerts with the same subject every time no longer pile up into one endless conversation.
+- Holding `e`, `#` or another action key no longer acts on one conversation after another; only moving repeats.
+
+### Security
+
+- The file picker and the save dialog open from Tern's engine, and the window can only attach files you picked or
+  dropped, or save where you chose. A script that got into the window could not read or write other files.
+- Subjects and snippets in Linux notifications are shown as text, not markup.
+- HTML mail is cleaned again each time it opens, so a fix in the cleaner covers mail stored before it.
+- Loaded pictures come over https only; one asked for over http is asked for over https.
+- HTML, SVG, Excel add-in (.xll), compiled help (.chm) and similar attachments are saved, not opened.
+- Write with AI no longer adds an address it came up with that is neither in your contacts nor in what you typed;
+  it shows it instead, for you to add yourself.
+
 ## [1.3.0] - 2026-10-27
 
 ### Added

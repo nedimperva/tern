@@ -209,7 +209,14 @@ pub async fn list_messages(
 
 #[tauri::command]
 pub async fn thread(state: State<'_, AppState>, id: i64) -> Reply<Vec<ThreadMessage>> {
-    let thread = state.store.thread(id).map_err(text)?;
+    let mut thread = state.store.thread(id).map_err(text)?;
+    // HTML was cleaned when it was stored, by the ammonia of that day. Cleaned again on the way out, a fix in a
+    // newer ammonia (or a tighter policy) covers mail stored before it too.
+    for m in &mut thread {
+        if let Some(html) = &m.body_html {
+            m.body_html = Some(mime::sanitize_html(html));
+        }
+    }
     // Opened before its body came: ask the sync worker for it next. The view reloads on "mail-changed".
     let missing: Vec<i64> = thread.iter().filter(|m| !m.body_loaded).map(|m| m.row.id).collect();
     if !missing.is_empty() {
@@ -342,7 +349,7 @@ pub async fn network_back() -> Reply<()> {
 /// Queues the message; it leaves after the undo window. Returns the undo token.
 #[tauri::command]
 pub async fn send(
-    state: State<'_, AppState>,
+    app: AppHandle,
     account_id: i64,
     mut draft: Draft,
     delay: Option<i64>,
@@ -350,6 +357,8 @@ pub async fn send(
     at: Option<i64>,
     follow_up: Option<i64>,
 ) -> Reply<Vec<i64>> {
+    own_attachments(&app, &draft)?;
+    let state = app.state::<AppState>();
     // The undo window for sending is a setting (0 to 20 s, capped at 60 here); other actions keep UNDO_SECONDS.
     let delay = delay.unwrap_or(UNDO_SECONDS).clamp(0, 60);
     // Sent from a saved draft: the message keeps the draft's Message-ID, and the draft leaves Drafts.
@@ -368,12 +377,14 @@ pub async fn send(
 /// Saves what compose holds; returns the draft's id (new on the first save). `upload_now` when compose closes.
 #[tauri::command]
 pub async fn save_draft(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: Option<i64>,
     account_id: i64,
     draft: Draft,
     upload_now: bool,
 ) -> Reply<i64> {
+    own_attachments(&app, &draft)?;
     let id = state.store.save_draft(id, account_id, draft, upload_now).map_err(text)?;
     if upload_now {
         state.wake(account_id);
@@ -458,16 +469,82 @@ pub async fn muted(state: State<'_, AppState>, id: i64) -> Reply<bool> {
     state.store.muted(id).map_err(text)
 }
 
+/// Files the person handed over, in the file picker or by dropping them on the window: the only paths
+/// `add_attachments` takes. The window never names a file on disk by itself, so a script that got into it could
+/// not attach (and send) any other file.
+#[derive(Default)]
+pub struct Offered(Mutex<HashSet<std::path::PathBuf>>);
+
+impl Offered {
+    pub fn offer(&self, paths: impl IntoIterator<Item = std::path::PathBuf>) {
+        self.0.lock().unwrap().extend(paths);
+    }
+}
+
+/// Files dropped on the window: offered, then told to the window, which attaches them while compose is open.
+pub fn files_dropped(app: &AppHandle, paths: &[std::path::PathBuf]) {
+    app.state::<Offered>().offer(paths.iter().cloned());
+    let shown: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
+    let _ = app.emit("files-dropped", shown);
+}
+
+/// The system's file picker, for attaching. The paths picked are offered for `add_attachments`.
+#[tauri::command]
+pub async fn pick_files(app: AppHandle) -> Reply<Vec<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog = app.dialog().file().set_title("Attach files");
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&window);
+    }
+    dialog.pick_files(move |picked| {
+        let _ = tx.send(picked);
+    });
+    let picked = rx.await.ok().flatten().unwrap_or_default();
+    let paths: Vec<std::path::PathBuf> = picked.into_iter().filter_map(|p| p.into_path().ok()).collect();
+    app.state::<Offered>().offer(paths.iter().cloned());
+    Ok(paths.iter().map(|p| p.display().to_string()).collect())
+}
+
+/// Tern's own folder for files being attached.
+fn attachments_dir(app: &AppHandle) -> Reply<std::path::PathBuf> {
+    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("attachments"))
+}
+
+/// Refuses a draft that names a file outside Tern's folder for attachments: every attachment is a copy made
+/// there by `add_attachments`, so anything else did not come from the person.
+fn own_attachments(app: &AppHandle, draft: &Draft) -> Reply<()> {
+    if draft.attachments.is_empty() {
+        return Ok(());
+    }
+    let base = attachments_dir(app)?.canonicalize().map_err(|e| e.to_string())?;
+    for file in &draft.attachments {
+        let inside = std::path::Path::new(&file.path).canonicalize().is_ok_and(|p| p.starts_with(&base));
+        if !inside {
+            return Err(format!("{} is not a file Tern attached; attach it again", file.name));
+        }
+    }
+    Ok(())
+}
+
 /// Copies files into Tern's own folder for attachments, so a draft keeps them whatever happens to the
 /// originals (moved, deleted, on a drive that is gone). Each file gets a folder of its own, so names never clash.
+/// Only files the person picked or dropped (`Offered`), each once.
 #[tauri::command]
-pub async fn add_attachments(app: AppHandle, paths: Vec<String>) -> Reply<Vec<OutgoingAttachment>> {
+pub async fn add_attachments(
+    app: AppHandle,
+    offered: State<'_, Offered>,
+    paths: Vec<String>,
+) -> Reply<Vec<OutgoingAttachment>> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?.join("attachments");
+    let base = attachments_dir(&app)?;
     let mut added = Vec::new();
     for path in paths {
         let source = std::path::PathBuf::from(&path);
+        if !offered.0.lock().unwrap().remove(&source) {
+            return Err(format!("{path}: pick the file or drop it on the window to attach it"));
+        }
         let name = source.file_name().map(|n| n.to_string_lossy().into_owned()).ok_or("Not a file")?;
         let stamp =
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
@@ -711,18 +788,32 @@ pub async fn open_attachment(app: AppHandle, state: State<'_, AppState>, id: i64
     app.opener().open_path(path.display().to_string(), None::<&str>).map_err(|e| format!("{name}: {e}"))
 }
 
-/// Saves an attachment where the person chose in the save dialog.
+/// Saves an attachment where the person chooses in the save dialog, which opens from here so the window never
+/// names a place to write. False when the dialog was cancelled.
 #[tauri::command]
 pub async fn save_attachment(
     app: AppHandle,
     state: State<'_, AppState>,
     id: i64,
     index: usize,
-    path: String,
-) -> Reply<()> {
+) -> Reply<bool> {
+    use tauri_plugin_dialog::DialogExt;
+    let (_, _, listed) =
+        state.store.attachment_source(id).map_err(text)?.ok_or("This message is not on the server yet")?;
+    let name = listed.get(index).ok_or("That attachment is not in this message")?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog =
+        app.dialog().file().set_title("Save attachment").set_file_name(mime::safe_file_name(name));
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&window);
+    }
+    dialog.save_file(move |chosen| {
+        let _ = tx.send(chosen);
+    });
+    let Some(path) = rx.await.ok().flatten().and_then(|p| p.into_path().ok()) else { return Ok(false) };
     let file = received_file(&app, &state, id, index).await?;
-    std::fs::copy(&file, &path).map_err(|e| format!("{path}: {e}"))?;
-    Ok(())
+    std::fs::copy(&file, &path).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(true)
 }
 
 /// The `mailto:` link Tern was started with, once; the window asks when it is ready.

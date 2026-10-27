@@ -103,7 +103,7 @@ export function AttachmentViewer(props: { message: ThreadMessage; index: number;
     }
   };
   const openOutside = () => attempt(() => api.openAttachment(props.message.id, index()));
-  const save = () => attempt(() => api.saveAttachment(props.message.id, index(), file().name));
+  const save = () => attempt(() => api.saveAttachment(props.message.id, index()));
 
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") props.onClose();

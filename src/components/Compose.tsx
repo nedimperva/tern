@@ -470,7 +470,8 @@ export function Compose(props: {
     if (newMail()) {
       const add = (list: string[], people: AiRecipient[]) => [
         ...list,
-        ...people.flatMap((r) => (r.address && !list.some((a) => a.toLowerCase() === r.address!.toLowerCase()) ? [r.address] : [])),
+        // A stranger stays out: an address only the AI came up with may have been planted in what it read.
+        ...people.flatMap((r) => (r.address && !r.stranger && !list.some((a) => a.toLowerCase() === r.address!.toLowerCase()) ? [r.address] : [])),
       ];
       setTo(add(to(), w.to));
       const cc2 = add(cc(), w.cc);
@@ -781,7 +782,8 @@ export function Compose(props: {
                 const people = (field: "to" | "cc") => (
                   <For each={w()[field]}>
                     {(r, k) => (
-                      <span class="ai-person" classList={{ missing: !r.address }}>
+                      <span class="ai-person" classList={{ missing: !r.address || r.stranger }}>
+                        <Show when={!r.stranger} fallback={<>Not added: {r.address} is not in your contacts or your words. Type it in yourself if it's right.</>}>
                         <Show when={r.address} fallback={<>No one called “{r.asked}” in your contacts</>}>
                           {r.name || r.address}
                           <Show when={r.name}>
@@ -799,6 +801,7 @@ export function Compose(props: {
                               </For>
                             </span>
                           </Show>
+                        </Show>
                         </Show>
                       </span>
                     )}

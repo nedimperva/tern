@@ -122,6 +122,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(desktop::Desktop::new())
         .manage(update::Updates::default())
+        .manage(commands::Offered::default())
         .setup(|app| {
             // First, so everything after it is in the log file too.
             diagnostics::start_logging(&diagnostics::log_dir(app.handle()));
@@ -178,10 +179,12 @@ fn main() {
             tauri::async_runtime::spawn_blocking(move || cache::tidy(&handle));
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::Focused(true) = event {
-                window.state::<AppState>().wake_all();
+        .on_window_event(|window, event| match event {
+            WindowEvent::Focused(true) => window.state::<AppState>().wake_all(),
+            WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
+                commands::files_dropped(window.app_handle(), paths)
             }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             commands::accounts,
@@ -245,6 +248,7 @@ fn main() {
             commands::undo_discard,
             commands::problem_to_draft,
             commands::add_attachments,
+            commands::pick_files,
             commands::open_attachment,
             commands::inline_images,
             commands::save_attachment,

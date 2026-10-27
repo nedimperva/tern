@@ -211,6 +211,19 @@ pub fn runs_as_program(name: &str) -> bool {
         "app",
         "pkg",
         "dmg",
+        // Open in a browser from disk, where their scripts run and a fake sign-in page looks real.
+        "html",
+        "htm",
+        "xhtml",
+        "shtml",
+        "mht",
+        "mhtml",
+        "svg",
+        // Excel add-ins, compiled help and troubleshooting packs: each has carried malware by mail.
+        "xll",
+        "chm",
+        "diagcab",
+        "one",
     ];
     let lower = name.trim_end_matches(['.', ' ']).to_ascii_lowercase();
     lower.rsplit_once('.').is_some_and(|(_, ext)| RISKY.contains(&ext))
@@ -477,7 +490,12 @@ Date: Mon, 12 Oct 2026 10:00:00 +0000\r\n\r\n";
         let long = format!("{}.pdf", "x".repeat(300));
         assert!(safe_file_name(&long).ends_with("x.pdf") && safe_file_name(&long).chars().count() == 150);
         assert!(
-            runs_as_program("invoice.pdf.exe") && runs_as_program("Setup.MSI") && runs_as_program("x.lnk. ")
+            runs_as_program("invoice.pdf.exe")
+                && runs_as_program("Setup.MSI")
+                && runs_as_program("x.lnk. ")
+                && runs_as_program("Sign in.html")
+                && runs_as_program("chart.svg")
+                && runs_as_program("q.xll")
         );
         assert!(
             !runs_as_program("invoice.pdf") && !runs_as_program("route.gpx") && !runs_as_program("README")
