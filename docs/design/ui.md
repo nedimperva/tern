@@ -95,7 +95,10 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - **Window minimum** 720 × 480. At < 960 px wide the conversation always opens full-width over the list.
 - **Rail** (`Ctrl+\`): 240 px slide-over from the left with a scrim; accounts (avatar dot + name + unread), labels, settings. It never stays open by default. On ≥ 1440 px the user can pin it (setting).
 - **Split bar**: tabs with unread counts, active tab has a 2 px `--accent` underline; search field right-aligned (`/` focuses it; it expands to 320 px on focus).
-- **List**: full width when nothing is open. With the conversation open in split mode the list narrows to 40 % (min 360 px) and rows drop the snippet.
+- **List**: full width when nothing is open. With the conversation open in split mode the list is a 340 px column
+  (canvas "Tern reading ideas", R2) of two-line rows, 20 px taller: names, chips, icons and the date on top, the
+  subject and labels under them, no snippet. Its search is a "/" key after the tabs that spreads over the header
+  when focused; `Ctrl K` is not shown there (the key still works).
 - **Conversation pane**: opens with `Enter`, closes with `Esc`. Mode setting: `split` (beside the list) or `full` (over it). Default `split` ≥ 1200 px, else `full`.
 - **Status strip**: left = sync state sentence with a dot (`--ok/--warn/--danger`), right = the current undo toast or the three most useful keys for the current context, shown after 2 s of inactivity and hidden on the next keypress.
   A downloaded update shows as a filled `--accent` pill ("Update ready · Restart"), the one control in the strip
@@ -190,9 +193,10 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ### 4.2a Beside the messages: what the newest message holds
 
 Picked from the canvas "Tern reading ideas" (R2, R5, R6), 2026-10-27. A column 260 px wide beside the messages when
-the pane is 940 px or wider, sticky as the messages scroll (its own scroll bar shows only on hover); in a narrower
-pane the same sections sit in a row above the messages. The messages keep their place: in a wide pane (focus mode)
-they stay centred and the column sits in the space on their right; a narrower pane gives up the left space first.
+the pane is 880 px or wider, sticky as the messages scroll (its own scroll bar shows only on hover); in a narrower
+pane the same sections sit in a row above the messages. The messages keep their place: they stay centred as they
+would be without the column, which sits against the pane's right edge; a narrower pane gives up the left space
+first.
 An inline reply lines up with the messages. It shows only what it found, and nothing at all when it found nothing. `i`, the header's
 panel icon or the column's own × hides it, for every conversation until shown again (`readingColumn`).
 

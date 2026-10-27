@@ -39,7 +39,7 @@ import { AttachmentViewer } from "./components/AttachmentViewer";
 import { until } from "./components/ConversationRow";
 import { PerfOverlay } from "./components/PerfOverlay";
 import { timeKey, timeQuery } from "./perf";
-import { aiOn, loadSettings, ROW_HEIGHTS, setSetting, settings } from "./settings";
+import { aiOn, loadSettings, ROW_HEIGHTS, setSetting, settings, SPLIT_ROW_EXTRA } from "./settings";
 import { askReplies, suggestions, summon } from "./ai";
 import { jumpMark } from "./marks";
 import { closeScreen, deck, lineShown, refreshStart, screen, setDeck, start, startDay } from "./day";
@@ -1206,7 +1206,7 @@ export default function App() {
           <input
             ref={searchInput}
             class="search"
-            placeholder="Search   /"
+            placeholder={split() ? "/" : "Search   /"}
             value={query()}
             onInput={(e) => setQuery(e.currentTarget.value)}
             onKeyDown={onSearchKey}
@@ -1244,7 +1244,7 @@ export default function App() {
             </Show>
           }
         >
-          <VirtualList items={rows()} rowHeight={ROW_HEIGHTS[settings.density]} selected={focus()} onEnd={loadMore}>
+          <VirtualList items={rows()} rowHeight={ROW_HEIGHTS[settings.density] + (split() ? SPLIT_ROW_EXTRA : 0)} selected={focus()} onEnd={loadMore}>
             {(row, index) => (
               <ConversationRow
                 row={row}

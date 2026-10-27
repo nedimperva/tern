@@ -53,7 +53,7 @@ export function ConversationRow(props: {
       class="crow"
       role="row"
       aria-selected={props.selected}
-      classList={{ focused: props.focused, selected: props.selected, unread: props.row.unread > 0 }}
+      classList={{ focused: props.focused, selected: props.selected, unread: props.row.unread > 0, two: props.narrow }}
       onMouseDown={props.onClick}
       onDblClick={props.onOpen}
     >

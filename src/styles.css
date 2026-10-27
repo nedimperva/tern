@@ -93,8 +93,9 @@ button.primary kbd {
   height: 100%;
 }
 /* A conversation beside the list (wide windows) or over it (narrow ones). */
+/* Beside a conversation the list is a narrow column of two-line rows (canvas "Tern reading ideas", R2). */
 .app.split {
-  grid-template-columns: minmax(360px, 40%) 1fr;
+  grid-template-columns: 340px 1fr;
 }
 .app.full .list-pane {
   display: none;
@@ -128,6 +129,7 @@ button.primary kbd {
   text-overflow: ellipsis;
 }
 .rail-button {
+  flex: none;
   display: flex;
   color: var(--fg-1);
 }
@@ -145,6 +147,30 @@ button.primary kbd {
 }
 .search:focus {
   width: 320px;
+}
+/* The narrow list beside a conversation: search is a "/" key after the tabs, and the whole header while typing. */
+.app.split .list-header {
+  position: relative;
+}
+.app.split .search {
+  flex: none;
+  width: 30px;
+  padding: var(--s-1) 0;
+  text-align: center;
+}
+.app.split .search:focus {
+  text-align: left;
+  padding: var(--s-1) 10px;
+}
+.app.split .search:focus {
+  position: absolute;
+  left: var(--s-3);
+  right: var(--s-3);
+  width: auto;
+  z-index: 1;
+}
+.app.split .list-header > .link:not(.rail-button) {
+  display: none;
 }
 
 .vlist {
@@ -571,6 +597,41 @@ button.primary kbd {
   width: 3px;
   background: var(--accent);
 }
+/* Two lines: who and when on top, the subject under them. */
+.crow.two {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto auto auto;
+  grid-template-areas:
+    "mark who chip glyphs date"
+    "mark what what what what";
+  align-content: center;
+  column-gap: var(--s-2);
+  row-gap: 3px;
+}
+.crow.two .mark {
+  grid-area: mark;
+}
+.crow.two .who {
+  grid-area: who;
+  width: auto;
+  min-width: 0;
+}
+.crow.two .what {
+  grid-area: what;
+}
+.crow.two .glyphs {
+  grid-area: glyphs;
+}
+.crow.two .chip.follow-up {
+  grid-area: chip;
+}
+.crow.two .date {
+  grid-area: date;
+  font-size: var(--t-sm);
+}
+.crow.two .names {
+  color: var(--fg-0);
+}
 .crow .mark {
   width: 12px;
   flex: none;
@@ -910,6 +971,7 @@ button.primary kbd {
 }
 .reading.has-margin > .reading-margin {
   grid-column: 3;
+  justify-self: end;
   width: var(--margin-w);
 }
 /* An inline reply lines up with the messages, not with the column. */
@@ -5229,7 +5291,7 @@ button.link.danger {
 }
 /* A narrow pane: the column is a row above the messages, and marks show only as their count. */
 .reading-margin.narrow {
-  position: static;
+  position: relative;
   max-height: none;
   overflow: visible;
   padding: 0 0 var(--s-4);

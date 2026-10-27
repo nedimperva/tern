@@ -804,7 +804,7 @@ export function ConversationView(props: {
     watch.observe(title);
     // Room for the messages (560 px at least) and the column beside them.
     // Moving the column resizes the message frames, which have observers of their own: wait for the next frame.
-    const room = new ResizeObserver(([e]) => requestAnimationFrame(() => setWide(e.contentRect.width >= 940)));
+    const room = new ResizeObserver(([e]) => requestAnimationFrame(() => setWide(e.contentRect.width >= 880)));
     if (pane) room.observe(pane);
     const scrolled = () => setPick(null);
     pane?.addEventListener("scroll", scrolled, { passive: true });

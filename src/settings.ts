@@ -153,6 +153,9 @@ export function aiRoute(s: AiSettings, feature: AiFeatureKey): AiRoute {
 export const aiOn = (feature: "summaries" | "writing" | "replies", accountId: number | undefined) =>
   settings.ai.enabled && settings.ai[feature] && accountId != null && settings.ai.accounts.includes(accountId);
 
+/** Beside an open conversation a row takes two lines (names and date, then the subject): this much taller. */
+export const SPLIT_ROW_EXTRA = 20;
+
 export const ROW_HEIGHTS: Record<Settings["density"], number> = { dense: 36, comfortable: 44, spacious: 52 };
 
 const [settings, setStore] = createStore<Settings>({ ...DEFAULTS });
