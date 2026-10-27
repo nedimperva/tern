@@ -224,6 +224,9 @@ panel icon or the column's own × hides it, for every conversation until shown a
 - "Your marks · N" in the column lists them in the order they were made (`--mark-soft` cards), each with a note
   field ("Add a note"; Enter or Esc saves) and a remove button on hover. A click, `]` or `[` goes to a mark,
   opening its message when it is folded. A narrow pane shows only the count and the keys.
+- **Marks** (`g m`, the rail): every conversation with a mark, in any folder but the bin, newest first. Its row
+  reads as what was marked and the notes ("quote" note · …) instead of the message's start. Search finds the words
+  of marks and notes too, and `is:marked` keeps to marked mail.
 
 ### 4.2c Newsletters as reading
 

@@ -631,6 +631,8 @@ pub const OTHER: &str = "bulk";
 pub const SNOOZED: &str = "snoozed";
 /// The Read later shelf.
 pub const LATER: &str = "later";
+/// Conversations with something marked in them, in any folder.
+pub const MARKED: &str = "marked";
 
 /// The message goes to Other: its sender was moved there, or (with no choice made) it is bulk mail.
 const IS_OTHER: &str = "COALESCE((SELECT s.other FROM sender_splits s
@@ -649,6 +651,10 @@ const IS_LATER: &str = "EXISTS (SELECT 1 FROM read_later l
                                  AND NOT EXISTS (SELECT 1 FROM messages x JOIN accounts a ON a.id = x.account_id
                                                  WHERE x.account_id = l.account_id AND x.thread_id = l.thread_id
                                                    AND x.date > l.added AND lower(x.from_addr) <> lower(a.email)))";
+
+/// The message (any copy of it) has marks. Taken from the marks, so a few marks in a big mailbox stay quick.
+const IS_MARKED: &str = "m.id IN (SELECT x.id FROM marks k JOIN messages x
+                                  ON x.account_id = k.account_id AND COALESCE(x.message_id, '#' || x.id) = k.message_key)";
 
 fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
     let inbox = format!("m.folder_id IN (SELECT id FROM folders WHERE role = ?{n})");
@@ -675,6 +681,13 @@ fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
         OTHER => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND {IS_OTHER}"),
         SNOOZED => format!("{inbox} AND {IS_SNOOZED}"),
         LATER => format!("{inbox} AND {IS_LATER} AND NOT {IS_SNOOZED}"),
+        // Wherever the conversation went, except the bin.
+        MARKED => {
+            return (
+                format!("{IS_MARKED} AND m.folder_id NOT IN (SELECT id FROM folders WHERE role = ?{n})"),
+                Value::Text("trash".into()),
+            )
+        }
         _ => return (inbox, Value::Text(role.into())),
     };
     (filter, Value::Text("inbox".into()))
@@ -1772,6 +1785,28 @@ impl Store {
             latests.push(latest);
         }
         let mut rows = conversations(&conn, latests)?;
+        // On the Marks list a conversation reads as what was marked in it and the notes, newest first.
+        if matches!(target, ListTarget::Role(r) if r == MARKED) {
+            let mut stmt = conn.prepare_cached(
+                "SELECT k.text, k.note FROM marks k
+                 WHERE k.account_id = ?1 AND k.message_key IN (
+                     SELECT COALESCE(x.message_id, '#' || x.id) FROM messages x WHERE x.account_id = ?1 AND x.thread_id = ?2)
+                 ORDER BY k.created DESC, k.id DESC",
+            )?;
+            for t in &mut rows {
+                let marks: Vec<String> = stmt
+                    .query_map(params![t.latest.account_id, t.latest.thread_id], |r| {
+                        let (text, note): (String, String) = (r.get(0)?, r.get(1)?);
+                        Ok(if note.is_empty() {
+                            format!("\u{201c}{text}\u{201d}")
+                        } else {
+                            format!("\u{201c}{text}\u{201d} {note}")
+                        })
+                    })?
+                    .collect::<rusqlite::Result<_>>()?;
+                t.latest.snippet = marks.join("  \u{b7}  ");
+            }
+        }
         // Follow-ups that came due sit at the top of the inbox (and Important) until done or answered.
         let inbox = matches!(target, ListTarget::Role(r) if r == "inbox" || r == IMPORTANT);
         if inbox && before.is_none() {
@@ -2806,13 +2841,14 @@ impl Store {
         }
         conditions.extend(q.conditions);
         values.extend(q.params);
+        let noted = self.noted(&conn, &q.words, &conditions, &values, limit)?;
         let mut rows = None;
         if !q.fts.is_empty() {
             rows = self.newest_matches(&conn, &q.fts, &conditions, &values, limit)?;
             conditions.insert(0, "messages_fts MATCH ?".to_string());
             values.insert(0, Value::Text(q.fts.clone()));
         }
-        let rows = match rows {
+        let mut rows = match rows {
             Some(rows) => rows,
             None => {
                 let mut sql = format!("SELECT {ROW} FROM messages m");
@@ -2831,6 +2867,13 @@ impl Store {
                 rows
             }
         };
+        // Messages whose marks or notes hold the words, among what the words found in the mail itself.
+        if !noted.is_empty() {
+            let found: HashSet<i64> = rows.iter().map(|r| r.id).collect();
+            rows.extend(noted.into_iter().filter(|r| !found.contains(&r.id)));
+            rows.sort_by_key(|a| std::cmp::Reverse((a.date, a.id)));
+            rows.truncate(limit as usize);
+        }
         // Words are only found in bodies that are here; mail older than the download window has headers alone.
         let words = !q.fts.is_empty() || !q.fts_not.is_empty();
         let partial = words
@@ -2850,6 +2893,37 @@ impl Store {
             }
         }
         Ok(SearchResult { rows: kept, partial })
+    }
+
+    /// Messages with a mark or note that holds every word (as typed, any case), and that pass the filters. Empty
+    /// without words, or when the words are joined with OR.
+    fn noted(
+        &self,
+        conn: &Connection,
+        words: &[String],
+        conditions: &[String],
+        values: &[Value],
+        limit: i64,
+    ) -> Result<Vec<MessageRow>> {
+        if words.is_empty() {
+            return Ok(Vec::new());
+        }
+        let found = vec!["instr(lower(k.text || ' ' || k.note), ?) > 0"; words.len()].join(" AND ");
+        let mut wheres = vec![format!(
+            "m.id IN (SELECT x.id FROM marks k JOIN messages x
+                      ON x.account_id = k.account_id AND COALESCE(x.message_id, '#' || x.id) = k.message_key
+                      WHERE {found})"
+        )];
+        wheres.extend(conditions.iter().cloned());
+        let mut all: Vec<Value> = words.iter().map(|w| Value::Text(w.to_lowercase())).collect();
+        all.extend(values.iter().cloned());
+        all.push(Value::Integer(limit));
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {ROW} FROM messages m WHERE {} ORDER BY m.date DESC, m.id DESC LIMIT ?",
+            wheres.join(" AND ")
+        ))?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(all), row)?.collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
     }
 
     /// Search words found in much of the mailbox. Joining every match and sorting them by date took 70 ms when a
@@ -4226,6 +4300,31 @@ Engines Ltd"
             NewMessage { in_reply_to: Some("1@example.com".into()), ..message(3, "Re: Issue 112", 600) };
         store.insert_messages(account, inbox, &[reply]).unwrap();
         assert_eq!(list(LATER), Vec::<String>::new(), "a reply from someone else brings it back");
+    }
+
+    #[test]
+    fn marks_list_and_search_find_marked_conversations() {
+        let (store, account, inbox, _) = setup();
+        store
+            .insert_messages(account, inbox, &[message(1, "Issue 112", 100), message(2, "Lunch", 200)])
+            .unwrap();
+        let rows = store.list_threads(&ListTarget::Role("inbox".into()), None, 9).unwrap();
+        let issue = rows.iter().find(|t| t.latest.subject == "Issue 112").unwrap().latest.id;
+        assert!(store.list_threads(&ListTarget::Role(MARKED.into()), None, 9).unwrap().is_empty());
+        let mark = store.add_mark(issue, "the deadline moved", "").unwrap();
+        store.set_mark_note(mark.id, "Ask Ada about Friday").unwrap();
+        let marked = store.list_threads(&ListTarget::Role(MARKED.into()), None, 9).unwrap();
+        assert_eq!(marked.len(), 1);
+        assert_eq!(marked[0].latest.subject, "Issue 112");
+        assert_eq!(marked[0].latest.snippet, "\u{201c}the deadline moved\u{201d} Ask Ada about Friday");
+        let subjects = |q: &str| -> Vec<String> {
+            store.search(q, 10).unwrap().rows.into_iter().map(|r| r.subject).collect()
+        };
+        assert_eq!(subjects("is:marked"), ["Issue 112"]);
+        assert_eq!(subjects("-is:marked"), ["Lunch"]);
+        assert_eq!(subjects("ada friday"), ["Issue 112"], "words in a note");
+        assert_eq!(subjects("deadline is:unread"), ["Issue 112"], "words in a mark, with filters");
+        assert!(subjects("deadline is:read").is_empty());
     }
 
     #[test]

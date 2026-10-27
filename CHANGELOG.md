@@ -15,7 +15,8 @@ every release needs one here before it is tagged.
   address (open the map), what it asks of you, codes to copy and its links. Found on this computer; Settings →
   Reading turns it off.
 - Marks and notes. Select text in a message to quote it in a reply, mark it, add a note or copy it. Marks show in
-  the message and beside it; `[` and `]` go from one to the next. They stay on this computer.
+  the message and beside it; `[` and `]` go from one to the next. `g m` lists everything you marked, search finds
+  the words of your marks and notes, and `is:marked` keeps to marked mail. They stay on this computer.
 - Newsletters open in reading view, without the list's footer, with their parts and links beside them. The book
   icon switches back; Settings → Reading changes the default.
 - Read later. `Shift L` puts a conversation on the shelf, out of the inbox until you take it off or someone

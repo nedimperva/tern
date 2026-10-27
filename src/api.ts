@@ -792,6 +792,8 @@ function fake(): Api {
         return inInbox(m) && asleep;
       case "later":
         return inInbox(m) && !asleep && shelved.has(m.threadId);
+      case "marked":
+        return fakeMarks.some((k) => k.message === m.id) && folders.find((f) => f.id === m.folderId)?.role !== "trash";
       default:
         return folders.find((f) => f.id === m.folderId)?.role === t.role;
     }
@@ -876,10 +878,14 @@ function fake(): Api {
       return api.apply(chosen, action);
     },
     search: async (query, limit) => {
-      // Words only; the filters live in the engine. Shown as partial so the note can be worked on here.
-      const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      // Words and is:marked only; the filters live in the engine. Shown as partial so the note can be worked on here.
+      let terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      const marked = terms.includes("is:marked");
+      terms = terms.filter((t) => t !== "is:marked");
+      const notes = (m: ThreadMessage) => fakeMarks.filter((k) => k.message === m.id).map((k) => `${k.text} ${k.note}`).join(" ");
       const rows = messages
-        .filter((m) => terms.every((t) => `${m.subject} ${m.fromName} ${m.bodyText}`.toLowerCase().includes(t)))
+        .filter((m) => !marked || fakeMarks.some((k) => k.message === m.id))
+        .filter((m) => terms.every((t) => `${m.subject} ${m.fromName} ${m.bodyText} ${notes(m)}`.toLowerCase().includes(t)))
         .slice(0, limit)
         .map(row);
       return { rows, partial: terms.length > 0 };

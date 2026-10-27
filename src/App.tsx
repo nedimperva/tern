@@ -1001,6 +1001,7 @@ export default function App() {
     { keys: "g i", name: "Go to Inbox", run: () => go(home()) },
     { keys: "g h", name: "Go to Snoozed", run: () => go({ role: "snoozed" }) },
     { keys: "g r", name: "Go to Read later", run: () => go({ role: "later" }) },
+    { keys: "g m", name: "Go to Marks (what you marked and noted)", run: () => go({ role: "marked" }) },
     { keys: "g s", name: "Go to Starred", run: () => go({ role: "starred" }) },
     { keys: "g e", name: "Go to Done (Archive)", run: () => go({ role: "archive" }) },
     { keys: "g t", name: "Go to Sent", run: () => go({ role: "sent" }) },
@@ -1255,7 +1256,7 @@ export default function App() {
                     <p>Nothing found.</p>
                     <p>
                       Search also takes filters: <code>from:</code> <code>to:</code> <code>subject:</code> <code>is:unread</code>{" "}
-                      <code>is:starred</code> <code>has:attachment</code> <code>in:sent</code>{" "}
+                      <code>is:starred</code> <code>is:marked</code> <code>has:attachment</code> <code>in:sent</code>{" "}
                       <code>before:2026-01-31</code> <code>newer_than:7d</code> <code>larger:5m</code>. Quote a
                       phrase, put <code>-</code> before what to leave out, <code>OR</code> between words for either.
                     </p>

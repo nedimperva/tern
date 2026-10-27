@@ -2,7 +2,7 @@
 //!
 //! Plain words match subject, sender and body as prefixes ("inv acme" finds "Invoice from ACME"); `"exact phrase"`
 //! matches as written; `OR` between words takes either. Filters narrow by fields: `from:` `to:` `cc:` `subject:`
-//! (`me` means the account's own address), `is:unread|read|starred|unstarred`, `has:attachment`,
+//! (`me` means the account's own address), `is:unread|read|starred|unstarred|marked`, `has:attachment`,
 //! `in:inbox|archive|sent|drafts|trash|spam|<folder>` (`label:` is the same), `before:`/`after:` a date
 //! (YYYY-MM-DD, UTC), `newer_than:`/`older_than:` 3d 2w 6m 1y, `larger:`/`smaller:` 500k 5m. A leading `-` excludes.
 //! Anything that is not a known filter is searched as text, so a mistyped filter still finds something.
@@ -16,6 +16,8 @@ pub struct Query {
     pub fts: String,
     /// Words to leave out, as one FTS5 expression for `m.id NOT IN (… MATCH ?)`; empty if none.
     pub fts_not: String,
+    /// The words as typed (phrases whole), for looking in marks and notes too; empty when OR joins any.
+    pub words: Vec<String>,
     /// Conditions ANDed together, each with `?` placeholders filled from `params` in order.
     pub conditions: Vec<String>,
     pub params: Vec<Value>,
@@ -166,6 +168,10 @@ fn filter(key: &str, value: &str, now: i64, q: &mut Vec<Value>) -> Option<String
             "read" => "m.seen = 1".into(),
             "starred" | "flagged" => "m.flagged = 1".into(),
             "unstarred" => "m.flagged = 0".into(),
+            // Marked in Tern (reading marks and notes), on this message or another copy of it.
+            "marked" | "noted" => "EXISTS (SELECT 1 FROM marks k WHERE k.account_id = m.account_id
+                                           AND k.message_key = COALESCE(m.message_id, '#' || m.id))"
+                .into(),
             _ => return None,
         },
         "has" => match lower.as_str() {
@@ -215,9 +221,11 @@ pub fn parse(input: &str, now: i64) -> Query {
     let mut words: Vec<String> = Vec::new();
     let mut not_words: Vec<String> = Vec::new();
     let mut or_next = false;
+    let mut any_or = false;
     for token in tokens(input) {
         if token == "OR" {
             or_next = !words.is_empty();
+            any_or |= or_next;
             continue;
         }
         let (negated, body) = match token.strip_prefix('-') {
@@ -239,13 +247,19 @@ pub fn parse(input: &str, now: i64) -> Query {
         let Some(term) = fts_term(body) else { continue };
         if negated {
             not_words.push(term);
-        } else if or_next {
+            continue;
+        }
+        query.words.push(unquote(body).trim().to_string());
+        if or_next {
             let last = words.pop().expect("OR follows a word");
             words.push(format!("({last} OR {term})"));
             or_next = false;
         } else {
             words.push(term);
         }
+    }
+    if any_or {
+        query.words.clear();
     }
     query.fts = words.join(" AND ");
     query.fts_not = not_words.join(" OR ");
