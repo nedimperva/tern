@@ -251,7 +251,8 @@ const BLOCKS = "h1,h2,h3,h4,h5,h6,p,li,td,th,div,blockquote,pre";
  * Tern's type. Small pictures (spacers, icons, tracking pixels) are dropped. */
 export function readingView(html: string, title = ""): string {
   // The title the reader shows above the mail, when the mail repeats it as a heading.
-  const flat = (t: string) => t.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const flat = (t: string) =>
+    (new DOMParser().parseFromString(t, "text/html").body.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
   const same = (t: string) => !!title && flat(t) === flat(title);
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("style, script, head, title, meta, [hidden]").forEach((el) => el.remove());
