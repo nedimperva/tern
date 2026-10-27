@@ -190,8 +190,10 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ### 4.2a Beside the messages: what the newest message holds
 
 Picked from the canvas "Tern reading ideas" (R2, R5, R6), 2026-10-27. A column 260 px wide beside the messages when
-the pane is 940 px or wider, sticky as the messages scroll; in a narrower pane the same sections sit in a row
-above the messages. It shows only what it found, and nothing at all when it found nothing. `i`, the header's
+the pane is 940 px or wider, sticky as the messages scroll (its own scroll bar shows only on hover); in a narrower
+pane the same sections sit in a row above the messages. The messages keep their place: in a wide pane (focus mode)
+they stay centred and the column sits in the space on their right; a narrower pane gives up the left space first.
+An inline reply lines up with the messages. It shows only what it found, and nothing at all when it found nothing. `i`, the header's
 panel icon or the column's own × hides it, for every conversation until shown again (`readingColumn`).
 
 - **In this message** (Settings → Reading → In this message, on by default), from the newest message's own words
@@ -227,7 +229,8 @@ panel icon or the column's own × hides it, for every conversation until shown a
   leave icon already offers it.
 - The column shows **In this issue**, the issue's headings (a click scrolls to one), and **Links in this issue**.
   Headings are the mail's own, or lines it sets as titles without a heading tag: 18 px type or bold all through,
-  short and not a sentence (a digest's linked article names).
+  short and not a sentence (a digest's linked article names). One-word lines (the sender's name) and the subject itself are
+  left out of the list.
 - Not built yet: a Read later shelf.
 
 ### 4.3 Command palette (`Ctrl+K`)

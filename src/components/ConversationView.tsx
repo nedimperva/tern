@@ -656,7 +656,12 @@ export function ConversationView(props: {
     const web = m && reading() ? webs().get(m.id) : undefined;
     if (!web || !designed().has(m!.id)) return [];
     const doc = new DOMParser().parseFromString(readingView(web.html), "text/html");
-    return [...doc.querySelectorAll("h2")].map((h) => h.textContent?.trim() ?? "").filter(Boolean).slice(0, 12);
+    // Not the mail's name over and over: one-word lines are its brand ("Readwise"), and the subject is in the header.
+    const subjectWords = subject().replace(/\s+/g, " ").trim().toLowerCase();
+    return [...doc.querySelectorAll("h2")]
+      .map((h) => h.textContent?.replace(/\s+/g, " ").trim() ?? "")
+      .filter((h) => h.includes(" ") && h.toLowerCase() !== subjectWords)
+      .slice(0, 12);
   });
   const toPart = (i: number) => {
     const frame = document.querySelector<HTMLIFrameElement>(`.card[data-message="${last().id}"] iframe`);

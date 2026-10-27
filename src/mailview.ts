@@ -227,7 +227,7 @@ export function darken(doc: Document) {
 
 /** A link that says what to do rather than what it is ("Read more", "Add article to Reader", "View online"). */
 export const ACTION_WORDS =
-  /^[\s+›»→]*(add|save|open|view|read|learn|see|click|tap|get|download|watch|listen|share|forward|reply|more|here|link|continue|go|sign|log|buy|shop|order|start|try|join|register|subscribe)\b.{0,32}$|^(here|this|link|more)$/i;
+  /^[^\p{L}\p{N}]*(add|save|open|view|read|learn|see|click|tap|get|download|watch|listen|share|forward|reply|more|here|link|continue|go|sign|log|buy|shop|order|start|try|join|register|subscribe)\b.{0,32}$|^(here|this|link|more)$/iu;
 
 /** A line a newsletter sets as a title without a heading tag: large type (18 px or more) or bold all through, short,
  * and not a sentence. */

@@ -889,26 +889,41 @@ button.primary kbd {
   padding-bottom: var(--s-4);
 }
 /* The conversation and, when the pane has room, the column beside it (§4.2a). */
-.reading.has-margin {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-5);
-  max-width: calc(860px + var(--margin-w) + var(--s-5));
-  margin: 0 auto;
-}
-.reading {
+/* Three columns: the messages in the middle, the column in the space on their right. A wide pane (focus mode)
+   keeps the messages centred, as without the column; a narrower one gives the left space up first. Widths come
+   from the room there is, never from content: the message frames size themselves to their width. */
+.conversation-pane {
   --margin-w: 260px;
+  --reading-cols: minmax(0, 1fr) minmax(0, 860px) minmax(var(--margin-w), 1fr);
 }
-/* Its width from the room there is, never from its content: the message frames size themselves to their width. */
+.reading.has-margin {
+  display: grid;
+  grid-template-columns: var(--reading-cols);
+  column-gap: var(--s-5);
+  align-items: start;
+}
 .reading.has-margin > .conversation {
-  flex: 1 1 0;
+  grid-column: 2;
+  width: 100%;
   min-width: 0;
   margin: 0;
 }
+.reading.has-margin > .reading-margin {
+  grid-column: 3;
+  width: var(--margin-w);
+}
 /* An inline reply lines up with the messages, not with the column. */
 .conversation-pane:has(.reading.has-margin) .inline-reply {
-  max-width: calc(860px + var(--margin-w) + var(--s-5));
-  padding-right: calc(var(--s-6) + 260px + var(--s-5));
+  display: grid;
+  grid-template-columns: var(--reading-cols);
+  column-gap: var(--s-5);
+  max-width: none;
+  padding: 0;
+}
+.conversation-pane:has(.reading.has-margin) .inline-reply > * {
+  grid-column: 2;
+  justify-self: center;
+  width: calc(100% - 2 * var(--s-6));
 }
 .conversation-head {
   display: flex;
@@ -4923,19 +4938,30 @@ button.link.danger {
 /* MARK: Beside the messages (§4.2a–c): what the newest message holds, a newsletter's parts, the person's marks. */
 
 .reading-margin {
-  flex: 0 0 var(--margin-w);
   position: sticky;
   top: 0;
-  max-height: 100vh;
+  /* The pane's height, less the window's title bar and status strip; scrolls on its own, its bar shown on hover. */
+  max-height: calc(100vh - 72px);
   overflow-x: hidden;
   overflow-y: auto;
   overflow-wrap: anywhere;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
   box-sizing: border-box;
   padding: var(--s-6) var(--s-5) var(--s-6) 0;
   display: flex;
   flex-direction: column;
   gap: var(--s-5);
   user-select: none;
+}
+.reading-margin:hover {
+  scrollbar-color: var(--line) transparent;
+}
+.reading-margin .contents button {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .reading-margin .hide {
   position: absolute;
