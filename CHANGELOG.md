@@ -7,6 +7,11 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Fixed
+
+- One at a time: a long message no longer pushes its card off the bottom of the window, and Reply and Snooze open
+  over the cards instead of behind them.
+
 ## [1.2.0] - 2026-10-26
 
 ### Added
