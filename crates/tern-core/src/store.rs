@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
 
-const SCHEMA_VERSION: i64 = 27;
+const SCHEMA_VERSION: i64 = 28;
 
 /// What a mark is kept by: the message's Message-ID, or its row for mail without one.
 const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
@@ -459,6 +459,13 @@ fn migrate(conn: &Connection) -> Result<()> {
                                      note TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL);
                  CREATE INDEX marks_by_message ON marks (account_id, message_key);"
             }
+            // The Read later shelf (package 05, reading R6): conversations kept to read later, out of the inbox's
+            // lists until taken off or answered. Tern's alone, like snooze.
+            27 => {
+                "CREATE TABLE read_later (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                          thread_id TEXT NOT NULL, added INTEGER NOT NULL,
+                                          PRIMARY KEY (account_id, thread_id));"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -622,6 +629,8 @@ pub const IMPORTANT: &str = "important";
 /// The Other split. Not "other": that is the role of every folder without a special one.
 pub const OTHER: &str = "bulk";
 pub const SNOOZED: &str = "snoozed";
+/// The Read later shelf.
+pub const LATER: &str = "later";
 
 /// The message goes to Other: its sender was moved there, or (with no choice made) it is bulk mail.
 const IS_OTHER: &str = "COALESCE((SELECT s.other FROM sender_splits s
@@ -632,6 +641,14 @@ const FOLLOW_UP_THREAD: &str = "(SELECT f.thread_id FROM messages f
 /// Its conversation is snoozed.
 const IS_SNOOZED: &str = "EXISTS (SELECT 1 FROM reminders r
                                  WHERE r.account_id = m.account_id AND r.thread_id = m.thread_id AND r.kind = 'snooze')";
+
+/// Its conversation is on the Read later shelf, and nobody has written in it since it was put there: a reply from
+/// someone else takes it off, back to the inbox.
+const IS_LATER: &str = "EXISTS (SELECT 1 FROM read_later l
+                               WHERE l.account_id = m.account_id AND l.thread_id = m.thread_id
+                                 AND NOT EXISTS (SELECT 1 FROM messages x JOIN accounts a ON a.id = x.account_id
+                                                 WHERE x.account_id = l.account_id AND x.thread_id = l.thread_id
+                                                   AND x.date > l.added AND lower(x.from_addr) <> lower(a.email)))";
 
 fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
     let inbox = format!("m.folder_id IN (SELECT id FROM folders WHERE role = ?{n})");
@@ -650,13 +667,14 @@ fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
         }
         ListTarget::Role(role) => role.as_str(),
     };
-    // Snoozed conversations stay in the inbox folder (snoozing is Tern's alone) but out of its lists.
+    // Snoozed and shelved conversations stay in the inbox folder (both are Tern's alone) but out of its lists.
     let filter = match role {
-        "inbox" => format!("{inbox} AND NOT {IS_SNOOZED}"),
-        STARRED => format!("m.flagged AND {inbox} AND NOT {IS_SNOOZED}"),
-        IMPORTANT => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_OTHER}"),
-        OTHER => format!("{inbox} AND NOT {IS_SNOOZED} AND {IS_OTHER}"),
+        "inbox" => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"),
+        STARRED => format!("m.flagged AND {inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"),
+        IMPORTANT => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND NOT {IS_OTHER}"),
+        OTHER => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND {IS_OTHER}"),
         SNOOZED => format!("{inbox} AND {IS_SNOOZED}"),
+        LATER => format!("{inbox} AND {IS_LATER} AND NOT {IS_SNOOZED}"),
         _ => return (inbox, Value::Text(role.into())),
     };
     (filter, Value::Text("inbox".into()))
@@ -1816,7 +1834,7 @@ impl Store {
              WHERE m.id > ?1 AND m.id <= ?3 AND m.date >= ?2 AND f.role = 'inbox' AND NOT m.seen
                AND lower(m.from_addr) <> lower(a.email)
                AND NOT EXISTS (SELECT 1 FROM muted u WHERE u.account_id = m.account_id AND u.thread_id = m.thread_id)
-               AND (?4 OR NOT {IS_OTHER}) AND NOT {IS_SNOOZED}
+               AND (?4 OR NOT {IS_OTHER}) AND NOT {IS_SNOOZED} AND NOT {IS_LATER}
              ORDER BY m.id"
         ))?;
         let mail = stmt
@@ -1860,6 +1878,23 @@ impl Store {
         )?;
         for id in ids {
             stmt.execute(params![id, due, now])?;
+        }
+        Ok(())
+    }
+
+    /// Puts the conversations of these messages on the Read later shelf, or takes them off it.
+    pub fn read_later(&self, ids: &[i64], on: bool, now: i64) -> Result<()> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(if on {
+            "INSERT INTO read_later (account_id, thread_id, added)
+             SELECT account_id, thread_id, ?2 FROM messages WHERE id = ?1
+             ON CONFLICT (account_id, thread_id) DO UPDATE SET added = excluded.added"
+        } else {
+            "DELETE FROM read_later
+             WHERE (account_id, thread_id) = (SELECT account_id, thread_id FROM messages WHERE id = ?1) AND ?2 = ?2"
+        })?;
+        for id in ids {
+            stmt.execute(params![id, now])?;
         }
         Ok(())
     }
@@ -1948,7 +1983,7 @@ impl Store {
             &format!(
                 "SELECT count(*) FILTER (WHERE NOT {IS_OTHER}), count(*) FILTER (WHERE {IS_OTHER})
                  FROM messages m JOIN folders f ON f.id = m.folder_id
-                 WHERE f.role = 'inbox' AND NOT m.seen AND NOT {IS_SNOOZED}"
+                 WHERE f.role = 'inbox' AND NOT m.seen AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"
             ),
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
@@ -4165,6 +4200,35 @@ Engines Ltd"
     }
 
     #[test]
+    fn migration_28_shelves_conversations_until_taken_off_or_answered() {
+        let (store, account, inbox, _) = setup();
+        let conn = store.conn.into_inner().unwrap();
+        wind_back(&conn, 27);
+        let store = Store::init(conn).unwrap();
+        store
+            .insert_messages(account, inbox, &[message(1, "Issue 112", 100), message(2, "Lunch", 200)])
+            .unwrap();
+        let list = |role: &str| -> Vec<String> {
+            let rows = store.list_threads(&ListTarget::Role(role.into()), None, 9).unwrap();
+            rows.into_iter().map(|t| t.latest.subject).collect()
+        };
+        let issue = store.list_threads(&ListTarget::Role("inbox".into()), None, 9).unwrap()[1].latest.id;
+        store.read_later(&[issue], true, 300).unwrap();
+        assert_eq!(list("inbox"), ["Lunch"], "off the inbox's lists");
+        assert_eq!(list(LATER), ["Issue 112"]);
+        let (important, other) = store.split_unread().unwrap();
+        assert_eq!(important + other, 1, "unread counts leave it out");
+        store.read_later(&[issue], false, 400).unwrap();
+        assert_eq!(list(LATER), Vec::<String>::new(), "taken off");
+        assert_eq!(list("inbox").len(), 2);
+        store.read_later(&[issue], true, 500).unwrap();
+        let reply =
+            NewMessage { in_reply_to: Some("1@example.com".into()), ..message(3, "Re: Issue 112", 600) };
+        store.insert_messages(account, inbox, &[reply]).unwrap();
+        assert_eq!(list(LATER), Vec::<String>::new(), "a reply from someone else brings it back");
+    }
+
+    #[test]
     fn search_says_when_bodies_were_not_all_searched() {
         let (store, account, inbox, _) = setup();
         let headers = NewMessage { headers_only: true, body_text: None, ..message(1, "Plans", 1) };
@@ -5021,6 +5085,7 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b--\r\n";
     fn wind_back(conn: &Connection, version: i64) {
         for from in (version..SCHEMA_VERSION).rev() {
             let undo = match from {
+                27 => "DROP TABLE read_later;",
                 26 => "DROP TABLE marks;",
                 25 => "DROP TABLE ai_styles;",
                 24 => "DROP TABLE ai_cache; DROP TABLE ai_usage;",

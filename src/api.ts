@@ -328,6 +328,8 @@ export interface Api {
   /** Snoozes these conversations until `due` (Unix seconds); they come back unread. */
   snooze(ids: number[], due: number): Promise<void>;
   unsnooze(ids: number[]): Promise<void>;
+  /** Puts the conversations on the Read later shelf, or takes them off it. */
+  readLater(ids: number[], on: boolean): Promise<void>;
   /** What a typed snooze time means ("tomorrow 9am", "3h", "mon"), in Unix seconds; null if unreadable or past. */
   parseWhen(text: string): Promise<number | null>;
   /** Saved snippets, the most used first. */
@@ -553,6 +555,7 @@ const tauri: Api = {
   splitUnread: () => invoke("split_unread"),
   snooze: (ids, due) => invoke("snooze", { ids, due }),
   unsnooze: (ids) => invoke("unsnooze", { ids }),
+  readLater: (ids, on) => invoke("read_later", { ids, on }),
   parseWhen: (text) => invoke("parse_when", { text, offset: -new Date().getTimezoneOffset() }),
   snippets: () => invoke("snippets"),
   saveSnippet: (snippet) => invoke("save_snippet", { snippet }),
@@ -765,6 +768,7 @@ function fake(): Api {
   const otherSenders = new Map<string, boolean>();
   const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
   const snoozed = new Map<string, number>();
+  const shelved = new Set<string>();
   const inInbox = (m: ThreadMessage) => folders.find((f) => f.id === m.folderId)?.role === "inbox";
   const labelsOf = (m: ThreadMessage) => {
     const n = Number(m.threadId.slice(1));
@@ -774,17 +778,20 @@ function fake(): Api {
     if ("folder" in t) return m.folderId === t.folder;
     if ("label" in t) return labelsOf(m).length > 0;
     const asleep = snoozed.has(m.threadId);
+    const away = asleep || shelved.has(m.threadId);
     switch (t.role) {
       case "inbox":
-        return inInbox(m) && !asleep;
+        return inInbox(m) && !away;
       case "starred":
-        return m.flagged && inInbox(m) && !asleep;
+        return m.flagged && inInbox(m) && !away;
       case "important":
-        return inInbox(m) && !asleep && !isOther(m);
+        return inInbox(m) && !away && !isOther(m);
       case "bulk":
-        return inInbox(m) && !asleep && isOther(m);
+        return inInbox(m) && !away && isOther(m);
       case "snoozed":
         return inInbox(m) && asleep;
+      case "later":
+        return inInbox(m) && !asleep && shelved.has(m.threadId);
       default:
         return folders.find((f) => f.id === m.folderId)?.role === t.role;
     }
@@ -1030,7 +1037,7 @@ function fake(): Api {
       for (const m of messages.filter((m) => ids.includes(m.id))) otherSenders.set(m.fromAddr, other);
     },
     splitUnread: async () => {
-      const unread = messages.filter((m) => !m.seen && inInbox(m) && !snoozed.has(m.threadId));
+      const unread = messages.filter((m) => !m.seen && inInbox(m) && !snoozed.has(m.threadId) && !shelved.has(m.threadId));
       const other = unread.filter(isOther).length;
       return [unread.length - other, other];
     },
@@ -1039,6 +1046,9 @@ function fake(): Api {
     },
     unsnooze: async (ids) => {
       for (const m of messages.filter((m) => ids.includes(m.id))) snoozed.delete(m.threadId);
+    },
+    readLater: async (ids, on) => {
+      for (const m of messages.filter((m) => ids.includes(m.id))) (on ? shelved.add(m.threadId) : shelved.delete(m.threadId));
     },
     // Enough to try the picker: a number of hours, or tomorrow at 8.
     parseWhen: async (text) => {

@@ -239,7 +239,11 @@ panel icon or the column's own × hides it, for every conversation until shown a
   "Original look" (`Shift B`, on `--soft`), and the conversation's tools (shield, column, leave, Done, `…`,
   close). Under it the subject in the reading face, 34 px bold, with its labels; the byline and the mail's own copy
   of the subject as a heading are left out. `Shift B` switches reading view in any designed mail.
-- Not built yet: a Read later shelf.
+- **Read later** (`Shift L`, the reader bar's button, the `…` menu): the conversation goes on the shelf, out of the
+  inbox's lists, counts and notifications, with Undo. `g r` or the rail's "Read later" lists the shelf; there the
+  key and button say "Back to the inbox". Done from the shelf takes it off too. Like snooze it is Tern's alone:
+  the conversation stays in the server's inbox, and a reply from someone else brings it back (schema v28,
+  `read_later`).
 
 ### 4.3 Command palette (`Ctrl+K`)
 

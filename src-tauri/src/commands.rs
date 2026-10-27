@@ -1018,6 +1018,14 @@ pub async fn ai_set_style(state: State<'_, AppState>, account_id: i64, note: Str
     state.store.set_ai_style(account_id, note.trim(), samples).map_err(text)
 }
 
+/// Puts conversations on the Read later shelf, or takes them off it.
+#[tauri::command]
+pub async fn read_later(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>, on: bool) -> Reply<()> {
+    state.store.read_later(&ids, on, crate::desktop::now()).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
 // MARK: Marks (reading)
 
 /// The marks on a conversation's messages.

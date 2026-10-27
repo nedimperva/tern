@@ -13,6 +13,7 @@ export const ROLE_NAMES: Record<string, string> = {
   important: "Important",
   bulk: "Other",
   snoozed: "Snoozed",
+  later: "Read later",
   starred: "Starred",
 };
 
@@ -59,6 +60,9 @@ export function Rail(props: {
         </a>
         <a classList={{ active: props.isTarget({ role: "snoozed" }) }} onClick={() => go({ role: "snoozed" })}>
           <span>Snoozed</span>
+        </a>
+        <a classList={{ active: props.isTarget({ role: "later" }) }} onClick={() => go({ role: "later" })}>
+          <span>Read later</span>
         </a>
         <For each={props.accounts}>
           {(account) => (

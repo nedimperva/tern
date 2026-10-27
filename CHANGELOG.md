@@ -16,6 +16,8 @@ every release needs one here before it is tagged.
   the message and beside it; `[` and `]` go from one to the next. They stay on this computer.
 - Newsletters open in reading view, without the list's footer, with their parts and links beside them. The book
   icon switches back; Settings → Reading changes the default.
+- Read later. `Shift L` puts a conversation on the shelf, out of the inbox until you take it off or someone
+  replies; `g r` shows the shelf. It stays in your inbox on the server.
 
 ### Fixed
 

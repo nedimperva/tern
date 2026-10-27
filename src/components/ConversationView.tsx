@@ -520,6 +520,8 @@ export function ConversationView(props: {
   onMailto: (m: Mailto) => void;
   onDone: () => void;
   onClose: () => void;
+  /** The Read later shelf: whether the conversation is on it (opened from there), and putting it on or off. */
+  shelf: { on: boolean; toggle: () => void };
   /** Reply quoting the text selected in a message (the selection bar's "Quote in reply"). */
   onQuote: () => void;
   /** Snooze the conversation until then (the column's "Snooze until then"). */
@@ -932,6 +934,9 @@ export function ConversationView(props: {
             <span class="spacer" />
             <button class="soft" onClick={() => setReading(false)} title="The mail as its sender made it (Shift+B)">
               Original look <kbd>Shift B</kbd>
+            </button>
+            <button class="soft" onClick={props.shelf.toggle} title={props.shelf.on ? "Off the shelf, back to the inbox (Shift+L)" : "Keep it on the Read later shelf (Shift+L); a reply brings it back"}>
+              {props.shelf.on ? "Back to the inbox" : "Read later"} <kbd>Shift L</kbd>
             </button>
             {tools()}
           </div>

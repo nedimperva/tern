@@ -426,6 +426,25 @@ export default function App() {
     });
   }
 
+  const onShelf = () => "role" in target() && (target() as { role: string }).role === "later";
+  /** Puts the target conversations on the Read later shelf (Shift+L), or, on the shelf, back in the inbox. */
+  async function shelve(hit = targets()) {
+    if (!hit.length) return;
+    const ids = hit.map((r) => r.id);
+    const on = !onShelf();
+    dropRows(hit);
+    try {
+      await api.readLater(ids, on);
+    } catch (e) {
+      return showToast(String(e), []);
+    }
+    const said = hit.length === 1 ? (on ? "On the Read later shelf" : "Back in the inbox") : `${hit.length} conversations ${on ? "on the Read later shelf" : "back in the inbox"}`;
+    showToast(said, [], undefined, async () => {
+      await api.readLater(ids, !on);
+      void load();
+    });
+  }
+
   /** Brings snoozed conversations back now (Shift+H). */
   async function wake() {
     const hit = targets().filter((r) => r.snoozedUntil != null);
@@ -460,6 +479,8 @@ export default function App() {
     const keys = new Set(hit.map(keyOf));
     if (moves(action)) {
       dropRows(hit);
+      // Done or moved away from the shelf: off it, so it does not hide again if it comes back to the inbox.
+      if (onShelf()) void api.readLater(hit.map((r) => r.id), false);
     } else {
       const patch = (r: ThreadRow): ThreadRow =>
         action === "markRead"
@@ -970,6 +991,7 @@ export default function App() {
     { keys: "F", name: focusMode() ? "Show the list again" : "Focus mode (hide the list)", context: "conversation", run: () => setFocusMode(!focusMode()) },
     { keys: "z", name: "Undo", run: undo },
     { keys: "h", name: "Snooze", run: () => targets().length > 0 && setSnoozing(targets()) },
+    { keys: "L", name: "Read later (on the shelf: back to the inbox)", run: () => void shelve() },
     { keys: "l", name: "Label", run: startLabel },
     { keys: "H", name: "Back from snooze now", run: () => void wake() },
     { keys: "c", name: "Compose", run: newMessage },
@@ -978,6 +1000,7 @@ export default function App() {
     { keys: "Shift+Tab", name: "Previous split", context: "list", run: () => nextSplit(-1) },
     { keys: "g i", name: "Go to Inbox", run: () => go(home()) },
     { keys: "g h", name: "Go to Snoozed", run: () => go({ role: "snoozed" }) },
+    { keys: "g r", name: "Go to Read later", run: () => go({ role: "later" }) },
     { keys: "g s", name: "Go to Starred", run: () => go({ role: "starred" }) },
     { keys: "g e", name: "Go to Done (Archive)", run: () => go({ role: "archive" }) },
     { keys: "g t", name: "Go to Sent", run: () => go({ role: "sent" }) },
@@ -1003,7 +1026,7 @@ export default function App() {
   ]);
 
   /** The conversation's `…` menu: its actions in the order people reach for them, each with its key. */
-  const MENU_KEYS = ["r", "Enter", "f", "v", "e", "h", "s", "u", "m", "!", "#", "O", "F"];
+  const MENU_KEYS = ["r", "Enter", "f", "v", "e", "h", "L", "s", "u", "m", "!", "#", "O", "F"];
   const menu = () => {
     const all = bindings();
     const items: MenuItem[] = MENU_KEYS.flatMap((k) => {
@@ -1346,6 +1369,7 @@ export default function App() {
             onDone={() => act("archive")}
             onClose={close}
             onQuote={() => void reply()}
+            shelf={{ on: onShelf(), toggle: () => void shelve() }}
             onSnoozeUntil={(due) => {
               if (!targets().length) return;
               setSnoozing(targets());

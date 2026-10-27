@@ -206,6 +206,7 @@ fn main() {
             commands::ai_style,
             commands::ai_learn_style,
             commands::ai_set_style,
+            commands::read_later,
             commands::marks,
             commands::add_mark,
             commands::set_mark_note,
