@@ -260,6 +260,13 @@ pub async fn label_conversations(
     Ok(applied)
 }
 
+/// Every unread message in a list marked read, loaded or not; one undo brings them all back.
+#[tauri::command]
+pub async fn mark_all_read(app: AppHandle, state: State<'_, AppState>, target: ListTarget) -> Reply<Applied> {
+    let ids = state.store.unread_ids(&target).map_err(text)?;
+    apply(app, state, ids, Action::MarkRead).await
+}
+
 /// An action on whole conversations (each id stands for its conversation); see `Store::conversation_ids`.
 #[tauri::command]
 pub async fn apply_conversations(

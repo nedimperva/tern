@@ -283,6 +283,8 @@ export interface Api {
   listThreads(target: Target, before: Cursor | null, limit: number): Promise<ThreadRow[]>;
   /** An action on whole conversations, each named by its row's message id. */
   applyConversations(ids: number[], action: Action, target: Target): Promise<Applied>;
+  /** Every unread message in the list marked read, loaded or not. */
+  markAllRead(target: Target): Promise<Applied>;
   /** Puts a Gmail label (its folder's id) on these conversations, or takes it off; undo like any action. */
   labelConversations(ids: number[], label: number, add: boolean): Promise<Applied>;
   thread(id: number): Promise<ThreadMessage[]>;
@@ -481,6 +483,7 @@ const tauri: Api = {
   list: (target, before, limit) => invoke("list_messages", { target, before, limit }),
   listThreads: (target, before, limit) => invoke("list_threads", { target, before, limit }),
   applyConversations: (ids, action, target) => invoke("apply_conversations", { ids, action, target }),
+  markAllRead: (target) => invoke("mark_all_read", { target }),
   labelConversations: (ids, label, add) => invoke("label_conversations", { ids, label, add }),
   thread: (id) => invoke("thread", { id }),
   search: (query, limit) => invoke("search", { query, limit }),
@@ -909,6 +912,7 @@ function fake(): Api {
               : members(() => true);
       return api.apply(chosen, action);
     },
+    markAllRead: async (target) => api.apply(messages.filter((m) => inTarget(m, target) && !m.seen).map((m) => m.id), "markRead"),
     search: async (query, limit) => {
       // Words, is:marked, has:note and is:snoozed only; the filters live in the engine. Shown as partial so the note
       // can be worked on here.
