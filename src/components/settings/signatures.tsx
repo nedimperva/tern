@@ -33,7 +33,9 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
   // Another account: its first signature.
   createEffect(() => {
     const ids = mine().map((s) => s.id);
-    if (!ids.includes(picked() ?? -1)) (setPicked(ids[0] ?? null), setVersion(version() + 1));
+    // The setter's own form: reading version() here would make this effect wake itself, forever when the account
+    // has no signature yet.
+    if (!ids.includes(picked() ?? -1)) (setPicked(ids[0] ?? null), setVersion((v) => v + 1));
   });
   const pick = (id: number) => (setPicked(id), setVersion(version() + 1));
   // An HTML signature's text part is read from it.
