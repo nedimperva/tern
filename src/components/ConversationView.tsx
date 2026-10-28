@@ -4,6 +4,7 @@ import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
 import { linkify } from "../linkify";
+import { hostOf, misleading } from "../links";
 import {
   darken,
   designedFrame,
@@ -52,6 +53,16 @@ function picked(doc: Document, messageId: number | null, offset: { left: number;
 let readingSwitch: (() => void) | null = null;
 export const switchReading = () => readingSwitch?.();
 
+/** The link under the pointer: where it goes, and the site its text names when that is another one. Shown at the
+ * foot of the pane, as a browser does, since a mail's link text can say anything. */
+type Hovered = { host: string; claimed: string | null; left: number };
+const [hovered, setHovered] = createSignal<Hovered | null>(null);
+const hover = (a: HTMLAnchorElement | null, pane: Element | null | undefined) => {
+  const host = a ? hostOf(a.href) : null;
+  if (!a || !host) return setHovered(null);
+  setHovered({ host, claimed: misleading(a.textContent ?? "", a.href), left: (pane?.getBoundingClientRect().left ?? 0) + 12 });
+};
+
 /** Frames tell the conversation they have (re)loaded, so marks are drawn in them again. */
 const FRAME_LOADED = "tern-frame-loaded";
 
@@ -98,7 +109,7 @@ function HtmlBody(props: {
   // Darkened mail stays hidden until it is dark, so it never flashes white.
   const [ready, setReady] = createSignal(false);
   // A right-click on a link: Tern's own Open / Copy link, as the web view's menu is taken away (browserKeys.ts).
-  const [linkMenu, setLinkMenu] = createSignal<{ x: number; y: number; href: string } | null>(null);
+  const [linkMenu, setLinkMenu] = createSignal<{ x: number; y: number; href: string; claimed: string | null } | null>(null);
   const closeLinkMenu = () => setLinkMenu(null);
   onMount(() => {
     window.addEventListener("mousedown", closeLinkMenu);
@@ -159,23 +170,32 @@ function HtmlBody(props: {
       window.dispatchEvent(copy);
       if (copy.defaultPrevented) ev.preventDefault();
     });
+    const menuAt = (ev: MouseEvent, a: HTMLAnchorElement) => {
+      const box = frame!.getBoundingClientRect();
+      // Kept inside the window near its right and bottom edges.
+      const x = Math.min(box.left + ev.clientX, window.innerWidth - 370);
+      const y = Math.min(box.top + ev.clientY, window.innerHeight - 150);
+      setLinkMenu({ x, y, href: a.href, claimed: misleading(a.textContent ?? "", a.href) });
+    };
     doc.addEventListener("click", (ev) => {
       setLinkMenu(null);
       const a = (ev.target as Element).closest("a");
       if (!a?.href) return;
       ev.preventDefault();
-      if (/^(https?|mailto):/i.test(a.href)) api.openUrl(a.href);
+      if (!/^(https?|mailto):/i.test(a.href)) return;
+      // A link whose text names another site opens only from the menu, where that is said.
+      if (misleading(a.textContent ?? "", a.href)) menuAt(ev, a);
+      else api.openUrl(a.href);
     });
     doc.addEventListener("contextmenu", (ev) => {
       const a = (ev.target as Element).closest("a");
       if (!a?.href || !/^(https?|mailto):/i.test(a.href)) return;
       ev.preventDefault();
-      const box = frame!.getBoundingClientRect();
-      // Kept inside the window near its right and bottom edges.
-      const x = Math.min(box.left + ev.clientX, window.innerWidth - 370);
-      const y = Math.min(box.top + ev.clientY, window.innerHeight - 120);
-      setLinkMenu({ x, y, href: a.href });
+      menuAt(ev, a);
     });
+    const pane = () => frame?.closest(".conversation-pane");
+    doc.addEventListener("mouseover", (ev) => hover((ev.target as Element).closest?.("a") ?? null, pane()));
+    doc.addEventListener("mouseleave", () => setHovered(null));
     doc.addEventListener("mousedown", (ev) => ev.button === 0 && setLinkMenu(null));
   };
 
@@ -207,6 +227,11 @@ function HtmlBody(props: {
             <span class="link-menu-url" title={m().href}>
               {m().href.replace(/^mailto:/i, "")}
             </span>
+            <Show when={m().claimed}>
+              <span class="link-menu-warn" role="alert">
+                The text says {m().claimed}, but the link goes to {hostOf(m().href)}.
+              </span>
+            </Show>
             <button role="menuitem" onClick={() => (api.openUrl(m().href), setLinkMenu(null))}>
               {/^mailto:/i.test(m().href) ? "Write to this address" : "Open link"}
             </button>
@@ -279,6 +304,8 @@ function Linked(props: { text: string }) {
           <a
             href={p.href}
             title={p.href}
+            onMouseEnter={(e) => hover(e.currentTarget, e.currentTarget.closest(".conversation-pane"))}
+            onMouseLeave={() => setHovered(null)}
             onClick={(e) => {
               e.preventDefault();
               api.openUrl(p.href);
@@ -760,6 +787,7 @@ export function ConversationView(props: {
   });
   onCleanup(() => {
     setJumper(null);
+    setHovered(null);
     drawMarks([], null);
   });
 
@@ -1109,6 +1137,15 @@ export function ConversationView(props: {
             <button onClick={() => void markIt(false)}>Mark</button>
             <button onClick={() => void markIt(true)}>Note</button>
             <button onClick={() => (void navigator.clipboard.writeText(p().text).catch(() => {}), setPick(null))}>Copy</button>
+          </div>
+        )}
+      </Show>
+      <Show when={hovered()}>
+        {(h) => (
+          <div class="link-host" classList={{ warn: !!h().claimed }} style={{ left: `${h().left}px` }} aria-live="polite">
+            <Show when={h().claimed} fallback={h().host}>
+              Goes to <strong>{h().host}</strong>, not {h().claimed}
+            </Show>
           </div>
         )}
       </Show>

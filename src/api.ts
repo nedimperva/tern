@@ -631,7 +631,7 @@ function newsletter(subject: string): string {
 <tr><td style="padding:20px 28px;font-size:16px;line-height:1.6"><p>This week we walked the old railway line from Mostar toward Konjic, now a gravel trail along the Neretva.</p>
 <p>Below: three day trips, where to sleep, and what the <b>October weather</b> really does up there.</p>
 <p><a href="https://example.com/guide" style="display:inline-block;background:#0f4c3a;color:#ffffff;padding:10px 18px;text-decoration:none;font-family:Arial">Read the full guide</a></p>
-<h2 style="font-size:19px">Three day trips</h2><p>Start at Jablanica and follow the river south; the <a href="https://example.com/trips/jablanica">Jablanica loop</a> takes four hours.</p>
+<h2 style="font-size:19px">Three day trips</h2><p>Start at Jablanica and follow the river south; the <a href="https://example.com/trips/jablanica">Jablanica loop</a> takes four hours. Maps are at <a href="https://clicks.mailer.example/r/91">fieldnotes.example/maps</a>.</p>
 <h2 style="font-size:19px">Where to sleep</h2><p>Two guesthouses stay open in autumn. <a href="https://example.com/stay">Our list, with prices</a>.</p>
 <h2 style="font-size:19px">The weather</h2><p>Mornings are cold, afternoons warm. The <a href="https://example.com/weather">week ahead</a> looks dry.</p></td></tr>
 <tr><td style="background:#f2efe7;color:#777777;font:12px Arial;padding:14px 28px">You get this because you signed up at fieldnotes.example. <a href="https://example.com/u" style="color:#777777">Unsubscribe</a></td></tr>
