@@ -4378,9 +4378,7 @@ Engines Ltd"
     #[test]
     fn mark_all_read_takes_every_unread_message_in_the_list_and_undoes() {
         let (store, account, inbox, archive) = setup();
-        store
-            .insert_messages(account, inbox, &[message(1, "One", 100), message(2, "Two", 200)])
-            .unwrap();
+        store.insert_messages(account, inbox, &[message(1, "One", 100), message(2, "Two", 200)]).unwrap();
         store.insert_messages(account, archive, &[message(3, "Elsewhere", 300)]).unwrap();
         let ids = store.unread_ids(&ListTarget::Role("inbox".into())).unwrap();
         assert_eq!(ids.len(), 2, "the inbox's, not the archive's");
