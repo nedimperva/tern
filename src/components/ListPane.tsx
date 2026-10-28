@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { createMemo, For, Show } from "solid-js";
 import { firstName, lineHere, runDeck } from "../app/deck";
 import { go, isSaved, loadMore, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
 import { open } from "../app/conversation";
@@ -40,8 +40,13 @@ export function ListPane(props: {
   /** Conversations that need the person, for the dot in their rows. */
   needsYou: ReadonlySet<string>;
 }) {
-  // Lists that mix accounts (the inboxes, splits, search) mark each row with its account's colour.
-  const mixed = () => accounts().length > 1 && (searching() || "role" in target());
+  // A list that mixes accounts (the inboxes, splits, search) marks each row with its account's colour, but only
+  // when its rows really come from more than one: All Inboxes with one account's mail looks like that account's.
+  const mixed = createMemo(() => {
+    if (accounts().length < 2 || !(searching() || "role" in target())) return false;
+    const first = rows()[0]?.accountId;
+    return rows().some((r) => r.accountId !== first);
+  });
   const accountOf = (row: ThreadRow) => {
     const a = mixed() ? accounts().find((x) => x.id === row.accountId) : undefined;
     return a ? { colour: colourOf(accounts(), a.id), email: a.email } : undefined;
