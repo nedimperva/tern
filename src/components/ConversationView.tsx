@@ -55,14 +55,24 @@ function picked(doc: Document, messageId: number | null, offset: { left: number;
 let readingSwitch: (() => void) | null = null;
 export const switchReading = () => readingSwitch?.();
 
-/** The link under the pointer: where it goes, and the site its text names when that is another one. Shown at the
- * foot of the pane, as a browser does, since a mail's link text can say anything. */
-type Hovered = { host: string; claimed: string | null; left: number };
+/** The link under the pointer: where it goes, and the site its text names when that is another one. Shown just
+ * under the link (above it near the window's foot), since a mail's link text can say anything. */
+type Hovered = { host: string; claimed: string | null; left: number; top: number; above: boolean };
 const [hovered, setHovered] = createSignal<Hovered | null>(null);
-const hover = (a: HTMLAnchorElement | null, pane: Element | null | undefined) => {
+const hover = (a: HTMLAnchorElement | null, frame?: HTMLIFrameElement | null) => {
   const host = a ? hostOf(a.href) : null;
   if (!a || !host) return setHovered(null);
-  setHovered({ host, claimed: misleading(a.textContent ?? "", a.href), left: (pane?.getBoundingClientRect().left ?? 0) + 12 });
+  // A link in a mail frame is placed by the frame's coordinates; the label is drawn in the window's.
+  const box = a.getBoundingClientRect();
+  const at = frame?.getBoundingClientRect() ?? { left: 0, top: 0 };
+  const above = at.top + box.bottom + 40 > window.innerHeight;
+  setHovered({
+    host,
+    claimed: misleading(a.textContent ?? "", a.href),
+    left: Math.max(8, Math.min(at.left + box.left, window.innerWidth - 488)),
+    top: above ? at.top + box.top - 6 : at.top + box.bottom + 6,
+    above,
+  });
 };
 
 /** Frames tell the conversation they have (re)loaded, so marks are drawn in them again. */
@@ -195,8 +205,7 @@ function HtmlBody(props: {
       ev.preventDefault();
       menuAt(ev, a);
     });
-    const pane = () => frame?.closest(".conversation-pane");
-    doc.addEventListener("mouseover", (ev) => hover((ev.target as Element).closest?.("a") ?? null, pane()));
+    doc.addEventListener("mouseover", (ev) => hover((ev.target as Element).closest?.("a") ?? null, frame));
     doc.addEventListener("mouseleave", () => setHovered(null));
     doc.addEventListener("mousedown", (ev) => ev.button === 0 && setLinkMenu(null));
   };
@@ -306,7 +315,7 @@ function Linked(props: { text: string }) {
           <a
             href={p.href}
             title={p.href}
-            onMouseEnter={(e) => hover(e.currentTarget, e.currentTarget.closest(".conversation-pane"))}
+            onMouseEnter={(e) => hover(e.currentTarget)}
             onMouseLeave={() => setHovered(null)}
             onClick={(e) => {
               e.preventDefault();
@@ -879,7 +888,7 @@ export function ConversationView(props: {
     // Moving the column resizes the message frames, which have observers of their own: wait for the next frame.
     const room = new ResizeObserver(([e]) => requestAnimationFrame(() => setWide(e.contentRect.width >= 880)));
     if (pane) room.observe(pane);
-    const scrolled = () => setPick(null);
+    const scrolled = () => (setPick(null), setHovered(null));
     pane?.addEventListener("scroll", scrolled, { passive: true });
     onCleanup(() => {
       watch.disconnect();
@@ -1159,7 +1168,12 @@ export function ConversationView(props: {
       </Show>
       <Show when={hovered()}>
         {(h) => (
-          <div class="link-host" classList={{ warn: !!h().claimed }} style={{ left: `${h().left}px` }} aria-live="polite">
+          <div
+            class="link-host"
+            classList={{ warn: !!h().claimed, above: h().above }}
+            style={{ left: `${h().left}px`, top: `${h().top}px` }}
+            aria-live="polite"
+          >
             <Show when={h().claimed} fallback={h().host}>
               Goes to <strong>{h().host}</strong>, not {h().claimed}
             </Show>

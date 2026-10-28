@@ -15,6 +15,28 @@ export function hitWords(query: string): string[] {
   return out;
 }
 
+/** Where any of `words` starts a word, or null for none. Search matches prefixes, so "inv" lights up "Invoice". */
+function matcher(words: string[]): RegExp | null {
+  if (!words.length) return null;
+  const any = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  return new RegExp(`(?<![\\p{L}\\p{N}])(?:${any})`, "giu");
+}
+
+/** `text` cut into plain runs and the runs that match, for a list row's subject, names and preview. */
+export function litPieces(text: string, words: string[]): (string | { hit: string })[] {
+  const pattern = matcher(words);
+  if (!pattern) return [text];
+  const out: (string | { hit: string })[] = [];
+  let at = 0;
+  for (const m of text.matchAll(pattern)) {
+    if (m.index > at) out.push(text.slice(at, m.index));
+    out.push({ hit: m[0] });
+    at = m.index + m[0].length;
+  }
+  if (at < text.length) out.push(text.slice(at));
+  return out;
+}
+
 type Highlights = { set(name: string, h: unknown): void; delete(name: string): void };
 
 /** Lights up `words` in every open message: a word where a word starts (search matches prefixes), a phrase as
@@ -29,9 +51,7 @@ export function drawHits(words: string[]) {
     if (frame?.contentWindow) byWindow.set(frame.contentWindow, []);
   }
   byWindow.set(window, []);
-  const pattern = words.length
-    ? new RegExp(`(?<![\\p{L}\\p{N}])(?:${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "giu")
-    : null;
+  const pattern = matcher(words);
   for (const root of pattern ? roots : []) {
     const doc = root.ownerDocument!;
     const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);

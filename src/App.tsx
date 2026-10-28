@@ -204,6 +204,7 @@ export default function App() {
     screen() || deck() !== null || reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin()) || setup() || rail() || snoozing() !== null || labeling() !== null ||
     viewing() !== null;
   const searching = () => query().trim() !== "";
+  const hits = createMemo(() => (searching() ? hitWords(query()) : undefined));
   // Some mail has headers only, so words in its body were not searched.
   const [partial, setPartial] = createSignal(false);
 
@@ -1338,6 +1339,7 @@ export default function App() {
                 selected={selection().has(keyOf(row))}
                 narrow={split()}
                 needsYou={needsYou().has(keyOf(row))}
+                hits={hits()}
                 onClick={(e) => {
                   setFocus(index());
                   if (e.shiftKey || e.ctrlKey || e.metaKey) toggleSelected(row);
@@ -1420,7 +1422,7 @@ export default function App() {
         <section class="conversation-pane">
           <ConversationView
             messages={messages}
-            hits={searching() ? hitWords(query()) : undefined}
+            hits={hits()}
             labels={rows().find((r) => keyOf(r) === keyOf(openRow()!))?.labels ?? openRow()?.labels ?? []}
             focused={messageFocus()}
             expanded={(id) => expanded().has(id)}

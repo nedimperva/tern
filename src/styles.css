@@ -244,10 +244,9 @@ button.primary kbd {
   color: var(--warn-fg);
   font-size: var(--t-xs);
 }
-/* Where the link under the pointer goes, at the foot of the pane (ConversationView). */
+/* Where the link under the pointer goes, just under the link (ConversationView). */
 .link-host {
   position: fixed;
-  bottom: 12px;
   z-index: 55;
   max-width: 480px;
   overflow: hidden;
@@ -261,6 +260,9 @@ button.primary kbd {
   white-space: nowrap;
   text-overflow: ellipsis;
   pointer-events: none;
+}
+.link-host.above {
+  transform: translateY(-100%);
 }
 .link-host.warn {
   border-color: var(--warn);
@@ -5405,6 +5407,12 @@ button.link.danger {
 ::highlight(tern-mark-on) {
   background-color: color-mix(in srgb, var(--accent) 30%, transparent);
   color: inherit;
+}
+/* Words searched for, in a result row (ConversationRow). */
+.crow mark.hit {
+  background: rgba(47, 158, 110, 0.26);
+  color: inherit;
+  border-radius: 2px;
 }
 /* Words searched for, in a conversation opened from the results (hits.ts). */
 ::highlight(tern-hit) {

@@ -1,4 +1,5 @@
 import { For, Show } from "solid-js";
+import { litPieces } from "../hits";
 import { Icon } from "./Icon";
 import type { ThreadRow } from "../api";
 import { labelColour } from "../colours";
@@ -38,6 +39,15 @@ export function participants(row: ThreadRow): string {
   return names.map((n) => (n.includes("@") ? n.split("@")[0] : n.split(" ")[0])).join(", ");
 }
 
+/** Text with the words searched for marked. */
+function Lit(props: { text: string; words?: string[] }) {
+  return (
+    <Show when={props.words?.length} fallback={props.text}>
+      <For each={litPieces(props.text, props.words!)}>{(p) => (typeof p === "string" ? p : <mark class="hit">{p.hit}</mark>)}</For>
+    </Show>
+  );
+}
+
 /** One conversation on one line (docs/design/ui.md §4.1). */
 export function ConversationRow(props: {
   row: ThreadRow;
@@ -49,7 +59,10 @@ export function ConversationRow(props: {
   needsYou?: boolean;
   onClick: (e: MouseEvent) => void;
   onOpen: () => void;
+  /** The words searched for, lit up in the row (search results only). */
+  hits?: string[];
 }) {
+  const lit = (text: string) => <Lit text={text} words={props.hits} />;
   return (
     <div
       class="crow"
@@ -61,13 +74,13 @@ export function ConversationRow(props: {
     >
       <span class="mark">{props.selected ? "✓" : props.needsYou ? <span class="needs" title="Waits on you" /> : ""}</span>
       <span class="who">
-        <span class="names">{participants(props.row)}</span>
+        <span class="names">{lit(participants(props.row))}</span>
         <Show when={props.row.count > 1}>
           <span class="count">{props.row.count}</span>
         </Show>
       </span>
       <span class="what">
-        <span class="subject">{props.row.subject || "(no subject)"}</span>
+        <span class="subject">{lit(props.row.subject || "(no subject)")}</span>
         <Show when={props.row.labels?.length}>
           <span class="labels">
             <For each={props.row.labels!.slice(0, 2)}>
@@ -85,7 +98,7 @@ export function ConversationRow(props: {
           </span>
         </Show>
         <Show when={!props.narrow && props.row.snippet}>
-          <span class="snippet">{props.row.snippet}</span>
+          <span class="snippet">{lit(props.row.snippet)}</span>
         </Show>
       </span>
       <span class="glyphs">
