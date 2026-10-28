@@ -26,6 +26,7 @@ import { ActionMenu, type MenuItem } from "./ActionMenu";
 import { AiReplies } from "./AiReplies";
 import { AiSummary } from "./AiSummary";
 import { Icon } from "./Icon";
+import { Original } from "./Original";
 import { PersonCard, type PersonActions } from "./PersonCard";
 import { ReadingMargin } from "./ReadingMargin";
 import { logoFor } from "../logos";
@@ -651,11 +652,13 @@ export function ConversationView(props: {
   };
   const anyTool = () => !!(privacy().trackers || privacy().blocked || minutes() >= 2 || listMail() || designed().size || wide() || hasColumn());
   // Loading images for good is a choice about a sender, so it sits in the menu, beside the conversation's actions.
+  const [original, setOriginal] = createSignal<ThreadMessage | null>(null);
   const menu = () => {
     const sender = privacy().sender;
-    if (!sender) return props.menu();
+    const items = [...props.menu(), { name: "Show original", run: () => setOriginal(last() ?? null) }];
+    if (!sender) return items;
     return [
-      ...props.menu(),
+      ...items,
       { name: "Always load images from this sender", run: () => setSetting("imagesFrom", [...settings.imagesFrom, sender.toLowerCase()]) },
     ];
   };
@@ -1139,6 +1142,9 @@ export function ConversationView(props: {
             <button onClick={() => (void navigator.clipboard.writeText(p().text).catch(() => {}), setPick(null))}>Copy</button>
           </div>
         )}
+      </Show>
+      <Show when={original()}>
+        {(m) => <Original id={m().id} subject={m().subject || "(no subject)"} onClose={() => setOriginal(null)} />}
       </Show>
       <Show when={hovered()}>
         {(h) => (

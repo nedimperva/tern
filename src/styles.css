@@ -3514,6 +3514,11 @@ button.place.muted {
   background: var(--bg-1);
   font-weight: 600;
 }
+/* Show original (components/Original.tsx): the source is there to be selected and copied. */
+.viewer.original .text {
+  user-select: text;
+  font-size: var(--t-sm);
+}
 .viewer-note {
   display: grid;
   justify-items: center;

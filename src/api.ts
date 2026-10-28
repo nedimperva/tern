@@ -275,6 +275,8 @@ export interface Api {
   removeAccount(id: number): Promise<void>;
   /** Bytes of downloaded attachments and inline images kept on disk. */
   receivedCacheSize(): Promise<number>;
+  /** A message's source as the server holds it ("Show original"), downloaded and not kept. */
+  messageSource(id: number): Promise<string>;
   clearReceivedCache(): Promise<void>;
   list(target: Target, before: Cursor | null, limit: number): Promise<MessageRow[]>;
   /** Conversations with a message in `target`, newest first; `before` is the last row's (date, id). */
@@ -474,6 +476,7 @@ const tauri: Api = {
   setPassword: (id, password) => invoke("set_password", { id, password }),
   removeAccount: (id) => invoke("remove_account", { id }),
   receivedCacheSize: () => invoke("received_cache_size"),
+  messageSource: (id) => invoke("message_source", { id }),
   clearReceivedCache: () => invoke("clear_received_cache"),
   list: (target, before, limit) => invoke("list_messages", { target, before, limit }),
   listThreads: (target, before, limit) => invoke("list_threads", { target, before, limit }),
@@ -826,6 +829,23 @@ function fake(): Api {
     },
     removeAccount: async () => {},
     receivedCacheSize: async () => 48_200_000,
+    messageSource: async (id) => {
+      const m = messages.find((x) => x.id === id);
+      if (!m) throw new Error("This message is not on the server yet; try again once it has synced");
+      const head = [
+        `Return-Path: <${m.fromAddr}>`,
+        `Received: from mail.example.com (mail.example.com [192.0.2.10]) by mx.example.com with ESMTPS; ${new Date(m.date * 1000).toUTCString()}`,
+        "Authentication-Results: mx.example.com; spf=pass; dkim=pass header.d=example.com; dmarc=pass",
+        `From: ${m.fromName} <${m.fromAddr}>`,
+        `To: ${m.toAddrs}`,
+        `Subject: ${m.subject}`,
+        `Date: ${new Date(m.date * 1000).toUTCString()}`,
+        `Message-ID: <${m.messageId}>`,
+        "MIME-Version: 1.0",
+        'Content-Type: text/plain; charset="utf-8"',
+      ];
+      return `${head.join("\r\n")}\r\n\r\n${m.bodyText ?? ""}`;
+    },
     clearReceivedCache: async () => {},
     googleSignIn: async (name, hint) => ({
       email: hint ?? "ada@gmail.com",

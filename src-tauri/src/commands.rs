@@ -655,6 +655,38 @@ async fn received_file(
     }
 }
 
+/// Most of a message's source "Show original" shows; past it a big attachment's base64 only makes the view slow.
+const SOURCE_LIMIT: usize = 4_000_000;
+
+/// A message's source as the server holds it, for "Show original": every header, then the body as it was sent. It
+/// comes down on a connection of its own, like an attachment's first open, and is not kept.
+#[tauri::command]
+pub async fn message_source(state: State<'_, AppState>, id: i64) -> Reply<String> {
+    let (account_id, at, _) = state
+        .store
+        .attachment_source(id)
+        .map_err(text)?
+        .ok_or("This message is not on the server yet; try again once it has synced")?;
+    let account = state
+        .store
+        .accounts()
+        .map_err(text)?
+        .into_iter()
+        .find(|a| a.id == account_id)
+        .ok_or("The account of this message is gone")?;
+    let raw = sync::download(&account.config, &crate::login(&account), &at).await.map_err(text)?;
+    Ok(source_text(&raw))
+}
+
+fn source_text(raw: &[u8]) -> String {
+    if raw.len() <= SOURCE_LIMIT {
+        return String::from_utf8_lossy(raw).into_owned();
+    }
+    let mut shown = String::from_utf8_lossy(&raw[..SOURCE_LIMIT]).into_owned();
+    shown.push_str(&format!("\n\n[{} more bytes not shown]\n", raw.len() - SOURCE_LIMIT));
+    shown
+}
+
 /// Most a picture attachment may weigh to be shown on its card.
 const PREVIEW_LIMIT: u64 = 8_000_000;
 
