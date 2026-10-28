@@ -30,19 +30,20 @@ scripts/dev-mail-server.sh tern
 
 ## Before you open a pull request
 
-Run what CI runs:
+Run what CI runs, in one command:
 
 ```sh
-npm run build
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+npm run check
 ```
+
+That is `npm run build`, `npm test` (unit tests for the UI's pure modules, in `src/test`), `cargo fmt --all --check`,
+`cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`.
 
 Then:
 
 - Keep each pull request to one change, and explain what a user would notice.
-- Add a test for engine changes. Store and sync behaviour is tested in `crates/tern-core`.
+- Add a test for engine changes. Store and sync behaviour is tested in `crates/tern-core`; text and HTML helpers in
+  `src/` are tested with Vitest in `src/test`.
 - Before UI work, read [docs/design/ui.md](docs/design/ui.md): it holds the design tokens, layout and review
   checklist.
 - Schema changes go through `store::migrate()` with a test that starts from the previous version.

@@ -8,6 +8,6 @@
 
 ## Checklist
 
-- [ ] `npm run build`, `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` pass
+- [ ] `npm run check` passes (build, unit tests, `cargo fmt --check`, clippy, `cargo test --workspace`)
 - [ ] Tested against the local dev mail server, not a real mailbox
 - [ ] UI changes follow `docs/design/ui.md`

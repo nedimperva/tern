@@ -46,6 +46,9 @@ jobs:
           npm ci
           npm run build
 
+      - name: Frontend unit tests
+        run: npm test
+
       - name: rustfmt
         if: runner.os == 'Linux'
         run: cargo fmt --all --check

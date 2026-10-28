@@ -172,9 +172,9 @@ scripts/dev-mail-server.sh account    # what to type into "Add an account"
 scripts/dev-mail-server.sh tern       # npm run tauri dev, trusting the test CA
 ```
 
-CI (`.github/workflows/check.yml`) runs on every pull request, on Linux and Windows: the frontend build, then
-`cargo fmt --check` (Linux), `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`.
-Run the same before pushing. The Linux job installs the Debian/Ubuntu packages listed above.
+CI (`.github/workflows/check.yml`) runs on every pull request, on Linux and Windows: the frontend build and its unit
+tests, then `cargo fmt --check` (Linux), `cargo clippy --workspace --all-targets -- -D warnings` and
+`cargo test --workspace`. `npm run check` runs the same before pushing. The Linux job installs the Debian/Ubuntu packages listed above.
 
 ## Keys
 
