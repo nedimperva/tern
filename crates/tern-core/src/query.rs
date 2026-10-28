@@ -5,7 +5,7 @@
 //! (`me` means the account's own address), `is:unread|read|starred|unstarred|marked|snoozed`,
 //! `has:attachment|note`,
 //! `in:inbox|archive|sent|drafts|trash|spam|<folder>` (`label:` is the same), `before:`/`after:` a date
-//! (YYYY-MM-DD, UTC), `newer_than:`/`older_than:` 3d 2w 6m 1y, `larger:`/`smaller:` 500k 5m. A leading `-` excludes.
+//! (YYYY-MM-DD, from local midnight), `newer_than:`/`older_than:` 3d 2w 6m 1y, `larger:`/`smaller:` 500k 5m. A leading `-` excludes.
 //! Anything that is not a known filter is searched as text, so a mistyped filter still finds something.
 
 use rusqlite::types::Value;
@@ -160,7 +160,7 @@ const NOTED: &str = "EXISTS (SELECT 1 FROM marks k WHERE k.account_id = m.accoun
                               AND k.message_key = COALESCE(m.message_id, '#' || m.id) AND k.note <> '')";
 
 /// The SQL for one filter, or None when `key:value` is not a filter (then it is searched as text).
-fn filter(key: &str, value: &str, now: i64, q: &mut Vec<Value>) -> Option<String> {
+fn filter(key: &str, value: &str, now: i64, midnight: fn(i64) -> i64, q: &mut Vec<Value>) -> Option<String> {
     let lower = value.to_lowercase();
     let mut push = |v: Value| q.push(v);
     Some(match key {
@@ -201,11 +201,11 @@ fn filter(key: &str, value: &str, now: i64, q: &mut Vec<Value>) -> Option<String
             }
         }
         "before" => {
-            push(Value::Integer(date(value)?));
+            push(Value::Integer(midnight(date(value)?)));
             "m.date < ?".into()
         }
         "after" => {
-            push(Value::Integer(date(value)?));
+            push(Value::Integer(midnight(date(value)?)));
             "m.date >= ?".into()
         }
         "newer_than" | "newer" => {
@@ -230,6 +230,23 @@ fn filter(key: &str, value: &str, now: i64, q: &mut Vec<Value>) -> Option<String
 
 /// Parses what was typed in the search box. `now` is Unix seconds, for `newer_than:` and `older_than:`.
 pub fn parse(input: &str, now: i64) -> Query {
+    parse_in(input, now, local_midnight)
+}
+
+/// The start of a day in the person's time zone; the day comes in as Unix seconds at midnight UTC. "before:
+/// 2026-10-15" typed in Sarajevo means before that day began there, not two hours later.
+fn local_midnight(utc: i64) -> i64 {
+    use chrono::{Local, TimeZone};
+    let Some(day) = chrono::DateTime::from_timestamp(utc, 0).map(|d| d.naive_utc()) else { return utc };
+    match Local.from_local_datetime(&day).earliest() {
+        Some(t) => t.timestamp(),
+        // A zone whose clocks skip midnight that day: the offset of the moment is near enough.
+        None => utc - i64::from(Local.offset_from_utc_datetime(&day).local_minus_utc()),
+    }
+}
+
+/// `parse` with the time zone given, for tests.
+fn parse_in(input: &str, now: i64, midnight: fn(i64) -> i64) -> Query {
     let mut query = Query::default();
     let mut words: Vec<String> = Vec::new();
     let mut not_words: Vec<String> = Vec::new();
@@ -249,7 +266,7 @@ pub fn parse(input: &str, now: i64) -> Query {
             let value = unquote(value);
             let mut params = Vec::new();
             if !value.is_empty() {
-                if let Some(sql) = filter(&key.to_ascii_lowercase(), &value, now, &mut params) {
+                if let Some(sql) = filter(&key.to_ascii_lowercase(), &value, now, midnight, &mut params) {
                     query.conditions.push(if negated { format!("NOT {sql}") } else { sql });
                     query.params.extend(params);
                     or_next = false;
@@ -315,6 +332,9 @@ mod tests {
         assert_eq!(bytes("1.5k"), Some(1_500));
         let q = parse("newer_than:7d", 1_000_000);
         assert_eq!(q.params, [Value::Integer(1_000_000 - 7 * 86_400)]);
+        // Two hours ahead of UTC, the day starts two hours earlier.
+        let q = parse_in("after:2026-10-15 before:2026-10-16", 0, |t| t - 7_200);
+        assert_eq!(q.params, [Value::Integer(1_792_022_400 - 7_200), Value::Integer(1_792_108_800 - 7_200)]);
     }
 
     #[test]

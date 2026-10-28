@@ -92,9 +92,10 @@ export function showRange(range: Range, at = 1 / 3) {
   pane.scrollBy({ top: top - paneTop - pane.clientHeight * at, behavior: "smooth" });
 }
 
-/** The styles a mail frame needs to show marks; added once the frame has loaded. */
+/** The styles a mail frame needs to show marks and search hits (hits.ts); added once the frame has loaded. */
 export const FRAME_MARK_STYLE =
-  "::highlight(tern-mark){background-color:rgba(242,201,76,.38);color:inherit}::highlight(tern-mark-on){background-color:rgba(124,124,240,.38);color:inherit}";
+  "::highlight(tern-mark){background-color:rgba(242,201,76,.38);color:inherit}::highlight(tern-mark-on){background-color:rgba(124,124,240,.38);color:inherit}" +
+  "::highlight(tern-hit){background-color:rgba(47,158,110,.26);color:inherit}";
 
 // `[` and `]` are the app's keys (App.tsx); the open conversation says what they do.
 let jumper: ((step: 1 | -1) => void) | null = null;

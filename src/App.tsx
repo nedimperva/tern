@@ -51,6 +51,7 @@ import { VirtualList } from "./components/VirtualList";
 import { InboxZero } from "./components/InboxZero";
 import { countCleared, markZero } from "./zero";
 import { keyHandler, keyLabel, type Binding, type Context } from "./keys";
+import { hitWords } from "./hits";
 // Settings open seldom: their page is a chunk of its own.
 const SettingsPage = lazy(() => import("./components/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 
@@ -203,6 +204,7 @@ export default function App() {
     screen() || deck() !== null || reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin()) || setup() || rail() || snoozing() !== null || labeling() !== null ||
     viewing() !== null;
   const searching = () => query().trim() !== "";
+  const hits = createMemo(() => (searching() ? hitWords(query()) : undefined));
   // Some mail has headers only, so words in its body were not searched.
   const [partial, setPartial] = createSignal(false);
 
@@ -554,6 +556,20 @@ export default function App() {
       showToast(String(e), []);
       void load();
       return [];
+    }
+  }
+
+  /** Every unread conversation in the list read, the pages not loaded yet too. Search results are left as they are:
+   * there, "all" would be a guess. */
+  async function markAllRead() {
+    if (searching()) return;
+    setRows(rows().map((r) => (r.unread ? { ...r, unread: 0, seen: true } : r)));
+    try {
+      const applied = await api.markAllRead(target());
+      showToast(applied.token.length ? "Marked all read" : "Nothing unread here", applied.token);
+    } catch (e) {
+      showToast(String(e), []);
+      void load();
     }
   }
 
@@ -1003,6 +1019,7 @@ export default function App() {
     { keys: "Delete", name: "Move to Trash", run: () => act("trash"), hidden: true },
     { keys: "s", name: "Star or unstar", run: toggleStar },
     { keys: "u", name: "Mark read or unread", run: toggleRead },
+    { keys: "U", name: "Mark all read here", context: "list", run: () => void markAllRead() },
     { keys: "x", name: "Select conversation", context: "list", run: () => toggleSelected() },
     { keys: "J", name: "Select and move down", context: "list", run: () => extend(1), repeat: true },
     { keys: "K", name: "Select and move up", context: "list", run: () => extend(-1), repeat: true },
@@ -1322,6 +1339,7 @@ export default function App() {
                 selected={selection().has(keyOf(row))}
                 narrow={split()}
                 needsYou={needsYou().has(keyOf(row))}
+                hits={hits()}
                 onClick={(e) => {
                   setFocus(index());
                   if (e.shiftKey || e.ctrlKey || e.metaKey) toggleSelected(row);
@@ -1404,6 +1422,7 @@ export default function App() {
         <section class="conversation-pane">
           <ConversationView
             messages={messages}
+            hits={hits()}
             labels={rows().find((r) => keyOf(r) === keyOf(openRow()!))?.labels ?? openRow()?.labels ?? []}
             focused={messageFocus()}
             expanded={(id) => expanded().has(id)}

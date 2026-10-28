@@ -275,12 +275,16 @@ export interface Api {
   removeAccount(id: number): Promise<void>;
   /** Bytes of downloaded attachments and inline images kept on disk. */
   receivedCacheSize(): Promise<number>;
+  /** A message's source as the server holds it ("Show original"), downloaded and not kept. */
+  messageSource(id: number): Promise<string>;
   clearReceivedCache(): Promise<void>;
   list(target: Target, before: Cursor | null, limit: number): Promise<MessageRow[]>;
   /** Conversations with a message in `target`, newest first; `before` is the last row's (date, id). */
   listThreads(target: Target, before: Cursor | null, limit: number): Promise<ThreadRow[]>;
   /** An action on whole conversations, each named by its row's message id. */
   applyConversations(ids: number[], action: Action, target: Target): Promise<Applied>;
+  /** Every unread message in the list marked read, loaded or not. */
+  markAllRead(target: Target): Promise<Applied>;
   /** Puts a Gmail label (its folder's id) on these conversations, or takes it off; undo like any action. */
   labelConversations(ids: number[], label: number, add: boolean): Promise<Applied>;
   thread(id: number): Promise<ThreadMessage[]>;
@@ -474,10 +478,12 @@ const tauri: Api = {
   setPassword: (id, password) => invoke("set_password", { id, password }),
   removeAccount: (id) => invoke("remove_account", { id }),
   receivedCacheSize: () => invoke("received_cache_size"),
+  messageSource: (id) => invoke("message_source", { id }),
   clearReceivedCache: () => invoke("clear_received_cache"),
   list: (target, before, limit) => invoke("list_messages", { target, before, limit }),
   listThreads: (target, before, limit) => invoke("list_threads", { target, before, limit }),
   applyConversations: (ids, action, target) => invoke("apply_conversations", { ids, action, target }),
+  markAllRead: (target) => invoke("mark_all_read", { target }),
   labelConversations: (ids, label, add) => invoke("label_conversations", { ids, label, add }),
   thread: (id) => invoke("thread", { id }),
   search: (query, limit) => invoke("search", { query, limit }),
@@ -631,7 +637,7 @@ function newsletter(subject: string): string {
 <tr><td style="padding:20px 28px;font-size:16px;line-height:1.6"><p>This week we walked the old railway line from Mostar toward Konjic, now a gravel trail along the Neretva.</p>
 <p>Below: three day trips, where to sleep, and what the <b>October weather</b> really does up there.</p>
 <p><a href="https://example.com/guide" style="display:inline-block;background:#0f4c3a;color:#ffffff;padding:10px 18px;text-decoration:none;font-family:Arial">Read the full guide</a></p>
-<h2 style="font-size:19px">Three day trips</h2><p>Start at Jablanica and follow the river south; the <a href="https://example.com/trips/jablanica">Jablanica loop</a> takes four hours.</p>
+<h2 style="font-size:19px">Three day trips</h2><p>Start at Jablanica and follow the river south; the <a href="https://example.com/trips/jablanica">Jablanica loop</a> takes four hours. Maps are at <a href="https://clicks.mailer.example/r/91">fieldnotes.example/maps</a>.</p>
 <h2 style="font-size:19px">Where to sleep</h2><p>Two guesthouses stay open in autumn. <a href="https://example.com/stay">Our list, with prices</a>.</p>
 <h2 style="font-size:19px">The weather</h2><p>Mornings are cold, afternoons warm. The <a href="https://example.com/weather">week ahead</a> looks dry.</p></td></tr>
 <tr><td style="background:#f2efe7;color:#777777;font:12px Arial;padding:14px 28px">You get this because you signed up at fieldnotes.example. <a href="https://example.com/u" style="color:#777777">Unsubscribe</a></td></tr>
@@ -826,6 +832,23 @@ function fake(): Api {
     },
     removeAccount: async () => {},
     receivedCacheSize: async () => 48_200_000,
+    messageSource: async (id) => {
+      const m = messages.find((x) => x.id === id);
+      if (!m) throw new Error("This message is not on the server yet; try again once it has synced");
+      const head = [
+        `Return-Path: <${m.fromAddr}>`,
+        `Received: from mail.example.com (mail.example.com [192.0.2.10]) by mx.example.com with ESMTPS; ${new Date(m.date * 1000).toUTCString()}`,
+        "Authentication-Results: mx.example.com; spf=pass; dkim=pass header.d=example.com; dmarc=pass",
+        `From: ${m.fromName} <${m.fromAddr}>`,
+        `To: ${m.toAddrs}`,
+        `Subject: ${m.subject}`,
+        `Date: ${new Date(m.date * 1000).toUTCString()}`,
+        `Message-ID: <${m.messageId}>`,
+        "MIME-Version: 1.0",
+        'Content-Type: text/plain; charset="utf-8"',
+      ];
+      return `${head.join("\r\n")}\r\n\r\n${m.bodyText ?? ""}`;
+    },
     clearReceivedCache: async () => {},
     googleSignIn: async (name, hint) => ({
       email: hint ?? "ada@gmail.com",
@@ -889,6 +912,7 @@ function fake(): Api {
               : members(() => true);
       return api.apply(chosen, action);
     },
+    markAllRead: async (target) => api.apply(messages.filter((m) => inTarget(m, target) && !m.seen).map((m) => m.id), "markRead"),
     search: async (query, limit) => {
       // Words, is:marked, has:note and is:snoozed only; the filters live in the engine. Shown as partial so the note
       // can be worked on here.

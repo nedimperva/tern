@@ -11,6 +11,8 @@ ammonia = "4"
 anyhow = "1"
 # OAuth: PKCE and ID-token payloads.
 base64 = "0.23"
+# The person's time zone, for search dates (`before:` and `after:` start at local midnight).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # Jitter for reconnect waits.
 fastrand = "2"
 # Exact pin: io-imap is young (0.7) and sits on a pre-release parser (imap-codec 2.0 alpha). See

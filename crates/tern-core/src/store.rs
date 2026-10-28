@@ -2083,6 +2083,15 @@ impl Store {
         Ok(true)
     }
 
+    /// The unread messages in a list, for "Mark all read": every page of it, not only what the window has loaded.
+    pub fn unread_ids(&self, target: &ListTarget) -> Result<Vec<i64>> {
+        let (filter, value) = target_filter(target, 1);
+        let conn = self.conn();
+        let mut stmt = conn.prepare(&format!("SELECT m.id FROM messages m WHERE {filter} AND NOT m.seen"))?;
+        let ids = stmt.query_map([value], |r| r.get(0))?.collect::<rusqlite::Result<Vec<i64>>>()?;
+        Ok(ids)
+    }
+
     /// What an action on whole conversations touches. Each id is a message standing for its conversation (the
     /// newest one in a list row). Archive and Trash take the conversation's messages in `target`, the folder the
     /// person is looking at; read and unread take the whole conversation wherever it is; a star goes on that one
@@ -4364,6 +4373,20 @@ Engines Ltd"
         assert_eq!(subjects("ada friday"), ["Issue 112"], "words in a note");
         assert_eq!(subjects("deadline is:unread"), ["Issue 112"], "words in a mark, with filters");
         assert!(subjects("deadline is:read").is_empty());
+    }
+
+    #[test]
+    fn mark_all_read_takes_every_unread_message_in_the_list_and_undoes() {
+        let (store, account, inbox, archive) = setup();
+        store.insert_messages(account, inbox, &[message(1, "One", 100), message(2, "Two", 200)]).unwrap();
+        store.insert_messages(account, archive, &[message(3, "Elsewhere", 300)]).unwrap();
+        let ids = store.unread_ids(&ListTarget::Role("inbox".into())).unwrap();
+        assert_eq!(ids.len(), 2, "the inbox's, not the archive's");
+        let applied = store.apply(&ids, Action::MarkRead, 5).unwrap();
+        assert!(store.unread_ids(&ListTarget::Role("inbox".into())).unwrap().is_empty());
+        assert_eq!(store.unread_ids(&ListTarget::Folder(archive)).unwrap().len(), 1);
+        assert!(store.undo(&applied.token).unwrap());
+        assert_eq!(store.unread_ids(&ListTarget::Role("inbox".into())).unwrap().len(), 2);
     }
 
     #[test]

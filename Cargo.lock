@@ -5338,6 +5338,7 @@ dependencies = [
  "ammonia",
  "anyhow",
  "base64 0.23.1",
+ "chrono",
  "fastrand",
  "io-imap",
  "keyring",

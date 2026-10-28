@@ -236,6 +236,39 @@ button.primary kbd {
   font-size: var(--t-xs);
   color: var(--fg-2);
 }
+.link-menu-warn {
+  margin: 0 var(--s-1) var(--s-1);
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+  font-size: var(--t-xs);
+}
+/* Where the link under the pointer goes, just under the link (ConversationView). */
+.link-host {
+  position: fixed;
+  z-index: 55;
+  max-width: 480px;
+  overflow: hidden;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  box-shadow: var(--shadow);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.link-host.above {
+  transform: translateY(-100%);
+}
+.link-host.warn {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+}
 .link-menu button {
   padding: 6px 10px;
   border: none;
@@ -3483,6 +3516,11 @@ button.place.muted {
   background: var(--bg-1);
   font-weight: 600;
 }
+/* Show original (components/Original.tsx): the source is there to be selected and copied. */
+.viewer.original .text {
+  user-select: text;
+  font-size: var(--t-sm);
+}
 .viewer-note {
   display: grid;
   justify-items: center;
@@ -5368,5 +5406,16 @@ button.link.danger {
 }
 ::highlight(tern-mark-on) {
   background-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: inherit;
+}
+/* Words searched for, in a result row (ConversationRow). */
+.crow mark.hit {
+  background: rgba(47, 158, 110, 0.26);
+  color: inherit;
+  border-radius: 2px;
+}
+/* Words searched for, in a conversation opened from the results (hits.ts). */
+::highlight(tern-hit) {
+  background-color: rgba(47, 158, 110, 0.26);
   color: inherit;
 }

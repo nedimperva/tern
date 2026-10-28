@@ -188,6 +188,7 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 | `#` | move to Trash |
 | `s` | star |
 | `u` | mark read / unread |
+| `U` | mark everything in the list read |
 | `z` | undo |
 | `h` / `Shift H` | snooze / back from snooze now |
 | `Tab` | next split (Important, Other, Starred) |

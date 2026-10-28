@@ -9,11 +9,19 @@ every release needs one here before it is tagged.
 
 ### Added
 
+- Show original, in a conversation's `…` menu: the newest message's headers and source as the server has it,
+  to copy or check who really sent it.
+- Mark all read (`U`, or from the command bar): every unread message in the list, including the pages not loaded
+  yet. One `z` brings them back.
+- Hovering a link in a mail shows where it goes, just under the link. When the link's text names one site and it
+  points at another, that is said in yellow, and a click opens a menu that says so instead of the browser.
+- The words searched for light up in the results (names, subject, preview) and in a conversation opened from them.
 - Search filters `is:snoozed` (snoozed conversations) and `has:note` (mail with a note on a mark); `has:mark` is
   the same as `is:marked`.
 
 ### Changed
 
+- `before:` and `after:` in search start at midnight where you are, not midnight UTC.
 - Faster while mail downloads: the window reads everything again at most every 150 ms instead of on every frame,
   list rows that did not change stay as they are, and the window reads on a connection of its own, so a sync
   writing a batch never makes a keypress wait.

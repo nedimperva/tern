@@ -195,6 +195,8 @@ fn main() {
             commands::set_password,
             commands::remove_account,
             commands::received_cache_size,
+            commands::message_source,
+            commands::mark_all_read,
             commands::clear_received_cache,
             commands::google_available,
             commands::google_sign_in,

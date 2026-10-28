@@ -4,6 +4,8 @@ import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
 import { linkify } from "../linkify";
+import { drawHits } from "../hits";
+import { hostOf, misleading } from "../links";
 import {
   darken,
   designedFrame,
@@ -25,6 +27,7 @@ import { ActionMenu, type MenuItem } from "./ActionMenu";
 import { AiReplies } from "./AiReplies";
 import { AiSummary } from "./AiSummary";
 import { Icon } from "./Icon";
+import { Original } from "./Original";
 import { PersonCard, type PersonActions } from "./PersonCard";
 import { ReadingMargin } from "./ReadingMargin";
 import { logoFor } from "../logos";
@@ -51,6 +54,26 @@ function picked(doc: Document, messageId: number | null, offset: { left: number;
 // Shift+B is the app's key (App.tsx); the open conversation switches reading view.
 let readingSwitch: (() => void) | null = null;
 export const switchReading = () => readingSwitch?.();
+
+/** The link under the pointer: where it goes, and the site its text names when that is another one. Shown just
+ * under the link (above it near the window's foot), since a mail's link text can say anything. */
+type Hovered = { host: string; claimed: string | null; left: number; top: number; above: boolean };
+const [hovered, setHovered] = createSignal<Hovered | null>(null);
+const hover = (a: HTMLAnchorElement | null, frame?: HTMLIFrameElement | null) => {
+  const host = a ? hostOf(a.href) : null;
+  if (!a || !host) return setHovered(null);
+  // A link in a mail frame is placed by the frame's coordinates; the label is drawn in the window's.
+  const box = a.getBoundingClientRect();
+  const at = frame?.getBoundingClientRect() ?? { left: 0, top: 0 };
+  const above = at.top + box.bottom + 40 > window.innerHeight;
+  setHovered({
+    host,
+    claimed: misleading(a.textContent ?? "", a.href),
+    left: Math.max(8, Math.min(at.left + box.left, window.innerWidth - 488)),
+    top: above ? at.top + box.top - 6 : at.top + box.bottom + 6,
+    above,
+  });
+};
 
 /** Frames tell the conversation they have (re)loaded, so marks are drawn in them again. */
 const FRAME_LOADED = "tern-frame-loaded";
@@ -98,7 +121,7 @@ function HtmlBody(props: {
   // Darkened mail stays hidden until it is dark, so it never flashes white.
   const [ready, setReady] = createSignal(false);
   // A right-click on a link: Tern's own Open / Copy link, as the web view's menu is taken away (browserKeys.ts).
-  const [linkMenu, setLinkMenu] = createSignal<{ x: number; y: number; href: string } | null>(null);
+  const [linkMenu, setLinkMenu] = createSignal<{ x: number; y: number; href: string; claimed: string | null } | null>(null);
   const closeLinkMenu = () => setLinkMenu(null);
   onMount(() => {
     window.addEventListener("mousedown", closeLinkMenu);
@@ -159,23 +182,31 @@ function HtmlBody(props: {
       window.dispatchEvent(copy);
       if (copy.defaultPrevented) ev.preventDefault();
     });
+    const menuAt = (ev: MouseEvent, a: HTMLAnchorElement) => {
+      const box = frame!.getBoundingClientRect();
+      // Kept inside the window near its right and bottom edges.
+      const x = Math.min(box.left + ev.clientX, window.innerWidth - 370);
+      const y = Math.min(box.top + ev.clientY, window.innerHeight - 150);
+      setLinkMenu({ x, y, href: a.href, claimed: misleading(a.textContent ?? "", a.href) });
+    };
     doc.addEventListener("click", (ev) => {
       setLinkMenu(null);
       const a = (ev.target as Element).closest("a");
       if (!a?.href) return;
       ev.preventDefault();
-      if (/^(https?|mailto):/i.test(a.href)) api.openUrl(a.href);
+      if (!/^(https?|mailto):/i.test(a.href)) return;
+      // A link whose text names another site opens only from the menu, where that is said.
+      if (misleading(a.textContent ?? "", a.href)) menuAt(ev, a);
+      else api.openUrl(a.href);
     });
     doc.addEventListener("contextmenu", (ev) => {
       const a = (ev.target as Element).closest("a");
       if (!a?.href || !/^(https?|mailto):/i.test(a.href)) return;
       ev.preventDefault();
-      const box = frame!.getBoundingClientRect();
-      // Kept inside the window near its right and bottom edges.
-      const x = Math.min(box.left + ev.clientX, window.innerWidth - 370);
-      const y = Math.min(box.top + ev.clientY, window.innerHeight - 120);
-      setLinkMenu({ x, y, href: a.href });
+      menuAt(ev, a);
     });
+    doc.addEventListener("mouseover", (ev) => hover((ev.target as Element).closest?.("a") ?? null, frame));
+    doc.addEventListener("mouseleave", () => setHovered(null));
     doc.addEventListener("mousedown", (ev) => ev.button === 0 && setLinkMenu(null));
   };
 
@@ -207,6 +238,11 @@ function HtmlBody(props: {
             <span class="link-menu-url" title={m().href}>
               {m().href.replace(/^mailto:/i, "")}
             </span>
+            <Show when={m().claimed}>
+              <span class="link-menu-warn" role="alert">
+                The text says {m().claimed}, but the link goes to {hostOf(m().href)}.
+              </span>
+            </Show>
             <button role="menuitem" onClick={() => (api.openUrl(m().href), setLinkMenu(null))}>
               {/^mailto:/i.test(m().href) ? "Write to this address" : "Open link"}
             </button>
@@ -279,6 +315,8 @@ function Linked(props: { text: string }) {
           <a
             href={p.href}
             title={p.href}
+            onMouseEnter={(e) => hover(e.currentTarget)}
+            onMouseLeave={() => setHovered(null)}
             onClick={(e) => {
               e.preventDefault();
               api.openUrl(p.href);
@@ -555,6 +593,8 @@ export function ConversationView(props: {
   onSnoozeUntil: (due: number) => void;
   menu: () => MenuItem[];
   person: PersonActions;
+  /** The words searched for, when the conversation was opened from search results: lit up in the messages. */
+  hits?: string[];
 }) {
   const last = () => props.messages[props.messages.length - 1];
   const stage = () => props.messages.length === 1;
@@ -624,11 +664,13 @@ export function ConversationView(props: {
   };
   const anyTool = () => !!(privacy().trackers || privacy().blocked || minutes() >= 2 || listMail() || designed().size || wide() || hasColumn());
   // Loading images for good is a choice about a sender, so it sits in the menu, beside the conversation's actions.
+  const [original, setOriginal] = createSignal<ThreadMessage | null>(null);
   const menu = () => {
     const sender = privacy().sender;
-    if (!sender) return props.menu();
+    const items = [...props.menu(), { name: "Show original", run: () => setOriginal(last() ?? null) }];
+    if (!sender) return items;
     return [
-      ...props.menu(),
+      ...items,
       { name: "Always load images from this sender", run: () => setSetting("imagesFrom", [...settings.imagesFrom, sender.toLowerCase()]) },
     ];
   };
@@ -720,6 +762,13 @@ export function ConversationView(props: {
   const [placed, setPlaced] = createSignal(new Map<number, Range | null>());
   const [loads, setLoads] = createSignal(0);
   const frameLoaded = () => setLoads((n) => n + 1);
+  createEffect(() => {
+    const words = props.hits ?? [];
+    loads();
+    reading();
+    for (const m of props.messages) props.expanded(m.id);
+    requestAnimationFrame(() => drawHits(words));
+  });
   // A mark asked for whose message was folded: shown once its message is open and drawn.
   let wanted: number | null = null;
   createEffect(() => {
@@ -760,6 +809,8 @@ export function ConversationView(props: {
   });
   onCleanup(() => {
     setJumper(null);
+    setHovered(null);
+    drawHits([]);
     drawMarks([], null);
   });
 
@@ -837,7 +888,7 @@ export function ConversationView(props: {
     // Moving the column resizes the message frames, which have observers of their own: wait for the next frame.
     const room = new ResizeObserver(([e]) => requestAnimationFrame(() => setWide(e.contentRect.width >= 880)));
     if (pane) room.observe(pane);
-    const scrolled = () => setPick(null);
+    const scrolled = () => (setPick(null), setHovered(null));
     pane?.addEventListener("scroll", scrolled, { passive: true });
     onCleanup(() => {
       watch.disconnect();
@@ -1109,6 +1160,23 @@ export function ConversationView(props: {
             <button onClick={() => void markIt(false)}>Mark</button>
             <button onClick={() => void markIt(true)}>Note</button>
             <button onClick={() => (void navigator.clipboard.writeText(p().text).catch(() => {}), setPick(null))}>Copy</button>
+          </div>
+        )}
+      </Show>
+      <Show when={original()}>
+        {(m) => <Original id={m().id} subject={m().subject || "(no subject)"} onClose={() => setOriginal(null)} />}
+      </Show>
+      <Show when={hovered()}>
+        {(h) => (
+          <div
+            class="link-host"
+            classList={{ warn: !!h().claimed, above: h().above }}
+            style={{ left: `${h().left}px`, top: `${h().top}px` }}
+            aria-live="polite"
+          >
+            <Show when={h().claimed} fallback={h().host}>
+              Goes to <strong>{h().host}</strong>, not {h().claimed}
+            </Show>
           </div>
         )}
       </Show>
