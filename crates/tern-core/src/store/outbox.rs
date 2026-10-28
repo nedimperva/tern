@@ -272,6 +272,7 @@ impl Store {
                             from_addr: r.get(2)?,
                             subject: r.get(3)?,
                             snippet: r.get(4)?,
+                            other: false,
                         })
                     },
                 )

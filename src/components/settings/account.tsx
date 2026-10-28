@@ -4,7 +4,7 @@ import { createSignal, For, Show } from "solid-js";
 import { api, type Account } from "../../api";
 import { ACCOUNT_COLOURS, COLOUR_NAMES } from "../../colours";
 import { radioKeys } from "../../a11y";
-import { setSetting, settings } from "../../settings";
+import { type NotifyMode, setSetting, settings } from "../../settings";
 
 /** One account: its name on sent mail, what else Tern knows of it, and a way to its signatures. */
 export function AccountPage(props: { account: Account; onSignatures: () => void; onRenamed: () => void; onRemoved: () => void }) {
@@ -74,6 +74,13 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
     const { [key()]: _, ...rest } = settings.accountColours;
     setSetting("accountColours", c ? { ...rest, [key()]: c } : rest);
   };
+  // What this account notifies for; none picked follows Settings → Notifications.
+  const notifies = () => settings.notifyAccounts[key()] ?? "";
+  const setNotifies = (mode: NotifyMode | "") => {
+    const { [key()]: _, ...rest } = settings.notifyAccounts;
+    setSetting("notifyAccounts", mode ? { ...rest, [key()]: mode } : rest);
+  };
+  const general = () => (!settings.notify ? "no notifications" : settings.notifyOther ? "Important and Other" : "Important mail");
   return (
     <>
       <label class="setting">
@@ -123,6 +130,16 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
         </span>
         <span class="help">Its dot in mixed lists, its badge in the rail (Ctrl+\) and in the From picker.</span>
       </div>
+      <label class="setting">
+        <span class="title">Notifications</span>
+        <select value={notifies()} onChange={(e) => setNotifies(e.currentTarget.value as NotifyMode | "")}>
+          <option value="">As in Notifications ({general()})</option>
+          <option value="important">Important mail</option>
+          <option value="all">Important and Other</option>
+          <option value="off">None</option>
+        </select>
+        <span class="help">New mail in this account's inbox. Quiet hours apply to every account.</span>
+      </label>
       <div class="setting">
         <span class="title">Sign-in</span>
         <span class="value-action">

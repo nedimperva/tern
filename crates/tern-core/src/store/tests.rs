@@ -1759,6 +1759,12 @@ fn moving_a_sender_changes_its_split() {
     };
     assert_eq!(news(false), ["hello"], "Other stays quiet unless asked");
     assert_eq!(news(true).len(), 3);
+    let marked: Vec<(String, bool)> =
+        store.new_mail(0, 0, true).unwrap().1.into_iter().map(|m| (m.subject, m.other)).collect();
+    assert!(
+        marked.iter().all(|(s, other)| *other == (s != "hello")),
+        "each says whether it is in Other: {marked:?}"
+    );
     // Archiving from Other takes the conversation out of the inbox.
     store
         .apply(
