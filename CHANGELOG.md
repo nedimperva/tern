@@ -7,10 +7,9 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
-### Added
+## [1.4.0] - 2026-10-28
 
-- For contributors: unit tests for the UI's text and HTML helpers (Vitest, `npm test`, run in CI), and
-  `npm run check` for everything CI runs.
+### Added
 
 - Show original, in a conversation's `…` menu: the newest message's headers and source as the server has it,
   to copy or check who really sent it.
@@ -31,9 +30,18 @@ every release needs one here before it is tagged.
   import them on another computer. Tick "Include accounts" to add every account with its password or Google
   sign-in, and your AI keys, sealed with a passphrase you choose (PBKDF2 and ChaCha20-Poly1305); importing it asks
   for the passphrase and adds the accounts and keys that aren't there yet.
+- Notifications per account: Settings → the account → Notifications sets Important mail, Important and Other, or
+  none for that account alone. Accounts without a choice follow Settings → Notifications.
+- For contributors: unit tests for the UI's text and HTML helpers (Vitest, `npm test`), Biome for the TypeScript
+  (`npm run lint`) and cargo deny for licences and sources (`deny.toml`), all in CI; `npm run check` runs what CI
+  runs.
 
 ### Changed
 
+- Easier with the keyboard and a screen reader: the rail, Settings' sections and a sender's name are reached with
+  Tab; the `…` menu takes the focus and gives it back; the conversation list says the focused conversation as j
+  and k move; address suggestions, colour swatches and choices follow the arrow keys. `Z` zooms a picture in the
+  attachment viewer.
 - `before:` and `after:` in search start at midnight where you are, not midnight UTC.
 - Faster while mail downloads: the window reads everything again at most every 150 ms instead of on every frame,
   list rows that did not change stay as they are, and the window reads on a connection of its own, so a sync

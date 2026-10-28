@@ -149,6 +149,7 @@ function HtmlBody(props: {
     setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
     doc.documentElement.classList.toggle("tern-fold", !unfolded());
     const fit = () => fitFrame(frame!, doc);
+    // biome-ignore lint/suspicious/noFocusedTests: `fit` sizes the frame; it isn't a test runner's fit()
     fit();
     new ResizeObserver(fit).observe(doc.body);
     quietMenu(doc);
@@ -395,7 +396,7 @@ function Attachments(props: { message: ThreadMessage; onView: (index: number) =>
   };
   return (
     <>
-      <div class="attachments" aria-label="Attachments">
+      <section class="attachments" aria-label="Attachments">
         <For each={props.message.attachments}>
           {(_, i) => (
             <FileCard
@@ -407,7 +408,7 @@ function Attachments(props: { message: ThreadMessage; onView: (index: number) =>
             />
           )}
         </For>
-      </div>
+      </section>
       <Show when={problem()}>
         <p class="attachment-problem">{problem()}</p>
       </Show>
@@ -944,7 +945,7 @@ export function ConversationView(props: {
         </button>
       </Show>
       <Show when={minutes() >= 2 && !reader()}>
-        <span class="tool" tabIndex={0} data-tip={`${minutes()} min read`} aria-label={`${minutes()} min read`}>
+        <span class="tool" role="img" data-tip={`${minutes()} min read`} aria-label={`${minutes()} min read`}>
           <Icon name="clock" size={15} />
         </span>
       </Show>
@@ -992,6 +993,7 @@ export function ConversationView(props: {
 
   return (
     <div class="reading" classList={{ "has-margin": hasMargin() && wide() }}>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: offers the mark bar after a selection made with the mouse */}
       <div
         class="conversation"
         classList={{ replying: props.replying }}
@@ -1062,6 +1064,7 @@ export function ConversationView(props: {
                       data-message={m.id}
                       classList={{ focused: i() === props.focused, open: open(), unread: !m.seen, mine: props.mine(m.fromAddr) }}
                     >
+                      {/* biome-ignore lint/a11y/noStaticElementInteractions: O expands or collapses the focused message */}
                       <header onClick={() => props.onToggle(i())}>
                         <Avatar addr={m.fromAddr} name={m.fromName} />
                         <span class="line">

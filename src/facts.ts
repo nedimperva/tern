@@ -177,6 +177,7 @@ export function findLinks(html: string | null, text: string, limit = 6): Link[] 
     }
     if (!/^https?:$/.test(url.protocol) || SOCIAL.test(url.hostname) || NOT_A_LINK.test(label) || NOT_A_LINK.test(href)) return;
     // Mail pads its words with invisible characters (zero-width joiners, soft hyphens) around icons.
+    // biome-ignore lint/suspicious/noMisleadingCharacterClass: each invisible character goes on its own, the combining one too
     const words = label.replace(/[\u00ad\u034f\u200b-\u200f\u2060\ufeff]/g, "").replace(/\s+/g, " ").trim();
     if (repeated || ACTION_WORDS.test(words)) return;
     // In HTML mail, a link whose words are an address is a picture's or a raw one: it says nothing more.

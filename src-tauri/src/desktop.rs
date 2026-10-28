@@ -188,7 +188,8 @@ fn wake_snoozed(app: &AppHandle) -> anyhow::Result<()> {
     let unanswered = state.store.check_follow_ups(now())?;
     if !unanswered.is_empty() {
         let _ = app.emit("mail-changed", ());
-        if Notices::read(&state.store)?.now() {
+        let unanswered = Notices::read(&state.store)?.pick(&state.store, unanswered)?;
+        if !unanswered.is_empty() {
             notify(app, &unanswered, Notice::NoReply);
         }
     }
@@ -202,38 +203,102 @@ fn wake_snoozed(app: &AppHandle) -> anyhow::Result<()> {
         state.wake(*account);
     }
     let _ = app.emit("mail-changed", ());
-    if Notices::read(&state.store)?.now() {
+    let back = Notices::read(&state.store)?.pick(&state.store, back)?;
+    if !back.is_empty() {
         notify(app, &back, Notice::Snoozed);
     }
     Ok(())
 }
 
-/// The notification settings: on or off, Other too, and quiet hours ("HH:MM" local time, empty for none).
+/// What one account notifies for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Mode {
+    Off,
+    Important,
+    /// Important and Other.
+    All,
+}
+
+/// The notification settings: what each account notifies for, and quiet hours ("HH:MM" local time, empty for
+/// none). An account without a choice of its own (`notifyAccounts`, by address) follows New mail and Notify for.
 struct Notices {
-    on: bool,
-    other: bool,
+    default: Mode,
+    accounts: HashMap<String, Mode>,
     quiet_from: String,
     quiet_to: String,
 }
 
 impl Notices {
     fn read(store: &Store) -> anyhow::Result<Self> {
-        let settings = store.settings()?;
-        let flag = |key: &str, default| settings.get(key).and_then(|v| v.as_bool()).unwrap_or(default);
-        let text = |key: &str| settings.get(key).and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        Ok(Notices {
-            on: flag("notify", true),
-            other: flag("notifyOther", false),
-            quiet_from: text("quietFrom"),
-            quiet_to: text("quietTo"),
-        })
+        Ok(Self::from(&store.settings()?))
     }
 
-    /// Whether a notification may show now. Mail that arrives in quiet hours is not saved up for later.
-    fn now(&self) -> bool {
+    fn from(settings: &HashMap<String, serde_json::Value>) -> Self {
+        let flag = |key: &str, default| settings.get(key).and_then(|v| v.as_bool()).unwrap_or(default);
+        let text = |key: &str| settings.get(key).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let default = match (flag("notify", true), flag("notifyOther", false)) {
+            (false, _) => Mode::Off,
+            (true, false) => Mode::Important,
+            (true, true) => Mode::All,
+        };
+        let accounts = settings
+            .get("notifyAccounts")
+            .and_then(|v| v.as_object())
+            .map(|map| {
+                map.iter()
+                    .filter_map(|(email, mode)| {
+                        let mode = match mode.as_str()? {
+                            "off" => Mode::Off,
+                            "important" => Mode::Important,
+                            "all" => Mode::All,
+                            _ => return None,
+                        };
+                        Some((email.to_lowercase(), mode))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Notices { default, accounts, quiet_from: text("quietFrom"), quiet_to: text("quietTo") }
+    }
+
+    fn mode(&self, email: &str) -> Mode {
+        self.accounts.get(&email.to_lowercase()).copied().unwrap_or(self.default)
+    }
+
+    /// Some account notifies at all.
+    fn any_on(&self) -> bool {
+        self.default != Mode::Off || self.accounts.values().any(|m| *m != Mode::Off)
+    }
+
+    /// Some account may want Other's mail, so the store has to be asked for it.
+    fn any_other(&self) -> bool {
+        self.default == Mode::All || self.accounts.values().any(|m| *m == Mode::All)
+    }
+
+    /// Whether this mail may notify, by its account's choice. `emails` maps account ids to addresses.
+    fn wants(&self, emails: &HashMap<i64, String>, m: &NewMail) -> bool {
+        let email = emails.get(&m.account_id).map(String::as_str).unwrap_or_default();
+        match self.mode(email) {
+            Mode::Off => false,
+            Mode::Important => !m.other,
+            Mode::All => true,
+        }
+    }
+
+    /// Whether it is quiet hours now. Mail that arrives then is not saved up for later.
+    fn quiet(&self) -> bool {
         use chrono::Timelike;
         let t = chrono::Local::now();
-        self.on && !tern_core::triage::quiet(t.hour() * 60 + t.minute(), &self.quiet_from, &self.quiet_to)
+        tern_core::triage::quiet(t.hour() * 60 + t.minute(), &self.quiet_from, &self.quiet_to)
+    }
+
+    /// What of `mail` may notify now: none in quiet hours, else what its accounts want.
+    fn pick(&self, store: &Store, mail: Vec<NewMail>) -> anyhow::Result<Vec<NewMail>> {
+        if mail.is_empty() || self.quiet() {
+            return Ok(vec![]);
+        }
+        let emails = store.accounts()?.into_iter().map(|a| (a.id, a.config.email)).collect();
+        Ok(mail.into_iter().filter(|m| self.wants(&emails, m)).collect())
     }
 }
 
@@ -282,7 +347,7 @@ fn look(app: &AppHandle) -> anyhow::Result<()> {
     let mut news = desktop.news.lock().unwrap();
     let first = news.after.is_none();
     let (newest, mail) =
-        store.new_mail(news.after.unwrap_or(i64::MAX), now() - NEWS_WINDOW, notices.other)?;
+        store.new_mail(news.after.unwrap_or(i64::MAX), now() - NEWS_WINDOW, notices.any_other())?;
     news.after = Some(newest);
     if first {
         // What is here at start is not news, and accounts that already have mail are past their first sync.
@@ -300,7 +365,8 @@ fn look(app: &AppHandle) -> anyhow::Result<()> {
         })
         .collect();
     drop(news);
-    if !mail.is_empty() && notices.now() {
+    let mail = notices.pick(store, mail)?;
+    if !mail.is_empty() {
         notify(app, &mail, Notice::New);
     }
     Ok(())
@@ -423,7 +489,7 @@ fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest
 /// quietly in the tray, so this says so; a click shows them.
 pub fn notify_held(app: &AppHandle, held: usize) {
     let Some(state) = app.try_state::<AppState>() else { return };
-    if !Notices::read(&state.store).is_ok_and(|n| n.on) {
+    if !Notices::read(&state.store).is_ok_and(|n| n.any_on()) {
         return;
     }
     let summary = if held == 1 {
@@ -553,6 +619,54 @@ fn noticed(app: &AppHandle, action: Option<&str>, latest: &NewMail) {
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
+    use super::*;
+
+    fn mail(account_id: i64, other: bool) -> NewMail {
+        NewMail {
+            id: 1,
+            account_id,
+            thread_id: "t".into(),
+            from_name: String::new(),
+            from_addr: String::new(),
+            subject: String::new(),
+            snippet: String::new(),
+            other,
+        }
+    }
+
+    #[test]
+    fn each_account_notifies_as_it_was_set_and_the_rest_as_new_mail_says() {
+        let settings: HashMap<String, serde_json::Value> = serde_json::from_value(serde_json::json!({
+            "notify": true,
+            "notifyOther": false,
+            "notifyAccounts": { "Work@Example.com": "off", "news@example.com": "all", "odd@example.com": "loud" },
+        }))
+        .unwrap();
+        let notices = Notices::from(&settings);
+        let emails: HashMap<i64, String> = [
+            (1, "work@example.com".to_string()),
+            (2, "news@example.com".to_string()),
+            (3, "home@example.com".to_string()),
+            (4, "odd@example.com".to_string()),
+        ]
+        .into();
+        assert!(notices.any_other());
+        assert!(!notices.wants(&emails, &mail(1, false)), "off, whatever New mail says");
+        assert!(notices.wants(&emails, &mail(2, true)), "Other too");
+        assert!(notices.wants(&emails, &mail(3, false)), "no choice: New mail");
+        assert!(!notices.wants(&emails, &mail(3, true)), "no choice: Notify for (Important)");
+        assert!(!notices.wants(&emails, &mail(4, true)), "an unknown choice is no choice");
+
+        let off: HashMap<String, serde_json::Value> = serde_json::from_value(
+            serde_json::json!({ "notify": false, "notifyAccounts": { "news@example.com": "important" } }),
+        )
+        .unwrap();
+        let notices = Notices::from(&off);
+        assert!(!notices.any_other());
+        assert!(notices.wants(&emails, &mail(2, false)), "its own choice wins over New mail off");
+        assert!(!notices.wants(&emails, &mail(3, false)));
+    }
+
     #[test]
     fn notification_text_is_not_markup() {
         assert_eq!(

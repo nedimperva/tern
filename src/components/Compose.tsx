@@ -710,7 +710,7 @@ export function Compose(props: {
         )}
       </Show>
       <Show when={cards().length || forwardOf()}>
-        <div class="outgoing-files" aria-label="Attachments">
+        <section class="outgoing-files" aria-label="Attachments">
           <Show when={forwardOf()}>
             <span class="file-card" title="Attached from the forwarded message when it is sent">
               <span class="thumb">
@@ -751,7 +751,7 @@ export function Compose(props: {
               </span>
             )}
           </For>
-        </div>
+        </section>
         <div class="size-meter" classList={{ near: total() > LARGE_BYTES * 0.7, over: total() > LARGE_BYTES }}>
           <span class="bar">
             <span style={{ width: `${Math.min(100, (total() / LARGE_BYTES) * 100)}%` }} />
@@ -874,7 +874,7 @@ export function Compose(props: {
             </Show>
             <div class="ai-preview">{current()!.written?.body ?? bodyOf(current()!.streamed)}</div>
           </Show>
-          <div class="ai-chips" role="group" aria-label="Quick asks">
+          <fieldset class="ai-chips plain" aria-label="Quick asks">
             <For each={AI_CHIPS}>
               {([label, request]) => (
                 <button type="button" class="chip" disabled={aiBusy()} onClick={() => void askAi({ label: chipLabel(label), request: chipRequest(label, request) })}>
@@ -882,7 +882,7 @@ export function Compose(props: {
                 </button>
               )}
             </For>
-          </div>
+          </fieldset>
           <label class="ai-say">
             <kbd class="ai-mark">AI</kbd>
             <input
@@ -1015,9 +1015,9 @@ export function Compose(props: {
             <span
               class="follow-up"
               title="Remind me if no reply by then: the conversation comes back to the top of the inbox"
-              aria-label={`Remind me if no reply by ${until(due())}`}
             >
               <Icon name="clock" size={12} />
+              <span class="visually-hidden">Remind me if no reply by </span>
               <span>{until(due())}</span>
               <button type="button" aria-label="No reminder" onClick={() => setFollowUp(null)}>
                 ×
@@ -1121,6 +1121,7 @@ export function Compose(props: {
   return (
     <>
       <Show when={!props.init.inline} fallback={form}>
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: a click beside compose closes it (the draft is kept), as Esc does */}
         <div
           class="overlay compose-overlay"
           classList={{ minimized: props.minimized, focused: focusMode() }}

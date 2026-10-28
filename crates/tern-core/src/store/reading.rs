@@ -161,7 +161,7 @@ impl Store {
         let conn = self.conn();
         let newest: i64 = conn.query_row("SELECT COALESCE(max(id), 0) FROM messages", [], |r| r.get(0))?;
         let mut stmt = conn.prepare_cached(&format!(
-            "SELECT m.id, m.account_id, m.thread_id, m.from_name, m.from_addr, m.subject, m.snippet
+            "SELECT m.id, m.account_id, m.thread_id, m.from_name, m.from_addr, m.subject, m.snippet, {IS_OTHER}
              FROM messages m JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id
              WHERE m.id > ?1 AND m.id <= ?3 AND m.date >= ?2 AND f.role = 'inbox' AND NOT m.seen
                AND lower(m.from_addr) <> lower(a.email)
@@ -179,6 +179,7 @@ impl Store {
                     from_addr: r.get(4)?,
                     subject: r.get(5)?,
                     snippet: r.get(6)?,
+                    other: r.get(7)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -294,6 +295,7 @@ impl Store {
                             from_addr: r.get(2)?,
                             subject: r.get(3)?,
                             snippet: r.get(4)?,
+                            other: false,
                         })
                     },
                 )

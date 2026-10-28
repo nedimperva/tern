@@ -1,0 +1,52 @@
+# cargo deny: licences, advisories, duplicate and banned crates, and where crates come from. CI runs it on every
+# change to Cargo.lock (security.yml); run it locally with `cargo deny check`.
+
+[graph]
+# Only what ships: the three desktop targets.
+targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-apple-darwin"]
+all-features = false
+
+[advisories]
+# Unmaintained crates deep in the GTK stack Tauri needs on Linux can't be swapped from here; only flag our own
+# direct dependencies. Vulnerabilities always fail.
+unmaintained = "workspace"
+ignore = []
+
+[licenses]
+# Tern is MIT. Everything it links must allow that: permissive licences, plus MPL-2.0 (file-level copyleft, used by
+# the HTML parser ammonia brings in). Nothing GPL or LGPL.
+allow = [
+  "0BSD",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-3-Clause",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "MIT-0",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+ignore = true
+
+[bans]
+# Tauri, GTK and the RustCrypto crates pull in several versions of the same crate; that is noise, not a fault.
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+  # TLS is rustls with the platform verifier; nothing links OpenSSL (CLAUDE.md).
+  { crate = "openssl-sys", reason = "TLS is rustls only" },
+  { crate = "native-tls", reason = "TLS is rustls only" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

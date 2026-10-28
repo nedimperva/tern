@@ -617,6 +617,8 @@ pub struct NewMail {
     pub from_addr: String,
     pub subject: String,
     pub snippet: String,
+    /// It sits in the inbox's Other split, which notifies only for accounts set to "Important and Other".
+    pub other: bool,
 }
 
 /// A saved piece of text that compose inserts when its shortcut is typed after `;`. The body is plain text with

@@ -67,8 +67,9 @@ export function SnoozePicker(props: {
   };
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: a click beside the dialog closes it, as Esc does
     <div class="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div class="command-bar snooze" role="dialog" aria-label={props.title ?? "Snooze"}>
+      <div class="command-bar snooze" role="dialog" aria-modal="true" aria-label={props.title ?? "Snooze"}>
         <div class="head">
           <span class="context">{props.title ?? (props.count === 1 ? "Snooze" : `Snooze ${props.count}`)}</span>
           <input

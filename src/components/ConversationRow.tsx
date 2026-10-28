@@ -63,12 +63,16 @@ export function ConversationRow(props: {
   hits?: string[];
   /** Its account's colour and address, in a list of several accounts' mail. */
   account?: { colour: string; email: string };
+  /** The element's id, for the list's aria-activedescendant. */
+  id?: string;
 }) {
   const lit = (text: string) => <Lit text={text} words={props.hits} />;
   return (
+    // biome-ignore lint/a11y/useFocusableInteractive: focus stays on the list, which points at the focused row
     <div
+      id={props.id}
       class="crow"
-      role="row"
+      role="option"
       aria-selected={props.selected}
       classList={{ focused: props.focused, selected: props.selected, unread: props.row.unread > 0, two: props.narrow }}
       onMouseDown={props.onClick}
@@ -115,12 +119,12 @@ export function ConversationRow(props: {
       </span>
       <span class="glyphs">
         <Show when={props.row.hasAttachments}>
-          <span class="clip" title="Has attachments" aria-label="Has attachments">
+          <span class="clip" role="img" title="Has attachments" aria-label="Has attachments">
             <Icon name="paperclip" size={13} />
           </span>
         </Show>
         <Show when={props.row.flagged}>
-          <span class="star" title="Starred" aria-label="Starred">
+          <span class="star" role="img" title="Starred" aria-label="Starred">
             <Icon name="star" size={13} filled />
           </span>
         </Show>

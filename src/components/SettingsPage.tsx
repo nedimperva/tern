@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from "solid-js";
-import { type Account } from "../api";
+import type { Account } from "../api";
 import { colourOf } from "../colours";
 import { accountName } from "./settings/shared";
 import { AppearanceSettings, ReadingSettings, ComposeSettings, AboutSettings, NotificationSettings, DesktopSettings } from "./settings/general";
@@ -136,12 +136,12 @@ export function SettingsPage(props: {
               <span class="nav-group">{group}</span>
               <For each={found().filter((s) => s.group === group)}>
                 {(s) => (
-                  <a href="#" classList={{ active: s.id === section() }} aria-current={s.id === section() ? "page" : undefined} onClick={(e) => (e.preventDefault(), setSection(s.id))}>
+                  <button type="button" classList={{ active: s.id === section() }} aria-current={s.id === section() ? "page" : undefined} onClick={() => setSection(s.id)}>
                     <Show when={s.dot}>
                       <span class="dot" style={{ background: s.dot }} />
                     </Show>
                     {s.name}
-                  </a>
+                  </button>
                 )}
               </For>
             </Show>

@@ -1,4 +1,4 @@
-import { createResource, createSignal, For, Show, type JSX } from "solid-js";
+import { createResource, createSignal, createUniqueId, For, Show, type JSX } from "solid-js";
 import { api } from "../api";
 
 /** A plausible address: something@something.tld. The server has the last word; this only flags typos. */
@@ -135,7 +135,9 @@ export function RecipientField(props: {
     commit();
   };
 
+  const listId = createUniqueId();
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: a click on the field's empty space puts the cursor in its input
     <div class="field recipients" onMouseDown={(e) => e.target === e.currentTarget && (e.preventDefault(), input.focus())}>
       <span class="label">{props.label}</span>
       <For each={props.value}>
@@ -150,15 +152,21 @@ export function RecipientField(props: {
         onKeyDown={onKeyDown}
         onPaste={onPaste}
         onBlur={() => (setPeople([]), commit())}
+        role="combobox"
         aria-label={props.label}
         aria-autocomplete="list"
+        aria-expanded={people().length > 0}
+        aria-controls={listId}
+        aria-activedescendant={people().length ? `${listId}-${pointed()}` : undefined}
       />
       {props.after}
       <Show when={people().length}>
-        <ul class="suggestions" role="listbox">
+        <div class="suggestions" role="listbox" id={listId} aria-label="Suggestions">
           <For each={people()}>
             {(p, i) => (
-              <li
+              // biome-ignore lint/a11y/useFocusableInteractive: focus stays in the input, which points here with aria-activedescendant
+              <div
+                id={`${listId}-${i()}`}
                 role="option"
                 aria-selected={i() === pointed()}
                 classList={{ pointed: i() === pointed() }}
@@ -168,10 +176,10 @@ export function RecipientField(props: {
                 <Show when={p.name}>
                   <span class="addr">{p.email}</span>
                 </Show>
-              </li>
+              </div>
             )}
           </For>
-        </ul>
+        </div>
       </Show>
     </div>
   );

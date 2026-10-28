@@ -24,7 +24,7 @@ import { coverage, inboxZero } from "../app/status";
 import { ROW_HEIGHTS, settings, SPLIT_ROW_EXTRA } from "../settings";
 import { colourOf } from "../colours";
 import type { ThreadRow } from "../api";
-import { ConversationRow } from "./ConversationRow";
+import { ConversationRow, participants } from "./ConversationRow";
 import { DayLine } from "./DayLine";
 import { Icon } from "./Icon";
 import { InboxZero } from "./InboxZero";
@@ -51,6 +51,14 @@ export function ListPane(props: {
     const a = mixed() ? accounts().find((x) => x.id === row.accountId) : undefined;
     return a ? { colour: colourOf(accounts(), a.id), email: a.email } : undefined;
   };
+  const rowId = (row: ThreadRow) => `crow-${keyOf(row).replace(/[^\w-]/g, "_")}`;
+  // j and k move the focus with the keys anywhere in the window, so a screen reader hears the focused conversation
+  // here; while the list itself has focus, aria-activedescendant says it instead.
+  const spoken = createMemo(() => {
+    const row = rows()[focus()];
+    if (!row || document.activeElement?.classList.contains("vlist")) return "";
+    return `${participants(row)}, ${row.subject || "no subject"}${row.unread ? ", unread" : ""}, ${focus() + 1} of ${rows().length}`;
+  });
   const onSearchKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
       setQuery("");
@@ -73,7 +81,7 @@ export function ListPane(props: {
           <Icon name="menu" size={18} />
         </button>
         <Show when={splitIndex() >= 0 && !searching()} fallback={<h2>{title()}</h2>}>
-          <nav class="splits" role="tablist">
+          <div class="splits" role="tablist" aria-label="Inbox views">
             <For each={SPLITS()}>
               {(s, i) => (
                 <button role="tab" aria-selected={i() === splitIndex()} classList={{ active: i() === splitIndex() }} onClick={() => go(s.target)}>
@@ -84,7 +92,7 @@ export function ListPane(props: {
                 </button>
               )}
             </For>
-          </nav>
+          </div>
         </Show>
         <input
           ref={(el) => (searchBox.input = el)}
@@ -138,7 +146,17 @@ export function ListPane(props: {
           </Show>
         }
       >
-        <VirtualList items={rows()} rowHeight={ROW_HEIGHTS[settings.density] + (props.split ? SPLIT_ROW_EXTRA : 0)} selected={focus()} onEnd={loadMore}>
+        <div class="visually-hidden" aria-live="polite">
+          {spoken()}
+        </div>
+        <VirtualList
+          items={rows()}
+          rowHeight={ROW_HEIGHTS[settings.density] + (props.split ? SPLIT_ROW_EXTRA : 0)}
+          selected={focus()}
+          label={searching() ? `Search results for ${query()}` : title()}
+          activeId={rows()[focus()] ? rowId(rows()[focus()]) : undefined}
+          onEnd={loadMore}
+        >
           {(row, index) => (
             <ConversationRow
               row={row}
@@ -148,6 +166,7 @@ export function ListPane(props: {
               needsYou={props.needsYou.has(keyOf(row))}
               hits={props.hits}
               account={accountOf(row)}
+              id={rowId(row)}
               onClick={(e) => {
                 setFocus(index());
                 if (e.shiftKey || e.ctrlKey || e.metaKey) toggleSelected(row);

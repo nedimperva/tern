@@ -1,8 +1,14 @@
+// The ledger in step 3 is an ARIA table laid out with CSS grid, so its rows and cells are divs and spans with roles;
+// the token meter is a div (a native meter can't be styled alike in WebKitGTK and WebView2); the style note's length
+// and tone are styled radios that radioKeys gives the arrow keys of native ones.
+// biome-ignore-all lint/a11y/useSemanticElements: see above
+// biome-ignore-all lint/a11y/useFocusableInteractive: table rows, not grid rows; nothing in them needs focus but the controls
 // Settings → AI: providers and keys, the features, and the writing style note.
 
 import { createSignal, For, Show, type JSX } from "solid-js";
 import { api, type Account, type AiLearned, type AiProvider, type AiStats, type AiStyle } from "../../api";
 import { colourOf } from "../../colours";
+import { radioKeys } from "../../a11y";
 import { aiRoute, setSetting, settings, type AiFeatureKey, type AiRoute, type AiSettings } from "../../settings";
 import { Icon } from "../Icon";
 import { accountName, lastDay } from "./shared";
@@ -631,10 +637,10 @@ function StyleNote(props: { account: Account; accounts: Account[]; onChange: () 
               </div>
               <div class="style-part">
                 <span class="kicker">Length</span>
-                <div class="segmented" role="radiogroup" aria-label="Length">
+                <div class="segmented" role="radiogroup" aria-label="Length" onKeyDown={radioKeys}>
                   <For each={["short", "medium", "long"]}>
                     {(v) => (
-                      <button role="radio" aria-checked={parts().length === v} classList={{ on: parts().length === v }} onClick={() => change({ length: v })}>
+                      <button role="radio" aria-checked={parts().length === v} tabIndex={parts().length === v ? 0 : -1} classList={{ on: parts().length === v }} onClick={() => change({ length: v })}>
                         {v[0].toUpperCase() + v.slice(1)}
                       </button>
                     )}
@@ -643,10 +649,10 @@ function StyleNote(props: { account: Account; accounts: Account[]; onChange: () 
               </div>
               <div class="style-part">
                 <span class="kicker">Tone</span>
-                <div class="segmented" role="radiogroup" aria-label="Tone">
+                <div class="segmented" role="radiogroup" aria-label="Tone" onKeyDown={radioKeys}>
                   <For each={["formal", "plain", "warm"]}>
                     {(v) => (
-                      <button role="radio" aria-checked={parts().tone === v} classList={{ on: parts().tone === v }} onClick={() => change({ tone: v })}>
+                      <button role="radio" aria-checked={parts().tone === v} tabIndex={parts().tone === v ? 0 : -1} classList={{ on: parts().tone === v }} onClick={() => change({ tone: v })}>
                         {v[0].toUpperCase() + v.slice(1)}
                       </button>
                     )}
