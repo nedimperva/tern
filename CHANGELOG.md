@@ -9,6 +9,9 @@ every release needs one here before it is tagged.
 
 ### Added
 
+- For contributors: unit tests for the UI's text and HTML helpers (Vitest, `npm test`, run in CI), and
+  `npm run check` for everything CI runs.
+
 - Show original, in a conversation's `…` menu: the newest message's headers and source as the server has it,
   to copy or check who really sent it.
 - Mark all read (`U`, or from the command bar): every unread message in the list, including the pages not loaded
