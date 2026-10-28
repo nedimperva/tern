@@ -21,6 +21,13 @@ every release needs one here before it is tagged.
 - The words searched for light up in the results (names, subject, preview) and in a conversation opened from them.
 - Search filters `is:snoozed` (snoozed conversations) and `has:note` (mail with a note on a mark); `has:mark` is
   the same as `is:marked`.
+- Paste a picture into a message, or drop one on its text: it goes out in the text, not as an attachment.
+  Taking it out of the text takes it out of the message.
+- Saved searches: Save search beside the search box keeps it in the rail (Ctrl+\) and the command bar.
+- Account colours: with two or more accounts, the rail starts with each account's badge (a click opens its inbox),
+  and rows in the inboxes and search show which account they're in. Pick a colour in Settings → the account.
+- Settings → Backup: export your settings, snippets, signatures, saved searches and account colours to a file, and
+  import them on another computer. Passwords and AI keys are never in the file.
 
 ### Changed
 
