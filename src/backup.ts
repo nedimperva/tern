@@ -1,6 +1,7 @@
 // Settings, snippets and signatures as one file, to move them to another computer or keep a copy (Settings →
 // Backup). Accounts are named by address, never by Tern's ids, which differ from one computer to the next.
-// Passwords and AI keys stay in the system keyring and are never in the file.
+// Passwords and AI keys stay in the system keyring; with a passphrase the engine adds accounts and their passwords
+// and seals the file (tern_core::backup), so they never pass through the window.
 
 import type { Account, Signature, Snippet } from "./api";
 import { DEFAULTS, type Settings } from "./settings";

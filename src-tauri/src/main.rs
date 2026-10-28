@@ -123,6 +123,7 @@ fn main() {
         .manage(desktop::Desktop::new())
         .manage(update::Updates::default())
         .manage(commands::Offered::default())
+        .manage(commands::Locked::default())
         .setup(|app| {
             // First, so everything after it is in the log file too.
             diagnostics::start_logging(&diagnostics::log_dir(app.handle()));
@@ -199,6 +200,7 @@ fn main() {
             commands::add_image,
             commands::export_settings,
             commands::import_settings,
+            commands::unlock_settings,
             commands::mark_all_read,
             commands::clear_received_cache,
             commands::google_available,

@@ -894,9 +894,39 @@ pub async fn save_attachment(
 const BACKUP_LIMIT: u64 = 5_000_000;
 
 /// Saves the window's export of settings, snippets and signatures where the person picks. False if they cancelled.
+/// With a passphrase the accounts go in too, with their passwords or Google sign-ins from the keyring, and the
+/// file is sealed (`tern_core::backup`).
 #[tauri::command]
-pub async fn export_settings(app: AppHandle, contents: String) -> Reply<bool> {
+pub async fn export_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    contents: String,
+    passphrase: Option<String>,
+) -> Reply<bool> {
     use tauri_plugin_dialog::DialogExt;
+    // Sealed before the dialog opens, so a short passphrase is said before a file is picked.
+    let contents = match passphrase {
+        None => contents,
+        Some(passphrase) => {
+            let settings = serde_json::from_str(&contents).map_err(|e| e.to_string())?;
+            let accounts = state
+                .store
+                .accounts()
+                .map_err(text)?
+                .into_iter()
+                .map(|a| tern_core::backup::AccountBackup {
+                    password: secrets::password(&a.config.email).ok(),
+                    tokens: secrets::tokens(&a.config.email).ok(),
+                    config: a.config,
+                })
+                .collect();
+            let sealed = tern_core::backup::Contents { settings, accounts };
+            tokio::task::spawn_blocking(move || tern_core::backup::seal(&sealed, &passphrase))
+                .await
+                .map_err(|e| e.to_string())?
+                .map_err(text)?
+        }
+    };
     let (tx, rx) = tokio::sync::oneshot::channel();
     let mut dialog = app
         .dialog()
@@ -915,9 +945,21 @@ pub async fn export_settings(app: AppHandle, contents: String) -> Reply<bool> {
     Ok(true)
 }
 
+/// A sealed backup the person picked, kept here until they give its passphrase; the window never holds it.
+#[derive(Default)]
+pub struct Locked(Mutex<Option<String>>);
+
+/// The settings file the person picked: its text, or `locked` when it is sealed and needs `unlock_settings`.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Picked {
+    text: Option<String>,
+    locked: bool,
+}
+
 /// A settings file the person picks, as text for the window to read; None if they cancelled.
 #[tauri::command]
-pub async fn import_settings(app: AppHandle) -> Reply<Option<String>> {
+pub async fn import_settings(app: AppHandle, locked: State<'_, Locked>) -> Reply<Option<Picked>> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
     let mut dialog =
@@ -933,7 +975,60 @@ pub async fn import_settings(app: AppHandle) -> Reply<Option<String>> {
     if size > BACKUP_LIMIT {
         return Err("That file is too big to be Tern settings".into());
     }
-    std::fs::read_to_string(&path).map(Some).map_err(|e| format!("{}: {e}", path.display()))
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if tern_core::backup::is_sealed(&text) {
+        *locked.0.lock().unwrap() = Some(text);
+        return Ok(Some(Picked { text: None, locked: true }));
+    }
+    *locked.0.lock().unwrap() = None;
+    Ok(Some(Picked { text: Some(text), locked: false }))
+}
+
+/// What opening a sealed backup did: the settings part for the window, and which accounts it added.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Unlocked {
+    text: String,
+    added: Vec<String>,
+    /// Accounts the file has that were here already; they keep what they have.
+    present: Vec<String>,
+}
+
+/// Opens the sealed backup picked last with its passphrase and adds the accounts that aren't here yet, with their
+/// passwords or Google sign-ins put in the keyring. Their mail starts downloading at once. A wrong passphrase
+/// keeps the file, so the person can try again.
+#[tauri::command]
+pub async fn unlock_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    locked: State<'_, Locked>,
+    passphrase: String,
+) -> Reply<Unlocked> {
+    let file = locked.0.lock().unwrap().clone().ok_or("Pick the file again")?;
+    let contents = tokio::task::spawn_blocking(move || tern_core::backup::open(&file, &passphrase))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(text)?;
+    let here = state.store.accounts().map_err(text)?;
+    let (mut added, mut present) = (vec![], vec![]);
+    for a in contents.accounts {
+        let email = a.config.email.clone();
+        if here.iter().any(|h| h.config.email.eq_ignore_ascii_case(&email)) {
+            present.push(email);
+            continue;
+        }
+        if let Some(password) = &a.password {
+            secrets::set_password(&email, password).map_err(text)?;
+        }
+        if let Some(tokens) = &a.tokens {
+            secrets::set_tokens(&email, tokens).map_err(text)?;
+        }
+        let account = state.store.add_account(&a.config).map_err(text)?;
+        start_account(&app, &state, account);
+        added.push(email);
+    }
+    *locked.0.lock().unwrap() = None;
+    Ok(Unlocked { text: contents.settings.to_string(), added, present })
 }
 
 /// The `mailto:` link Tern was started with, once; the window asks when it is ready.

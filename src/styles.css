@@ -2905,6 +2905,17 @@ button.fold {
   font-size: var(--t-sm);
   color: var(--danger);
 }
+.backup-accounts,
+.backup-passphrase {
+  grid-column: 1 / -1;
+}
+.backup-accounts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
 .setting-note {
   margin: var(--s-3) 0 0;
   font-size: var(--t-sm);

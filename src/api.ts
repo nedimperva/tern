@@ -67,6 +67,10 @@ export type AccountConfig = {
 export type Account = AccountConfig & { id: number };
 /** What a `mailto:` link fills in. */
 export type Mailto = { to: string[]; cc: string[]; bcc: string[]; subject: string; body: string };
+/** A settings file picked for import (Settings → Backup). A sealed one stays in the engine until its passphrase. */
+export type PickedSettings = { text: string | null; locked: boolean };
+/** What opening a sealed backup did: its settings part, and the accounts it added or found here already. */
+export type UnlockedSettings = { text: string; added: string[]; present: string[] };
 /** Mail a notification was about. */
 /** Saved text that compose inserts after `;shortcut`; `{first_name}` and the like are filled in there. It can be
  * kept to one account, and can also set the subject (when compose has none) and add people to Cc. `used` and
@@ -339,9 +343,11 @@ export interface Api {
   /** Keeps a pasted picture like an attached file, for the text (PNG, JPEG, GIF or WebP). */
   addImage(picture: Blob): Promise<OutgoingAttachment>;
   /** Saves settings, snippets and signatures (src/backup.ts) where the person picks; false if they cancelled. */
-  exportSettings(contents: string): Promise<boolean>;
-  /** A settings file the person picks, as text; null if they cancelled. */
-  importSettings(): Promise<string | null>;
+  exportSettings(contents: string, passphrase?: string | null): Promise<boolean>;
+  /** A settings file the person picks: its text, or `locked` when it needs `unlockSettings`; null if they cancelled. */
+  importSettings(): Promise<PickedSettings | null>;
+  /** Opens the sealed file picked last and adds its accounts that aren't here yet; the settings part as text. */
+  unlockSettings(passphrase: string): Promise<UnlockedSettings>;
   /** A picture being attached, as a data: URI for its card; null for other files. */
   outgoingPreview(path: string): Promise<string | null>;
   /** Runs `f` (and waits for it) before the window closes or Tern quits; returns the way to stop. */
@@ -528,8 +534,9 @@ const tauri: Api = {
   outgoingPreview: (path) => invoke("outgoing_preview", { path }),
   addImage: async (picture) =>
     invoke("add_image", new Uint8Array(await picture.arrayBuffer()), { headers: { "x-mime": picture.type } }),
-  exportSettings: (contents) => invoke("export_settings", { contents }),
+  exportSettings: (contents, passphrase = null) => invoke("export_settings", { contents, passphrase }),
   importSettings: () => invoke("import_settings"),
+  unlockSettings: (passphrase) => invoke("unlock_settings", { passphrase }),
   attachmentBytes: (id, index) => invoke("attachment_bytes", { id, index }),
   saveAttachment: (id, index) => invoke("save_attachment", { id, index }),
   contacts: (query) => invoke("contacts", { query }),
@@ -805,7 +812,7 @@ function fake(): Api {
   const shelved = new Set<string>();
   // Pictures pasted into compose, by their made-up path, for their previews.
   const pasted = new Map<string, string>();
-  let exported: string | null = null;
+  let exported: { contents: string; passphrase: string | null } | null = null;
   const inInbox = (m: ThreadMessage) => folders.find((f) => f.id === m.folderId)?.role === "inbox";
   const labelsOf = (m: ThreadMessage) => {
     const n = Number(m.threadId.slice(1));
@@ -1007,8 +1014,16 @@ function fake(): Api {
     onFilesDropped: () => () => {},
     outgoingPreview: async (path) => pasted.get(path) ?? null,
     // The file goes nowhere in the browser: an import reads back the last export.
-    exportSettings: async (contents) => ((exported = contents), true),
-    importSettings: async () => exported,
+    exportSettings: async (contents, passphrase = null) => {
+      if (passphrase != null && passphrase.length < 8) throw "Choose a passphrase of at least 8 characters.";
+      exported = { contents, passphrase };
+      return true;
+    },
+    importSettings: async () => exported && (exported.passphrase ? { text: null, locked: true } : { text: exported.contents, locked: false }),
+    unlockSettings: async (passphrase) => {
+      if (!exported || passphrase !== exported.passphrase) throw "That passphrase doesn't open this file.";
+      return { text: exported.contents, added: [], present: [account.email] };
+    },
     addImage: async (picture) => {
       const uri = await new Promise<string>((done) => {
         const reader = new FileReader();
