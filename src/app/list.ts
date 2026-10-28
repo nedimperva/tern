@@ -5,7 +5,7 @@ import { batch, createEffect, on } from "solid-js";
 import { api, type Target } from "../api";
 import { refreshStart } from "../day";
 import { timeQuery } from "../perf";
-import { settings } from "../settings";
+import { setSetting, settings } from "../settings";
 import { ROLE_NAMES } from "../components/Rail";
 import { asRow, keepRows, keyOf } from "./rows";
 import { close, open } from "./conversation";
@@ -256,3 +256,20 @@ export const tabUnread = (t: Target) => {
   const role = "role" in t ? t.role : "";
   return role === "important" ? splitUnread()[0] : role === "bulk" ? splitUnread()[1] : role === "inbox" ? inboxUnread() : 0;
 };
+
+// MARK: Saved searches
+
+/** The search typed now is one of the saved ones. */
+export const isSaved = () => settings.savedSearches.includes(query().trim());
+
+/** Keeps the search typed now in the rail and the palette, or forgets it. */
+export function toggleSaved() {
+  const q = query().trim();
+  if (!q) return;
+  setSetting("savedSearches", isSaved() ? settings.savedSearches.filter((s) => s !== q) : [...settings.savedSearches, q]);
+}
+
+/** Runs a saved search over the list on show. */
+export const runSearch = (q: string) => batch(() => (close(), setQuery(q)));
+
+export const forgetSearch = (q: string) => setSetting("savedSearches", settings.savedSearches.filter((s) => s !== q));

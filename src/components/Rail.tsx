@@ -37,6 +37,11 @@ export function Rail(props: {
   onGo: (t: Target) => void;
   onAddAccount: () => void;
   onClose: () => void;
+  /** Saved searches, the one running now, and what to do with one. */
+  searches: string[];
+  searching: string;
+  onSearch: (query: string) => void;
+  onForget: (query: string) => void;
 }) {
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -68,6 +73,27 @@ export function Rail(props: {
         <a classList={{ active: props.isTarget({ role: "marked" }) }} onClick={() => go({ role: "marked" })}>
           <span>Marks</span>
         </a>
+        <Show when={props.searches.length}>
+          <h3>
+            <span>Searches</span>
+          </h3>
+          <For each={props.searches}>
+            {(q) => (
+              <a class="saved-search" classList={{ active: props.searching === q }} onClick={() => (props.onSearch(q), props.onClose())}>
+                <span class="query">{q}</span>
+                <button
+                  type="button"
+                  class="forget"
+                  title="Forget this search"
+                  aria-label={`Forget the search ${q}`}
+                  onClick={(e) => (e.stopPropagation(), props.onForget(q))}
+                >
+                  ×
+                </button>
+              </a>
+            )}
+          </For>
+        </Show>
         <For each={props.accounts}>
           {(account) => (
             <section>

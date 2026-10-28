@@ -1,6 +1,6 @@
 import { For, Show } from "solid-js";
 import { firstName, lineHere, runDeck } from "../app/deck";
-import { go, loadMore, splitIndex, SPLITS, tabUnread, title, toggleSelected } from "../app/list";
+import { go, isSaved, loadMore, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
 import { open } from "../app/conversation";
 import { keyOf } from "../app/rows";
 import {
@@ -80,6 +80,16 @@ export function ListPane(props: {
           onInput={(e) => setQuery(e.currentTarget.value)}
           onKeyDown={onSearchKey}
         />
+        <Show when={searching()}>
+          <button
+            class="link save-search"
+            classList={{ on: isSaved() }}
+            title={isSaved() ? "Take this search out of the rail" : "Keep this search in the rail and the command palette"}
+            onClick={toggleSaved}
+          >
+            {isSaved() ? "Saved" : "Save search"}
+          </button>
+        </Show>
         <button class="link" title="Command palette" onClick={() => setPalette(true)}>
           <kbd>Ctrl K</kbd>
         </button>

@@ -37,7 +37,7 @@ import {
   watchCompose,
 } from "./app/composing";
 import { closeDeck, deckRows, doneUpdates, firstName, runDeck } from "./app/deck";
-import { isTarget, go, loadSignatures, onChange, readProgress, refresh, watchList } from "./app/list";
+import { forgetSearch, isTarget, go, loadSignatures, onChange, readProgress, refresh, runSearch, watchList } from "./app/list";
 import { keyOf } from "./app/rows";
 import {
   accounts,
@@ -230,6 +230,10 @@ export default function App() {
           onGo={go}
           onAddAccount={() => setSetup(true)}
           onClose={() => setRail(false)}
+          searches={settings.savedSearches}
+          searching={query().trim()}
+          onSearch={runSearch}
+          onForget={forgetSearch}
         />
       </Show>
       <Show when={reviewing()}>

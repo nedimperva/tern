@@ -58,6 +58,10 @@ export type Settings = {
   dayShown: string;
   /** The local day the line above the inbox was put away. */
   lineHidden: string;
+  /** Searches kept in the rail and the command palette, as typed. */
+  savedSearches: string[];
+  /** Colours picked for accounts, by address (lowercase), in place of the palette's (src/colours.ts). */
+  accountColours: Record<string, string>;
   /** Optional AI, read by the engine too, which refuses what it does not allow (tern_core::ai::AiSettings). */
   ai: AiSettings;
 };
@@ -113,6 +117,8 @@ export const DEFAULTS: Settings = {
   lastSeen: 0,
   dayShown: "",
   lineHidden: "",
+  savedSearches: [],
+  accountColours: {},
   ai: {
     enabled: false,
     provider: "anthropic",
