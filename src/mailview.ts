@@ -273,7 +273,7 @@ export function readingView(html: string, title = ""): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("style, script, head, title, meta, [hidden]").forEach((el) => el.remove());
   const out: string[] = [];
-  const nested = (el: Element) => el.querySelector(BLOCKS + ",img,table,ul,ol") !== null;
+  const nested = (el: Element) => el.querySelector(`${BLOCKS},img,table,ul,ol`) !== null;
   // Text and inline elements, with only links (to the web or mail) and emphasis kept.
   const fragment = (node: Node): string => {
     if (node.nodeType === Node.TEXT_NODE) return escape(node.textContent ?? "");

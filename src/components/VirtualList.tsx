@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, JSX, onCleanup, onMount } from "solid-js";
+import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, onMount } from "solid-js";
 
 /// Draws only the rows in view (plus a few either side), so 50 rows or 50,000 cost the same.
 export function VirtualList<T>(props: {

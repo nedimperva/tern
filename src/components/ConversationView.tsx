@@ -149,6 +149,7 @@ function HtmlBody(props: {
     setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
     doc.documentElement.classList.toggle("tern-fold", !unfolded());
     const fit = () => fitFrame(frame!, doc);
+    // biome-ignore lint/suspicious/noFocusedTests: `fit` sizes the frame; it isn't a test runner's fit()
     fit();
     new ResizeObserver(fit).observe(doc.body);
     quietMenu(doc);

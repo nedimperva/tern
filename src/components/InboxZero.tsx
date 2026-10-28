@@ -101,7 +101,7 @@ export function InboxZero(props: { accounts: Account[] }) {
         (1 - s) * (1 - s) * 900 + 2 * (1 - s) * s * 420 + s * s * 900,
         (1 - s) * (1 - s) * 36 + 2 * (1 - s) * s * 322 + s * s * 608,
       ];
-      const flown = "M" + Array.from({ length: 41 }, (_, i) => at((t * i) / 40).map((v) => v.toFixed(1)).join(" ")).join(" L");
+      const flown = `M${Array.from({ length: 41 }, (_, i) => at((t * i) / 40).map((v) => v.toFixed(1)).join(" ")).join(" L")}`;
       const [x, y] = at(t);
       return {
         layout: "side",
@@ -291,7 +291,7 @@ export function InboxZero(props: { accounts: Account[] }) {
             (1 - s) * (1 - s) * 620 + 2 * (1 - s) * s * 820 + s * s * 1020,
             (1 - s) * (1 - s) * 470 + 2 * (1 - s) * s * -130 + s * s * 470,
           ];
-          const flown = "M" + Array.from({ length: 41 }, (_, i) => at((t * i) / 40).map((v) => v.toFixed(1)).join(" ")).join(" L");
+          const flown = `M${Array.from({ length: 41 }, (_, i) => at((t * i) / 40).map((v) => v.toFixed(1)).join(" ")).join(" L")}`;
           const [x, y] = at(t);
           return (
             <>

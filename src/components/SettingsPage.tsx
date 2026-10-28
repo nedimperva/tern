@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from "solid-js";
-import { type Account } from "../api";
+import type { Account } from "../api";
 import { colourOf } from "../colours";
 import { accountName } from "./settings/shared";
 import { AppearanceSettings, ReadingSettings, ComposeSettings, AboutSettings, NotificationSettings, DesktopSettings } from "./settings/general";

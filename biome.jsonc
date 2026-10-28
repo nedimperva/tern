@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": { "includes": ["src/**", "*.ts"] },
+  // Lint only. The code is laid out by hand (long lines, grouped short statements); a formatter would rewrite most
+  // of it for no gain.
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": {
+        // `x!` after a check the compiler can't follow (a Show, a ref set on mount) is the house idiom.
+        "noNonNullAssertion": "off",
+        // styles.css is ordered by component, not by selector weight.
+        "noDescendingSpecificity": "off"
+      },
+      "complexity": {
+        // `(a(), b())` and `void (x = y)` keep one-line handlers on one line.
+        "noCommaOperator": "off"
+      },
+      "suspicious": {
+        "noAssignInExpressions": "off",
+        // `list.forEach((n) => n.remove())` returns nothing that matters.
+        "useIterableCallbackReturn": "off",
+        // A function named `escape` shadows the long-deprecated global of that name, which nothing here uses.
+        "noShadowRestrictedNames": "off"
+      },
+      "a11y": {
+        // Buttons default to type="submit" only inside a form; the few forms here set types where it matters.
+        "useButtonType": "off"
+      }
+    }
+  }
+}
