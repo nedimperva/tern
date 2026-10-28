@@ -2488,6 +2488,7 @@ mod tests {
             name: name.into(),
             mime: mime.into(),
             size: std::fs::metadata(dir.join(name)).unwrap().len(),
+            cid: None,
         };
         let subject = format!("attachments check {}", std::process::id());
         let draft = |subject: String, attachments, forward_of| Draft {

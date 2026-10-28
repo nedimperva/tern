@@ -2174,6 +2174,10 @@ button.fold {
   color: var(--accent);
   pointer-events: none;
 }
+.drop-zone span {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
 /* Checks before sending: one line each, never a dialog. */
 .compose .checks {
   display: flex;
@@ -2259,6 +2263,21 @@ button.fold {
 }
 .editor-body .ProseMirror a {
   color: var(--accent);
+}
+/* A picture put in the text: as wide as the text at most, outlined when picked (Delete takes it out). */
+.editor-body .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--r-sm);
+  vertical-align: bottom;
+}
+.editor-body .ProseMirror img.loading {
+  min-width: 80px;
+  min-height: 60px;
+  background: var(--bg-2);
+}
+.editor-body .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
 }
 /* A reply's quote starts folded behind the "···" pill. */
 .editor.quote-folded .ProseMirror > blockquote:last-child {

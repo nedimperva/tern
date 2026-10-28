@@ -181,8 +181,8 @@ fn main() {
         })
         .on_window_event(|window, event| match event {
             WindowEvent::Focused(true) => window.state::<AppState>().wake_all(),
-            WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
-                commands::files_dropped(window.app_handle(), paths)
+            WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, position }) => {
+                commands::files_dropped(window.app_handle(), paths, *position)
             }
             _ => {}
         })
@@ -196,6 +196,7 @@ fn main() {
             commands::remove_account,
             commands::received_cache_size,
             commands::message_source,
+            commands::add_image,
             commands::mark_all_read,
             commands::clear_received_cache,
             commands::google_available,

@@ -174,7 +174,14 @@ export const moves = (a: Action) => typeof a === "object" || a === "archive" || 
 export type Target = { folder: number } | { role: string } | { label: number };
 export type Cursor = { date: number; id: number };
 /** A file attached to a draft (Tern's own copy). */
-export type OutgoingAttachment = { path: string; name: string; mime: string; size: number };
+export type OutgoingAttachment = {
+  path: string;
+  name: string;
+  mime: string;
+  size: number;
+  /** A picture put in the text, named there as `cid:…`. */
+  cid?: string;
+};
 /** Where a forwarded message is on the server; its attachments go along when the forward is sent. */
 export type ForwardOf = { folder: string; uid: number; validity: number | null; messageId: string | null };
 export type Draft = {
@@ -326,9 +333,11 @@ export interface Api {
   attachmentBytes(id: number, index: number): Promise<ArrayBuffer>;
   /** A picture attachment as a data: URI for its card, if it is already on this computer; never downloads. */
   attachmentPreview(id: number, index: number): Promise<string | null>;
-  /** Files dropped on the window from the file manager; returns the way to stop listening. */
-  /** Files dropped on the window; `hover` hears files being dragged over it (true) and leaving (false). */
-  onFilesDropped(f: (paths: string[]) => void, hover?: (over: boolean) => void): () => void;
+  /** Files dropped on the window, with where (CSS pixels); `hover` hears files being dragged over it (true) and
+   * leaving (false). Returns the way to stop listening. */
+  onFilesDropped(f: (paths: string[], at: { x: number; y: number } | null) => void, hover?: (over: boolean) => void): () => void;
+  /** Keeps a pasted picture like an attached file, for the text (PNG, JPEG, GIF or WebP). */
+  addImage(picture: Blob): Promise<OutgoingAttachment>;
   /** A picture being attached, as a data: URI for its card; null for other files. */
   outgoingPreview(path: string): Promise<string | null>;
   /** Runs `f` (and waits for it) before the window closes or Tern quits; returns the way to stop. */
@@ -513,6 +522,8 @@ const tauri: Api = {
   onLogo: (f) => void listen("logo", f),
   attachmentPreview: (id, index) => invoke("attachment_preview", { id, index }),
   outgoingPreview: (path) => invoke("outgoing_preview", { path }),
+  addImage: async (picture) =>
+    invoke("add_image", new Uint8Array(await picture.arrayBuffer()), { headers: { "x-mime": picture.type } }),
   attachmentBytes: (id, index) => invoke("attachment_bytes", { id, index }),
   saveAttachment: (id, index) => invoke("save_attachment", { id, index }),
   contacts: (query) => invoke("contacts", { query }),
@@ -523,7 +534,9 @@ const tauri: Api = {
     const keep = (unlisten: () => void) => (stopped ? unlisten() : stops.push(unlisten));
     // The drop itself comes from Rust, which offers those paths for attaching first; the webview's own event
     // only shows and hides the drop zone.
-    void listen<string[]>("files-dropped", (e) => f(e.payload)).then(keep);
+    void listen<{ paths: string[]; x: number; y: number }>("files-dropped", (e) =>
+      f(e.payload.paths, { x: e.payload.x / devicePixelRatio, y: e.payload.y / devicePixelRatio }),
+    ).then(keep);
     void import("@tauri-apps/api/webview").then(({ getCurrentWebview }) =>
       getCurrentWebview()
         .onDragDropEvent((e) => {
@@ -781,6 +794,8 @@ function fake(): Api {
   const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
   const snoozed = new Map<string, number>();
   const shelved = new Set<string>();
+  // Pictures pasted into compose, by their made-up path, for their previews.
+  const pasted = new Map<string, string>();
   const inInbox = (m: ThreadMessage) => folders.find((f) => f.id === m.folderId)?.role === "inbox";
   const labelsOf = (m: ThreadMessage) => {
     const n = Number(m.threadId.slice(1));
@@ -979,7 +994,17 @@ function fake(): Api {
     addAttachments: async (paths) =>
       paths.map((p) => ({ path: p, name: p.split("/").pop()!, mime: "application/pdf", size: 1_234_567 })),
     onFilesDropped: () => () => {},
-    outgoingPreview: async () => null,
+    outgoingPreview: async (path) => pasted.get(path) ?? null,
+    addImage: async (picture) => {
+      const uri = await new Promise<string>((done) => {
+        const reader = new FileReader();
+        reader.onload = () => done(String(reader.result));
+        reader.readAsDataURL(picture);
+      });
+      const path = `/fake/pasted/${pasted.size + 1}/image.png`;
+      pasted.set(path, uri);
+      return { path, name: "image.png", mime: picture.type, size: picture.size };
+    },
     contacts: async (query) => {
       const q = query.toLowerCase();
       const people = names.map((n) => ({ name: n, email: n.toLowerCase().replace(/\s/g, ".") + "@example.com" }));

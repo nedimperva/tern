@@ -489,10 +489,11 @@ impl Offered {
 }
 
 /// Files dropped on the window: offered, then told to the window, which attaches them while compose is open.
-pub fn files_dropped(app: &AppHandle, paths: &[std::path::PathBuf]) {
+pub fn files_dropped(app: &AppHandle, paths: &[std::path::PathBuf], at: tauri::PhysicalPosition<f64>) {
     app.state::<Offered>().offer(paths.iter().cloned());
     let shown: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
-    let _ = app.emit("files-dropped", shown);
+    // Where they were dropped, in the window's pixels: pictures dropped on compose's text go in it.
+    let _ = app.emit("files-dropped", serde_json::json!({ "paths": shown, "x": at.x, "y": at.y }));
 }
 
 /// The system's file picker, for attaching. The paths picked are offered for `add_attachments`.
@@ -543,8 +544,6 @@ pub async fn add_attachments(
     offered: State<'_, Offered>,
     paths: Vec<String>,
 ) -> Reply<Vec<OutgoingAttachment>> {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
     let base = attachments_dir(&app)?;
     let mut added = Vec::new();
     for path in paths {
@@ -553,20 +552,56 @@ pub async fn add_attachments(
             return Err(format!("{path}: pick the file or drop it on the window to attach it"));
         }
         let name = source.file_name().map(|n| n.to_string_lossy().into_owned()).ok_or("Not a file")?;
-        let stamp =
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
-        let folder = base.join(format!("{stamp}-{}", NEXT.fetch_add(1, Ordering::Relaxed)));
-        std::fs::create_dir_all(&folder).map_err(|e| format!("{name}: {e}"))?;
-        let copy = folder.join(&name);
+        let copy = new_folder(&base).map_err(|e| format!("{name}: {e}"))?.join(&name);
         let size = std::fs::copy(&source, &copy).map_err(|e| format!("{name}: {e}"))?;
         added.push(OutgoingAttachment {
             path: copy.display().to_string(),
             mime: mime_for(&name).into(),
             name,
             size,
+            cid: None,
         });
     }
     Ok(added)
+}
+
+/// A folder of its own under `base` for one file being attached, so names never clash.
+fn new_folder(base: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let stamp =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let folder = base.join(format!("{stamp}-{}", NEXT.fetch_add(1, Ordering::Relaxed)));
+    std::fs::create_dir_all(&folder)?;
+    Ok(folder)
+}
+
+/// A picture pasted into compose's text, kept like an attached file. The window hands over the bytes (from the
+/// clipboard), never a path, and only a picture of a size the preview can show.
+#[tauri::command]
+pub async fn add_image(app: AppHandle, request: tauri::ipc::Request<'_>) -> Reply<OutgoingAttachment> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("No picture came".into()) };
+    let mime = request.headers().get("x-mime").and_then(|v| v.to_str().ok()).unwrap_or("");
+    let ext = match mime {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        _ => return Err("Only PNG, JPEG, GIF and WebP pictures go in the text".into()),
+    };
+    if bytes.len() as u64 > PREVIEW_LIMIT {
+        return Err("That picture is too big to put in the text; attach it instead".into());
+    }
+    let name = format!("image.{ext}");
+    let path = new_folder(&attachments_dir(&app)?).map_err(|e| e.to_string())?.join(&name);
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(OutgoingAttachment {
+        path: path.display().to_string(),
+        name,
+        mime: mime.into(),
+        size: bytes.len() as u64,
+        cid: None,
+    })
 }
 
 /// A file's type from its extension: the common ones, else a plain stream of bytes.

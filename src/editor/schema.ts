@@ -1,13 +1,33 @@
 // The compose editor's document (package 03): paragraphs, quotes, lists and line breaks; bold, italic, underline,
-// strike, inline code and links. Nothing else, so pasted Word/Docs styling falls away to this.
+// strike, inline code and links; and pictures pasted in, which go out with the message (`cid:`). Nothing else, so
+// pasted Word/Docs styling falls away to this, and a picture from a web page (a remote address) with it.
 
 import { DOMParser, DOMSerializer, Schema, type Node } from "prosemirror-model";
+import { TextSelection } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
 import { schema as basic } from "prosemirror-schema-basic";
 import { addListNodes } from "prosemirror-schema-list";
 
 export const schema = new Schema({
   nodes: addListNodes(
-    basic.spec.nodes.remove("heading").remove("code_block").remove("horizontal_rule").remove("image"),
+    basic.spec.nodes
+      .remove("heading")
+      .remove("code_block")
+      .remove("horizontal_rule")
+      .remove("image")
+      .addToEnd("image", {
+        inline: true,
+        group: "inline",
+        draggable: true,
+        attrs: { src: {}, alt: { default: "" } },
+        parseDOM: [
+          {
+            tag: "img[src^='cid:']",
+            getAttrs: (dom) => ({ src: (dom as HTMLElement).getAttribute("src"), alt: (dom as HTMLElement).getAttribute("alt") ?? "" }),
+          },
+        ],
+        toDOM: (node) => ["img", { src: node.attrs.src, alt: node.attrs.alt, style: "max-width:100%" }],
+      }),
     "paragraph block*",
     "block",
   ),
@@ -22,13 +42,16 @@ export const schema = new Schema({
     }),
 });
 
+/** A document that loads nothing, for HTML on its way in or out: a `cid:` picture is not an address to fetch. */
+const inert = document.implementation.createHTMLDocument("");
+
 /** Inline styles mail clients need, since they drop <style> blocks. */
 const QUOTE_STYLE = "margin:0 0 0 .8ex;border-left:2px solid #ccc;padding-left:1ex;color:#555";
 
 /** The document as mail HTML. */
 export function toHtml(doc: Node): string {
-  const box = document.createElement("div");
-  box.appendChild(DOMSerializer.fromSchema(schema).serializeFragment(doc.content));
+  const box = inert.createElement("div");
+  box.appendChild(DOMSerializer.fromSchema(schema).serializeFragment(doc.content, { document: inert }));
   box.querySelectorAll("blockquote").forEach((q) => q.setAttribute("style", QUOTE_STYLE));
   box.querySelectorAll("p").forEach((p) => p.setAttribute("style", "margin:0 0 1em"));
   return box.innerHTML;
@@ -43,6 +66,7 @@ export function toText(doc: Node): string {
         let line = "";
         child.forEach((inline) => {
           if (inline.type === schema.nodes.hard_break) line += "\n";
+          else if (inline.type === schema.nodes.image) line += `[${inline.attrs.alt || "image"}]`;
           else {
             const link = inline.marks.find((m) => m.type === schema.marks.link);
             line += inline.text ?? "";
@@ -71,7 +95,7 @@ export function toText(doc: Node): string {
 
 /** A document from mail HTML (a saved draft). */
 export function fromHtml(html: string): Node {
-  const box = document.createElement("div");
+  const box = inert.createElement("div");
   box.innerHTML = html;
   return DOMParser.fromSchema(schema).parse(box);
 }
@@ -102,3 +126,18 @@ export function fromText(text: string): Node {
   const lead = text.startsWith("\n") ? "<p></p>" : "";
   return fromHtml(lead + toHtmlBlocks(lines));
 }
+
+/** A picture in the text: the Content-ID it goes out under, and its file name for the plain-text part. */
+export type Picture = { cid: string; alt: string };
+
+/** Puts pictures in the text: where `at` points (a drop, in window pixels), else at the cursor. */
+export function insertPictures(view: EditorView, pictures: Picture[], at?: { x: number; y: number }) {
+  if (!pictures.length) return;
+  let tr = view.state.tr;
+  const pos = at ? view.posAtCoords({ left: at.x, top: at.y })?.pos : undefined;
+  if (pos != null) tr = tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
+  for (const p of pictures) tr = tr.replaceSelectionWith(schema.nodes.image.create({ src: `cid:${p.cid}`, alt: p.alt }), false);
+  view.dispatch(tr.scrollIntoView());
+  view.focus();
+}
+

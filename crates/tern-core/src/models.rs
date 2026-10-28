@@ -377,6 +377,10 @@ pub struct OutgoingAttachment {
     pub name: String,
     pub mime: String,
     pub size: u64,
+    /// A picture put in the text: the Content-ID its `<img src="cid:…">` names. It goes out beside the HTML, not as
+    /// a file, while the text still shows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cid: Option<String>,
 }
 
 /// Where a forwarded message is on the server, to fetch its attachments when the forward is sent.
