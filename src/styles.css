@@ -85,9 +85,89 @@ button.primary kbd {
   border-color: rgba(255, 255, 255, 0.4);
 }
 
+/* MARK: Window (§3) */
+
+/* The system draws no frame: Tern's title bar on top, the docked sidebar and the app under it. */
+.window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.window-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.titlebar {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: var(--titlebar-h);
+  background: var(--bg-0);
+}
+.titlebar-side {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--s-2);
+}
+/* Over the docked sidebar the bar takes its tone, so the two read as one column. */
+.titlebar.side-tone .titlebar-side {
+  width: var(--side-w);
+  background: var(--bg-1);
+}
+.titlebar-fill {
+  flex: 1;
+}
+/* A line under the bar, except over the docked sidebar. */
+.titlebar-fill,
+.window-buttons,
+.titlebar:not(.side-tone) .titlebar-side {
+  border-bottom: 1px solid var(--line);
+}
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg-1);
+}
+.icon-button:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.window-buttons {
+  display: flex;
+}
+.window-buttons button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--fg-1);
+}
+.window-buttons button:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+/* Red under the pointer, as on Windows. */
+.window-buttons .close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
 /* MARK: Layout */
 
 .app {
+  flex: 1;
+  min-width: 0;
   display: grid;
   grid-template-columns: 1fr;
   height: 100%;
@@ -111,6 +191,11 @@ button.primary kbd {
 .app.split .list-pane {
   background: var(--bg-1);
 }
+/* With the sidebar docked on that tone, the list goes back to the ground and a hairline sets it off. */
+.window.docked .app.split .list-pane {
+  background: var(--bg-0);
+  border-right: 1px solid var(--line);
+}
 .list-header {
   display: flex;
   align-items: center;
@@ -127,11 +212,6 @@ button.primary kbd {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.rail-button {
-  flex: none;
-  display: flex;
-  color: var(--fg-1);
 }
 /* Roomier densities also set type a pixel larger (§2). */
 :root[data-density="comfortable"] .crow {
@@ -169,7 +249,7 @@ button.primary kbd {
   width: auto;
   z-index: 1;
 }
-.app.split .list-header > .link:not(.rail-button) {
+.app.split .list-header > .link {
   display: none;
 }
 
@@ -603,6 +683,8 @@ button.primary kbd {
 .crow {
   position: relative;
   height: 100%;
+  margin: 0 var(--s-2);
+  border-radius: var(--r-md);
   display: flex;
   align-items: center;
   gap: var(--s-3);
@@ -625,9 +707,10 @@ button.primary kbd {
   content: "";
   position: absolute;
   left: 0;
-  top: 0;
-  bottom: 0;
+  top: 8px;
+  bottom: 8px;
   width: 3px;
+  border-radius: 2px;
   background: var(--accent);
 }
 /* Two lines: who and when on top, the subject under them. */
@@ -883,14 +966,15 @@ button.primary kbd {
 
 .scrim {
   position: fixed;
-  inset: 0;
+  /* Under the title bar, which stays usable. */
+  inset: var(--titlebar-h) 0 0;
   background: var(--scrim);
   z-index: 15;
 }
 .rail {
   position: absolute;
   inset: 0 auto 0 0;
-  width: 240px;
+  width: var(--side-w);
   background: var(--bg-1);
   box-shadow: var(--shadow);
   padding: var(--s-3) var(--s-2);
@@ -899,6 +983,54 @@ button.primary kbd {
   flex-direction: column;
   gap: 2px;
   animation: slide-in var(--d-base) var(--ease);
+}
+/* Docked: a column beside the list, on the tone the title bar gives it, and no shadow. */
+.rail.docked {
+  position: static;
+  flex: none;
+  box-shadow: none;
+  animation: none;
+  padding-top: var(--s-1);
+}
+/* New mail and Search on top, Settings at the foot, like the rows between them. */
+.rail-actions,
+.rail-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rail-actions {
+  margin-bottom: var(--s-2);
+}
+.rail-foot {
+  margin-top: auto;
+  padding-top: var(--s-3);
+}
+.rail-actions button,
+.rail-foot button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px var(--s-2);
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  font-size: var(--t-md);
+  text-align: left;
+}
+.rail-actions button:hover,
+.rail-foot button:hover {
+  background: var(--bg-2);
+}
+.rail-actions button svg,
+.rail-foot button svg {
+  color: var(--fg-1);
+}
+.rail-actions kbd {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
 }
 @keyframes slide-in {
   from {
@@ -909,10 +1041,8 @@ button.primary kbd {
   display: flex;
   gap: 6px;
   align-items: baseline;
-  font-size: var(--t-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: var(--t-sm);
+  font-weight: 400;
   color: var(--fg-2);
   margin: var(--s-4) var(--s-2) var(--s-1);
   white-space: nowrap;
@@ -931,7 +1061,7 @@ button.primary kbd {
 .rail a {
   display: flex;
   justify-content: space-between;
-  padding: 5px var(--s-2);
+  padding: 7px var(--s-2);
   border-radius: var(--r-md);
   font-size: var(--t-md);
   cursor: default;
@@ -941,7 +1071,7 @@ button.primary kbd {
 }
 .rail a.active {
   background: var(--bg-3);
-  font-weight: 600;
+  font-weight: 500;
 }
 .rail .count {
   color: var(--fg-2);
@@ -1759,7 +1889,7 @@ button.fold {
 
 .overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h) 0 0;
   background: var(--scrim);
   display: grid;
   place-items: start center;
@@ -2548,7 +2678,7 @@ button.fold {
 }
 .compose.focus {
   width: 100vw;
-  height: 100vh;
+  height: calc(100vh - var(--titlebar-h));
   max-height: none;
   border-radius: 0;
   box-shadow: none;
@@ -2690,16 +2820,16 @@ button.fold {
 
 .settings-page {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h) 0 0;
   z-index: 12;
   display: grid;
-  grid-template-columns: 232px 1fr;
+  grid-template-columns: var(--side-w) 1fr;
   background: var(--bg-0);
 }
+/* In the sidebar's place, on its tone, so it reads as the sidebar showing settings. */
 .settings-page nav {
   background: var(--bg-1);
-  border-right: 1px solid var(--line);
-  padding: var(--s-5) var(--s-3) var(--s-4);
+  padding: var(--s-3) var(--s-2) var(--s-4);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -2725,10 +2855,7 @@ button.fold {
 }
 .settings-page .nav-group {
   padding: var(--s-3) 10px var(--s-1);
-  font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
   color: var(--fg-2);
 }
 .settings-page nav a {
@@ -2748,7 +2875,7 @@ button.fold {
 .settings-page nav a.active {
   background: var(--bg-3);
   color: var(--fg-0);
-  font-weight: 600;
+  font-weight: 500;
 }
 .settings-page .nav-none {
   margin: var(--s-2) 10px;
@@ -3526,7 +3653,7 @@ button.place.muted {
 /* MARK: Attachment viewer (docs/design/ui.md §4.11): the file over everything, on a dark scrim in either theme. */
 .viewer {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h) 0 0;
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -4872,7 +4999,7 @@ button.link.danger {
 .day-screen,
 .day-deck {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h) 0 0;
   /* Over the inbox, under what they open: compose (10, docked 30), the snooze picker and the palette. */
   z-index: 9;
   display: flex;
@@ -5221,7 +5348,7 @@ button.link.danger {
   position: sticky;
   top: 0;
   /* The pane's height, less the window's title bar and status strip; scrolls on its own, its bar shown on hover. */
-  max-height: calc(100vh - 72px);
+  max-height: calc(100vh - 72px - var(--titlebar-h));
   overflow-x: hidden;
   overflow-y: auto;
   overflow-wrap: anywhere;

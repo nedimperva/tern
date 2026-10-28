@@ -7,6 +7,7 @@ import { ConversationView } from "./components/ConversationView";
 import { ListPane } from "./components/ListPane";
 import { ProblemsDialog } from "./components/Problems";
 import { Rail } from "./components/Rail";
+import { TitleBar } from "./components/TitleBar";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { LabelPicker } from "./components/LabelPicker";
 import { SnoozePicker } from "./components/SnoozePicker";
@@ -45,6 +46,7 @@ import {
   composeMin,
   context,
   dialog,
+  docked,
   expanded,
   focusMode,
   folders,
@@ -62,6 +64,7 @@ import {
   ready,
   reviewing,
   rows,
+  searchBox,
   searching,
   settingsOpen,
   setAccounts,
@@ -88,6 +91,7 @@ import {
   signatures,
   snoozing,
   syncStates,
+  toggleSidebar,
   viewing,
   width,
 } from "./app/state";
@@ -101,8 +105,52 @@ const SPLIT_WIDTH = 1200;
 /** Below this width there is no room for the list beside a conversation, whatever the setting (§3). */
 const MIN_SPLIT_WIDTH = 960;
 
-/** The main window. Its state and what the keys do live in src/app; this lays them out and starts them. */
+/** The main window: Tern's own title bar, the sidebar when it is docked, and the rest under them. */
 export default function App() {
+  return (
+    <div class="window" classList={{ docked: docked() }}>
+      <TitleBar
+        docked={docked()}
+        sideTone={docked() || settingsOpen() !== null}
+        onSidebar={toggleSidebar}
+        onCompose={newMessage}
+      />
+      <div class="window-body">
+        <Show when={docked()}>
+          <Sidebar docked />
+        </Show>
+        <Main />
+      </div>
+    </div>
+  );
+}
+
+/** Accounts and folders, docked beside the list or sliding over it. */
+function Sidebar(props: { docked: boolean }) {
+  return (
+    <Rail
+      docked={props.docked}
+      accounts={accounts()}
+      folders={folders()}
+      syncStates={syncStates()}
+      isTarget={isTarget}
+      onGo={go}
+      onAddAccount={() => setSetup(true)}
+      onClose={() => setRail(false)}
+      onCompose={newMessage}
+      onFind={() => searchBox.input?.focus()}
+      onSettings={() => setSettingsOpen("Appearance")}
+      searches={settings.savedSearches}
+      searching={query().trim()}
+      onSearch={runSearch}
+      onForget={forgetSearch}
+    />
+  );
+}
+
+/** The list, the open conversation and what opens over them. Their state and what the keys do live in src/app;
+ * this lays them out and starts them. */
+function Main() {
   watchList();
   watchConversation();
   watchCompose();
@@ -221,20 +269,8 @@ export default function App() {
         </section>
       </Show>
 
-      <Show when={rail()}>
-        <Rail
-          accounts={accounts()}
-          folders={folders()}
-          syncStates={syncStates()}
-          isTarget={isTarget}
-          onGo={go}
-          onAddAccount={() => setSetup(true)}
-          onClose={() => setRail(false)}
-          searches={settings.savedSearches}
-          searching={query().trim()}
-          onSearch={runSearch}
-          onForget={forgetSearch}
-        />
+      <Show when={rail() && !docked()}>
+        <Sidebar docked={false} />
       </Show>
       <Show when={reviewing()}>
         <ProblemsDialog

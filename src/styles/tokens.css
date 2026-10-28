@@ -2,18 +2,18 @@
    default; dark follows the system unless a theme is set on <html data-theme>. */
 
 :root {
-  --bg-0: #ffffff;
-  --bg-1: #fafafa;
-  --bg-2: #f4f4f5;
-  --bg-3: #e9e9ec;
-  --fg-0: #18181b;
-  --fg-1: #52525b;
-  /* Darker than the spec's #a1a1aa (2.6:1 on white); this keeps meta text at AA (4.5:1) on every row background, focused included. */
-  --fg-2: #686871;
-  --line: #e4e4e7;
-  --accent: #5b5bd6;
+  --bg-0: #fbfaf7;
+  --bg-1: #f3f1ec;
+  --bg-2: #ebe8e1;
+  --bg-3: #e5e1d8;
+  --fg-0: #1f1e1b;
+  --fg-1: #55524a;
+  /* Meta text stays at AA (4.5:1) on every row background, focused included. */
+  --fg-2: #66625a;
+  --line: #e6e2d9;
+  --accent: #2f4f9a;
   --accent-fg: #ffffff;
-  --accent-soft: #eeeefb;
+  --accent-soft: #e6ebf5;
   --ok: #2f9e6e;
   --warn: #c98a1b;
   --warn-soft: #fdf3e2;
@@ -22,16 +22,16 @@
   --warn-fg: #6b4708;
   --danger: #d0453f;
   --star: #e9b81c;
-  --shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-  --scrim: rgba(0, 0, 0, 0.25);
+  --shadow: 0 8px 30px rgba(60, 50, 30, 0.14);
+  --scrim: rgba(30, 25, 15, 0.25);
   /* The reading pane draws no outlines: the one soft surface (files, the reply row, an inline reply, the
      history of a conversation) is a tone of the background. */
-  --soft: #f5f5f7;
-  --soft-hover: #ededf0;
+  --soft: #f2efe9;
+  --soft-hover: #ebe7df;
   --ok-soft: #e8f5ee;
   /* Tooltips: dark on light, light on dark. */
-  --tip: #18181b;
-  --tip-fg: #fafafa;
+  --tip: #1f1e1b;
+  --tip-fg: #fbfaf7;
   /* Behind a sender's logo, in both themes. */
   --logo-bg: #ffffff;
   /* File badges, by type; the same in both themes, white text on each. */
@@ -68,13 +68,17 @@
   --s-6: 32px;
 
   --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 10px;
+  --r-md: 8px;
+  --r-lg: 12px;
 
   --d-fast: 120ms;
   --d-base: 160ms;
   --d-slow: 240ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Tern's own title bar, and the sidebar docked under it (§3). */
+  --titlebar-h: 40px;
+  --side-w: 240px;
 
   --row-h: 36px;
   --participants-w: 180px;
@@ -93,17 +97,18 @@
 
 
 :root[data-theme="dark"] {
-  --bg-0: #111113;
-  --bg-1: #18181b;
-  --bg-2: #1f1f23;
-  --bg-3: #27272b;
-  --fg-0: #ededef;
-  --fg-1: #a1a1aa;
-  /* Lighter than the spec's #71717a (3.9:1 on #111113): AA on every row background. */
-  --fg-2: #8d8d96;
-  --line: #27272a;
-  --accent: #7c7cf0;
-  --accent-soft: #232347;
+  --bg-0: #22211f;
+  --bg-1: #1b1a18;
+  --bg-2: #2c2b28;
+  --bg-3: #34322f;
+  --fg-0: #ece8e1;
+  --fg-1: #b5b0a6;
+  /* AA (4.5:1) on every row background. */
+  --fg-2: #a29d93;
+  --line: #34322e;
+  --accent: #7b97de;
+  --accent-fg: #16171b;
+  --accent-soft: #283249;
   --ok: #3fbf85;
   --warn: #e0a63a;
   --warn-soft: #33270f;
@@ -111,28 +116,29 @@
   --warn-fg: #f0c674;
   --danger: #ef6b66;
   --star: #f2c94c;
-  --shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
   --scrim: rgba(0, 0, 0, 0.5);
-  --soft: #1a1a1e;
-  --soft-hover: #222226;
+  --soft: #282724;
+  --soft-hover: #302e2b;
   --ok-soft: #142a20;
-  --tip: #ededef;
-  --tip-fg: #111113;
+  --tip: #ece8e1;
+  --tip-fg: #22211f;
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg-0: #111113;
-    --bg-1: #18181b;
-    --bg-2: #1f1f23;
-    --bg-3: #27272b;
-    --fg-0: #ededef;
-    --fg-1: #a1a1aa;
-    --fg-2: #8d8d96;
-    --line: #27272a;
-    --accent: #7c7cf0;
-    --accent-soft: #232347;
+    --bg-0: #22211f;
+    --bg-1: #1b1a18;
+    --bg-2: #2c2b28;
+    --bg-3: #34322f;
+    --fg-0: #ece8e1;
+    --fg-1: #b5b0a6;
+    --fg-2: #a29d93;
+    --line: #34322e;
+    --accent: #7b97de;
+    --accent-fg: #16171b;
+    --accent-soft: #283249;
     --ok: #3fbf85;
     --warn: #e0a63a;
     --warn-soft: #33270f;
@@ -140,13 +146,13 @@
     --warn-fg: #f0c674;
     --danger: #ef6b66;
     --star: #f2c94c;
-    --shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     --scrim: rgba(0, 0, 0, 0.5);
-    --soft: #1a1a1e;
-    --soft-hover: #222226;
+    --soft: #282724;
+    --soft-hover: #302e2b;
     --ok-soft: #142a20;
-    --tip: #ededef;
-    --tip-fg: #111113;
+    --tip: #ece8e1;
+    --tip-fg: #22211f;
     color-scheme: dark;
   }
 }

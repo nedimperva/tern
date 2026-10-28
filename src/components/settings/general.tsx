@@ -30,6 +30,15 @@ export function AppearanceSettings() {
         ]}
       />
       <Select
+        name="sidebar"
+        title="Sidebar"
+        help="Accounts and folders beside the list when the window is wide enough. Ctrl+\ or the button at the top left shows or hides it."
+        choices={[
+          { label: "Beside the list", value: true },
+          { label: "Only when asked", value: false },
+        ]}
+      />
+      <Select
         name="zeroScene"
         title="Inbox Zero"
         help="What an empty inbox shows. Flock, Streak and Your migration count what you clear in Tern on this computer."

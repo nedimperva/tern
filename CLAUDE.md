@@ -32,6 +32,8 @@ decisions that aren't visible from the code.
   newest message holds (`src/facts.ts`, local only), marks and notes (schema v27, CSS Custom Highlight API in
   `src/marks.ts`), newsletters in reading view by default. The fake's newest conversation and its newsletter carry
   facts and parts to try them on.
+  Look (2026-10-28, canvas "Tern warm directions", A): warm tokens, Tern's own title bar (`decorations: false`,
+  `src/components/TitleBar.tsx`) and the sidebar docked beside the list (`settings.sidebar`, `docked()` in state.ts).
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items. Gmail still goes through IMAP, signed in with Google (XOAUTH2), with labels

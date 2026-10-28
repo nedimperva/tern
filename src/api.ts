@@ -436,6 +436,10 @@ export interface Api {
   openLogs(): Promise<void>;
   /** The window's own frame (the title bar on Windows) in Tern's theme; null follows the system. */
   setWindowTheme(theme: "light" | "dark" | null): void;
+  /** The window's own buttons, drawn in Tern's title bar: the system draws none. Close asks like the system's. */
+  windowButton(button: "minimize" | "maximize" | "close"): void;
+  /** Whether the window is maximized, now and after each change; returns the way to stop. */
+  onMaximized(f: (maximized: boolean) => void): () => void;
   /** What came in since `since` (Unix seconds) and what needs the person. From the store only. */
   dayStart(since: number): Promise<DayStart>;
   // AI, only on the person's ask; the engine refuses while it is off or not allowed (Settings → AI).
@@ -624,6 +628,24 @@ const tauri: Api = {
   openLogs: () => invoke("open_logs"),
   setWindowTheme: (theme) =>
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => getCurrentWindow().setTheme(theme).catch(() => {})),
+  windowButton: (button) =>
+    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+      const w = getCurrentWindow();
+      return (button === "minimize" ? w.minimize() : button === "maximize" ? w.toggleMaximize() : w.close()).catch(() => {});
+    }),
+  onMaximized: (f) => {
+    let stop: (() => void) | undefined;
+    let stopped = false;
+    void import("@tauri-apps/api/window").then(async ({ getCurrentWindow }) => {
+      const w = getCurrentWindow();
+      const read = () => void w.isMaximized().then(f, () => {});
+      read();
+      const unlisten = await w.onResized(read);
+      if (stopped) unlisten();
+      else stop = unlisten;
+    });
+    return () => ((stopped = true), stop?.());
+  },
   dayStart: (since) => invoke("day_start", { since }),
   aiHasKey: (provider) => invoke("ai_has_key", { provider }),
   aiSetKey: (provider, key) => invoke("ai_set_key", { provider, key }),
@@ -1238,6 +1260,8 @@ function fake(): Api {
     }),
     openLogs: async () => {},
     setWindowTheme: () => {},
+    windowButton: () => {},
+    onMaximized: (f) => (f(false), () => {}),
     // AI in the browser: a made-up answer, streamed a word at a time like the real one. The key "fail" fails.
     // The start of the day in the browser: people's mail in the inbox, newest someone else's, oldest first.
     dayStart: async (since) => {

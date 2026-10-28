@@ -18,7 +18,6 @@ import {
   setFocus,
   setPalette,
   setQuery,
-  setRail,
 } from "../app/state";
 import { coverage, inboxZero } from "../app/status";
 import { ROW_HEIGHTS, settings, SPLIT_ROW_EXTRA } from "../settings";
@@ -26,7 +25,6 @@ import { colourOf } from "../colours";
 import type { ThreadRow } from "../api";
 import { ConversationRow } from "./ConversationRow";
 import { DayLine } from "./DayLine";
-import { Icon } from "./Icon";
 import { InboxZero } from "./InboxZero";
 import { StatusStrip } from "./StatusStrip";
 import { VirtualList } from "./VirtualList";
@@ -64,14 +62,6 @@ export function ListPane(props: {
   return (
     <main class="list-pane">
       <header class="list-header">
-        <button
-          class="link rail-button"
-          onClick={() => setRail(true)}
-          title="Accounts and folders (Ctrl+\)"
-          aria-label="Accounts and folders"
-        >
-          <Icon name="menu" size={18} />
-        </button>
         <Show when={splitIndex() >= 0 && !searching()} fallback={<h2>{title()}</h2>}>
           <nav class="splits" role="tablist">
             <For each={SPLITS()}>

@@ -34,7 +34,7 @@ export function SettingsPage(props: {
       id: "Appearance",
       name: "Appearance",
       group: "General",
-      words: "theme dark light density rows inbox zero empty tern scene",
+      words: "theme dark light density rows sidebar inbox zero empty tern scene",
       body: () => <AppearanceSettings />,
     },
     {

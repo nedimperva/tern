@@ -34,6 +34,13 @@ every release needs one here before it is tagged.
 
 ### Changed
 
+- A warmer, calmer look: warm greys instead of cool ones, the logo's navy as the accent, rounded rows. Dark mode
+  is a warm charcoal.
+- Tern draws its own title bar: the sidebar button at the top left, minimize, maximize and close at the right, and
+  the rest drags the window. The system's title bar is gone.
+- The sidebar (accounts, folders, labels, saved searches) stays open beside the list in a wide window, with New
+  mail and Search at its top and Settings at its foot. The button at the top left or `Ctrl+\` hides it until
+  shown again; Settings → Appearance → Sidebar sets it to slide over the list only when asked.
 - `before:` and `after:` in search start at midnight where you are, not midnight UTC.
 - Faster while mail downloads: the window reads everything again at most every 150 ms instead of on every frame,
   list rows that did not change stay as they are, and the window reads on a connection of its own, so a sync

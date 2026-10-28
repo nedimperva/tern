@@ -18,7 +18,7 @@ import type {
 import type { ComposeInit } from "../components/Compose";
 import type { Context } from "../keys";
 import { deck, screen } from "../day";
-import { settings } from "../settings";
+import { setSetting, settings } from "../settings";
 
 export const [accounts, setAccounts] = createSignal<Account[]>([]);
 // Every account's signatures, for compose; read again when settings close.
@@ -57,7 +57,10 @@ export const [expanded, setExpanded] = createSignal<ReadonlySet<number>>(new Set
 export const [openMuted, setOpenMuted] = createSignal(false);
 
 export const [width, setWidth] = createSignal(window.innerWidth);
+// The rail sliding over the list: the sidebar's place in a narrow window, or with the sidebar turned off.
 export const [rail, setRail] = createSignal(false);
+/** From this width the sidebar can stay beside the list and an open conversation (§3). */
+export const SIDEBAR_WIDTH = 1100;
 // Focus mode: the open conversation over the whole window, list hidden, until F again. Kept for the session.
 export const [focusMode, setFocusMode] = createSignal(false);
 export const [compose, setCompose] = createSignal<ComposeInit | null>(null);
@@ -81,6 +84,13 @@ export const [labeling, setLabeling] = createSignal<ThreadRow[] | null>(null);
 export const [perf, setPerf] = createSignal(false);
 // A few useful keys in the status strip once the keyboard has been still for a moment.
 export const [idle, setIdle] = createSignal(false);
+
+/** The sidebar sits beside the list now: turned on, room for it, and not in focus mode. */
+export const docked = () => settings.sidebar && width() >= SIDEBAR_WIDTH && !focusMode();
+/** The title bar's button and Ctrl+\: in a wide window they keep the sidebar open or closed for good; in a
+ * narrow one they slide the rail over the list. */
+export const toggleSidebar = () =>
+  width() >= SIDEBAR_WIDTH && !focusMode() ? (setRail(false), setSetting("sidebar", !settings.sidebar)) : setRail(!rail());
 
 /** The search box, for `/`. */
 export const searchBox: { input?: HTMLInputElement } = {};
