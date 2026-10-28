@@ -947,6 +947,95 @@ button.primary kbd {
   color: var(--fg-2);
   font-variant-numeric: tabular-nums;
 }
+/* A saved search: its words, and × to forget it on hover. */
+.rail .saved-search .query {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.rail .saved-search .forget {
+  visibility: hidden;
+  color: var(--fg-2);
+  padding: 0 2px;
+}
+.rail .saved-search:hover .forget {
+  visibility: visible;
+}
+.save-search {
+  flex: none;
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+.save-search.on {
+  color: var(--accent);
+}
+/* The accounts as badges at the top of the rail: a click opens that account's inbox. */
+.rail .account-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: 0 var(--s-2) var(--s-2);
+}
+.rail .account-switch button {
+  position: relative;
+  border-radius: 50%;
+  padding: 2px;
+  box-shadow: 0 0 0 2px transparent;
+}
+.rail .account-switch button.active {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.rail .account-switch .unread-dot {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-1);
+}
+.rail h3 .account-avatar {
+  align-self: center;
+}
+.account-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.crow .mark .account-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.swatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.swatches button[role="radio"] {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg-1);
+}
+.swatches button[role="radio"].on {
+  box-shadow:
+    0 0 0 2px var(--bg-1),
+    0 0 0 4px var(--fg-0);
+}
 .rail .add-account {
   margin: var(--s-4) var(--s-2) 0;
   text-align: left;
@@ -2174,6 +2263,10 @@ button.fold {
   color: var(--accent);
   pointer-events: none;
 }
+.drop-zone span {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
 /* Checks before sending: one line each, never a dialog. */
 .compose .checks {
   display: flex;
@@ -2259,6 +2352,21 @@ button.fold {
 }
 .editor-body .ProseMirror a {
   color: var(--accent);
+}
+/* A picture put in the text: as wide as the text at most, outlined when picked (Delete takes it out). */
+.editor-body .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--r-sm);
+  vertical-align: bottom;
+}
+.editor-body .ProseMirror img.loading {
+  min-width: 80px;
+  min-height: 60px;
+  background: var(--bg-2);
+}
+.editor-body .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
 }
 /* A reply's quote starts folded behind the "···" pill. */
 .editor.quote-folded .ProseMirror > blockquote:last-child {
@@ -2796,6 +2904,22 @@ button.fold {
   margin: var(--s-3) 0 0;
   font-size: var(--t-sm);
   color: var(--danger);
+}
+.backup-accounts,
+.backup-passphrase {
+  grid-column: 1 / -1;
+}
+.backup-accounts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.setting-note {
+  margin: var(--s-3) 0 0;
+  font-size: var(--t-sm);
+  color: var(--fg-1);
 }
 .settings-empty {
   flex: 1;

@@ -67,6 +67,11 @@ export type AccountConfig = {
 export type Account = AccountConfig & { id: number };
 /** What a `mailto:` link fills in. */
 export type Mailto = { to: string[]; cc: string[]; bcc: string[]; subject: string; body: string };
+/** A settings file picked for import (Settings → Backup). A sealed one stays in the engine until its passphrase. */
+export type PickedSettings = { text: string | null; locked: boolean };
+/** What opening a sealed backup did: its settings part, the accounts it added or found here already, and the AI
+ * providers whose key it saved. */
+export type UnlockedSettings = { text: string; added: string[]; present: string[]; aiKeys: string[] };
 /** Mail a notification was about. */
 /** Saved text that compose inserts after `;shortcut`; `{first_name}` and the like are filled in there. It can be
  * kept to one account, and can also set the subject (when compose has none) and add people to Cc. `used` and
@@ -174,7 +179,14 @@ export const moves = (a: Action) => typeof a === "object" || a === "archive" || 
 export type Target = { folder: number } | { role: string } | { label: number };
 export type Cursor = { date: number; id: number };
 /** A file attached to a draft (Tern's own copy). */
-export type OutgoingAttachment = { path: string; name: string; mime: string; size: number };
+export type OutgoingAttachment = {
+  path: string;
+  name: string;
+  mime: string;
+  size: number;
+  /** A picture put in the text, named there as `cid:…`. */
+  cid?: string;
+};
 /** Where a forwarded message is on the server; its attachments go along when the forward is sent. */
 export type ForwardOf = { folder: string; uid: number; validity: number | null; messageId: string | null };
 export type Draft = {
@@ -326,9 +338,17 @@ export interface Api {
   attachmentBytes(id: number, index: number): Promise<ArrayBuffer>;
   /** A picture attachment as a data: URI for its card, if it is already on this computer; never downloads. */
   attachmentPreview(id: number, index: number): Promise<string | null>;
-  /** Files dropped on the window from the file manager; returns the way to stop listening. */
-  /** Files dropped on the window; `hover` hears files being dragged over it (true) and leaving (false). */
-  onFilesDropped(f: (paths: string[]) => void, hover?: (over: boolean) => void): () => void;
+  /** Files dropped on the window, with where (CSS pixels); `hover` hears files being dragged over it (true) and
+   * leaving (false). Returns the way to stop listening. */
+  onFilesDropped(f: (paths: string[], at: { x: number; y: number } | null) => void, hover?: (over: boolean) => void): () => void;
+  /** Keeps a pasted picture like an attached file, for the text (PNG, JPEG, GIF or WebP). */
+  addImage(picture: Blob): Promise<OutgoingAttachment>;
+  /** Saves settings, snippets and signatures (src/backup.ts) where the person picks; false if they cancelled. */
+  exportSettings(contents: string, passphrase?: string | null): Promise<boolean>;
+  /** A settings file the person picks: its text, or `locked` when it needs `unlockSettings`; null if they cancelled. */
+  importSettings(): Promise<PickedSettings | null>;
+  /** Opens the sealed file picked last and adds its accounts that aren't here yet; the settings part as text. */
+  unlockSettings(passphrase: string): Promise<UnlockedSettings>;
   /** A picture being attached, as a data: URI for its card; null for other files. */
   outgoingPreview(path: string): Promise<string | null>;
   /** Runs `f` (and waits for it) before the window closes or Tern quits; returns the way to stop. */
@@ -513,6 +533,11 @@ const tauri: Api = {
   onLogo: (f) => void listen("logo", f),
   attachmentPreview: (id, index) => invoke("attachment_preview", { id, index }),
   outgoingPreview: (path) => invoke("outgoing_preview", { path }),
+  addImage: async (picture) =>
+    invoke("add_image", new Uint8Array(await picture.arrayBuffer()), { headers: { "x-mime": picture.type } }),
+  exportSettings: (contents, passphrase = null) => invoke("export_settings", { contents, passphrase }),
+  importSettings: () => invoke("import_settings"),
+  unlockSettings: (passphrase) => invoke("unlock_settings", { passphrase }),
   attachmentBytes: (id, index) => invoke("attachment_bytes", { id, index }),
   saveAttachment: (id, index) => invoke("save_attachment", { id, index }),
   contacts: (query) => invoke("contacts", { query }),
@@ -523,7 +548,9 @@ const tauri: Api = {
     const keep = (unlisten: () => void) => (stopped ? unlisten() : stops.push(unlisten));
     // The drop itself comes from Rust, which offers those paths for attaching first; the webview's own event
     // only shows and hides the drop zone.
-    void listen<string[]>("files-dropped", (e) => f(e.payload)).then(keep);
+    void listen<{ paths: string[]; x: number; y: number }>("files-dropped", (e) =>
+      f(e.payload.paths, { x: e.payload.x / devicePixelRatio, y: e.payload.y / devicePixelRatio }),
+    ).then(keep);
     void import("@tauri-apps/api/webview").then(({ getCurrentWebview }) =>
       getCurrentWebview()
         .onDragDropEvent((e) => {
@@ -679,6 +706,7 @@ function fake(): Api {
     // Gmail-style labels: a third of the conversations are Work, a quarter Invoices.
     { id: 7, accountId: 1, name: "Work", role: "label", unread: 0 },
     { id: 8, accountId: 1, name: "Invoices", role: "label", unread: 0 },
+    ...(location.hash === "#two" ? [{ id: 9, accountId: 2, name: "INBOX", role: "inbox", unread: 0 }] : []),
   ];
   const mutedThreads = new Set<string>();
   const drafts = new Map<number, DraftRecord>();
@@ -696,11 +724,13 @@ function fake(): Api {
       i === 0
         ? `Hi,\n\nThe offsite is set for ${day}, 10:00 to 16:00, at Studio 4, Keizersgracht 120, Amsterdam. Lunch is on us.\n\nThe plan for the day is in the offsite doc: https://docs.example.com/offsite\n\nCan you bring the Q3 deck and walk us through it in 20 minutes?\n\nTrain tickets are booked; the booking code is QX7-44K.\n\nSee you there,\n${name.split(" ")[0]}`
         : `Hi,\n\nThis is about the ${subject}. ${words.join(" ")}.\n\nThanks,\n${name.split(" ")[0]}\n-- \n${name}, Example Corp${quote}`;
+    // #two: a second account (Work) holds every third run of five, to see account colours and switching.
+    const work = location.hash === "#two" && Math.floor(i / 5) % 3 === 1;
     return {
       id: i + 1,
-      accountId: 1,
+      accountId: work ? 2 : 1,
       // #empty: everything archived, to see Inbox Zero.
-      folderId: i % 9 === 0 || location.hash === "#empty" ? 2 : 1,
+      folderId: work ? 9 : i % 9 === 0 || location.hash === "#empty" ? 2 : 1,
       // Every fifth message starts a conversation that the next two answer.
       threadId: i % 5 < 3 ? `t${i - (i % 5)}` : `t${i}`,
       subject,
@@ -781,6 +811,9 @@ function fake(): Api {
   const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
   const snoozed = new Map<string, number>();
   const shelved = new Set<string>();
+  // Pictures pasted into compose, by their made-up path, for their previews.
+  const pasted = new Map<string, string>();
+  let exported: { contents: string; passphrase: string | null } | null = null;
   const inInbox = (m: ThreadMessage) => folders.find((f) => f.id === m.folderId)?.role === "inbox";
   const labelsOf = (m: ThreadMessage) => {
     const n = Number(m.threadId.slice(1));
@@ -812,7 +845,8 @@ function fake(): Api {
   };
 
   return {
-    accounts: async () => [account],
+    accounts: async () =>
+      location.hash === "#two" ? [account, { ...account, id: 2, email: "ada@work.example", displayName: "Ada Work", username: "ada@work.example" }] : [account],
     setAccountName: async (_, name) => void (account.displayName = name.trim()),
     folders: async () =>
       folders.map((f) => ({ ...f, unread: messages.filter((m) => m.folderId === f.id && !m.seen).length })),
@@ -979,7 +1013,28 @@ function fake(): Api {
     addAttachments: async (paths) =>
       paths.map((p) => ({ path: p, name: p.split("/").pop()!, mime: "application/pdf", size: 1_234_567 })),
     onFilesDropped: () => () => {},
-    outgoingPreview: async () => null,
+    outgoingPreview: async (path) => pasted.get(path) ?? null,
+    // The file goes nowhere in the browser: an import reads back the last export.
+    exportSettings: async (contents, passphrase = null) => {
+      if (passphrase != null && passphrase.length < 8) throw "Choose a passphrase of at least 8 characters.";
+      exported = { contents, passphrase };
+      return true;
+    },
+    importSettings: async () => exported && (exported.passphrase ? { text: null, locked: true } : { text: exported.contents, locked: false }),
+    unlockSettings: async (passphrase) => {
+      if (!exported || passphrase !== exported.passphrase) throw "That passphrase doesn't open this file.";
+      return { text: exported.contents, added: [], present: [account.email], aiKeys: [] };
+    },
+    addImage: async (picture) => {
+      const uri = await new Promise<string>((done) => {
+        const reader = new FileReader();
+        reader.onload = () => done(String(reader.result));
+        reader.readAsDataURL(picture);
+      });
+      const path = `/fake/pasted/${pasted.size + 1}/image.png`;
+      pasted.set(path, uri);
+      return { path, name: "image.png", mime: picture.type, size: picture.size };
+    },
     contacts: async (query) => {
       const q = query.toLowerCase();
       const people = names.map((n) => ({ name: n, email: n.toLowerCase().replace(/\s/g, ".") + "@example.com" }));

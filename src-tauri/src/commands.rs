@@ -489,10 +489,11 @@ impl Offered {
 }
 
 /// Files dropped on the window: offered, then told to the window, which attaches them while compose is open.
-pub fn files_dropped(app: &AppHandle, paths: &[std::path::PathBuf]) {
+pub fn files_dropped(app: &AppHandle, paths: &[std::path::PathBuf], at: tauri::PhysicalPosition<f64>) {
     app.state::<Offered>().offer(paths.iter().cloned());
     let shown: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
-    let _ = app.emit("files-dropped", shown);
+    // Where they were dropped, in the window's pixels: pictures dropped on compose's text go in it.
+    let _ = app.emit("files-dropped", serde_json::json!({ "paths": shown, "x": at.x, "y": at.y }));
 }
 
 /// The system's file picker, for attaching. The paths picked are offered for `add_attachments`.
@@ -543,8 +544,6 @@ pub async fn add_attachments(
     offered: State<'_, Offered>,
     paths: Vec<String>,
 ) -> Reply<Vec<OutgoingAttachment>> {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
     let base = attachments_dir(&app)?;
     let mut added = Vec::new();
     for path in paths {
@@ -553,20 +552,56 @@ pub async fn add_attachments(
             return Err(format!("{path}: pick the file or drop it on the window to attach it"));
         }
         let name = source.file_name().map(|n| n.to_string_lossy().into_owned()).ok_or("Not a file")?;
-        let stamp =
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
-        let folder = base.join(format!("{stamp}-{}", NEXT.fetch_add(1, Ordering::Relaxed)));
-        std::fs::create_dir_all(&folder).map_err(|e| format!("{name}: {e}"))?;
-        let copy = folder.join(&name);
+        let copy = new_folder(&base).map_err(|e| format!("{name}: {e}"))?.join(&name);
         let size = std::fs::copy(&source, &copy).map_err(|e| format!("{name}: {e}"))?;
         added.push(OutgoingAttachment {
             path: copy.display().to_string(),
             mime: mime_for(&name).into(),
             name,
             size,
+            cid: None,
         });
     }
     Ok(added)
+}
+
+/// A folder of its own under `base` for one file being attached, so names never clash.
+fn new_folder(base: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let stamp =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let folder = base.join(format!("{stamp}-{}", NEXT.fetch_add(1, Ordering::Relaxed)));
+    std::fs::create_dir_all(&folder)?;
+    Ok(folder)
+}
+
+/// A picture pasted into compose's text, kept like an attached file. The window hands over the bytes (from the
+/// clipboard), never a path, and only a picture of a size the preview can show.
+#[tauri::command]
+pub async fn add_image(app: AppHandle, request: tauri::ipc::Request<'_>) -> Reply<OutgoingAttachment> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("No picture came".into()) };
+    let mime = request.headers().get("x-mime").and_then(|v| v.to_str().ok()).unwrap_or("");
+    let ext = match mime {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        _ => return Err("Only PNG, JPEG, GIF and WebP pictures go in the text".into()),
+    };
+    if bytes.len() as u64 > PREVIEW_LIMIT {
+        return Err("That picture is too big to put in the text; attach it instead".into());
+    }
+    let name = format!("image.{ext}");
+    let path = new_folder(&attachments_dir(&app)?).map_err(|e| e.to_string())?.join(&name);
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(OutgoingAttachment {
+        path: path.display().to_string(),
+        name,
+        mime: mime.into(),
+        size: bytes.len() as u64,
+        cid: None,
+    })
 }
 
 /// A file's type from its extension: the common ones, else a plain stream of bytes.
@@ -853,6 +888,162 @@ pub async fn save_attachment(
     let file = received_file(&app, &state, id, index).await?;
     std::fs::copy(&file, &path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(true)
+}
+
+/// Most a settings file may hold: settings, snippets and signatures are text, far below this.
+const BACKUP_LIMIT: u64 = 5_000_000;
+
+/// Saves the window's export of settings, snippets and signatures where the person picks. False if they cancelled.
+/// With a passphrase the accounts go in too, with their passwords or Google sign-ins from the keyring, and the AI
+/// keys; the file is sealed (`tern_core::backup`).
+#[tauri::command]
+pub async fn export_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    contents: String,
+    passphrase: Option<String>,
+) -> Reply<bool> {
+    use tauri_plugin_dialog::DialogExt;
+    // Sealed before the dialog opens, so a short passphrase is said before a file is picked.
+    let contents = match passphrase {
+        None => contents,
+        Some(passphrase) => {
+            let settings = serde_json::from_str(&contents).map_err(|e| e.to_string())?;
+            let accounts = state
+                .store
+                .accounts()
+                .map_err(text)?
+                .into_iter()
+                .map(|a| tern_core::backup::AccountBackup {
+                    password: secrets::password(&a.config.email).ok(),
+                    tokens: secrets::tokens(&a.config.email).ok(),
+                    config: a.config,
+                })
+                .collect();
+            let ai_keys = Provider::ALL
+                .into_iter()
+                .filter_map(|provider| {
+                    providers::saved_key(provider).map(|key| tern_core::backup::AiKey { provider, key })
+                })
+                .collect();
+            let sealed = tern_core::backup::Contents { settings, accounts, ai_keys };
+            tokio::task::spawn_blocking(move || tern_core::backup::seal(&sealed, &passphrase))
+                .await
+                .map_err(|e| e.to_string())?
+                .map_err(text)?
+        }
+    };
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog = app
+        .dialog()
+        .file()
+        .set_title("Export Tern settings")
+        .set_file_name("tern-settings.json")
+        .add_filter("Tern settings", &["json"]);
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&window);
+    }
+    dialog.save_file(move |chosen| {
+        let _ = tx.send(chosen);
+    });
+    let Some(path) = rx.await.ok().flatten().and_then(|p| p.into_path().ok()) else { return Ok(false) };
+    std::fs::write(&path, contents).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(true)
+}
+
+/// A sealed backup the person picked, kept here until they give its passphrase; the window never holds it.
+#[derive(Default)]
+pub struct Locked(Mutex<Option<String>>);
+
+/// The settings file the person picked: its text, or `locked` when it is sealed and needs `unlock_settings`.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Picked {
+    text: Option<String>,
+    locked: bool,
+}
+
+/// A settings file the person picks, as text for the window to read; None if they cancelled.
+#[tauri::command]
+pub async fn import_settings(app: AppHandle, locked: State<'_, Locked>) -> Reply<Option<Picked>> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog =
+        app.dialog().file().set_title("Import Tern settings").add_filter("Tern settings", &["json"]);
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&window);
+    }
+    dialog.pick_file(move |chosen| {
+        let _ = tx.send(chosen);
+    });
+    let Some(path) = rx.await.ok().flatten().and_then(|p| p.into_path().ok()) else { return Ok(None) };
+    let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+    if size > BACKUP_LIMIT {
+        return Err("That file is too big to be Tern settings".into());
+    }
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if tern_core::backup::is_sealed(&text) {
+        *locked.0.lock().unwrap() = Some(text);
+        return Ok(Some(Picked { text: None, locked: true }));
+    }
+    *locked.0.lock().unwrap() = None;
+    Ok(Some(Picked { text: Some(text), locked: false }))
+}
+
+/// What opening a sealed backup did: the settings part for the window, and which accounts it added.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Unlocked {
+    text: String,
+    added: Vec<String>,
+    /// Accounts the file has that were here already; they keep what they have.
+    present: Vec<String>,
+    /// The AI providers whose key the file brought; a key already saved here is kept.
+    ai_keys: Vec<String>,
+}
+
+/// Opens the sealed backup picked last with its passphrase and adds the accounts that aren't here yet, with their
+/// passwords or Google sign-ins put in the keyring, and the AI keys not saved here yet. Their mail starts downloading at once. A wrong passphrase
+/// keeps the file, so the person can try again.
+#[tauri::command]
+pub async fn unlock_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    locked: State<'_, Locked>,
+    passphrase: String,
+) -> Reply<Unlocked> {
+    let file = locked.0.lock().unwrap().clone().ok_or("Pick the file again")?;
+    let contents = tokio::task::spawn_blocking(move || tern_core::backup::open(&file, &passphrase))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(text)?;
+    let here = state.store.accounts().map_err(text)?;
+    let (mut added, mut present) = (vec![], vec![]);
+    for a in contents.accounts {
+        let email = a.config.email.clone();
+        if here.iter().any(|h| h.config.email.eq_ignore_ascii_case(&email)) {
+            present.push(email);
+            continue;
+        }
+        if let Some(password) = &a.password {
+            secrets::set_password(&email, password).map_err(text)?;
+        }
+        if let Some(tokens) = &a.tokens {
+            secrets::set_tokens(&email, tokens).map_err(text)?;
+        }
+        let account = state.store.add_account(&a.config).map_err(text)?;
+        start_account(&app, &state, account);
+        added.push(email);
+    }
+    let mut ai_keys = vec![];
+    for k in contents.ai_keys {
+        if !providers::has_key(k.provider) {
+            providers::set_key(k.provider, &k.key).map_err(text)?;
+            ai_keys.push(k.provider.name().to_string());
+        }
+    }
+    *locked.0.lock().unwrap() = None;
+    Ok(Unlocked { text: contents.settings.to_string(), added, present, ai_keys })
 }
 
 /// The `mailto:` link Tern was started with, once; the window asks when it is ready.

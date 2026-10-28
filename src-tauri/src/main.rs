@@ -123,6 +123,7 @@ fn main() {
         .manage(desktop::Desktop::new())
         .manage(update::Updates::default())
         .manage(commands::Offered::default())
+        .manage(commands::Locked::default())
         .setup(|app| {
             // First, so everything after it is in the log file too.
             diagnostics::start_logging(&diagnostics::log_dir(app.handle()));
@@ -181,8 +182,8 @@ fn main() {
         })
         .on_window_event(|window, event| match event {
             WindowEvent::Focused(true) => window.state::<AppState>().wake_all(),
-            WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
-                commands::files_dropped(window.app_handle(), paths)
+            WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, position }) => {
+                commands::files_dropped(window.app_handle(), paths, *position)
             }
             _ => {}
         })
@@ -196,6 +197,10 @@ fn main() {
             commands::remove_account,
             commands::received_cache_size,
             commands::message_source,
+            commands::add_image,
+            commands::export_settings,
+            commands::import_settings,
+            commands::unlock_settings,
             commands::mark_all_read,
             commands::clear_received_cache,
             commands::google_available,

@@ -19,7 +19,7 @@ use lettre::transport::smtp::commands::{Data, Mail, Rcpt};
 use lettre::transport::smtp::extension::{ClientId, Extension, MailBodyParameter, MailParameter};
 use lettre::Message;
 
-use crate::models::{AccountConfig, Draft, Security};
+use crate::models::{AccountConfig, Draft, OutgoingAttachment, Security};
 
 /// Longest wait for connecting, signing in, and each command before the message.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
@@ -132,31 +132,56 @@ fn build_as(config: &AccountConfig, draft: &Draft, extra: &[FileBytes], for_draf
         }
         builder = builder.references(chain.join(" "));
     }
-    // Rich text goes as text/plain and text/html alternatives: every client reads one of them.
+    // Rich text goes as text/plain and text/html alternatives: every client reads one of them. Pictures put in the
+    // text go beside the HTML (multipart/related), each under the Content-ID it names; the rest are files.
     let (body, html) = draft.outgoing();
-    let text = || match html {
-        Some(html) => MultiPart::alternative_plain_html(body.to_string(), html.to_string()),
+    let (inline, files): (Vec<&OutgoingAttachment>, Vec<&OutgoingAttachment>) =
+        draft.attachments.iter().partition(|f| shown_in(f, html));
+    let read = |file: &OutgoingAttachment| {
+        std::fs::read(&file.path).with_context(|| format!("Could not read the attachment {}", file.name))
+    };
+    let text = match html {
+        Some(html) if inline.is_empty() => {
+            MultiPart::alternative_plain_html(body.to_string(), html.to_string())
+        }
+        Some(html) => {
+            let mut related = MultiPart::related().singlepart(SinglePart::html(html.to_string()));
+            for file in &inline {
+                let cid = file.cid.clone().unwrap_or_default();
+                related = related
+                    .singlepart(Attachment::new_inline(cid).body(read(file)?, content_type(&file.mime)));
+            }
+            MultiPart::alternative().singlepart(SinglePart::plain(body.to_string())).multipart(related)
+        }
         None => MultiPart::mixed().singlepart(SinglePart::plain(body.to_string())),
     };
-    if draft.attachments.is_empty() && extra.is_empty() {
+    if files.is_empty() && extra.is_empty() {
         return Ok(match html {
-            Some(_) => builder.multipart(text())?,
+            Some(_) => builder.multipart(text)?,
             None => builder.header(ContentType::TEXT_PLAIN).body(body.to_string())?,
         });
     }
     let mut parts = match html {
-        Some(_) => MultiPart::mixed().multipart(text()),
+        Some(_) => MultiPart::mixed().multipart(text),
         None => MultiPart::mixed().singlepart(SinglePart::plain(body.to_string())),
     };
-    for file in &draft.attachments {
-        let bytes = std::fs::read(&file.path)
-            .with_context(|| format!("Could not read the attachment {}", file.name))?;
-        parts = parts.singlepart(Attachment::new(file.name.clone()).body(bytes, content_type(&file.mime)));
+    for file in files {
+        parts =
+            parts.singlepart(Attachment::new(file.name.clone()).body(read(file)?, content_type(&file.mime)));
     }
     for (name, mime, bytes) in extra {
         parts = parts.singlepart(Attachment::new(name.clone()).body(bytes.clone(), content_type(mime)));
     }
     Ok(builder.multipart(parts)?)
+}
+
+/// A picture the HTML still shows by its Content-ID. Its id goes into a header, so only plain characters; one taken
+/// out of the text (or with an odd id) goes as an ordinary file.
+fn shown_in(file: &OutgoingAttachment, html: Option<&str>) -> bool {
+    let (Some(cid), Some(html)) = (&file.cid, html) else { return false };
+    !cid.is_empty()
+        && cid.chars().all(|c| c.is_ascii_alphanumeric() || "-_.@".contains(c))
+        && html.contains(&format!("cid:{cid}"))
 }
 
 fn content_type(mime: &str) -> ContentType {
@@ -509,6 +534,7 @@ Ada"
                 name: "q3.pdf".into(),
                 mime: "application/pdf".into(),
                 size: pdf.len() as u64,
+                cid: None,
             }],
             forward_of: None,
             message_id: None,
@@ -569,6 +595,65 @@ Ada"
         let raw = build(&config, &draft, &extra).unwrap().formatted();
         assert_eq!(crate::mime::attachment_files(&raw).len(), 1);
         assert!(crate::mime::parse(1, &raw, false, false).unwrap().body_html.unwrap().contains("<strong>"));
+    }
+
+    #[test]
+    fn pictures_in_the_text_go_beside_the_html() {
+        let dir = std::env::temp_dir().join(format!("tern-inline-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = b"\x89PNG\r\n\x1a\nnot really a picture".to_vec();
+        std::fs::write(dir.join("shot.png"), &png).unwrap();
+        std::fs::write(dir.join("gone.png"), &png).unwrap();
+        let config = AccountConfig {
+            email: "ada@example.com".into(),
+            display_name: String::new(),
+            username: "ada".into(),
+            imap_host: String::new(),
+            imap_port: 993,
+            imap_security: Security::Tls,
+            smtp_host: String::new(),
+            smtp_port: 465,
+            smtp_security: Security::Tls,
+            auth: Default::default(),
+        };
+        let picture = |name: &str, cid: &str| crate::models::OutgoingAttachment {
+            path: dir.join(name).display().to_string(),
+            name: name.into(),
+            mime: "image/png".into(),
+            size: png.len() as u64,
+            cid: Some(cid.into()),
+        };
+        let draft = Draft {
+            html: Some(r#"<p>Look:</p><p><img src="cid:a1@tern" alt="shot.png"></p>"#.into()),
+            to: vec!["b@example.com".into()],
+            cc: vec![],
+            bcc: vec![],
+            subject: "picture".into(),
+            body: "Look:\n\n[shot.png]".into(),
+            in_reply_to: None,
+            references: vec![],
+            // The second was taken out of the text again: it goes as a file.
+            attachments: vec![picture("shot.png", "a1@tern"), picture("gone.png", "b2@tern")],
+            forward_of: None,
+            message_id: None,
+            html_signature: None,
+            out_body: None,
+            out_html: None,
+        };
+        let raw = build(&config, &draft, &[]).unwrap().formatted();
+        let text = String::from_utf8_lossy(&raw);
+        assert!(text.contains("multipart/related") && text.contains("Content-ID: <a1@tern>"), "{text}");
+        let shown = crate::mime::inline_images(&raw, 1_000_000);
+        assert_eq!(shown.len(), 1);
+        assert_eq!(shown[0].0, "a1@tern");
+        let files = crate::mime::attachment_files(&raw);
+        assert!(files.iter().any(|f| f.0 == "gone.png"), "the one out of the text is a file");
+        assert!(crate::mime::parse(1, &raw, false, false)
+            .unwrap()
+            .body_html
+            .unwrap()
+            .contains("cid:a1@tern"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[tokio::test]

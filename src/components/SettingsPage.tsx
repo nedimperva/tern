@@ -7,6 +7,7 @@ import { AiSettingsPage } from "./settings/ai";
 import { SnippetSettings } from "./settings/snippets";
 import { SignatureSettings } from "./settings/signatures";
 import { AccountPage } from "./settings/account";
+import { BackupSettings } from "./settings/backup";
 
 type Section = {
   /** Unique: a section name, or "account:<id>". */
@@ -51,6 +52,13 @@ export function SettingsPage(props: {
       group: "General",
       words: "ai claude anthropic openai gpt gemini google api key summary summarize replies suggest write rewrite style voice model privacy",
       body: () => <AiSettingsPage accounts={props.accounts} />,
+    },
+    {
+      id: "Backup",
+      name: "Backup",
+      group: "General",
+      words: "export import move another computer copy file json settings snippets signatures accounts passwords passphrase encrypted",
+      body: () => <BackupSettings accounts={props.accounts} onAccountsChanged={props.onAccountsChanged} />,
     },
     { id: "About", name: "About", group: "General", words: "version log bug report problem help beta downloaded attachments cache disk space clear", body: () => <AboutSettings /> },
     { id: "Compose", name: "Compose", group: "Writing", words: "undo send delay attachment forgotten attached prilog anhang", body: () => <ComposeSettings /> },

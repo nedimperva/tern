@@ -30,7 +30,7 @@ import {
 import { moveMessage, open, toggleMessage, unmute, viewFiles } from "./conversation";
 import { newMessage, reply, respond } from "./composing";
 import { lineHere, runDeck } from "./deck";
-import { escape, extend, go, move, nextSplit, toggleSelected } from "./list";
+import { escape, extend, go, isSaved, move, nextSplit, runSearch, toggleSaved, toggleSelected } from "./list";
 import { keyOf } from "./rows";
 import {
   accounts,
@@ -62,6 +62,7 @@ import {
   setSetup,
   setSheet,
   setSnoozing,
+  searching,
   update,
 } from "./state";
 import { late, paused } from "./status";
@@ -185,6 +186,8 @@ export const commands = (all: Binding[]): Command[] => [
       group: b.keys.startsWith("g ") ? "Go to" : "Actions",
       run: () => void b.run(),
     })),
+  ...(searching() ? [{ name: isSaved() ? "Forget this search" : "Save this search", group: "Actions", run: toggleSaved }] : []),
+  ...settings.savedSearches.map((q) => ({ name: q, group: "Saved searches", run: () => runSearch(q) })),
   ...(settings.splitInbox
     ? [
         { name: "Move sender to Other", group: "Actions", run: () => void moveToSplit(true) },

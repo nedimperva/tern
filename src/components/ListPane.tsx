@@ -1,6 +1,6 @@
-import { For, Show } from "solid-js";
+import { createMemo, For, Show } from "solid-js";
 import { firstName, lineHere, runDeck } from "../app/deck";
-import { go, loadMore, splitIndex, SPLITS, tabUnread, title, toggleSelected } from "../app/list";
+import { go, isSaved, loadMore, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
 import { open } from "../app/conversation";
 import { keyOf } from "../app/rows";
 import {
@@ -12,6 +12,7 @@ import {
   ready,
   rows,
   searchBox,
+  target,
   searching,
   selection,
   setFocus,
@@ -21,6 +22,8 @@ import {
 } from "../app/state";
 import { coverage, inboxZero } from "../app/status";
 import { ROW_HEIGHTS, settings, SPLIT_ROW_EXTRA } from "../settings";
+import { colourOf } from "../colours";
+import type { ThreadRow } from "../api";
 import { ConversationRow } from "./ConversationRow";
 import { DayLine } from "./DayLine";
 import { Icon } from "./Icon";
@@ -37,6 +40,17 @@ export function ListPane(props: {
   /** Conversations that need the person, for the dot in their rows. */
   needsYou: ReadonlySet<string>;
 }) {
+  // A list that mixes accounts (the inboxes, splits, search) marks each row with its account's colour, but only
+  // when its rows really come from more than one: All Inboxes with one account's mail looks like that account's.
+  const mixed = createMemo(() => {
+    if (accounts().length < 2 || !(searching() || "role" in target())) return false;
+    const first = rows()[0]?.accountId;
+    return rows().some((r) => r.accountId !== first);
+  });
+  const accountOf = (row: ThreadRow) => {
+    const a = mixed() ? accounts().find((x) => x.id === row.accountId) : undefined;
+    return a ? { colour: colourOf(accounts(), a.id), email: a.email } : undefined;
+  };
   const onSearchKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
       setQuery("");
@@ -80,6 +94,16 @@ export function ListPane(props: {
           onInput={(e) => setQuery(e.currentTarget.value)}
           onKeyDown={onSearchKey}
         />
+        <Show when={searching()}>
+          <button
+            class="link save-search"
+            classList={{ on: isSaved() }}
+            title={isSaved() ? "Take this search out of the rail" : "Keep this search in the rail and the command palette"}
+            onClick={toggleSaved}
+          >
+            {isSaved() ? "Saved" : "Save search"}
+          </button>
+        </Show>
         <button class="link" title="Command palette" onClick={() => setPalette(true)}>
           <kbd>Ctrl K</kbd>
         </button>
@@ -123,6 +147,7 @@ export function ListPane(props: {
               narrow={props.split}
               needsYou={props.needsYou.has(keyOf(row))}
               hits={props.hits}
+              account={accountOf(row)}
               onClick={(e) => {
                 setFocus(index());
                 if (e.shiftKey || e.ctrlKey || e.metaKey) toggleSelected(row);

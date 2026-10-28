@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createRoot, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { baseKeymap, setBlockType, toggleMark, wrapIn, lift } from "prosemirror-commands";
 import { history, redo, undo } from "prosemirror-history";
 import { inputRules, wrappingInputRule, InputRule } from "prosemirror-inputrules";
@@ -7,7 +7,7 @@ import { liftListItem, sinkListItem, splitListItem, wrapInList } from "prosemirr
 import { EditorState, Plugin, TextSelection, type Command } from "prosemirror-state";
 import { Slice } from "prosemirror-model";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
-import { fromHtml, fromText, schema, toHtml, toText } from "../editor/schema";
+import { fromHtml, fromText, insertPictures, schema, toHtml, toText, type Picture } from "../editor/schema";
 import type { Snippet } from "../api";
 
 /** Where compose's snippets come from: the ones offered here, their text with the places filled in, and what using
@@ -88,6 +88,11 @@ export function Editor(props: {
   toolbar?: boolean;
   /** Enter starts a new line rather than a paragraph: a signature's lines sit together. */
   lineBreaks?: boolean;
+  /** Pictures pasted or dropped into the text: kept by compose, which says what they go out as. Without it, a
+   * pasted picture is left out. */
+  onPictures?: (files: File[]) => Promise<Picture[]>;
+  /** What the pictures in the text show, by Content-ID (data: URIs). */
+  pictures?: () => Record<string, string>;
 }) {
   let host!: HTMLDivElement;
   let view!: EditorView;
@@ -239,6 +244,25 @@ export function Editor(props: {
         if (tr.docChanged) props.onChange(toText(state.doc), toHtml(state.doc));
       },
       handleKeyDown: (_, event) => pickerKey(event),
+      handlePaste: (_, event) => takePictures(event.clipboardData, event),
+      handleDrop: (_, event) => takePictures((event as DragEvent).dataTransfer, event, { x: (event as DragEvent).clientX, y: (event as DragEvent).clientY }),
+      nodeViews: {
+        // A picture shows from compose's copy of it: the text names it only by Content-ID.
+        image: (node) => {
+          const img = document.createElement("img");
+          img.alt = node.attrs.alt;
+          const cid = String(node.attrs.src).replace(/^cid:/, "");
+          const stop = createRoot((dispose) => {
+            createEffect(() => {
+              const uri = props.pictures?.()[cid];
+              img.classList.toggle("loading", !uri);
+              if (uri) img.src = uri;
+            });
+            return dispose;
+          });
+          return { dom: img, destroy: stop };
+        },
+      },
       handleDOMEvents: {
         blur: () => (window.setTimeout(() => (!linking() && setBar(null), setPicker(null)), 150), false),
       },
@@ -251,6 +275,15 @@ export function Editor(props: {
     }
   });
   onCleanup(() => view?.destroy());
+
+  /** Pictures among what was pasted or dropped go in the text; anything else is ProseMirror's as usual. */
+  const takePictures = (data: DataTransfer | null, event: Event, at?: { x: number; y: number }) => {
+    const files = [...(data?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    if (!files.length || !props.onPictures) return false;
+    event.preventDefault();
+    void props.onPictures(files).then((pictures) => insertPictures(view, pictures, at));
+    return true;
+  };
 
   const run = (command: Command) => {
     command(view.state, view.dispatch);

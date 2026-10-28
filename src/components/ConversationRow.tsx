@@ -61,6 +61,8 @@ export function ConversationRow(props: {
   onOpen: () => void;
   /** The words searched for, lit up in the row (search results only). */
   hits?: string[];
+  /** Its account's colour and address, in a list of several accounts' mail. */
+  account?: { colour: string; email: string };
 }) {
   const lit = (text: string) => <Lit text={text} words={props.hits} />;
   return (
@@ -72,7 +74,17 @@ export function ConversationRow(props: {
       onMouseDown={props.onClick}
       onDblClick={props.onOpen}
     >
-      <span class="mark">{props.selected ? "✓" : props.needsYou ? <span class="needs" title="Waits on you" /> : ""}</span>
+      <span class="mark">
+        {props.selected ? (
+          "✓"
+        ) : props.needsYou ? (
+          <span class="needs" title="Waits on you" />
+        ) : props.account ? (
+          <span class="account-dot" style={{ background: props.account.colour }} title={props.account.email} />
+        ) : (
+          ""
+        )}
+      </span>
       <span class="who">
         <span class="names">{lit(participants(props.row))}</span>
         <Show when={props.row.count > 1}>

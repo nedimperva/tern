@@ -195,9 +195,46 @@ export function Compose(props: {
     }
   };
   const pick = async () => attach(await api.pickFiles());
+  /** Kept files become pictures in the text, each under a Content-ID of its own. */
+  const asPictures = (kept: OutgoingAttachment[], names: string[] = []) => {
+    const named = kept.map((f, i) => ({ ...f, cid: `${crypto.randomUUID()}@tern`, name: names[i] || f.name }));
+    setFiles([...files(), ...named]);
+    changed();
+    return named.map((f) => ({ cid: f.cid, alt: f.name }));
+  };
+  /** Pictures pasted into the text (or dropped on it in a browser). */
+  const pictures = async (pasted: File[]) => {
+    try {
+      return asPictures(await Promise.all(pasted.map((p) => api.addImage(p))), pasted.map((p) => p.name));
+    } catch (e) {
+      setProblem(`Could not put the picture in: ${e}`);
+      return [];
+    }
+  };
+  /** Files dropped on the window: pictures dropped on the text go in it, everything else is attached. */
+  const dropped = async (paths: string[], at: { x: number; y: number } | null) => {
+    const box = formEl?.querySelector(".editor-body")?.getBoundingClientRect();
+    const onText = !!(at && box && view && at.x >= box.left && at.x <= box.right && at.y >= box.top && at.y <= box.bottom);
+    const picture = (p: string) => onText && /\.(png|jpe?g|gif|webp)$/i.test(p);
+    void attach(paths.filter((p) => !picture(p)));
+    const shown = paths.filter(picture);
+    if (!shown.length) return;
+    try {
+      const placed = asPictures(await api.addAttachments(shown));
+      const { insertPictures } = await import("../editor/schema");
+      if (view) insertPictures(view, placed, at!);
+    } catch (e) {
+      setProblem(`Could not attach: ${e}`);
+    }
+  };
   // Files dragged over the window: the drop zone shows while they are.
   const [dragging, setDragging] = createSignal(false);
-  onMount(() => onCleanup(api.onFilesDropped((paths) => void attach(paths), setDragging)));
+  onMount(() => onCleanup(api.onFilesDropped((paths, at) => void dropped(paths, at), setDragging)));
+  /** The pictures in the text, by Content-ID, as their previews. */
+  const shownPictures = () =>
+    Object.fromEntries(files().flatMap((f) => (f.cid && previews()[f.path] ? [[f.cid, previews()[f.path]]] : [])));
+  /** Files that show as cards: pictures in the text show there instead. */
+  const cards = () => files().filter((f) => !f.cid);
   // Pictures being attached, shown on their cards.
   const [previews, setPreviews] = createSignal<Record<string, string>>({});
   createEffect(() => {
@@ -232,7 +269,8 @@ export function Compose(props: {
       html: html(),
       inReplyTo: props.init.inReplyTo ?? null,
       references: props.init.references ?? [],
-      attachments: files(),
+      // A picture taken out of the text again is left behind (undo in the text can still bring it back).
+      attachments: files().filter((f) => !f.cid || (html() ?? "").includes(`cid:${f.cid}`)),
       forwardOf: forwardOf(),
       htmlSignature: sig?.id ?? null,
       outBody: out?.body ?? null,
@@ -657,6 +695,8 @@ export function Compose(props: {
               snippets={snippets}
               quoteOpen={props.init.quoteOpen}
               ref={editorReady}
+              onPictures={pictures}
+              pictures={shownPictures}
               onChange={(text, rich) => (setBody(text), setHtml(rich), changed())}
             />
           )}
@@ -669,7 +709,7 @@ export function Compose(props: {
           </div>
         )}
       </Show>
-      <Show when={files().length || forwardOf()}>
+      <Show when={cards().length || forwardOf()}>
         <div class="outgoing-files" aria-label="Attachments">
           <Show when={forwardOf()}>
             <span class="file-card" title="Attached from the forwarded message when it is sent">
@@ -688,8 +728,8 @@ export function Compose(props: {
               </button>
             </span>
           </Show>
-          <For each={files()}>
-            {(f, i) => (
+          <For each={cards()}>
+            {(f) => (
               <span class="file-card" title={f.mime}>
                 <span class="thumb">
                   <Show when={previews()[f.path]} fallback={<Icon name={f.mime.startsWith("image/") ? "image" : "file"} size={18} />}>
@@ -704,7 +744,7 @@ export function Compose(props: {
                   type="button"
                   class="remove"
                   aria-label={`Remove ${f.name}`}
-                  onClick={() => (setFiles(files().filter((_, j) => j !== i())), changed())}
+                  onClick={() => (setFiles(files().filter((x) => x !== f)), changed())}
                 >
                   ×
                 </button>
@@ -730,6 +770,7 @@ export function Compose(props: {
         <div class="drop-zone" aria-hidden="true">
           <Icon name="download" size={28} />
           <strong>Drop to attach</strong>
+          <span>Pictures dropped on the text go in it</span>
         </div>
       </Show>
       <Show when={problem()}>
