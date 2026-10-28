@@ -2,7 +2,8 @@
 //!
 //! Plain words match subject, sender and body as prefixes ("inv acme" finds "Invoice from ACME"); `"exact phrase"`
 //! matches as written; `OR` between words takes either. Filters narrow by fields: `from:` `to:` `cc:` `subject:`
-//! (`me` means the account's own address), `is:unread|read|starred|unstarred|marked`, `has:attachment`,
+//! (`me` means the account's own address), `is:unread|read|starred|unstarred|marked|snoozed`,
+//! `has:attachment|note`,
 //! `in:inbox|archive|sent|drafts|trash|spam|<folder>` (`label:` is the same), `before:`/`after:` a date
 //! (YYYY-MM-DD, UTC), `newer_than:`/`older_than:` 3d 2w 6m 1y, `larger:`/`smaller:` 500k 5m. A leading `-` excludes.
 //! Anything that is not a known filter is searched as text, so a mistyped filter still finds something.
@@ -151,6 +152,13 @@ fn address(columns: &[&str], value: &str, q: &mut Vec<Value>) -> String {
     format!("({})", any.join(" OR "))
 }
 
+// Marked in Tern (reading marks and notes), on this message or another copy of it.
+const MARKED: &str = "EXISTS (SELECT 1 FROM marks k WHERE k.account_id = m.account_id
+                               AND k.message_key = COALESCE(m.message_id, '#' || m.id))";
+// A mark with a note written on it.
+const NOTED: &str = "EXISTS (SELECT 1 FROM marks k WHERE k.account_id = m.account_id
+                              AND k.message_key = COALESCE(m.message_id, '#' || m.id) AND k.note <> '')";
+
 /// The SQL for one filter, or None when `key:value` is not a filter (then it is searched as text).
 fn filter(key: &str, value: &str, now: i64, q: &mut Vec<Value>) -> Option<String> {
     let lower = value.to_lowercase();
@@ -169,13 +177,18 @@ fn filter(key: &str, value: &str, now: i64, q: &mut Vec<Value>) -> Option<String
             "starred" | "flagged" => "m.flagged = 1".into(),
             "unstarred" => "m.flagged = 0".into(),
             // Marked in Tern (reading marks and notes), on this message or another copy of it.
-            "marked" | "noted" => "EXISTS (SELECT 1 FROM marks k WHERE k.account_id = m.account_id
-                                           AND k.message_key = COALESCE(m.message_id, '#' || m.id))"
+            "marked" => MARKED.into(),
+            "noted" => NOTED.into(),
+            // Snoozed is the conversation's, not the message's: every message in it counts.
+            "snoozed" => "EXISTS (SELECT 1 FROM reminders r WHERE r.account_id = m.account_id
+                                  AND r.thread_id = m.thread_id AND r.kind = 'snooze')"
                 .into(),
             _ => return None,
         },
         "has" => match lower.as_str() {
             "attachment" | "attachments" | "file" | "files" => "m.has_attachments = 1".into(),
+            "mark" | "marks" => MARKED.into(),
+            "note" | "notes" => NOTED.into(),
             _ => return None,
         },
         "in" | "label" => {

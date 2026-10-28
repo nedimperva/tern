@@ -1301,7 +1301,8 @@ export default function App() {
                     <p>Nothing found.</p>
                     <p>
                       Search also takes filters: <code>from:</code> <code>to:</code> <code>subject:</code> <code>is:unread</code>{" "}
-                      <code>is:starred</code> <code>is:marked</code> <code>has:attachment</code> <code>in:sent</code>{" "}
+                      <code>is:starred</code> <code>is:marked</code> <code>has:note</code> <code>is:snoozed</code>{" "}
+                      <code>has:attachment</code> <code>in:sent</code>{" "}
                       <code>before:2026-01-31</code> <code>newer_than:7d</code> <code>larger:5m</code>. Quote a
                       phrase, put <code>-</code> before what to leave out, <code>OR</code> between words for either.
                     </p>

@@ -4355,9 +4355,34 @@ Engines Ltd"
         };
         assert_eq!(subjects("is:marked"), ["Issue 112"]);
         assert_eq!(subjects("-is:marked"), ["Lunch"]);
+        assert_eq!(subjects("has:note"), ["Issue 112"]);
+        let lunch = rows.iter().find(|t| t.latest.subject == "Lunch").unwrap().latest.id;
+        store.add_mark(lunch, "the usual place", "").unwrap();
+        assert_eq!(subjects("has:mark").len(), 2);
+        assert_eq!(subjects("has:note"), ["Issue 112"], "a mark without a note is not a note");
+        assert_eq!(subjects("-has:note"), ["Lunch"]);
         assert_eq!(subjects("ada friday"), ["Issue 112"], "words in a note");
         assert_eq!(subjects("deadline is:unread"), ["Issue 112"], "words in a mark, with filters");
         assert!(subjects("deadline is:read").is_empty());
+    }
+
+    #[test]
+    fn search_finds_snoozed_conversations() {
+        let (store, account, inbox, _) = setup();
+        store
+            .insert_messages(account, inbox, &[message(1, "Tickets", 100), message(2, "Lunch", 200)])
+            .unwrap();
+        let subjects = |q: &str| -> Vec<String> {
+            store.search(q, 10).unwrap().rows.into_iter().map(|r| r.subject).collect()
+        };
+        assert!(subjects("is:snoozed").is_empty());
+        let rows = store.list_threads(&ListTarget::Role("inbox".into()), None, 9).unwrap();
+        let tickets = rows.iter().find(|t| t.latest.subject == "Tickets").unwrap().latest.id;
+        store.snooze(&[tickets], 10_000, 300).unwrap();
+        assert_eq!(subjects("is:snoozed"), ["Tickets"]);
+        assert_eq!(subjects("-is:snoozed"), ["Lunch"]);
+        store.unsnooze(&[tickets]).unwrap();
+        assert!(subjects("is:snoozed").is_empty());
     }
 
     #[test]

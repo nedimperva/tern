@@ -7,6 +7,11 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Search filters `is:snoozed` (snoozed conversations) and `has:note` (mail with a note on a mark); `has:mark` is
+  the same as `is:marked`.
+
 ### Changed
 
 - Faster while mail downloads: the window reads everything again at most every 150 ms instead of on every frame,
