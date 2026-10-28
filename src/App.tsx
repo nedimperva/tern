@@ -70,6 +70,27 @@ const MIN_SPLIT_WIDTH = 960;
 /** A conversation's identity across reloads: its newest message, and so the row's id, changes as mail arrives. */
 const keyOf = (r: MessageRow) => `${r.accountId}:${r.threadId}`;
 
+/** `next`, with each row that did not change kept as the very object it was, so the list's <For> keeps its
+ * element instead of making it again: during a backfill the list reloads many times a second. */
+function keepRows<T extends MessageRow>(old: T[], next: T[]): T[] {
+  if (!old.length) return next;
+  const before = new Map(old.map((r) => [keyOf(r), r]));
+  return next.map((r) => {
+    const was = before.get(keyOf(r));
+    return was && sameRow(was, r) ? was : r;
+  });
+}
+
+function sameRow(a: object, b: object): boolean {
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every((k) => {
+    const x = (a as Record<string, unknown>)[k];
+    const y = (b as Record<string, unknown>)[k];
+    return x === y || (typeof x === "object" && typeof y === "object" && JSON.stringify(x) === JSON.stringify(y));
+  });
+}
+
 /** A search hit shown like a conversation row. */
 const asRow = (m: MessageRow): ThreadRow => ({
   ...m,
@@ -201,7 +222,7 @@ export default function App() {
     // Focus stays on the same conversation if it is still there, else on the same place in the list.
     const focusedKey = current() && keyOf(current()!);
     batch(() => {
-      setRows(page);
+      setRows(keepRows(rows(), page));
       const at = focusedKey ? page.findIndex((r) => keyOf(r) === focusedKey) : -1;
       setFocus(at >= 0 ? at : Math.min(focus(), Math.max(0, page.length - 1)));
       const keys = new Set(page.map(keyOf));
@@ -220,8 +241,9 @@ export default function App() {
     setRows([...rows(), ...page]);
   }
 
-  async function refresh() {
-    loadSignatures();
+  /** Everything the window shows, read again. Sync never changes signatures, so its changes leave them out. */
+  async function refresh(signatures = true) {
+    if (signatures) loadSignatures();
     const [a, f, p, w, s] = await Promise.all([
       api.accounts(),
       api.folders(),
@@ -251,18 +273,30 @@ export default function App() {
     }
   }
 
-  // Sync can report many changes a second; draw once per frame at most.
-  let pending = false;
+  // Sync can report many changes a second (a backfill reports each batch): read everything again at most every
+  // 150 ms. The first change in a quiet spell shows at once; the rest wait for the end of the window.
+  const CHANGE_MS = 150;
+  let changeTimer: number | undefined;
+  let changeAgain = false;
   const onChange = () => {
     void refreshStart();
-    if (pending) return;
-    pending = true;
-    requestAnimationFrame(() => {
-      pending = false;
-      void refresh();
-      void reloadConversation();
-    });
     readProgress();
+    if (changeTimer !== undefined) {
+      changeAgain = true;
+      return;
+    }
+    const run = () => {
+      void refresh(false);
+      void reloadConversation();
+    };
+    run();
+    const settle = () => {
+      if (!changeAgain) return void (changeTimer = undefined);
+      changeAgain = false;
+      run();
+      changeTimer = window.setTimeout(settle, CHANGE_MS);
+    };
+    changeTimer = window.setTimeout(settle, CHANGE_MS);
   };
 
   onMount(() => {
@@ -1267,7 +1301,8 @@ export default function App() {
                     <p>Nothing found.</p>
                     <p>
                       Search also takes filters: <code>from:</code> <code>to:</code> <code>subject:</code> <code>is:unread</code>{" "}
-                      <code>is:starred</code> <code>is:marked</code> <code>has:attachment</code> <code>in:sent</code>{" "}
+                      <code>is:starred</code> <code>is:marked</code> <code>has:note</code> <code>is:snoozed</code>{" "}
+                      <code>has:attachment</code> <code>in:sent</code>{" "}
                       <code>before:2026-01-31</code> <code>newer_than:7d</code> <code>larger:5m</code>. Quote a
                       phrase, put <code>-</code> before what to leave out, <code>OR</code> between words for either.
                     </p>
@@ -1416,7 +1451,7 @@ export default function App() {
           problems={problems()}
           waiting={[...held(), ...late()]}
           scheduled={scheduled()}
-          onSendNow={(id) => void api.sendNow(id).then(refresh)}
+          onSendNow={(id) => void api.sendNow(id).then(() => refresh())}
           offline={!online() || Object.values(syncStates()).includes("offline")}
           now={clock()}
           onDiscardWaiting={(id) =>
@@ -1425,8 +1460,8 @@ export default function App() {
               void refresh();
             })
           }
-          onRetry={(id) => void api.retryProblem(id).then(refresh)}
-          onDiscard={(id) => void api.discardProblem(id).then(refresh)}
+          onRetry={(id) => void api.retryProblem(id).then(() => refresh())}
+          onDiscard={(id) => void api.discardProblem(id).then(() => refresh())}
           onEdit={(id) => void api.problemToDraft(id).then((record) => (setReviewing(false), resume(record), refresh()))}
           onClose={() => setReviewing(false)}
         />

@@ -4,6 +4,7 @@
 //! An update is downloaded and its signature checked in the background; it is only installed when the person
 //! picks "Restart to update", so nothing restarts under them.
 
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
@@ -16,9 +17,10 @@ const FIRST_LOOK: Duration = Duration::from_secs(60);
 const DAILY: Duration = Duration::from_secs(24 * 3600);
 const WAKE: Duration = Duration::from_secs(3600);
 
-/// A downloaded, verified update waiting for the restart.
+/// A downloaded, verified update waiting for the restart, and the file it waits in: an installer is tens of MB,
+/// too much to keep in memory for the days it may wait.
 #[derive(Default)]
-pub struct Updates(Mutex<Option<(Update, Vec<u8>)>>);
+pub struct Updates(Mutex<Option<(Update, PathBuf)>>);
 
 /// Whether this copy of Tern installs its own updates.
 fn self_updating() -> bool {
@@ -62,8 +64,15 @@ async fn fetch(app: &AppHandle) -> tauri_plugin_updater::Result<bool> {
     // `download` checks the signature against the public key in tauri.conf.json.
     let bytes = update.download(|_, _| {}, || {}).await?;
     let version = update.version.clone();
+    let dir = app.path().app_cache_dir()?.join("update");
+    // One update waits at a time; an older one left from a run that never restarted goes.
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+    let file = dir.join(format!("tern-{version}.update"));
+    std::fs::write(&file, &bytes)?;
+    drop(bytes);
     log::info!("update {version} is ready");
-    *app.state::<Updates>().0.lock().unwrap() = Some((update, bytes));
+    *app.state::<Updates>().0.lock().unwrap() = Some((update, file));
     let _ = app.emit("update-ready", version);
     Ok(true)
 }
@@ -75,9 +84,11 @@ pub fn ready(app: &AppHandle) -> Option<String> {
 
 /// Installs the waiting update and starts the new version. The window has saved what was being written.
 pub fn install(app: &AppHandle) -> anyhow::Result<()> {
-    let Some((update, bytes)) = app.state::<Updates>().0.lock().unwrap().take() else {
+    let Some((update, file)) = app.state::<Updates>().0.lock().unwrap().take() else {
         anyhow::bail!("no update is waiting");
     };
+    let bytes = std::fs::read(&file)?;
+    let _ = std::fs::remove_file(&file);
     // On Windows this runs the installer and exits; the installer starts the new version.
     update.install(&bytes)?;
     app.restart()

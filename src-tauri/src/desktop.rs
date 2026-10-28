@@ -238,12 +238,27 @@ impl Notices {
 }
 
 /// After sync changed something: notify about mail that just arrived, and update the tray's unread count. Runs
-/// off the async threads; the queries are small but the store is synchronous.
+/// off the async threads; the queries are small but the store is synchronous. One look at a time: changes that
+/// come while one runs (a backfill sends many a second) make one more look after it, not one each.
 pub fn mail_changed(app: &AppHandle) {
+    use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+    static AGAIN: AtomicBool = AtomicBool::new(false);
+    AGAIN.store(true, SeqCst);
+    if RUNNING.swap(true, SeqCst) {
+        return;
+    }
     let app = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        if let Err(e) = look(&app) {
-            log::warn!("new-mail check: {e:#}");
+    tauri::async_runtime::spawn_blocking(move || loop {
+        while AGAIN.swap(false, SeqCst) {
+            if let Err(e) = look(&app) {
+                log::warn!("new-mail check: {e:#}");
+            }
+        }
+        RUNNING.store(false, SeqCst);
+        // A change that came between the last look and letting go is looked at here, unless another call took it.
+        if !AGAIN.load(SeqCst) || RUNNING.swap(true, SeqCst) {
+            break;
         }
     });
 }

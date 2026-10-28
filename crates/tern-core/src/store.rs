@@ -695,13 +695,25 @@ fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
 
 pub struct Store {
     conn: Mutex<Connection>,
+    /// A second, read-only connection for what the window reads (lists, search, a conversation), so a sync batch
+    /// writing on `conn` never makes a keypress wait. WAL lets it read while the writer writes. None in memory,
+    /// where a second connection would be a different database.
+    reader: Option<Mutex<Connection>>,
 }
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
         backup_before_migrating(&conn, path)?;
-        Self::init(conn)
+        let mut store = Self::init(conn)?;
+        // Opened after migrating, so it never sees an older schema.
+        let reader = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        reader.execute_batch("PRAGMA temp_store = MEMORY; PRAGMA mmap_size = 268435456;")?;
+        store.reader = Some(Mutex::new(reader));
+        Ok(store)
     }
 
     pub fn open_in_memory() -> Result<Self> {
@@ -726,11 +738,28 @@ impl Store {
              WHERE claimed = 2",
             [now()],
         )?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self { conn: Mutex::new(conn), reader: None })
     }
 
     fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// At quit: lets SQLite refresh the statistics its query planner uses (cheap; it only looks where they went
+    /// stale) and folds the write-ahead log back into the database, so it doesn't stay large between runs.
+    pub fn tidy_on_exit(&self) -> Result<()> {
+        let conn = self.conn();
+        conn.execute_batch("PRAGMA optimize;")?;
+        conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
+        Ok(())
+    }
+
+    /// The connection for reads the window waits on (see `reader`).
+    fn reader(&self) -> std::sync::MutexGuard<'_, Connection> {
+        match &self.reader {
+            Some(reader) => reader.lock().unwrap_or_else(|e| e.into_inner()),
+            None => self.conn(),
+        }
     }
 
     // MARK: Settings
@@ -762,7 +791,7 @@ impl Store {
     /// snoozed ones that came back since then, follow-ups still without an answer, and how many of the new are in
     /// Other. All from this computer.
     pub fn day_start(&self, since: i64) -> Result<DayStart> {
-        let conn = self.conn();
+        let conn = self.reader();
         let (important, imp_value) = target_filter(&ListTarget::Role(IMPORTANT.into()), 1);
         let need: Vec<MessageRow> = conn
             .prepare(&format!(
@@ -1139,7 +1168,7 @@ impl Store {
     }
 
     pub fn folders(&self) -> Result<Vec<Folder>> {
-        let conn = self.conn();
+        let conn = self.reader();
         let mut stmt = conn.prepare_cached(
             "SELECT f.id, f.account_id, f.name, f.role,
                     CASE f.role WHEN 'label' THEN
@@ -1716,7 +1745,7 @@ impl Store {
             "SELECT {ROW} FROM messages m WHERE {filter} AND (m.date, m.id) < (?2, ?3)
              ORDER BY m.date DESC, m.id DESC LIMIT ?4"
         );
-        let conn = self.conn();
+        let conn = self.reader();
         let mut stmt = conn.prepare_cached(&sql)?;
         let rows = stmt
             .query_map(params![key, before.date, before.id, limit], row)?
@@ -1739,7 +1768,7 @@ impl Store {
     ) -> Result<Vec<ThreadRow>> {
         let (filter, key) = target_filter(target, 1);
         let cursor = before.unwrap_or(Cursor { date: i64::MAX, id: i64::MAX });
-        let conn = self.conn();
+        let conn = self.reader();
         let mut scan = conn.prepare_cached(&format!(
             "SELECT {ROW} FROM messages m WHERE {filter} AND (m.date, m.id) < (?2, ?3)
              ORDER BY m.date DESC, m.id DESC LIMIT ?4"
@@ -2014,7 +2043,7 @@ impl Store {
 
     /// Unread messages in the Important and Other splits of every inbox (snoozed ones left out), for their tabs.
     pub fn split_unread(&self) -> Result<(i64, i64)> {
-        Ok(self.conn().query_row(
+        Ok(self.reader().query_row(
             &format!(
                 "SELECT count(*) FILTER (WHERE NOT {IS_OTHER}), count(*) FILTER (WHERE {IS_OTHER})
                  FROM messages m JOIN folders f ON f.id = m.folder_id
@@ -2110,7 +2139,7 @@ impl Store {
         if q.is_empty() {
             return Ok(Vec::new());
         }
-        let conn = self.conn();
+        let conn = self.reader();
         let mut stmt = conn.prepare_cached(
             "SELECT email, name FROM contacts
              WHERE email LIKE ?1 || '%' OR name LIKE ?1 || '%' OR name LIKE '% ' || ?1 || '%'
@@ -2127,7 +2156,7 @@ impl Store {
     /// or were written to in. Walks the date index newest first, so someone you hear from often costs little.
     pub fn contact_card(&self, email: &str, limit: usize) -> Result<ContactCard> {
         let email = email.trim();
-        let conn = self.conn();
+        let conn = self.reader();
         let (name, sent, received) = conn
             .query_row(
                 "SELECT name, sent_count, received_count FROM contacts WHERE email = ?1",
@@ -2792,7 +2821,7 @@ impl Store {
     }
 
     pub fn thread(&self, id: i64) -> Result<Vec<ThreadMessage>> {
-        let conn = self.conn();
+        let conn = self.reader();
         let mut stmt = conn.prepare_cached(&format!(
             "SELECT {ROW}, m.message_id, m.to_addrs, b.text, b.html,
                     -- A row fetched again for its parts (migration 15) still has the body it had.
@@ -2831,7 +2860,7 @@ impl Store {
         if q.is_empty() {
             return Ok(SearchResult::default());
         }
-        let conn = self.conn();
+        let conn = self.reader();
         let mut conditions = Vec::new();
         let mut values: Vec<Value> = Vec::new();
         if !q.fts_not.is_empty() {
@@ -4326,9 +4355,34 @@ Engines Ltd"
         };
         assert_eq!(subjects("is:marked"), ["Issue 112"]);
         assert_eq!(subjects("-is:marked"), ["Lunch"]);
+        assert_eq!(subjects("has:note"), ["Issue 112"]);
+        let lunch = rows.iter().find(|t| t.latest.subject == "Lunch").unwrap().latest.id;
+        store.add_mark(lunch, "the usual place", "").unwrap();
+        assert_eq!(subjects("has:mark").len(), 2);
+        assert_eq!(subjects("has:note"), ["Issue 112"], "a mark without a note is not a note");
+        assert_eq!(subjects("-has:note"), ["Lunch"]);
         assert_eq!(subjects("ada friday"), ["Issue 112"], "words in a note");
         assert_eq!(subjects("deadline is:unread"), ["Issue 112"], "words in a mark, with filters");
         assert!(subjects("deadline is:read").is_empty());
+    }
+
+    #[test]
+    fn search_finds_snoozed_conversations() {
+        let (store, account, inbox, _) = setup();
+        store
+            .insert_messages(account, inbox, &[message(1, "Tickets", 100), message(2, "Lunch", 200)])
+            .unwrap();
+        let subjects = |q: &str| -> Vec<String> {
+            store.search(q, 10).unwrap().rows.into_iter().map(|r| r.subject).collect()
+        };
+        assert!(subjects("is:snoozed").is_empty());
+        let rows = store.list_threads(&ListTarget::Role("inbox".into()), None, 9).unwrap();
+        let tickets = rows.iter().find(|t| t.latest.subject == "Tickets").unwrap().latest.id;
+        store.snooze(&[tickets], 10_000, 300).unwrap();
+        assert_eq!(subjects("is:snoozed"), ["Tickets"]);
+        assert_eq!(subjects("-is:snoozed"), ["Lunch"]);
+        store.unsnooze(&[tickets]).unwrap();
+        assert!(subjects("is:snoozed").is_empty());
     }
 
     #[test]
@@ -4568,6 +4622,23 @@ Engines Ltd"
         assert_eq!(t[0], t[1]);
         assert_ne!(t[0], t[2]);
         assert_ne!(t[0], t[3]);
+    }
+
+    #[test]
+    fn a_store_on_disk_reads_what_it_wrote_on_its_second_connection() {
+        let dir = std::env::temp_dir().join(format!("tern-reader-{}-{}", std::process::id(), now()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(&dir.join("mail.db")).unwrap();
+        assert!(store.reader.is_some());
+        let account = store.add_account(&config()).unwrap().id;
+        let inbox = store.upsert_folder(account, "INBOX", "inbox").unwrap();
+        store.insert_messages(account, inbox, &[message(1, "zeppelin", 100)]).unwrap();
+        assert_eq!(store.folders().unwrap().len(), 1);
+        assert_eq!(store.list_threads(&ListTarget::Folder(inbox), None, 10).unwrap().len(), 1);
+        assert_eq!(store.search("zeppelin", 10).unwrap().rows.len(), 1);
+        store.tidy_on_exit().unwrap();
+        drop(store);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

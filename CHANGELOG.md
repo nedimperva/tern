@@ -7,6 +7,20 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Search filters `is:snoozed` (snoozed conversations) and `has:note` (mail with a note on a mark); `has:mark` is
+  the same as `is:marked`.
+
+### Changed
+
+- Faster while mail downloads: the window reads everything again at most every 150 ms instead of on every frame,
+  list rows that did not change stay as they are, and the window reads on a connection of its own, so a sync
+  writing a batch never makes a keypress wait.
+- New-mail checks for notifications and the tray run one at a time instead of one per change.
+- At quit, Tern refreshes SQLite's query statistics and folds the write-ahead log back into the database.
+- A downloaded update waits on disk for "Restart to update" instead of in memory.
+
 ## [1.3.1] - 2026-10-27
 
 ### Added

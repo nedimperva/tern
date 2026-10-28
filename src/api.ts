@@ -890,13 +890,18 @@ function fake(): Api {
       return api.apply(chosen, action);
     },
     search: async (query, limit) => {
-      // Words and is:marked only; the filters live in the engine. Shown as partial so the note can be worked on here.
+      // Words, is:marked, has:note and is:snoozed only; the filters live in the engine. Shown as partial so the note
+      // can be worked on here.
       let terms = query.toLowerCase().split(/\s+/).filter(Boolean);
       const marked = terms.includes("is:marked");
-      terms = terms.filter((t) => t !== "is:marked");
+      const noted = terms.includes("has:note");
+      const asleep = terms.includes("is:snoozed");
+      terms = terms.filter((t) => t !== "is:marked" && t !== "has:note" && t !== "is:snoozed");
       const notes = (m: ThreadMessage) => fakeMarks.filter((k) => k.message === m.id).map((k) => `${k.text} ${k.note}`).join(" ");
       const rows = messages
         .filter((m) => !marked || fakeMarks.some((k) => k.message === m.id))
+        .filter((m) => !noted || fakeMarks.some((k) => k.message === m.id && k.note))
+        .filter((m) => !asleep || snoozed.has(m.threadId))
         .filter((m) => terms.every((t) => `${m.subject} ${m.fromName} ${m.bodyText} ${notes(m)}`.toLowerCase().includes(t)))
         .slice(0, limit)
         .map(row);
