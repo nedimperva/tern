@@ -32,6 +32,11 @@ every release needs one here before it is tagged.
 - At quit, Tern refreshes SQLite's query statistics and folds the write-ahead log back into the database.
 - A downloaded update waits on disk for "Restart to update" instead of in memory.
 
+### Fixed
+
+- The Read later shelf stayed empty for a conversation shelved from Archive or a search, or one with a message
+  dated ahead of your clock. It shows there now.
+
 ## [1.3.1] - 2026-10-27
 
 ### Added

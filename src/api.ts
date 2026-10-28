@@ -803,7 +803,7 @@ function fake(): Api {
       case "snoozed":
         return inInbox(m) && asleep;
       case "later":
-        return inInbox(m) && !asleep && shelved.has(m.threadId);
+        return !asleep && shelved.has(m.threadId) && !["trash", "junk", "drafts"].includes(folders.find((f) => f.id === m.folderId)?.role ?? "");
       case "marked":
         return fakeMarks.some((k) => k.message === m.id) && folders.find((f) => f.id === m.folderId)?.role !== "trash";
       default:

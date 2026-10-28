@@ -228,6 +228,7 @@ crates/tern-core/        the engine (Rust, no UI)
   examples/store_bench.rs  timings on a 50,000-message mailbox
 src-tauri/               the desktop shell: commands the UI calls, one sync worker per account
 src/                     the UI (SolidJS): virtualized list, thread view, compose, command bar
+  src/app/               the main window's state, keys and actions (App.tsx lays them out)
 ```
 
 ## Roadmap
