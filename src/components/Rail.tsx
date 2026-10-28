@@ -1,6 +1,7 @@
 import { For, onCleanup, onMount, Show } from "solid-js";
 import type { Account, Folder, SyncState, Target } from "../api";
 import { labelColour } from "../colours";
+import { AccountAvatar } from "./AccountAvatar";
 
 export const ROLE_NAMES: Record<string, string> = {
   inbox: "Inbox",
@@ -58,6 +59,30 @@ export function Rail(props: {
   return (
     <div class="scrim" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <nav class="rail" aria-label="Accounts and folders">
+        <Show when={props.accounts.length > 1}>
+          <div class="account-switch" role="group" aria-label="Accounts">
+            <For each={props.accounts}>
+              {(account, i) => {
+                const inbox = () => props.folders.find((f) => f.accountId === account.id && f.role === "inbox");
+                const unread = () => inbox()?.unread ?? 0;
+                return (
+                  <button
+                    type="button"
+                    classList={{ active: !!inbox() && props.isTarget(targetOf(inbox()!)) }}
+                    title={`${account.email}: its inbox${i() < 9 ? ` (Ctrl+${i() + 1})` : ""}${unread() ? `, ${unread()} unread` : ""}`}
+                    aria-label={`${account.email} inbox`}
+                    onClick={() => inbox() && go(targetOf(inbox()!))}
+                  >
+                    <AccountAvatar account={account} accounts={props.accounts} size={30} />
+                    <Show when={unread()}>
+                      <span class="unread-dot" />
+                    </Show>
+                  </button>
+                );
+              }}
+            </For>
+          </div>
+        </Show>
         <a classList={{ active: props.isTarget({ role: "inbox" }) }} onClick={() => go({ role: "inbox" })}>
           <span>All Inboxes</span>
           <Show when={inboxUnread()}>
@@ -98,6 +123,7 @@ export function Rail(props: {
           {(account) => (
             <section>
               <h3>
+                <AccountAvatar account={account} accounts={props.accounts} size={16} />
                 <span>{account.email}</span>
                 <Show when={SYNC_LABELS[props.syncStates[account.id]]}>
                   {(label) => <span class={`sync-state ${props.syncStates[account.id]}`}>{label()}</span>}

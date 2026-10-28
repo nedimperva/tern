@@ -1,7 +1,9 @@
 // Settings → an account: its name, password and removal.
 
-import { createSignal, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { api, type Account } from "../../api";
+import { ACCOUNT_COLOURS } from "../../colours";
+import { setSetting, settings } from "../../settings";
 
 /** One account: its name on sent mail, what else Tern knows of it, and a way to its signatures. */
 export function AccountPage(props: { account: Account; onSignatures: () => void; onRenamed: () => void; onRemoved: () => void }) {
@@ -64,6 +66,13 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
       setRemoving(false);
     }
   };
+  // A colour picked for this account, by address so it survives an export to another computer.
+  const key = () => props.account.email.toLowerCase();
+  const picked = () => settings.accountColours[key()] ?? null;
+  const pick = (c: string | null) => {
+    const { [key()]: _, ...rest } = settings.accountColours;
+    setSetting("accountColours", c ? { ...rest, [key()]: c } : rest);
+  };
   return (
     <>
       <label class="setting">
@@ -85,6 +94,30 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
       <div class="setting">
         <span class="title">Address</span>
         <span>{props.account.email}</span>
+      </div>
+      <div class="setting">
+        <span class="title">Colour</span>
+        <span class="swatches" role="radiogroup" aria-label="Colour">
+          <For each={ACCOUNT_COLOURS}>
+            {(c) => (
+              <button
+                type="button"
+                role="radio"
+                aria-checked={picked() === c}
+                aria-label={c}
+                classList={{ on: picked() === c }}
+                style={{ background: c }}
+                onClick={() => pick(c)}
+              />
+            )}
+          </For>
+          <Show when={picked()}>
+            <button type="button" class="link" onClick={() => pick(null)}>
+              Default
+            </button>
+          </Show>
+        </span>
+        <span class="help">Its dot in mixed lists, its badge in the rail (Ctrl+\) and in the From picker.</span>
       </div>
       <div class="setting">
         <span class="title">Sign-in</span>

@@ -692,6 +692,7 @@ function fake(): Api {
     // Gmail-style labels: a third of the conversations are Work, a quarter Invoices.
     { id: 7, accountId: 1, name: "Work", role: "label", unread: 0 },
     { id: 8, accountId: 1, name: "Invoices", role: "label", unread: 0 },
+    ...(location.hash === "#two" ? [{ id: 9, accountId: 2, name: "INBOX", role: "inbox", unread: 0 }] : []),
   ];
   const mutedThreads = new Set<string>();
   const drafts = new Map<number, DraftRecord>();
@@ -709,11 +710,13 @@ function fake(): Api {
       i === 0
         ? `Hi,\n\nThe offsite is set for ${day}, 10:00 to 16:00, at Studio 4, Keizersgracht 120, Amsterdam. Lunch is on us.\n\nThe plan for the day is in the offsite doc: https://docs.example.com/offsite\n\nCan you bring the Q3 deck and walk us through it in 20 minutes?\n\nTrain tickets are booked; the booking code is QX7-44K.\n\nSee you there,\n${name.split(" ")[0]}`
         : `Hi,\n\nThis is about the ${subject}. ${words.join(" ")}.\n\nThanks,\n${name.split(" ")[0]}\n-- \n${name}, Example Corp${quote}`;
+    // #two: a second account (Work) holds every third run of five, to see account colours and switching.
+    const work = location.hash === "#two" && Math.floor(i / 5) % 3 === 1;
     return {
       id: i + 1,
-      accountId: 1,
+      accountId: work ? 2 : 1,
       // #empty: everything archived, to see Inbox Zero.
-      folderId: i % 9 === 0 || location.hash === "#empty" ? 2 : 1,
+      folderId: work ? 9 : i % 9 === 0 || location.hash === "#empty" ? 2 : 1,
       // Every fifth message starts a conversation that the next two answer.
       threadId: i % 5 < 3 ? `t${i - (i % 5)}` : `t${i}`,
       subject,
@@ -827,7 +830,8 @@ function fake(): Api {
   };
 
   return {
-    accounts: async () => [account],
+    accounts: async () =>
+      location.hash === "#two" ? [account, { ...account, id: 2, email: "ada@work.example", displayName: "Ada Work", username: "ada@work.example" }] : [account],
     setAccountName: async (_, name) => void (account.displayName = name.trim()),
     folders: async () =>
       folders.map((f) => ({ ...f, unread: messages.filter((m) => m.folderId === f.id && !m.seen).length })),

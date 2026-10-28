@@ -970,6 +970,72 @@ button.primary kbd {
 .save-search.on {
   color: var(--accent);
 }
+/* The accounts as badges at the top of the rail: a click opens that account's inbox. */
+.rail .account-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: 0 var(--s-2) var(--s-2);
+}
+.rail .account-switch button {
+  position: relative;
+  border-radius: 50%;
+  padding: 2px;
+  box-shadow: 0 0 0 2px transparent;
+}
+.rail .account-switch button.active {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.rail .account-switch .unread-dot {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-1);
+}
+.rail h3 .account-avatar {
+  align-self: center;
+}
+.account-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.crow .mark .account-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.swatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.swatches button[role="radio"] {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg-1);
+}
+.swatches button[role="radio"].on {
+  box-shadow:
+    0 0 0 2px var(--bg-1),
+    0 0 0 4px var(--fg-0);
+}
 .rail .add-account {
   margin: var(--s-4) var(--s-2) 0;
   text-align: left;

@@ -12,6 +12,7 @@ import {
   ready,
   rows,
   searchBox,
+  target,
   searching,
   selection,
   setFocus,
@@ -21,6 +22,8 @@ import {
 } from "../app/state";
 import { coverage, inboxZero } from "../app/status";
 import { ROW_HEIGHTS, settings, SPLIT_ROW_EXTRA } from "../settings";
+import { colourOf } from "../colours";
+import type { ThreadRow } from "../api";
 import { ConversationRow } from "./ConversationRow";
 import { DayLine } from "./DayLine";
 import { Icon } from "./Icon";
@@ -37,6 +40,12 @@ export function ListPane(props: {
   /** Conversations that need the person, for the dot in their rows. */
   needsYou: ReadonlySet<string>;
 }) {
+  // Lists that mix accounts (the inboxes, splits, search) mark each row with its account's colour.
+  const mixed = () => accounts().length > 1 && (searching() || "role" in target());
+  const accountOf = (row: ThreadRow) => {
+    const a = mixed() ? accounts().find((x) => x.id === row.accountId) : undefined;
+    return a ? { colour: colourOf(accounts(), a.id), email: a.email } : undefined;
+  };
   const onSearchKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
       setQuery("");
@@ -133,6 +142,7 @@ export function ListPane(props: {
               narrow={props.split}
               needsYou={props.needsYou.has(keyOf(row))}
               hits={props.hits}
+              account={accountOf(row)}
               onClick={(e) => {
                 setFocus(index());
                 if (e.shiftKey || e.ctrlKey || e.metaKey) toggleSelected(row);
