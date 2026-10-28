@@ -5406,3 +5406,8 @@ button.link.danger {
   background-color: color-mix(in srgb, var(--accent) 30%, transparent);
   color: inherit;
 }
+/* Words searched for, in a conversation opened from the results (hits.ts). */
+::highlight(tern-hit) {
+  background-color: rgba(47, 158, 110, 0.26);
+  color: inherit;
+}

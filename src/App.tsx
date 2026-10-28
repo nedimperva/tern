@@ -51,6 +51,7 @@ import { VirtualList } from "./components/VirtualList";
 import { InboxZero } from "./components/InboxZero";
 import { countCleared, markZero } from "./zero";
 import { keyHandler, keyLabel, type Binding, type Context } from "./keys";
+import { hitWords } from "./hits";
 // Settings open seldom: their page is a chunk of its own.
 const SettingsPage = lazy(() => import("./components/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 
@@ -1419,6 +1420,7 @@ export default function App() {
         <section class="conversation-pane">
           <ConversationView
             messages={messages}
+            hits={searching() ? hitWords(query()) : undefined}
             labels={rows().find((r) => keyOf(r) === keyOf(openRow()!))?.labels ?? openRow()?.labels ?? []}
             focused={messageFocus()}
             expanded={(id) => expanded().has(id)}

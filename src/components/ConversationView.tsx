@@ -4,6 +4,7 @@ import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
 import { linkify } from "../linkify";
+import { drawHits } from "../hits";
 import { hostOf, misleading } from "../links";
 import {
   darken,
@@ -583,6 +584,8 @@ export function ConversationView(props: {
   onSnoozeUntil: (due: number) => void;
   menu: () => MenuItem[];
   person: PersonActions;
+  /** The words searched for, when the conversation was opened from search results: lit up in the messages. */
+  hits?: string[];
 }) {
   const last = () => props.messages[props.messages.length - 1];
   const stage = () => props.messages.length === 1;
@@ -750,6 +753,13 @@ export function ConversationView(props: {
   const [placed, setPlaced] = createSignal(new Map<number, Range | null>());
   const [loads, setLoads] = createSignal(0);
   const frameLoaded = () => setLoads((n) => n + 1);
+  createEffect(() => {
+    const words = props.hits ?? [];
+    loads();
+    reading();
+    for (const m of props.messages) props.expanded(m.id);
+    requestAnimationFrame(() => drawHits(words));
+  });
   // A mark asked for whose message was folded: shown once its message is open and drawn.
   let wanted: number | null = null;
   createEffect(() => {
@@ -791,6 +801,7 @@ export function ConversationView(props: {
   onCleanup(() => {
     setJumper(null);
     setHovered(null);
+    drawHits([]);
     drawMarks([], null);
   });
 
