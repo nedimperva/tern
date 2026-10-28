@@ -894,8 +894,8 @@ pub async fn save_attachment(
 const BACKUP_LIMIT: u64 = 5_000_000;
 
 /// Saves the window's export of settings, snippets and signatures where the person picks. False if they cancelled.
-/// With a passphrase the accounts go in too, with their passwords or Google sign-ins from the keyring, and the
-/// file is sealed (`tern_core::backup`).
+/// With a passphrase the accounts go in too, with their passwords or Google sign-ins from the keyring, and the AI
+/// keys; the file is sealed (`tern_core::backup`).
 #[tauri::command]
 pub async fn export_settings(
     app: AppHandle,
@@ -920,7 +920,13 @@ pub async fn export_settings(
                     config: a.config,
                 })
                 .collect();
-            let sealed = tern_core::backup::Contents { settings, accounts };
+            let ai_keys = Provider::ALL
+                .into_iter()
+                .filter_map(|provider| {
+                    providers::saved_key(provider).map(|key| tern_core::backup::AiKey { provider, key })
+                })
+                .collect();
+            let sealed = tern_core::backup::Contents { settings, accounts, ai_keys };
             tokio::task::spawn_blocking(move || tern_core::backup::seal(&sealed, &passphrase))
                 .await
                 .map_err(|e| e.to_string())?
@@ -992,10 +998,12 @@ pub struct Unlocked {
     added: Vec<String>,
     /// Accounts the file has that were here already; they keep what they have.
     present: Vec<String>,
+    /// The AI providers whose key the file brought; a key already saved here is kept.
+    ai_keys: Vec<String>,
 }
 
 /// Opens the sealed backup picked last with its passphrase and adds the accounts that aren't here yet, with their
-/// passwords or Google sign-ins put in the keyring. Their mail starts downloading at once. A wrong passphrase
+/// passwords or Google sign-ins put in the keyring, and the AI keys not saved here yet. Their mail starts downloading at once. A wrong passphrase
 /// keeps the file, so the person can try again.
 #[tauri::command]
 pub async fn unlock_settings(
@@ -1027,8 +1035,15 @@ pub async fn unlock_settings(
         start_account(&app, &state, account);
         added.push(email);
     }
+    let mut ai_keys = vec![];
+    for k in contents.ai_keys {
+        if !providers::has_key(k.provider) {
+            providers::set_key(k.provider, &k.key).map_err(text)?;
+            ai_keys.push(k.provider.name().to_string());
+        }
+    }
     *locked.0.lock().unwrap() = None;
-    Ok(Unlocked { text: contents.settings.to_string(), added, present })
+    Ok(Unlocked { text: contents.settings.to_string(), added, present, ai_keys })
 }
 
 /// The `mailto:` link Tern was started with, once; the window asks when it is ready.

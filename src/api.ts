@@ -69,8 +69,9 @@ export type Account = AccountConfig & { id: number };
 export type Mailto = { to: string[]; cc: string[]; bcc: string[]; subject: string; body: string };
 /** A settings file picked for import (Settings → Backup). A sealed one stays in the engine until its passphrase. */
 export type PickedSettings = { text: string | null; locked: boolean };
-/** What opening a sealed backup did: its settings part, and the accounts it added or found here already. */
-export type UnlockedSettings = { text: string; added: string[]; present: string[] };
+/** What opening a sealed backup did: its settings part, the accounts it added or found here already, and the AI
+ * providers whose key it saved. */
+export type UnlockedSettings = { text: string; added: string[]; present: string[]; aiKeys: string[] };
 /** Mail a notification was about. */
 /** Saved text that compose inserts after `;shortcut`; `{first_name}` and the like are filled in there. It can be
  * kept to one account, and can also set the subject (when compose has none) and add people to Cc. `used` and
@@ -1022,7 +1023,7 @@ function fake(): Api {
     importSettings: async () => exported && (exported.passphrase ? { text: null, locked: true } : { text: exported.contents, locked: false }),
     unlockSettings: async (passphrase) => {
       if (!exported || passphrase !== exported.passphrase) throw "That passphrase doesn't open this file.";
-      return { text: exported.contents, added: [], present: [account.email] };
+      return { text: exported.contents, added: [], present: [account.email], aiKeys: [] };
     },
     addImage: async (picture) => {
       const uri = await new Promise<string>((done) => {

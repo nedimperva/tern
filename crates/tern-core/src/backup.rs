@@ -1,5 +1,5 @@
-//! A settings backup that carries accounts (Settings → Backup). The window writes the settings part; accounts and
-//! their secrets are added here, so passwords never pass through the window, and the whole is sealed with a
+//! A settings backup that carries accounts and AI keys (Settings → Backup). The window writes the settings part;
+//! accounts, their secrets and the AI keys are added here, so none of them pass through the window, and the whole is sealed with a
 //! passphrase the person chooses: PBKDF2-HMAC-SHA256 for the key, ChaCha20-Poly1305 for the contents. Both come from
 //! `ring`, which is here for TLS already.
 
@@ -11,6 +11,7 @@ use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU32;
 
+use crate::ai::Provider;
 use crate::models::AccountConfig;
 use crate::oauth::Tokens;
 
@@ -31,11 +32,22 @@ pub struct AccountBackup {
     pub tokens: Option<Tokens>,
 }
 
-/// What the sealed part holds: the window's settings file as it wrote it, and the accounts.
+/// One AI provider's key, as Settings → AI saved it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiKey {
+    pub provider: Provider,
+    pub key: String,
+}
+
+/// What the sealed part holds: the window's settings file as it wrote it, the accounts and the AI keys.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Contents {
     pub settings: serde_json::Value,
     pub accounts: Vec<AccountBackup>,
+    #[serde(default)]
+    pub ai_keys: Vec<AiKey>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -140,6 +152,7 @@ mod tests {
                 password: Some("hunter2 and more".into()),
                 tokens: None,
             }],
+            ai_keys: vec![AiKey { provider: Provider::Openai, key: "sk-test-key".into() }],
         }
     }
 
@@ -149,11 +162,14 @@ mod tests {
         assert!(is_sealed(&text));
         assert!(!text.contains("hunter2"), "the password is in the file as written");
         assert!(!text.contains("ada@example.com"), "the address is in the file as written");
+        assert!(!text.contains("sk-test-key"), "the AI key is in the file as written");
         let back = open(&text, "correct horse").unwrap();
         assert_eq!(back.accounts.len(), 1);
         assert_eq!(back.accounts[0].config.email, "ada@example.com");
         assert_eq!(back.accounts[0].config.smtp_security, Security::Starttls);
         assert_eq!(back.accounts[0].password.as_deref(), Some("hunter2 and more"));
+        assert_eq!(back.ai_keys[0].provider, Provider::Openai);
+        assert_eq!(back.ai_keys[0].key, "sk-test-key");
         assert_eq!(back.settings, contents().settings);
         assert_eq!(open(&text, "correct horsE").unwrap_err().to_string(), WRONG);
     }

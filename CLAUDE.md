@@ -108,8 +108,9 @@ policy review. No implementation or real-provider acceptance was completed by th
   blocks remote images until the user clicks "Load images". Links open through the opener plugin. Keep it that way.
   The CSP lets fonts load from the app itself (Inter for text mail), nothing else. A picture attachment's card
   preview only reads a file already downloaded; expanding a message never downloads its files.
-- **Passwords** only in the OS keyring (service `tern-mail`), never in SQLite or files. The Anthropic key too
-  (`ai/anthropic`).
+- **Passwords** only in the OS keyring (service `tern-mail`), never in SQLite or files. The AI keys too
+  (`ai/<provider>`). The one exception is a backup the person asks for with a passphrase: `tern_core::backup` seals
+  them in it, in the engine, so they never reach the window.
 - **AI is opt-in and on request.** Every AI call goes through `ai::allowed` (on, feature on, account ticked) before
   the keyring is read or anything is sent. No background AI, no tools for the model, mail sent as material in tags,
   never attachments. Don't add an AI path that skips the gate.

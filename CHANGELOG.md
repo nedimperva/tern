@@ -29,8 +29,8 @@ every release needs one here before it is tagged.
   mail. Pick a colour in Settings → the account.
 - Settings → Backup: export your settings, snippets, signatures, saved searches and account colours to a file, and
   import them on another computer. Tick "Include accounts" to add every account with its password or Google
-  sign-in, sealed with a passphrase you choose (PBKDF2 and ChaCha20-Poly1305); importing it asks for the
-  passphrase and adds the accounts that aren't there yet. AI keys are never in the file.
+  sign-in, and your AI keys, sealed with a passphrase you choose (PBKDF2 and ChaCha20-Poly1305); importing it asks
+  for the passphrase and adds the accounts and keys that aren't there yet.
 
 ### Changed
 

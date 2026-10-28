@@ -43,7 +43,7 @@ export function BackupSettings(props: { accounts: Account[]; onAccountsChanged: 
       if (!withAccounts()) return `Exported ${what}.`;
       setPassphrase("");
       setAgain("");
-      return `Exported ${what}, with ${plural(props.accounts.length, "account")} and their passwords, locked with your passphrase.`;
+      return `Exported ${what}, with ${plural(props.accounts.length, "account")}, their passwords and your AI keys, locked with your passphrase.`;
     });
 
   /** Takes a backup's settings, snippets and signatures; `accounts` are the ones here now. */
@@ -101,7 +101,8 @@ export function BackupSettings(props: { accounts: Account[]; onAccountsChanged: 
       const said = await apply(opened.text, opened.added.length ? await api.accounts() : props.accounts);
       const added = opened.added.length ? ` Added ${opened.added.join(", ")}; their mail starts downloading now.` : "";
       const present = opened.present.length ? ` ${opened.present.join(", ")} ${opened.present.length === 1 ? "was" : "were"} here already and kept ${opened.present.length === 1 ? "its" : "their"} password.` : "";
-      return `${said}${added}${present}`;
+      const keys = opened.aiKeys.length ? ` Your ${opened.aiKeys.join(", ")} AI ${opened.aiKeys.length === 1 ? "key was" : "keys were"} saved.` : "";
+      return `${said}${added}${present}${keys}`;
     });
 
   return (
@@ -115,7 +116,7 @@ export function BackupSettings(props: { accounts: Account[]; onAccountsChanged: 
         </span>
         <label class="backup-accounts">
           <input type="checkbox" checked={withAccounts()} onChange={(e) => setWithAccounts(e.currentTarget.checked)} />
-          Include accounts and their passwords, locked with a passphrase
+          Include accounts, passwords and AI keys, locked with a passphrase
         </label>
         <Show when={withAccounts()}>
           <span class="ai-key backup-passphrase">
@@ -135,9 +136,9 @@ export function BackupSettings(props: { accounts: Account[]; onAccountsChanged: 
             when={withAccounts()}
             fallback="Saves your settings, snippets, signatures, saved searches and account colours as one file. Passwords and AI keys stay in your system's keyring and are not in it."
           >
-            The file also holds every account's server details and password (or Google sign-in), sealed with the
-            passphrase: at least 8 characters. Without it the file can't be opened, and Tern can't get it back for
-            you. AI keys are never in it.
+            The file also holds every account's server details and password (or Google sign-in) and your AI keys,
+            sealed with the passphrase: at least 8 characters. Without it the file can't be opened, and Tern can't get
+            it back for you.
           </Show>
         </span>
       </div>
@@ -171,7 +172,7 @@ export function BackupSettings(props: { accounts: Account[]; onAccountsChanged: 
         <span class="help">
           Takes the settings from such a file. Snippets and signatures are added to yours; a snippet whose shortcut you
           already use keeps yours. Signatures go to the accounts with the same address here. A file with accounts asks
-          for its passphrase and adds the accounts that aren't here yet.
+          for its passphrase and adds the accounts and AI keys that aren't here yet.
         </span>
       </div>
       <Show when={note()}>

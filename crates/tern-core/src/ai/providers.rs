@@ -78,6 +78,15 @@ pub fn set_key(p: Provider, key: &str) -> Result<()> {
         .context("Could not save the key to the system keychain")
 }
 
+impl Provider {
+    pub const ALL: [Provider; 3] = [Provider::Anthropic, Provider::Openai, Provider::Gemini];
+}
+
+/// The saved key, for a sealed backup (`backup`); requests read it through `key`.
+pub fn saved_key(p: Provider) -> Option<String> {
+    keyring::Entry::new("tern-mail", p.entry()).and_then(|e| e.get_password()).ok()
+}
+
 pub fn has_key(p: Provider) -> bool {
     keyring::Entry::new("tern-mail", p.entry()).and_then(|e| e.get_password()).is_ok()
 }
