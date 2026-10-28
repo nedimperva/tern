@@ -49,6 +49,10 @@ jobs:
       - name: Frontend unit tests
         run: npm test
 
+      - name: Biome
+        if: runner.os == 'Linux'
+        run: npm run lint
+
       - name: rustfmt
         if: runner.os == 'Linux'
         run: cargo fmt --all --check

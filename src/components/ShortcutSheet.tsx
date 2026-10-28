@@ -23,8 +23,9 @@ export function ShortcutSheet(props: { bindings: Binding[]; onClose: () => void 
   };
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: a click beside the dialog closes it, as Esc does
     <div class="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div class="sheet" role="dialog" aria-label="Keyboard shortcuts">
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
         <input
           ref={(el) => queueMicrotask(() => el.focus())}
           placeholder="Find a shortcut"

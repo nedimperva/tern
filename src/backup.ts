@@ -47,7 +47,7 @@ export function readBackup(text: string): Backup {
     throw new Error("That file isn't Tern settings.");
   }
   const b = data as Partial<Backup>;
-  if (!b || b.tern !== "settings" || typeof b.settings !== "object") throw new Error("That file isn't Tern settings.");
+  if (b?.tern !== "settings" || typeof b.settings !== "object") throw new Error("That file isn't Tern settings.");
   if (b.version !== 1) throw new Error("That file comes from a newer Tern. Update Tern, then import it.");
   return { ...b, aiAccounts: b.aiAccounts ?? [], snippets: b.snippets ?? [], signatures: b.signatures ?? [] } as Backup;
 }

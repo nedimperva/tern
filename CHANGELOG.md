@@ -7,10 +7,19 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- For contributors: unit tests for the UI's text and HTML helpers (Vitest, `npm test`, run in CI), and
-  `npm run check` for everything CI runs.
+- A warmer, calmer look: warm greys instead of cool ones, the logo's navy as the accent, rounded rows. Dark mode
+  is a warm charcoal.
+- Tern draws its own title bar: the sidebar button at the top left, minimize, maximize and close at the right, and
+  the rest drags the window. The system's title bar is gone.
+- The sidebar (accounts, folders, labels, saved searches) stays open beside the list in a wide window, with New
+  mail and Search at its top and Settings at its foot. The button at the top left or `Ctrl+\` hides it until
+  shown again; Settings → Appearance → Sidebar sets it to slide over the list only when asked.
+
+## [1.4.0] - 2026-10-28
+
+### Added
 
 - Show original, in a conversation's `…` menu: the newest message's headers and source as the server has it,
   to copy or check who really sent it.
@@ -31,16 +40,18 @@ every release needs one here before it is tagged.
   import them on another computer. Tick "Include accounts" to add every account with its password or Google
   sign-in, and your AI keys, sealed with a passphrase you choose (PBKDF2 and ChaCha20-Poly1305); importing it asks
   for the passphrase and adds the accounts and keys that aren't there yet.
+- Notifications per account: Settings → the account → Notifications sets Important mail, Important and Other, or
+  none for that account alone. Accounts without a choice follow Settings → Notifications.
+- For contributors: unit tests for the UI's text and HTML helpers (Vitest, `npm test`), Biome for the TypeScript
+  (`npm run lint`) and cargo deny for licences and sources (`deny.toml`), all in CI; `npm run check` runs what CI
+  runs.
 
 ### Changed
 
-- A warmer, calmer look: warm greys instead of cool ones, the logo's navy as the accent, rounded rows. Dark mode
-  is a warm charcoal.
-- Tern draws its own title bar: the sidebar button at the top left, minimize, maximize and close at the right, and
-  the rest drags the window. The system's title bar is gone.
-- The sidebar (accounts, folders, labels, saved searches) stays open beside the list in a wide window, with New
-  mail and Search at its top and Settings at its foot. The button at the top left or `Ctrl+\` hides it until
-  shown again; Settings → Appearance → Sidebar sets it to slide over the list only when asked.
+- Easier with the keyboard and a screen reader: the rail, Settings' sections and a sender's name are reached with
+  Tab; the `…` menu takes the focus and gives it back; the conversation list says the focused conversation as j
+  and k move; address suggestions, colour swatches and choices follow the arrow keys. `Z` zooms a picture in the
+  attachment viewer.
 - `before:` and `after:` in search start at midnight where you are, not midnight UTC.
 - Faster while mail downloads: the window reads everything again at most every 150 ms instead of on every frame,
   list rows that did not change stay as they are, and the window reads on a connection of its own, so a sync

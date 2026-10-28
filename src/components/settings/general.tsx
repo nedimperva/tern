@@ -267,7 +267,7 @@ export function NotificationSettings() {
       <Select
         name="notify"
         title="New mail"
-        help="A notification when mail from someone else reaches the inbox. Muted conversations stay quiet."
+        help="A notification when mail from someone else reaches the inbox. Muted conversations stay quiet. An account can have its own choice in Settings → the account."
         choices={[
           { label: "Notify me", value: true },
           { label: "Don't notify me", value: false },

@@ -145,6 +145,9 @@ policy review. No implementation or real-provider acceptance was completed by th
   what the keys do is in `src/app/` (`bindings.ts` is the one key table), and `App.tsx` only lays it out. Keep the JS bundle small (about 250 kB,
   85 kB gzipped, at 1.3); avoid adding UI frameworks.
 - Comments explain why, not what. Short, plain sentences in docs and UI text.
+- Biome lints the TypeScript (`npm run lint`, formatter off). Its accessibility rules are on: fix what they find; a
+  `biome-ignore` needs a reason a reader accepts (a click beside a dialog closes it, Esc does too). cargo deny
+  (`deny.toml`) allows only MIT-compatible licences, no GPL/LGPL, and no OpenSSL.
 
 ## Roadmap
 

@@ -757,7 +757,7 @@ function fake(): Api {
       threadId: i % 5 < 3 ? `t${i - (i % 5)}` : `t${i}`,
       subject,
       fromName: name,
-      fromAddr: name.toLowerCase().replace(/\s/g, ".") + "@example.com",
+      fromAddr: `${name.toLowerCase().replace(/\s/g, ".")}@example.com`,
       date: now - i * 1700,
       snippet: body.replace(/\s+/g, " ").slice(4, 150),
       seen: i % 4 !== 0,
@@ -1059,7 +1059,7 @@ function fake(): Api {
     },
     contacts: async (query) => {
       const q = query.toLowerCase();
-      const people = names.map((n) => ({ name: n, email: n.toLowerCase().replace(/\s/g, ".") + "@example.com" }));
+      const people = names.map((n) => ({ name: n, email: `${n.toLowerCase().replace(/\s/g, ".")}@example.com` }));
       return q ? people.filter((p) => p.email.startsWith(q) || p.name.toLowerCase().split(" ").some((w) => w.startsWith(q))).slice(0, 5) : [];
     },
     contactCard: async (email) => {

@@ -64,9 +64,14 @@ export type Settings = {
   savedSearches: string[];
   /** Colours picked for accounts, by address (lowercase), in place of the palette's (src/colours.ts). */
   accountColours: Record<string, string>;
+  /** What each account notifies for, by address (lowercase); one not here follows `notify` and `notifyOther`
+   * (read by the engine). */
+  notifyAccounts: Record<string, NotifyMode>;
   /** Optional AI, read by the engine too, which refuses what it does not allow (tern_core::ai::AiSettings). */
   ai: AiSettings;
 };
+
+export type NotifyMode = "off" | "important" | "all";
 
 export type AiSettings = {
   enabled: boolean;
@@ -122,6 +127,7 @@ export const DEFAULTS: Settings = {
   lineHidden: "",
   savedSearches: [],
   accountColours: {},
+  notifyAccounts: {},
   ai: {
     enabled: false,
     provider: "anthropic",

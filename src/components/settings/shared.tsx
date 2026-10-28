@@ -1,7 +1,7 @@
 // Pieces every settings page uses.
 
 import { For, type JSX } from "solid-js";
-import { type Account } from "../../api";
+import type { Account } from "../../api";
 import { setSetting, settings, type Settings } from "../../settings";
 
 export type Choice<K extends keyof Settings> = { label: string; value: Settings[K] };

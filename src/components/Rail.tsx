@@ -1,4 +1,4 @@
-import { For, onCleanup, onMount, Show } from "solid-js";
+import { For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import type { Account, Folder, SyncState, Target } from "../api";
 import { labelColour } from "../colours";
 import { AccountAvatar } from "./AccountAvatar";
@@ -79,7 +79,7 @@ export function Rail(props: {
         </button>
       </div>
       <Show when={props.accounts.length > 1}>
-        <div class="account-switch" role="group" aria-label="Accounts">
+        <fieldset class="account-switch" aria-label="Accounts">
           <For each={props.accounts}>
             {(account, i) => {
               const inbox = () => props.folders.find((f) => f.accountId === account.id && f.role === "inbox");
@@ -100,31 +100,33 @@ export function Rail(props: {
               );
             }}
           </For>
-        </div>
+        </fieldset>
       </Show>
-      <a classList={{ active: props.isTarget({ role: "inbox" }) }} onClick={() => go({ role: "inbox" })}>
+      <Item active={props.isTarget({ role: "inbox" })} onClick={() => go({ role: "inbox" })}>
         <span>All Inboxes</span>
         <Show when={inboxUnread()}>
-          <span class="count">{inboxUnread()}</span>
+          <span class="count">{inboxUnread()}<span class="visually-hidden"> unread</span></span>
         </Show>
-      </a>
-      <a classList={{ active: props.isTarget({ role: "snoozed" }) }} onClick={() => go({ role: "snoozed" })}>
+      </Item>
+      <Item active={props.isTarget({ role: "snoozed" })} onClick={() => go({ role: "snoozed" })}>
         <span>Snoozed</span>
-      </a>
-      <a classList={{ active: props.isTarget({ role: "later" }) }} onClick={() => go({ role: "later" })}>
+      </Item>
+      <Item active={props.isTarget({ role: "later" })} onClick={() => go({ role: "later" })}>
         <span>Read later</span>
-      </a>
-      <a classList={{ active: props.isTarget({ role: "marked" }) }} onClick={() => go({ role: "marked" })}>
+      </Item>
+      <Item active={props.isTarget({ role: "marked" })} onClick={() => go({ role: "marked" })}>
         <span>Marks</span>
-      </a>
+      </Item>
       <Show when={props.searches.length}>
         <h3>
           <span>Searches</span>
         </h3>
         <For each={props.searches}>
           {(q) => (
-            <a class="saved-search" classList={{ active: props.searching === q }} onClick={() => (props.onSearch(q), close())}>
-              <span class="query">{q}</span>
+            <div class="saved-search">
+              <Item active={props.searching === q} onClick={() => (props.onSearch(q), close())}>
+                <span class="query">{q}</span>
+              </Item>
               <button
                 type="button"
                 class="forget"
@@ -134,7 +136,7 @@ export function Rail(props: {
               >
                 ×
               </button>
-            </a>
+            </div>
           )}
         </For>
       </Show>
@@ -150,27 +152,27 @@ export function Rail(props: {
             </h3>
             <For each={props.folders.filter((f) => f.accountId === account.id && f.role !== "label")}>
               {(f) => (
-                <a classList={{ active: props.isTarget(targetOf(f)) }} onClick={() => go(targetOf(f))}>
+                <Item active={props.isTarget(targetOf(f))} onClick={() => go(targetOf(f))}>
                   <span>{ROLE_NAMES[f.role] ?? f.name}</span>
                   <Show when={f.unread && f.role !== "trash" && f.role !== "junk"}>
-                    <span class="count">{f.unread}</span>
+                    <span class="count">{f.unread}<span class="visually-hidden"> unread</span></span>
                   </Show>
-                </a>
+                </Item>
               )}
             </For>
             <Show when={props.folders.some((f) => f.accountId === account.id && f.role === "label")}>
               <h4>Labels</h4>
               <For each={props.folders.filter((f) => f.accountId === account.id && f.role === "label")}>
                 {(f) => (
-                  <a classList={{ active: props.isTarget(targetOf(f)) }} onClick={() => go(targetOf(f))}>
+                  <Item active={props.isTarget(targetOf(f))} onClick={() => go(targetOf(f))}>
                     <span class="label-name">
                       <span class="label-dot" style={{ "--label": labelColour(f.name) }} />
                       {f.name}
                     </span>
                     <Show when={f.unread}>
-                      <span class="count">{f.unread}</span>
+                      <span class="count">{f.unread}<span class="visually-hidden"> unread</span></span>
                     </Show>
-                  </a>
+                  </Item>
                 )}
               </For>
             </Show>
@@ -192,8 +194,18 @@ export function Rail(props: {
   return props.docked ? (
     nav
   ) : (
+    // biome-ignore lint/a11y/noStaticElementInteractions: a click beside the rail closes it, as Escape does
     <div class="scrim" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       {nav}
     </div>
+  );
+}
+
+/** One place to go in the rail: a button, so Tab reaches it and Enter opens it; the open one is `aria-current`. */
+function Item(props: { active: boolean; onClick: () => void; children: JSX.Element }) {
+  return (
+    <button type="button" class="rail-item" classList={{ active: props.active }} aria-current={props.active ? "page" : undefined} onClick={props.onClick}>
+      {props.children}
+    </button>
   );
 }

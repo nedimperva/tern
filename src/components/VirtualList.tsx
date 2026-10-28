@@ -1,10 +1,14 @@
-import { createEffect, createMemo, createSignal, For, JSX, onCleanup, onMount } from "solid-js";
+import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, onMount } from "solid-js";
 
 /// Draws only the rows in view (plus a few either side), so 50 rows or 50,000 cost the same.
 export function VirtualList<T>(props: {
   items: T[];
   rowHeight: number;
   selected: number;
+  /** What a screen reader calls the list. */
+  label?: string;
+  /** The id of the focused row's element, which a screen reader follows while the list has focus. */
+  activeId?: string;
   onEnd?: () => void;
   children: (item: T, index: () => number) => JSX.Element;
 }) {
@@ -43,7 +47,16 @@ export function VirtualList<T>(props: {
   };
 
   return (
-    <div ref={el} class="vlist" role="grid" onScroll={onScroll}>
+    <div
+      ref={el}
+      class="vlist"
+      role="listbox"
+      aria-label={props.label}
+      aria-multiselectable="true"
+      aria-activedescendant={props.activeId}
+      tabIndex={0}
+      onScroll={onScroll}
+    >
       <div style={{ height: `${props.items.length * props.rowHeight}px`, position: "relative" }}>
         <For each={visible()}>
           {(item, i) => {

@@ -36,8 +36,10 @@ Run what CI runs, in one command:
 npm run check
 ```
 
-That is `npm run build`, `npm test` (unit tests for the UI's pure modules, in `src/test`), `cargo fmt --all --check`,
-`cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`.
+That is `npm run build`, `npm test` (unit tests for the UI's pure modules, in `src/test`), `npm run lint` (Biome,
+including its accessibility rules; `biome.jsonc` says why each rule that is off is off), `cargo fmt --all --check`,
+`cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`. A change to the Rust
+dependencies should also pass `cargo deny check` (licences and sources, `deny.toml`).
 
 Then:
 

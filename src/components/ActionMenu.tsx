@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, Index, onCleanup, Show } from "solid-js";
 import { Icon } from "./Icon";
 
 export type MenuItem = { name: string; keys?: string; run: () => void };
@@ -9,8 +9,18 @@ export function ActionMenu(props: { items: () => MenuItem[] }) {
   const [open, setOpen] = createSignal(false);
   const [pointed, setPointed] = createSignal(0);
   let root!: HTMLDivElement;
+  let trigger!: HTMLButtonElement;
+  const items: HTMLButtonElement[] = [];
+  // Focus follows the pointed item, so a screen reader says each one; closing gives it back to the button.
+  // A microtask later: the items are drawn after `open` turns true.
+  createEffect(() => {
+    if (!open()) return;
+    const at = pointed();
+    queueMicrotask(() => items[at]?.focus());
+  });
 
   const close = () => {
+    if (open() && root.contains(document.activeElement)) trigger.focus();
     setOpen(false);
     window.removeEventListener("keydown", onKey, true);
     window.removeEventListener("pointerdown", onOutside, true);
@@ -42,27 +52,32 @@ export function ActionMenu(props: { items: () => MenuItem[] }) {
 
   return (
     <div class="action-menu" ref={root}>
-      <button class="link more" onClick={toggle} aria-label="More actions" aria-expanded={open()} title="More actions">
+      <button ref={trigger} class="link more" onClick={toggle} aria-label="More actions" aria-haspopup="menu" aria-expanded={open()} title="More actions">
         <Icon name="more" size={18} />
       </button>
       <Show when={open()}>
-        <ul role="menu">
-          <For each={props.items()}>
+        <div class="menu-list" role="menu" aria-label="More actions">
+          {/* By place, not by item: the items are made afresh as the conversation changes, and new buttons would
+              take the focus away from the one pointed at. */}
+          <Index each={props.items()}>
             {(item, i) => (
-              <li
+              <button
+                ref={(el) => (items[i] = el)}
+                type="button"
                 role="menuitem"
-                classList={{ pointed: i() === pointed() }}
-                onPointerEnter={() => setPointed(i())}
-                onClick={() => pick(item)}
+                tabIndex={-1}
+                classList={{ pointed: i === pointed() }}
+                onPointerEnter={() => setPointed(i)}
+                onClick={() => pick(item())}
               >
-                <span>{item.name}</span>
-                <Show when={item.keys}>
-                  <kbd>{item.keys}</kbd>
+                <span>{item().name}</span>
+                <Show when={item().keys}>
+                  <kbd>{item().keys}</kbd>
                 </Show>
-              </li>
+              </button>
             )}
-          </For>
-        </ul>
+          </Index>
+        </div>
       </Show>
     </div>
   );

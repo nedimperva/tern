@@ -3,6 +3,8 @@ import { settings } from "./settings";
 
 /** Account colours (docs/design/ui.md §2), in the order the accounts were added. */
 export const ACCOUNT_COLOURS = ["#5b5bd6", "#2f9e6e", "#d0453f", "#c98a1b", "#0e9bb5", "#b24fb0", "#7a7f8a", "#e07a30"];
+/** What a screen reader says for each of `ACCOUNT_COLOURS`. */
+export const COLOUR_NAMES = ["Indigo", "Green", "Red", "Amber", "Teal", "Purple", "Grey", "Orange"];
 
 /** An account's colour: the one picked for it in Settings, else the palette's in the order accounts were added. */
 export const colourOf = (accounts: Account[], id: number) => {

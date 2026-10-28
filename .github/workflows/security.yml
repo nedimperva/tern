@@ -1,12 +1,13 @@
 name: security
 
-# Known-vulnerability checks for the Rust and npm dependencies, plus CodeQL code scanning.
+# Known-vulnerability checks for the Rust and npm dependencies, cargo deny (licences, sources), plus CodeQL code
+# scanning.
 # Runs weekly too, because new advisories appear without any change here.
 on:
   push:
     branches: [main]
   pull_request:
-    paths: ["Cargo.lock", "package-lock.json", ".github/workflows/security.yml"]
+    paths: ["Cargo.lock", "**/Cargo.toml", "deny.toml", "package-lock.json", ".github/workflows/security.yml"]
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:
@@ -35,6 +36,16 @@ jobs:
 
       - name: npm audit
         run: npm audit --omit=dev --audit-level=moderate
+
+  # Licences, bans and sources from deny.toml, and advisories again with cargo deny's own rules.
+  deny:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
 
   codeql:
     runs-on: ubuntu-24.04
