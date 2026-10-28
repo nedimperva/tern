@@ -6,7 +6,7 @@ const row = (over: Partial<ThreadRow> = {}): ThreadRow =>
   ({
     id: 1,
     accountId: 1,
-    threadId: 10,
+    threadId: "t10",
     folderId: 1,
     uid: 1,
     subject: "Hello",
@@ -34,8 +34,8 @@ describe("keyOf", () => {
 
 describe("keepRows", () => {
   it("keeps the old object for a row that did not change, labels compared by value", () => {
-    const old = [row(), row({ threadId: 11 })];
-    const next = [row(), row({ threadId: 11, unread: 0 })];
+    const old = [row(), row({ threadId: "t11" })];
+    const next = [row(), row({ threadId: "t11", unread: 0 })];
     const kept = keepRows(old, next);
     expect(kept[0]).toBe(old[0]);
     expect(kept[1]).toBe(next[1]);
