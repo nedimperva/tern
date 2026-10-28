@@ -338,6 +338,10 @@ export interface Api {
   onFilesDropped(f: (paths: string[], at: { x: number; y: number } | null) => void, hover?: (over: boolean) => void): () => void;
   /** Keeps a pasted picture like an attached file, for the text (PNG, JPEG, GIF or WebP). */
   addImage(picture: Blob): Promise<OutgoingAttachment>;
+  /** Saves settings, snippets and signatures (src/backup.ts) where the person picks; false if they cancelled. */
+  exportSettings(contents: string): Promise<boolean>;
+  /** A settings file the person picks, as text; null if they cancelled. */
+  importSettings(): Promise<string | null>;
   /** A picture being attached, as a data: URI for its card; null for other files. */
   outgoingPreview(path: string): Promise<string | null>;
   /** Runs `f` (and waits for it) before the window closes or Tern quits; returns the way to stop. */
@@ -524,6 +528,8 @@ const tauri: Api = {
   outgoingPreview: (path) => invoke("outgoing_preview", { path }),
   addImage: async (picture) =>
     invoke("add_image", new Uint8Array(await picture.arrayBuffer()), { headers: { "x-mime": picture.type } }),
+  exportSettings: (contents) => invoke("export_settings", { contents }),
+  importSettings: () => invoke("import_settings"),
   attachmentBytes: (id, index) => invoke("attachment_bytes", { id, index }),
   saveAttachment: (id, index) => invoke("save_attachment", { id, index }),
   contacts: (query) => invoke("contacts", { query }),
@@ -799,6 +805,7 @@ function fake(): Api {
   const shelved = new Set<string>();
   // Pictures pasted into compose, by their made-up path, for their previews.
   const pasted = new Map<string, string>();
+  let exported: string | null = null;
   const inInbox = (m: ThreadMessage) => folders.find((f) => f.id === m.folderId)?.role === "inbox";
   const labelsOf = (m: ThreadMessage) => {
     const n = Number(m.threadId.slice(1));
@@ -999,6 +1006,9 @@ function fake(): Api {
       paths.map((p) => ({ path: p, name: p.split("/").pop()!, mime: "application/pdf", size: 1_234_567 })),
     onFilesDropped: () => () => {},
     outgoingPreview: async (path) => pasted.get(path) ?? null,
+    // The file goes nowhere in the browser: an import reads back the last export.
+    exportSettings: async (contents) => ((exported = contents), true),
+    importSettings: async () => exported,
     addImage: async (picture) => {
       const uri = await new Promise<string>((done) => {
         const reader = new FileReader();

@@ -197,6 +197,8 @@ fn main() {
             commands::received_cache_size,
             commands::message_source,
             commands::add_image,
+            commands::export_settings,
+            commands::import_settings,
             commands::mark_all_read,
             commands::clear_received_cache,
             commands::google_available,

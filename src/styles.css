@@ -2905,6 +2905,11 @@ button.fold {
   font-size: var(--t-sm);
   color: var(--danger);
 }
+.setting-note {
+  margin: var(--s-3) 0 0;
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
 .settings-empty {
   flex: 1;
   padding: var(--s-6) var(--s-5);

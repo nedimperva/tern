@@ -890,6 +890,52 @@ pub async fn save_attachment(
     Ok(true)
 }
 
+/// Most a settings file may hold: settings, snippets and signatures are text, far below this.
+const BACKUP_LIMIT: u64 = 5_000_000;
+
+/// Saves the window's export of settings, snippets and signatures where the person picks. False if they cancelled.
+#[tauri::command]
+pub async fn export_settings(app: AppHandle, contents: String) -> Reply<bool> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog = app
+        .dialog()
+        .file()
+        .set_title("Export Tern settings")
+        .set_file_name("tern-settings.json")
+        .add_filter("Tern settings", &["json"]);
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&window);
+    }
+    dialog.save_file(move |chosen| {
+        let _ = tx.send(chosen);
+    });
+    let Some(path) = rx.await.ok().flatten().and_then(|p| p.into_path().ok()) else { return Ok(false) };
+    std::fs::write(&path, contents).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(true)
+}
+
+/// A settings file the person picks, as text for the window to read; None if they cancelled.
+#[tauri::command]
+pub async fn import_settings(app: AppHandle) -> Reply<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog =
+        app.dialog().file().set_title("Import Tern settings").add_filter("Tern settings", &["json"]);
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&window);
+    }
+    dialog.pick_file(move |chosen| {
+        let _ = tx.send(chosen);
+    });
+    let Some(path) = rx.await.ok().flatten().and_then(|p| p.into_path().ok()) else { return Ok(None) };
+    let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+    if size > BACKUP_LIMIT {
+        return Err("That file is too big to be Tern settings".into());
+    }
+    std::fs::read_to_string(&path).map(Some).map_err(|e| format!("{}: {e}", path.display()))
+}
+
 /// The `mailto:` link Tern was started with, once; the window asks when it is ready.
 #[tauri::command]
 pub fn take_mailto(app: AppHandle) -> Option<tern_core::mailto::Mailto> {
