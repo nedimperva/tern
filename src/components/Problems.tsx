@@ -45,8 +45,9 @@ export function ProblemsDialog(props: {
   };
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: a click beside the dialog closes it, as Esc does
     <div class="overlay" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div class="problems" role="dialog" aria-label="Changes on their way to the server">
+      <div class="problems" role="dialog" aria-modal="true" aria-label="Changes on their way to the server">
         <Show when={props.problems.length || (!props.waiting.length && !props.scheduled.length)}>
           <h2>Changes that didn't go through</h2>
           <p class="note">

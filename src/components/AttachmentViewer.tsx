@@ -110,6 +110,7 @@ export function AttachmentViewer(props: { message: ThreadMessage; index: number;
     else if (e.key === "ArrowRight" && count() > 1) step(1);
     else if (e.key === "ArrowLeft" && count() > 1) step(-1);
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") void save();
+    else if (e.key === "z" && !e.ctrlKey && !e.metaKey && shown()?.kind === "image") setZoomed(!zoomed());
     else return;
     e.preventDefault();
     e.stopPropagation();
@@ -118,7 +119,7 @@ export function AttachmentViewer(props: { message: ThreadMessage; index: number;
   onCleanup(() => window.removeEventListener("keydown", onKey, true));
 
   return (
-    <div class="viewer" role="dialog" aria-label={`Attachment: ${file().name}`}>
+    <div class="viewer" role="dialog" aria-modal="true" aria-label={`Attachment: ${file().name}`}>
       <header>
         <span class="title">
           <strong>{file().name}</strong>
@@ -138,16 +139,18 @@ export function AttachmentViewer(props: { message: ThreadMessage; index: number;
       <Show when={problem()}>
         <p class="viewer-problem">{problem()}</p>
       </Show>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: a click beside the file closes it, as Esc does */}
       <div class="stage" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
         <Show when={!shown.loading} fallback={<p class="viewer-note">Getting {file().name}…</p>}>
           <Switch>
             <Match when={shown()?.kind === "image" && (shown() as { url: string })}>
               {(s) => (
+                // biome-ignore lint/a11y/useKeyWithClickEvents: Z zooms from the keyboard
                 <img
                   classList={{ zoomed: zoomed() }}
                   src={s().url}
                   alt={file().name}
-                  title={zoomed() ? "Click to fit" : "Click for full size"}
+                  title={zoomed() ? "Click or press Z to fit" : "Click or press Z for full size"}
                   onClick={() => setZoomed(!zoomed())}
                 />
               )}
@@ -156,10 +159,16 @@ export function AttachmentViewer(props: { message: ThreadMessage; index: number;
               {(s) => <iframe class="pdf" src={s().url} title={file().name} />}
             </Match>
             <Match when={shown()?.kind === "video" && (shown() as { url: string })}>
-              {(s) => <video src={s().url} controls />}
+              {(s) => (
+                // biome-ignore lint/a11y/useMediaCaption: a mailed file comes without captions to show
+                <video src={s().url} controls />
+              )}
             </Match>
             <Match when={shown()?.kind === "audio" && (shown() as { url: string })}>
-              {(s) => <audio src={s().url} controls />}
+              {(s) => (
+                // biome-ignore lint/a11y/useMediaCaption: a mailed file comes without captions to show
+                <audio src={s().url} controls />
+              )}
             </Match>
             <Match when={shown()?.kind === "text" && (shown() as { text: string; table: string[][] | null })}>
               {(s) => (

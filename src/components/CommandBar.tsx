@@ -137,8 +137,9 @@ export function CommandBar(props: { commands: Command[]; onClose: () => void; /*
   };
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: a click beside the dialog closes it, as Esc does
     <div class="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div class="command-bar" role="dialog" aria-label="Commands">
+      <div class="command-bar" role="dialog" aria-modal="true" aria-label="Commands">
         <div class="head">
           <Show when={parent()}>
             <span class="context">{parent()!.name.replace(/ …$/, "")}</span>

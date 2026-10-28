@@ -9,7 +9,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "style": {
         // `x!` after a check the compiler can't follow (a Show, a ref set on mount) is the house idiom.
         "noNonNullAssertion": "off",

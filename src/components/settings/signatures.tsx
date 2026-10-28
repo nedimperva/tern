@@ -203,9 +203,11 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
                 </fieldset>
                 <Show when={s().custom}>
                   <div class="field">
+                    {/* biome-ignore lint/a11y/useSemanticElements: it takes pasted HTML (a logo, a layout), which a textarea can't */}
                     <div
                       class="paste-box"
                       contentEditable
+                      tabIndex={0}
                       role="textbox"
                       aria-label="Paste the signature here"
                       onBeforeInput={(e) => e.preventDefault()}

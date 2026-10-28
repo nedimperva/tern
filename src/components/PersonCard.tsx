@@ -17,7 +17,7 @@ const HIDE_AFTER = 200;
 export function PersonCard(props: { name: string; email: string; colour: string; initials: string; actions: PersonActions; children: JSX.Element }) {
   const [open, setOpenNow] = createSignal(false);
   const [at, setAt] = createSignal({ top: 0, left: 0 });
-  let anchor!: HTMLSpanElement;
+  let anchor!: HTMLButtonElement;
   // The card is fixed to the window, as the header it sits in clips what overflows it; scrolling closes it.
   const setOpen = (show: boolean) => {
     if (show) {
@@ -29,6 +29,16 @@ export function PersonCard(props: { name: string; email: string; colour: string;
   const onScroll = () => setOpenNow(false);
   window.addEventListener("scroll", onScroll, true);
   onCleanup(() => window.removeEventListener("scroll", onScroll, true));
+  // Esc closes an open card before anything else hears it, and gives focus back to the name.
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key !== "Escape" || !open()) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    setOpenNow(false);
+    anchor.focus();
+  };
+  window.addEventListener("keydown", onKey, true);
+  onCleanup(() => window.removeEventListener("keydown", onKey, true));
   const [copied, setCopied] = createSignal(false);
   const [card] = createResource(() => open() && props.email, (email) => api.contactCard(email));
   let timer: number | undefined;
@@ -52,19 +62,27 @@ export function PersonCard(props: { name: string; email: string; colour: string;
 
   return (
     <span
-      class="person"
-      ref={anchor}
+      class="person-wrap"
       // A real move, not the page shifting under a still pointer (opening a conversation puts a name there).
       onPointerMove={(e) => (open() ? clearTimeout(timer) : (e.movementX || e.movementY) && later(true, SHOW_AFTER))}
       onPointerLeave={() => later(false, HIDE_AFTER)}
-      onClick={(e) => {
-        e.stopPropagation();
-        clearTimeout(timer);
-        setOpen(!open());
-      }}
     >
-      {props.children}
+      <button
+        type="button"
+        class="person"
+        ref={anchor}
+        aria-haspopup="dialog"
+        aria-expanded={open()}
+        onClick={(e) => {
+          e.stopPropagation();
+          clearTimeout(timer);
+          setOpen(!open());
+        }}
+      >
+        {props.children}
+      </button>
       <Show when={open()}>
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: only keeps a click in the card from reaching the message header */}
         <div
           class="person-card"
           role="dialog"

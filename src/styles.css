@@ -928,18 +928,23 @@ button.primary kbd {
   text-overflow: ellipsis;
   min-width: 0;
 }
-.rail a {
+.rail .rail-item {
   display: flex;
   justify-content: space-between;
+  width: 100%;
+  min-width: 0;
   padding: 5px var(--s-2);
+  border: 0;
   border-radius: var(--r-md);
+  background: none;
   font-size: var(--t-md);
+  text-align: left;
   cursor: default;
 }
-.rail a:hover {
+.rail .rail-item:hover {
   background: var(--bg-2);
 }
-.rail a.active {
+.rail .rail-item.active {
   background: var(--bg-3);
   font-weight: 600;
 }
@@ -954,13 +959,26 @@ button.primary kbd {
   white-space: nowrap;
   min-width: 0;
 }
-.rail .saved-search .forget {
-  visibility: hidden;
-  color: var(--fg-2);
-  padding: 0 2px;
+.rail .saved-search {
+  position: relative;
 }
-.rail .saved-search:hover .forget {
-  visibility: visible;
+.rail .saved-search .rail-item {
+  padding-right: var(--s-5);
+}
+.rail .saved-search .forget {
+  position: absolute;
+  right: var(--s-1);
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  padding: 0 var(--s-1);
+}
+.rail .saved-search:hover .forget,
+.rail .saved-search .forget:focus-visible {
+  opacity: 1;
 }
 .save-search {
   flex: none;
@@ -975,6 +993,9 @@ button.primary kbd {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-2);
+  min-width: 0;
+  margin: 0;
+  border: 0;
   padding: 0 var(--s-2) var(--s-2);
 }
 .rail .account-switch button {
@@ -2059,7 +2080,7 @@ button.fold {
   border-radius: var(--r-md);
   box-shadow: var(--shadow);
 }
-.suggestions li {
+.suggestions [role="option"] {
   display: flex;
   gap: var(--s-2);
   align-items: baseline;
@@ -2068,7 +2089,7 @@ button.fold {
   font-size: var(--t-md);
   cursor: default;
 }
-.suggestions li.pointed {
+.suggestions [role="option"].pointed {
   background: var(--accent-soft);
 }
 .suggestions .addr {
@@ -2731,21 +2752,24 @@ button.fold {
   text-transform: uppercase;
   color: var(--fg-2);
 }
-.settings-page nav a {
+.settings-page nav button:not(.link) {
   display: flex;
   align-items: center;
   gap: var(--s-2);
+  width: 100%;
   padding: 7px 10px;
+  border: 0;
   border-radius: var(--r-md);
+  background: none;
   font-size: var(--t-md);
   color: var(--fg-1);
-  text-decoration: none;
+  text-align: left;
   cursor: default;
 }
-.settings-page nav a:hover {
+.settings-page nav button:not(.link):hover {
   background: var(--bg-2);
 }
-.settings-page nav a.active {
+.settings-page nav button.active {
   background: var(--bg-3);
   color: var(--fg-0);
   font-weight: 600;
@@ -3698,7 +3722,7 @@ button.place.muted {
 .action-menu .more[aria-expanded="true"] {
   background: var(--bg-hover);
 }
-.action-menu ul {
+.action-menu .menu-list {
   position: absolute;
   right: 0;
   top: calc(100% + 4px);
@@ -3712,8 +3736,13 @@ button.place.muted {
   border-radius: var(--r-md);
   box-shadow: var(--shadow);
 }
-.action-menu li {
+.action-menu .menu-list button {
   display: flex;
+  width: 100%;
+  border: 0;
+  background: none;
+  text-align: left;
+  outline: none;
   align-items: center;
   justify-content: space-between;
   gap: var(--s-4);
@@ -3722,12 +3751,18 @@ button.place.muted {
   font-size: var(--t-md);
   cursor: default;
 }
-.action-menu li.pointed {
+.action-menu .menu-list button.pointed {
   background: var(--accent-soft);
 }
 
 /* A sender's card, on hover or click of their name. */
 .person {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
   cursor: pointer;
 }
 .person:hover > strong {
@@ -4189,6 +4224,13 @@ button.ai-line:hover {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+/* A group of buttons that is a fieldset for screen readers only. */
+fieldset.plain {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 /* Settings → AI as four steps, the last a table of what each feature sends. */

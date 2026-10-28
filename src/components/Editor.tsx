@@ -351,10 +351,11 @@ export function Editor(props: {
         {(at) => (
           <div class="snippet-picker" style={{ left: `${at().left}px`, top: `${at().top}px` }}>
             <div class="snippet-choices">
-              <ul class="suggestions" role="listbox" aria-label="Snippets">
+              <div class="suggestions" role="listbox" aria-label="Snippets">
                 <For each={offered()}>
                   {(s, i) => (
-                    <li
+                    // biome-ignore lint/a11y/useFocusableInteractive: focus stays in the text; the arrow keys move the pick
+                    <div
                       role="option"
                       aria-selected={i() === pointed()}
                       classList={{ pointed: i() === pointed() }}
@@ -363,10 +364,10 @@ export function Editor(props: {
                     >
                       <span class="name">{s.name || s.shortcut}</span>
                       <span class="snippet-key">;{s.shortcut}</span>
-                    </li>
+                    </div>
                   )}
                 </For>
-              </ul>
+              </div>
               <p class="snippet-keys">
                 <kbd>↵</kbd> insert <kbd>Esc</kbd> close
               </p>
@@ -380,7 +381,7 @@ export function Editor(props: {
       </Show>
       <Show when={bar()}>
         {(at) => (
-          <div class="format-bar" style={{ left: `${at().left}px`, top: `${at().top - 40}px` }} onMouseDown={(e) => e.preventDefault()}>
+          <div class="format-bar" role="toolbar" aria-label="Format" style={{ left: `${at().left}px`, top: `${at().top - 40}px` }} onMouseDown={(e) => e.preventDefault()}>
             <Show
               when={!linking()}
               fallback={

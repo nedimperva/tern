@@ -2,7 +2,8 @@
 
 import { createSignal, For, Show } from "solid-js";
 import { api, type Account } from "../../api";
-import { ACCOUNT_COLOURS } from "../../colours";
+import { ACCOUNT_COLOURS, COLOUR_NAMES } from "../../colours";
+import { radioKeys } from "../../a11y";
 import { setSetting, settings } from "../../settings";
 
 /** One account: its name on sent mail, what else Tern knows of it, and a way to its signatures. */
@@ -97,14 +98,17 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
       </div>
       <div class="setting">
         <span class="title">Colour</span>
-        <span class="swatches" role="radiogroup" aria-label="Colour">
+        <span class="swatches" role="radiogroup" aria-label="Colour" onKeyDown={radioKeys}>
           <For each={ACCOUNT_COLOURS}>
-            {(c) => (
+            {(c, i) => (
+              // biome-ignore lint/a11y/useSemanticElements: a swatch is a styled radio; radioKeys gives it the arrow keys of a native one
               <button
                 type="button"
                 role="radio"
                 aria-checked={picked() === c}
-                aria-label={c}
+                tabIndex={picked() === c || (!picked() && i() === 0) ? 0 : -1}
+                aria-label={COLOUR_NAMES[i()]}
+                title={COLOUR_NAMES[i()]}
                 classList={{ on: picked() === c }}
                 style={{ background: c }}
                 onClick={() => pick(c)}

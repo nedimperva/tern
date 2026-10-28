@@ -172,7 +172,7 @@ export function SnippetSettings(props: { accounts: Account[] }) {
               value={query()}
               onInput={(e) => setQuery(e.currentTarget.value)}
             />
-            <div class="filters" role="group" aria-label="Show">
+            <fieldset class="filters plain" aria-label="Show">
               <button class="pill" aria-pressed={filter() === "all"} onClick={() => setFilter("all")}>
                 All
               </button>
@@ -188,7 +188,7 @@ export function SnippetSettings(props: { accounts: Account[] }) {
               <button class="pill" aria-pressed={filter() === "used"} onClick={() => setFilter("used")}>
                 Most used
               </button>
-            </div>
+            </fieldset>
             <ul class="master-list">
               <For each={shown()} fallback={<li class="none">Nothing matches.</li>}>
                 {(s) => (
@@ -334,7 +334,7 @@ export function SnippetSettings(props: { accounts: Account[] }) {
                   >
                     <p class="preview-text">
                       {sample(s()).before}
-                      <span class="caret" aria-label="The cursor goes here" />
+                      <span class="caret" role="img" aria-label="The cursor goes here" />
                       {sample(s()).after}
                     </p>
                   </MailPreview>

@@ -17,7 +17,7 @@ export function DayLine(props: {
 }) {
   const s = () => start()!;
   return (
-    <div class="day-line" role="region" aria-label="Since you were last here">
+    <section class="day-line" aria-label="Since you were last here">
       <strong>
         {greeting()}
         {props.name ? `, ${props.name}` : ""}.
@@ -50,6 +50,6 @@ export function DayLine(props: {
       <button class="close" aria-label="Hide until tomorrow" title="Hide until tomorrow" onClick={hideLineToday}>
         <Icon name="x" size={14} />
       </button>
-    </div>
+    </section>
   );
 }

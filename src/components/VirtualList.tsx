@@ -5,6 +5,10 @@ export function VirtualList<T>(props: {
   items: T[];
   rowHeight: number;
   selected: number;
+  /** What a screen reader calls the list. */
+  label?: string;
+  /** The id of the focused row's element, which a screen reader follows while the list has focus. */
+  activeId?: string;
   onEnd?: () => void;
   children: (item: T, index: () => number) => JSX.Element;
 }) {
@@ -43,7 +47,16 @@ export function VirtualList<T>(props: {
   };
 
   return (
-    <div ref={el} class="vlist" role="grid" onScroll={onScroll}>
+    <div
+      ref={el}
+      class="vlist"
+      role="listbox"
+      aria-label={props.label}
+      aria-multiselectable="true"
+      aria-activedescendant={props.activeId}
+      tabIndex={0}
+      onScroll={onScroll}
+    >
       <div style={{ height: `${props.items.length * props.rowHeight}px`, position: "relative" }}>
         <For each={visible()}>
           {(item, i) => {

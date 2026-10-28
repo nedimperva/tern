@@ -33,8 +33,9 @@ export function LabelPicker(props: {
   };
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: a click beside the dialog closes it, as Esc does
     <div class="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div class="command-bar snooze" role="dialog" aria-label="Labels">
+      <div class="command-bar snooze" role="dialog" aria-modal="true" aria-label="Labels">
         <div class="head">
           <span class="context">{props.count === 1 ? "Label" : `Label ${props.count}`}</span>
           <input
