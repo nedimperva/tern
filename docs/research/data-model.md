@@ -1,6 +1,6 @@
 # Data model
 
-Schema v1 is in `crates/tern-core/src/store.rs`. The groups below are candidate schema additions from
+Schema v1 is in `crates/tern-core/src/store/schema.rs`. The groups below are candidate schema additions from
 the original work packages, not a mandate to implement them in numeric sprint order. Allocate sequential
 migration versions when a milestone slice is implemented; calendar/AI/contacts tables are not required
 for core mail. If Gmail API is selected early, its fields/adapters arrive in M2 rather than after Outlook.

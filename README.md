@@ -218,7 +218,7 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 
 ```
 crates/tern-core/        the engine (Rust, no UI)
-  src/store.rs           SQLite schema, list/thread/search queries, the outbox with undo
+  src/store/             SQLite schema and migrations, list/thread/search queries, the outbox with undo
   src/sync.rs            IMAP sync worker: folders, new mail, flags, sending the outbox
   src/imap.rs            the only code that talks to the IMAP library (io-imap)
   src/mime.rs            parsing raw messages
