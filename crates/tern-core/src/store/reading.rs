@@ -218,8 +218,13 @@ impl Store {
     pub fn read_later(&self, ids: &[i64], on: bool, now: i64) -> Result<()> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(if on {
+            // Counted from the newest message there too: one dated ahead of this computer's clock (a sender's wrong
+            // clock or time zone) is not someone writing after it was shelved.
             "INSERT INTO read_later (account_id, thread_id, added)
-             SELECT account_id, thread_id, ?2 FROM messages WHERE id = ?1
+             SELECT m.account_id, m.thread_id,
+                    MAX(?2, (SELECT MAX(x.date) FROM messages x
+                             WHERE x.account_id = m.account_id AND x.thread_id = m.thread_id))
+             FROM messages m WHERE m.id = ?1
              ON CONFLICT (account_id, thread_id) DO UPDATE SET added = excluded.added"
         } else {
             "DELETE FROM read_later

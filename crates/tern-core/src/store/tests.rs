@@ -1988,3 +1988,23 @@ fn migration_4_counts_existing_messages_as_complete() {
     assert!(store.thread(1).unwrap()[0].body_loaded);
     assert!(store.bodies_needed(1, 0, 10).unwrap().is_empty());
 }
+
+#[test]
+fn the_shelf_keeps_conversations_shelved_outside_the_inbox_or_dated_ahead() {
+    let (store, account, inbox, archive) = setup();
+    store.insert_messages(account, archive, &[message(1, "Old report", 100)]).unwrap();
+    // Dated an hour ahead of when it is shelved, as a sender with a wrong clock makes it.
+    store.insert_messages(account, inbox, &[message(2, "From the future", 4_000)]).unwrap();
+    let list = |role: &str| -> Vec<String> {
+        let rows = store.list_threads(&ListTarget::Role(role.into()), None, 9).unwrap();
+        rows.into_iter().map(|t| t.latest.subject).collect()
+    };
+    let id = |folder: i64| store.list_threads(&ListTarget::Folder(folder), None, 9).unwrap()[0].latest.id;
+    store.read_later(&[id(archive), id(inbox)], true, 400).unwrap();
+    assert_eq!(list(LATER), ["From the future", "Old report"]);
+    assert!(list("inbox").is_empty());
+    let reply =
+        NewMessage { in_reply_to: Some("2@example.com".into()), ..message(3, "Re: From the future", 5_000) };
+    store.insert_messages(account, inbox, &[reply]).unwrap();
+    assert_eq!(list(LATER), ["Old report"], "a reply after it still brings it back");
+}

@@ -281,7 +281,17 @@ fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
         IMPORTANT => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND NOT {IS_OTHER}"),
         OTHER => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND {IS_OTHER}"),
         SNOOZED => format!("{inbox} AND {IS_SNOOZED}"),
-        LATER => format!("{inbox} AND {IS_LATER} AND NOT {IS_SNOOZED}"),
+        // Wherever the conversation is: one shelved from Archive or a search stays there, and shows here too. Not
+        // its drafts (a click would open compose) or the bin and spam.
+        LATER => {
+            return (
+                format!(
+                    "{IS_LATER} AND NOT {IS_SNOOZED}
+                     AND m.folder_id NOT IN (SELECT id FROM folders WHERE role IN (?{n}, 'junk', 'drafts'))"
+                ),
+                Value::Text("trash".into()),
+            )
+        }
         // Wherever the conversation went, except the bin.
         MARKED => {
             return (
