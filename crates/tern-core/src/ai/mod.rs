@@ -21,6 +21,7 @@ const WRITE_PROMPT: &str = include_str!("prompts/write.md");
 const NEW_MAIL_PROMPT: &str = include_str!("prompts/new_mail.md");
 const REPLIES_PROMPT: &str = include_str!("prompts/replies.md");
 const STYLE_PROMPT: &str = include_str!("prompts/style.md");
+const ASK_PROMPT: &str = include_str!("prompts/ask.md");
 const SUMMARY: &str = "summary";
 const REPLIES: &str = "replies";
 /// Sent messages read to learn how someone writes.
@@ -710,6 +711,67 @@ fn own_quote(quoted: &str) -> String {
     lines.join("\n").trim().to_string()
 }
 
+// MARK: Asking about a conversation
+
+/// An answer about a conversation, and what was sent to get it (the companion's receipt).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Answer {
+    pub text: String,
+    /// The messages numbered as the answer's [n] counts them, oldest first: their ids, to jump to.
+    pub messages: Vec<i64>,
+    /// Characters of mail and questions sent.
+    pub sent_chars: usize,
+    pub route: Route,
+}
+
+/// Answers `question` about the conversation holding message `id`, from that conversation alone, with the earlier
+/// questions and answers of the same chat. Behind the summaries switch: asking about a conversation is reading it.
+/// Never kept: a chat is the person's, asked once.
+pub fn ask_about(
+    store: &Store,
+    model: &dyn Model,
+    id: i64,
+    question: &str,
+    earlier: &[(String, String)],
+    on_text: &mut dyn FnMut(&str),
+) -> Result<Answer> {
+    let s = settings(store)?;
+    let messages: Vec<ThreadMessage> =
+        store.thread(id)?.into_iter().filter(|m| m.draft_id.is_none()).collect();
+    let Some(first) = messages.first() else { bail!("That conversation is gone.") };
+    let account = first.row.account_id;
+    let r = allowed(&s, Feature::Summaries, account)?;
+    let question = question.trim();
+    if question.is_empty() {
+        bail!("Ask something first.");
+    }
+    let mut user = transcript(&messages, s.redact, &own_address(store, account)?);
+    if !earlier.is_empty() {
+        user.push_str("\n\n<earlier>\n");
+        for (q, a) in earlier {
+            user.push_str(&format!("<question>{}</question>\n<answer>{}</answer>\n", fence(q), fence(a)));
+        }
+        user.push_str("</earlier>");
+    }
+    let asked = if s.redact { redact(question) } else { question.to_string() };
+    user.push_str(&format!("\n\n<question>{}</question>", fence(&asked)));
+    if user.len() > MAX_CHARS {
+        bail!("This conversation is too long to ask about.");
+    }
+    let req = Request { provider: r.provider, model: r.model.clone(), system: ASK_PROMPT, user };
+    let text = ask(store, &s, model, &req, on_text)?;
+    if text.is_empty() {
+        bail!("The AI sent back nothing. Try again.");
+    }
+    Ok(Answer {
+        text,
+        messages: messages.iter().map(|m| m.row.id).collect(),
+        sent_chars: req.user.len(),
+        route: r,
+    })
+}
+
 // MARK: Suggested replies
 
 /// Three short replies the person could send to the conversation holding message `id`, kept like summaries so
@@ -958,6 +1020,24 @@ mod tests {
     fn turn_on(store: &Store, account: i64) {
         let s = AiSettings { enabled: true, accounts: vec![account], ..Default::default() };
         store.set_setting("ai", &serde_json::to_value(s).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn asking_sends_the_conversation_the_chat_and_the_question() {
+        let (store, account, id) = mailbox();
+        let model = Scripted::new("Tom sends it Thursday [2].");
+        assert!(ask_about(&store, &model, id, "When?", &[], &mut |_| {}).is_err(), "not while AI is off");
+        turn_on(&store, account);
+        let earlier = vec![("Who asked?".to_string(), "Ana [1].".to_string())];
+        let answer = ask_about(&store, &model, id, "When does Tom send it?", &earlier, &mut |_| {}).unwrap();
+        assert_eq!(answer.text, "Tom sends it Thursday [2].");
+        assert_eq!(answer.messages.len(), 2, "the [n] the answer counts by");
+        let req = model.asked.borrow()[0].clone();
+        assert_eq!(req.system, ASK_PROMPT);
+        assert!(req.user.contains("<earlier>") && req.user.contains("Ana [1]."));
+        assert!(req.user.ends_with("<question>When does Tom send it?</question>"));
+        assert_eq!(answer.sent_chars, req.user.len());
+        assert!(!req.user.contains("+387"), "redacted like a summary");
     }
 
     #[test]

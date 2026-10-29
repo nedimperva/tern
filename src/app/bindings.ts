@@ -160,6 +160,7 @@ export const bindings = (): Binding[] => [
   ...(update() ? [{ keys: "", name: `Restart to update to ${update()}`, run: restartToUpdate }] : []),
   { keys: "Ctrl+P", name: "Performance overlay", run: () => setPerf(!perf()) },
   { keys: "Ctrl+\\", name: "Show or hide the sidebar", run: toggleSidebar },
+  { keys: "Ctrl+.", name: "Show or hide the companion", run: () => setSetting("companion", !settings.companion) },
   { keys: "Ctrl+k", name: "Command palette", run: () => setPalette(!palette()), hidden: true },
 ];
 

@@ -207,6 +207,31 @@ button.primary kbd {
 .app.full .list-pane {
   display: none;
 }
+/* The companion (§4.2b) takes a column on the right of the conversation, or slides over it in a narrow window. */
+.app.with-companion {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+.app.split.with-companion {
+  grid-template-columns: 340px minmax(0, 1fr) 340px;
+}
+@media (max-width: 1180px) {
+  .app.with-companion,
+  .app.split.with-companion {
+    grid-template-columns: 340px minmax(0, 1fr);
+  }
+  .app.full.with-companion {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .companion {
+    position: fixed;
+    top: var(--titlebar-h);
+    right: 0;
+    bottom: 0;
+    width: min(340px, 90vw);
+    z-index: 8;
+    box-shadow: var(--shadow);
+  }
+}
 
 .list-pane {
   display: flex;
@@ -6434,4 +6459,276 @@ button.link.danger {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--s-1);
   }
+}
+
+/* MARK: Companion (§4.2b) */
+
+.companion {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--bg-1);
+  font-size: var(--t-md);
+}
+.companion > header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  height: 48px;
+  padding: 0 var(--s-2);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.companion-tabs {
+  display: flex;
+  gap: 2px;
+}
+.companion-tabs button {
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.companion-tabs button.on {
+  background: var(--bg-2);
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.companion .spacer {
+  flex: 1;
+}
+.companion-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+.companion .quiet {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.companion h3 {
+  margin: var(--s-2) 0 0;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.companion-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  color: var(--fg-1);
+  line-height: 1.5;
+}
+.companion-empty p {
+  margin: 0;
+}
+.companion-empty button,
+.companion .suggest button {
+  align-self: flex-start;
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.companion .suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.companion .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+.companion .chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  font-size: var(--t-sm);
+}
+.companion .turns {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.companion .turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.companion .question {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: var(--s-2) var(--s-3);
+  border-radius: 12px 12px 4px 12px;
+  background: var(--bg-2);
+  line-height: 1.5;
+}
+.companion .answer {
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.companion .error {
+  color: var(--danger);
+}
+.companion .cite {
+  margin: 0 2px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--fg-0);
+  font: inherit;
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+.companion .receipt {
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.companion .ask-box {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--bg-0);
+}
+.companion .ask-box textarea {
+  flex: 1;
+  border: none;
+  background: none;
+  color: var(--fg-0);
+  font: inherit;
+  resize: none;
+  outline: none;
+}
+.companion .ask-box .send {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.companion .ask-box .send:disabled {
+  opacity: 0.45;
+}
+.companion .person-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.companion .person-head strong {
+  font-size: var(--t-lg);
+}
+.companion .stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+.companion .stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+}
+.companion .stats strong {
+  font-size: var(--t-lg);
+}
+.companion .stats span {
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.companion .recent {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.companion .recent li {
+  display: flex;
+  gap: var(--s-2);
+  padding: var(--s-1) 0;
+}
+.companion .recent .subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.companion .foot {
+  margin-top: auto;
+}
+.companion .pledge {
+  display: flex;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+}
+.companion .pledge > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.companion .pledge .text {
+  padding: 0;
+  color: var(--fg-0);
+  text-align: left;
+  line-height: 1.45;
+}
+.companion .pledge.done .text {
+  color: var(--fg-2);
+  text-decoration: line-through;
+}
+.companion .pledge .due {
+  color: var(--warn-fg);
+}
+.companion .file {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: inherit;
+  text-align: left;
+}
+.companion .file svg {
+  grid-row: span 2;
+  color: var(--fg-2);
+}
+.companion .file .name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }

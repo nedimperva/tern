@@ -393,6 +393,25 @@ Settings → Reading → Start of the day: the screen and the line, only the lin
   then Reply `R` (compose over the run), Snooze `H`, Done `E`, Later `J` (`K` back). It ends with "That's everything
   that needed you." and the inbox.
 
+### 4.2b The companion (`Ctrl+.`)
+
+Built 2026-10-29 from the design board "Tern design ideas" (owner's pick). A 340 px column on `--bg-1` right of
+the open conversation (a third grid column; under 1180 px it slides over the conversation with `--shadow`), open
+until closed (`companion` setting). A 48 px header with four tabs (selected on `--bg-2`) and ×.
+
+- **Ask**: a chat about the conversation, through `ai::ask_about` behind the summaries switch (on request; the
+  transcript, the chat so far and the question, redacted like a summary; never kept). A chip says what it reads
+  ("This conversation · 7"), three suggested questions start it, answers stream in and each `[n]` becomes a chip
+  ("Ana · Tue") that shows that message. Under each answer a receipt: provider, messages and characters sent,
+  "nothing kept". Chats stay per conversation while Tern runs. With AI off it says what Ask does and links to
+  Settings → AI; nothing is sent.
+- **Person**: the newest sender who isn't you: name, address, how many messages each way (`contact_card`), how long
+  you usually take to answer them in this conversation, and your recent conversations. No AI.
+- **Promises**: You owe (what you were asked: `findAsks`; what you said you'd do: "I'll…") and Owed to you (the
+  reverse), each with who, a due day when the sentence names one, a jump to its message and a tick
+  (`promisesDone`). From the words, on this computer (`src/promises.ts`).
+- **Files**: every attachment in the conversation, newest first, with who and when; a click opens it.
+
 ### 4.8 Settings (`Ctrl+,`)
 
 - **Who writes most** (General, owner 2026-10-29; also "Who fills your inbox" in the palette): the senders of the

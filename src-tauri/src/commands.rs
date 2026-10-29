@@ -1336,6 +1336,24 @@ pub async fn ai_summarize(
     .await
 }
 
+/// Answers a question about the conversation of message `id` (the companion's Ask), with the chat so far.
+#[tauri::command]
+pub async fn ai_ask(
+    state: State<'_, AppState>,
+    id: i64,
+    question: String,
+    earlier: Vec<(String, String)>,
+    on_text: tauri::ipc::Channel<String>,
+) -> Reply<ai::Answer> {
+    let store = state.store.clone();
+    blocking(move || {
+        ai::ask_about(&store, &providers::Router, id, &question, &earlier, &mut |t| {
+            drop(on_text.send(t.to_string()))
+        })
+    })
+    .await
+}
+
 /// Three replies the person could send to the conversation of message `id`.
 #[tauri::command]
 pub async fn ai_replies(

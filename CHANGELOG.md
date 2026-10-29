@@ -23,6 +23,9 @@ every release needs one here before it is tagged.
   new message, and older messages you've read wait behind one "Earlier in this conversation" line.
 - Who writes most (Settings, or "Who fills your inbox" in the command bar): the senders behind the last 30 days'
   mail, most first, with Unsubscribe where they offer it and a way to send them to Other.
+- The companion (`Ctrl+.`): a column beside the open conversation. Ask questions about it with AI (on request,
+  with the messages it rests on as chips and a note of exactly what was sent), see who you're writing with, what
+  you owe and what's owed to you, and every file in the conversation. Only Ask uses AI.
 - Wing beat: a soft sound when a message leaves the outbox. Off by default; Settings → Notifications → Sound when
   mail leaves. Quiet hours keep it quiet.
 

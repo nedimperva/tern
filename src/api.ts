@@ -19,6 +19,9 @@ export type DayStart = {
 export type AiSummary = { line: string; facts: AiFact[]; points: string[]; cached: boolean };
 /** A summary's fact, for a chip: the nearest date that matters, what is asked of you, or what was decided. */
 export type AiFact = { kind: "due" | "asked" | "decided"; text: string };
+/** An answer about a conversation: `messages` are the ids its [n] count by, oldest first; what was sent, for the
+ * receipt under it. */
+export type AiAnswer = { text: string; messages: number[]; sentChars: number; route: { provider: AiProvider; model: string } };
 /** One suggested reply: a few words on what it does, and the reply. */
 export type AiSuggestion = { label: string; text: string };
 /** A style just learned, with made-up notes written plainly and in that style, shown once. */
@@ -476,6 +479,8 @@ export interface Api {
   aiSummarize(id: number, fresh: boolean, onText: (text: string) => void): Promise<AiSummary>;
   /** Three replies the person could send; kept like summaries unless `fresh`. */
   aiReplies(id: number, fresh: boolean, onText: (text: string) => void): Promise<AiSuggestion[]>;
+  /** Answers a question about the conversation of message `id`, with the chat so far as [question, answer]. */
+  aiAsk(id: number, question: string, earlier: [string, string][], onText: (text: string) => void): Promise<AiAnswer>;
   aiWrite(input: AiWriteInput, onText: (text: string) => void): Promise<AiWritten>;
   aiClearCache(): Promise<number>;
   aiStats(): Promise<AiStats>;
@@ -679,6 +684,7 @@ const tauri: Api = {
   aiCachedSummary: (id) => invoke("ai_cached_summary", { id }),
   aiSummarize: (id, fresh, onText) => invoke("ai_summarize", { id, fresh, onText: channel(onText) }),
   aiReplies: (id, fresh, onText) => invoke("ai_replies", { id, fresh, onText: channel(onText) }),
+  aiAsk: (id, question, earlier, onText) => invoke("ai_ask", { id, question, earlier, onText: channel(onText) }),
   aiWrite: (input, onText) => invoke("ai_write", { input, onText: channel(onText) }),
   aiClearCache: () => invoke("ai_clear_cache"),
   aiStats: () => invoke("ai_stats"),
@@ -1346,6 +1352,18 @@ function fake(): Api {
       return model;
     },
     aiCachedSummary: async (id) => fakeSummaries.get(id) ?? null,
+    aiAsk: async (id, question, _earlier, onText) => {
+      const thread = messages.find((m) => m.id === id)?.threadId;
+      const ids = messages.filter((m) => m.threadId === thread).sort((a, b) => a.date - b.date).map((m) => m.id);
+      const text = /when|by/i.test(question)
+        ? "Thursday at noon: Ana asks for the totals by then [1], and Tom said he'd have his part ready Wednesday [2]."
+        : "Ana needs the EU totals confirmed [1]. Nobody has answered her yet.";
+      for (const word of text.split(/(?<= )/)) {
+        await new Promise((r) => setTimeout(r, 25));
+        onText(word);
+      }
+      return { text, messages: ids, sentChars: 4210, route: { provider: "anthropic", model: "claude-sonnet-5-5" } };
+    },
     aiSummarize: async (id, fresh, onText) => {
       if (!fresh && fakeSummaries.has(id)) return fakeSummaries.get(id)!;
       const subject = messages.find((m) => m.id === id)?.subject ?? "this";
