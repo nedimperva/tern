@@ -1,7 +1,7 @@
 // Appearance, Reading, Compose, About, Notifications and Desktop.
 
-import { createResource, createSignal, onMount, Show } from "solid-js";
-import { api } from "../../api";
+import { createSignal, onMount, Show } from "solid-js";
+import { api, type About } from "../../api";
 import { omarchyAvailable, setSetting, settings } from "../../settings";
 import { NIGHT_SHIFT, SCENES, TIDE_REPORT } from "../../zero";
 import { Select } from "./shared";
@@ -199,7 +199,9 @@ const BETA_GUIDE = "https://github.com/nedimperva/tern/blob/main/docs/beta.md";
 const megabytes = (bytes: number) => (bytes < 1_000_000 ? `${Math.round(bytes / 1000)} KB` : `${Math.round(bytes / 1_000_000)} MB`);
 
 export function AboutSettings() {
-  const [about] = createResource(() => api.about());
+  // Plain signals, not resources: a resource read inside Settings' Suspense blanked the whole page until it came.
+  const [about, setAbout] = createSignal<About | null>(null);
+  onMount(() => void api.about().then(setAbout, () => {}));
   const [copied, setCopied] = createSignal<"yes" | "no" | null>(null);
   let details: HTMLPreElement | undefined;
   const copy = async () => {
@@ -212,7 +214,9 @@ export function AboutSettings() {
     setCopied(done ? "yes" : "no");
     setTimeout(() => setCopied(null), 3000);
   };
-  const [cacheSize, { refetch: weighCache }] = createResource(() => api.receivedCacheSize().catch(() => 0));
+  const [cacheSize, setCacheSize] = createSignal<number | null>(null);
+  const weighCache = () => api.receivedCacheSize().then(setCacheSize, () => setCacheSize(0));
+  onMount(() => void weighCache());
   const clearCache = async () => {
     await api.clearReceivedCache().catch(() => {});
     void weighCache();

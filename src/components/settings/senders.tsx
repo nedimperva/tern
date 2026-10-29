@@ -2,7 +2,7 @@
 // (List-Unsubscribe) or send them to Other. Counted on this computer; Unsubscribe opens the sender's own page or
 // starts the mail it asks for, and nothing is sent without the person.
 
-import { createResource, createSignal, For, Show } from "solid-js";
+import { createSignal, For, onMount, Show } from "solid-js";
 import { api, type SenderVolume } from "../../api";
 import { fromLink } from "../../app/composing";
 import { setSettingsOpen } from "../../app/state";
@@ -12,7 +12,10 @@ const DAYS = 30;
 
 export function SendersSettings() {
   const since = Math.floor(Date.now() / 1000) - DAYS * 86_400;
-  const [list, { mutate }] = createResource(() => api.senders(since));
+  // A plain signal, not a resource: a resource read inside Settings' Suspense blanked the whole page until it came.
+  const [list, setList] = createSignal<SenderVolume[] | null>(null);
+  onMount(() => void api.senders(since).then(setList, () => setList([])));
+  const mutate = (f: (l: SenderVolume[] | null) => SenderVolume[] | undefined) => setList(f(list()) ?? null);
   const [said, setSaid] = createSignal<Record<string, string>>({});
   const most = () => Math.max(1, ...(list() ?? []).map((s) => s.count));
   const key = (s: SenderVolume) => `${s.accountId}:${s.addr}`;
