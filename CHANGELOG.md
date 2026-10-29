@@ -29,6 +29,9 @@ every release needs one here before it is tagged.
   each control lined up beside its name and the line under it; dropdowns, fields and buttons are quieter, and
   checkboxes and switches take the accent. The AI page's providers, table and cards, and the snippet and signature
   editors, follow the same look.
+- Your writing style has its own page, Settings → Writing style, with a card per account; the AI page links to it
+  instead of holding every account's note. On the AI page, the accounts it may read, the status and what is kept
+  are cards too.
 
 ### Fixed
 

@@ -50,7 +50,7 @@ function Step(props: { n: number; done: boolean; current: boolean; title: string
 /** Optional AI with the person's own keys (package 10), as three steps: the providers (any of them, each with its
  * key), the mail it may read, and what it may do, each feature with what it sends and the model it asks. Off until
  * turned on, which first shows the privacy sheet; a provider not agreed to yet is asked about before it gets mail. */
-export function AiSettingsPage(props: { accounts: Account[] }) {
+export function AiSettingsPage(props: { accounts: Account[]; /** Opens Settings → Writing style. */ onStyles: () => void }) {
   const ai = () => settings.ai;
   // Keys, model lists and use are plain signals filled in as they come, not resources: a resource read here would
   // hold the whole settings page behind its Suspense until the keychain and the providers' model lists (a network
@@ -261,21 +261,29 @@ export function AiSettingsPage(props: { accounts: Account[] }) {
         <span class="help">Set up one or several. Each feature below picks its model from the ones with a key.</span>
       </Step>
       <Step n={2} done={ready() && ai().accounts.length > 0} current={ready()} title="Mail it may read">
-        <div class="ai-accounts">
+        <div class="ai-checks">
           <For each={props.accounts}>
             {(a) => (
               <label>
                 <input type="checkbox" checked={allowed(a.id)} onChange={(e) => allow(a.id, e.currentTarget.checked)} />
                 <span class="dot" style={{ background: colourOf(props.accounts, a.id) }} />
-                {accountName(a)}
+                <span class="what">
+                  {accountName(a)}
+                  <Show when={a.displayName}>
+                    <span class="sub">{a.email}</span>
+                  </Show>
+                </span>
               </label>
             )}
           </For>
+          <label class="redact">
+            <input type="checkbox" checked={ai().redact} onChange={(e) => set({ redact: e.currentTarget.checked })} />
+            <span class="what">
+              Take addresses and phone numbers out first
+              <span class="sub">They become [email] and [phone]. Best effort, not anonymous.</span>
+            </span>
+          </label>
         </div>
-        <label class="ai-redact">
-          <input type="checkbox" checked={ai().redact} onChange={(e) => set({ redact: e.currentTarget.checked })} />
-          Take addresses and phone numbers out first (they become [email] and [phone]; best effort, not anonymous)
-        </label>
       </Step>
       <Step n={3} done={ready() && ai().accounts.length > 0 && anyFeature()} current={ready() && ai().accounts.length > 0} title="What it may do">
         <div class="ai-ledger" role="table" aria-label="What each feature sends and to which model">
@@ -426,16 +434,14 @@ export function AiSettingsPage(props: { accounts: Account[] }) {
             <span class="help">Small models cost a fraction of the big ones: summaries and replies need little.</span>
           </div>
         </div>
-        <Show when={ai().voice}>
-          <div class="ai-styles">
-            <h2>Your writing style</h2>
-            <span class="help">Learned from an account's latest sent mail when you click Learn, kept here, yours to change.</span>
-            <For each={props.accounts.filter((a) => allowed(a.id))}>
-              {(a) => <StyleNote account={a} accounts={props.accounts} onChange={() => void restat()} />}
-            </For>
-          </div>
-        </Show>
       </Show>
+      <button type="button" class="ai-link" onClick={props.onStyles}>
+        <span class="what">
+          Writing style
+          <span class="sub">What Tern learned from each account's sent mail, for suggested replies and Write with AI.</span>
+        </span>
+        <Icon name="chevron-right" size={15} />
+      </button>
       <div class="ai-kept">
         <span>Kept on this computer: {kept()}.</span>
         <span class="spacer" />
@@ -445,6 +451,40 @@ export function AiSettingsPage(props: { accounts: Account[] }) {
         <p class="setting-error">{error()}</p>
       </Show>
     </Show>
+  );
+}
+
+/** Settings → Writing style: a note per account on how its person writes, learned from their sent mail on request
+ * and used by suggested replies and Write with AI. On its own page, as the notes take room. */
+export function AiStylePage(props: { accounts: Account[]; /** Opens Settings → AI. */ onAi: () => void }) {
+  const ai = () => settings.ai;
+  const readable = () => props.accounts.filter((a) => ai().accounts.includes(a.id));
+  const why = () =>
+    !ai().enabled
+      ? "AI is off. Turn it on with Write in my style ticked, and Tern can learn how you write."
+      : !ai().voice
+        ? "Write in my style is off. Tick it in Settings → AI to learn how you write."
+        : "No account may be read by AI yet. Tick one under Mail it may read.";
+  return (
+    <>
+      <p class="help section-lead">
+        Learned from an account's latest 50 sent messages when you click Learn, your own words only. Kept on this
+        computer and yours to change; suggested replies and Write with AI follow it.
+      </p>
+      <Show
+        when={ai().enabled && ai().voice && readable().length}
+        fallback={
+          <div class="ai-turn-on">
+            <span>{why()}</span>
+            <button onClick={props.onAi}>Open AI settings</button>
+          </div>
+        }
+      >
+        <div class="ai-styles">
+          <For each={readable()}>{(a) => <StyleNote account={a} accounts={props.accounts} onChange={() => {}} />}</For>
+        </div>
+      </Show>
+    </>
   );
 }
 
@@ -459,7 +499,7 @@ const FEATURES: { key: AiFeatureKey; toggle: "summaries" | "replies" | "writing"
     keys: "Space in an empty draft",
     sends: "What you tell it, your draft if any, and in a reply the conversation; in new mail, names are matched here",
   },
-  { key: "style", toggle: "voice", name: "Write in my style", keys: "per account, below", sends: "Learning: your latest 50 sent messages, your own words only, once each time" },
+  { key: "style", toggle: "voice", name: "Write in my style", keys: "per account", sends: "Learning: your latest 50 sent messages, your own words only, once each time" },
 ];
 
 /** A style note read as its parts: greetings, sign-offs, length, tone, habits. Lines it doesn't know stay as they are. */

@@ -4,7 +4,7 @@ import { colourOf } from "../colours";
 import { Icon, type IconName } from "./Icon";
 import { accountName } from "./settings/shared";
 import { AppearanceSettings, ReadingSettings, ComposeSettings, AboutSettings, NotificationSettings, DesktopSettings } from "./settings/general";
-import { AiSettingsPage } from "./settings/ai";
+import { AiSettingsPage, AiStylePage } from "./settings/ai";
 import { SnippetSettings } from "./settings/snippets";
 import { SignatureSettings } from "./settings/signatures";
 import { AccountPage } from "./settings/account";
@@ -59,7 +59,7 @@ export function SettingsPage(props: {
       icon: "sparkles",
       group: "General",
       words: "ai claude anthropic openai gpt gemini google api key summary summarize replies suggest write rewrite style voice model privacy",
-      body: () => <AiSettingsPage accounts={props.accounts} />,
+      body: () => <AiSettingsPage accounts={props.accounts} onStyles={() => setSection("Writing style")} />,
     },
     {
       id: "Backup",
@@ -82,6 +82,14 @@ export function SettingsPage(props: {
       group: "Writing",
       words: "signature replies quoted below above",
       body: () => <SignatureSettings accounts={props.accounts} account={signatureAccount()} onAccount={setSignatureAccount} />,
+    },
+    {
+      id: "Writing style",
+      name: "Writing style",
+      icon: "feather",
+      group: "Writing",
+      words: "ai style voice learn sent tone length greetings sign-offs habits",
+      body: () => <AiStylePage accounts={props.accounts} onAi={() => setSection("AI")} />,
     },
     ...props.accounts.map(
       (a): Section => ({

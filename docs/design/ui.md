@@ -359,7 +359,8 @@ Settings → Reading → Start of the day: the screen and the line, only the lin
 ### 4.8 Settings (`Ctrl+,`)
 
 - Full-screen page over the list with a 232 px left list of sections in three groups, each under a `--t-xs`
-  label: General (Appearance · Reading · Notifications · Desktop · AI · About), Writing (Compose · Snippets · Signatures) and
+  label: General (Appearance · Reading · Notifications · Desktop · AI · Backup · About), Writing (Compose · Snippets ·
+  Signatures · Writing style) and
   Accounts (one entry per account, with its colour dot). A search field at the top of the list narrows it to the
   sections whose settings match. Content sits in a 680 px column, centred. Controls are plain: toggles, selects, text
   fields. Every setting has one line of explanation under it.
@@ -389,9 +390,13 @@ Settings → Reading → Start of the day: the screen and the line, only the lin
   the model, picked from every provider with a key in groups by provider, and a checkbox; a footer line on what
   never goes). A model from a provider not yet allowed opens a row on `--accent-soft` under its feature ("gpt-6-luna
   sends summaries to OpenAI, …", Allow OpenAI / Cancel) and the list keeps the model in use until then. "Review and
-  turn on" opens the privacy sheet naming every provider in use; once on, a status line (On · providers, Turn off),
-  two cards (Today: tokens against the daily limit as a meter; Limit), "Your writing style" per account, and what is
-  kept with Delete AI cache.
+  turn on" opens the privacy sheet naming every provider in use; once on, a status card (On · providers, Turn off),
+  two cards (Today: tokens against the daily limit as a meter; Limit), a card row that opens Writing style, and what
+  is kept with Delete AI cache, as a card. Mail it may read is one card: a row per account (checkbox, dot, name and
+  address) and the redaction row.
+  Writing style (since 2026-10-29 its own section under Writing, as the notes took most of the AI page): a line on
+  what it is, then a card per account AI may read, its parts on `--bg-1` inside. With AI off, Write in my style off
+  or no account ticked, one card says which and opens Settings → AI.
   Writing style: after Learn, "Does this sound like you?" (made-up notes written plainly and in the person's style,
   the second with a 2 px `--accent` border, what it picked up as `--accent-soft` tags; Sounds like me, Adjust the
   note, Don't use a style). After that the note shows as parts on `--soft`: greetings and sign-offs as removable

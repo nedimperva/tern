@@ -3246,8 +3246,8 @@ button.fold {
   accent-color: var(--accent);
 }
 .settings-content
-  :is(.ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions)
-  button:not(.link, .primary, .danger, [role="radio"]) {
+  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions)
+  button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button) {
   height: 32px;
   padding: 0 var(--s-3);
   background: var(--bg-0);
@@ -3258,8 +3258,8 @@ button.fold {
   box-shadow: var(--raise);
 }
 .settings-content
-  :is(.ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions)
-  button:not(.link, .primary, .danger, [role="radio"]):hover:not(:disabled) {
+  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions)
+  button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button):hover:not(:disabled) {
   background: var(--bg-2);
   border-color: var(--line-strong);
 }
@@ -4321,23 +4321,6 @@ button.place.muted {
 .ai-test.bad {
   color: var(--danger);
 }
-.ai-accounts {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2) var(--s-4);
-}
-.ai-accounts label {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-  font-size: var(--t-rd);
-}
-.ai-accounts .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
 .ai-sheet {
   margin: var(--s-3) 0;
   padding: var(--s-4) var(--s-5);
@@ -4442,19 +4425,33 @@ button.ai-line:hover {
   margin-right: auto;
 }
 
-/* Settings → AI → Your writing style: one note per account. */
-.ai-styles .style-note {
-  grid-column: 1 / -1;
+/* Settings → Writing style: a card per account, its name and Learn on top. */
+.ai-styles {
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
-  margin-top: var(--s-2);
+  gap: var(--s-4);
+}
+/* Inside a style card, its parts sit on the sidebar's tone: --soft is too close to --card in dark mode. */
+.ai-styles :is(.style-part, .style-preview) {
+  background: var(--bg-1);
+}
+.ai-styles .style-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
 }
 .style-head {
   display: flex;
   align-items: center;
   gap: var(--s-2);
   font-size: var(--t-rd);
+}
+.style-head strong {
+  font-weight: 600;
 }
 .style-head .dot {
   width: 8px;
@@ -4677,6 +4674,13 @@ fieldset.plain {
 .ai-status .help {
   margin: 0;
 }
+/* On: a card with what it sends to and Turn off. */
+.ai-status:has(.on) {
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
 .ai-status .on {
   flex: 1;
   display: inline-flex;
@@ -4762,13 +4766,6 @@ fieldset.plain {
   font-weight: 600;
 }
 .ai-providers span {
-  font-size: var(--t-sm);
-  color: var(--fg-1);
-}
-.ai-redact {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-2);
   font-size: var(--t-sm);
   color: var(--fg-1);
 }
@@ -4884,25 +4881,91 @@ fieldset.plain {
 .ai-inline select {
   max-width: 60%;
 }
-.ai-styles {
+/* Mail it may read: the accounts and the redaction as rows of one card. */
+.ai-checks {
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
-  padding: var(--s-4) 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  overflow: hidden;
+}
+.ai-checks label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--t-md);
+  cursor: pointer;
+}
+.ai-checks label + label {
   border-top: 1px solid var(--line);
 }
-.ai-styles h2 {
+.ai-checks input {
+  flex: none;
+  width: 16px;
+  height: 16px;
   margin: 0;
-  font-size: var(--t-rd);
-  font-weight: 600;
+}
+.ai-checks .dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.ai-checks .redact .what {
+  padding-left: 0;
+}
+/* A row's words with a quieter line under them, in the AI cards. */
+:is(.ai-checks, .ai-link) .what {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--fg-0);
+  font-weight: 500;
+}
+:is(.ai-checks, .ai-link) .sub {
+  font-size: var(--t-sm);
+  font-weight: 400;
+  color: var(--fg-2);
+}
+/* Writing style, its own page: a card row that goes there. */
+.ai-link {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  margin: var(--s-4) 0 0;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  font-size: var(--t-md);
+  text-align: left;
+}
+.ai-link:hover {
+  border-color: var(--line-strong);
+}
+.ai-link .what {
+  flex: 1;
+}
+.ai-link svg {
+  flex: none;
+  color: var(--fg-2);
 }
 .ai-kept {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: var(--s-4) 0;
-  border-top: 1px solid var(--line);
-  font-size: var(--t-sm);
+  margin-top: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  font-size: var(--t-md);
   color: var(--fg-1);
 }
 .ai-kept .spacer,
