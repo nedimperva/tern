@@ -2,6 +2,8 @@ import { createEffect, createMemo, createResource, createSignal, For, on, onClea
 import { api, type Mailto, type Mark, type ThreadMessage } from "../api";
 import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
+import { catchUp } from "../catchup";
+import { unsubscribeTarget } from "../unsubscribe";
 import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
 import { linkify } from "../linkify";
 import { drawHits } from "../hits";
@@ -59,6 +61,9 @@ export const switchReading = () => readingSwitch?.();
  * under the link (above it near the window's foot), since a mail's link text can say anything. */
 type Hovered = { host: string; claimed: string | null; left: number; top: number; above: boolean };
 const [hovered, setHovered] = createSignal<Hovered | null>(null);
+
+/** Past this many earlier messages, the older read ones wait behind one line. */
+const FOLD_PAST = 5;
 const hover = (a: HTMLAnchorElement | null, frame?: HTMLIFrameElement | null) => {
   const host = a ? hostOf(a.href) : null;
   if (!a || !host) return setHovered(null);
@@ -475,18 +480,6 @@ function Avatar(props: { addr: string; name: string }) {
   );
 }
 
-/** Where List-Unsubscribe points: a web page opens in the browser, an address gets a mail to send. */
-function unsubscribeTarget(header: string | null): { web: string } | { mail: Mailto } | null {
-  const links = [...(header ?? "").matchAll(/<([^>]+)>/g)].map((x) => x[1].trim());
-  const web = links.find((l) => /^https?:\/\//i.test(l));
-  if (web) return { web };
-  const mail = links.find((l) => /^mailto:/i.test(l));
-  if (!mail) return null;
-  const [addr, query = ""] = mail.slice("mailto:".length).split("?");
-  const q = new URLSearchParams(query);
-  return { mail: { to: [decodeURIComponent(addr)], cc: [], bcc: [], subject: q.get("subject") ?? "Unsubscribe", body: q.get("body") ?? "" } };
-}
-
 const DAY = 86_400_000;
 const startOfDay = (seconds: number) => new Date(seconds * 1000).setHours(0, 0, 0, 0);
 
@@ -608,6 +601,43 @@ export function ConversationView(props: {
 }) {
   const last = () => props.messages[props.messages.length - 1];
   const stage = () => props.messages.length === 1;
+
+  // Coming back: which messages were unread as the conversation opened (they turn read a moment later, and the line
+  // should stay), and whether the older lines are all out. Both start over with each conversation.
+  const [fresh, setFresh] = createSignal<ReadonlySet<number>>(new Set());
+  const [allLines, setAllLines] = createSignal(false);
+  createEffect(
+    on(
+      () => (props.messages[0] ? `${props.messages[0].accountId}:${props.messages[0].threadId}` : ""),
+      () => {
+        setFresh(new Set(props.messages.filter((m) => !m.seen).map((m) => m.id)));
+        setAllLines(false);
+      },
+    ),
+  );
+  const back = createMemo(() => catchUp(props.messages, fresh(), props.mine));
+  const jumpTo = (id: number) => {
+    const i = props.messages.findIndex((m) => m.id === id);
+    if (i >= 0 && i < props.messages.length - 1 && !props.expanded(id)) props.onToggle(i);
+    requestAnimationFrame(() => document.querySelector(`[data-message="${id}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  };
+  /** In a long conversation the older lines that were read, closed and not in hand wait behind one line. */
+  const earlier = () => props.messages.length - 1;
+  const tucked = (i: number) => {
+    const m = props.messages[i];
+    return !allLines() && earlier() > FOLD_PAST && i < earlier() - 2 && m.seen && !fresh().has(m.id) && !props.expanded(m.id) && i !== props.focused;
+  };
+  const tuckedCount = createMemo(() => props.messages.slice(0, -1).filter((_, i) => tucked(i)).length);
+  // Stepping up into the tucked lines with the keys brings them all out, rather than one at a time.
+  createEffect(
+    on(
+      () => props.focused,
+      (f) => {
+        if (earlier() > FOLD_PAST && f < earlier() - 2) setAllLines(true);
+      },
+      { defer: true },
+    ),
+  );
   const subject = () => props.messages[0]?.subject || "(no subject)";
   const names = createMemo(() => new Map(props.messages.map((m) => [m.fromAddr.toLowerCase(), m.fromName] as const)));
   const people = createMemo(() => {
@@ -1059,14 +1089,42 @@ export function ConversationView(props: {
           <Show when={!reader()}>{tools()}</Show>
         </header>
         <Show when={hasMargin() && !wide()}>{margin()}</Show>
-        {/* Every earlier message as one line, all of them there: a click opens one in place. */}
+        <Show when={back()}>
+          {(b) => (
+            <div class="catch-up">
+              <Icon name="activity" size={15} />
+              <span>
+                <strong>Since you last read:</strong> {b().count} new
+                {b().questions ? ` · ${b().questions === 1 ? "a question" : `${b().questions} questions`} for you` : ""}
+              </span>
+              <span class="spacer" />
+              <button type="button" class="link" onClick={() => jumpTo(b().first)}>
+                Jump to it
+              </button>
+            </div>
+          )}
+        </Show>
+        {/* Every earlier message as one line: a click opens one in place. A long conversation's older read lines wait
+            behind "Earlier in this conversation". */}
         <Show when={!stage()}>
           <div class="history">
             <For each={props.messages.slice(0, -1)}>
               {(m, i) => {
                 const open = () => props.expanded(m.id);
+                const firstTucked = () => tucked(i()) && (i() === 0 || !tucked(i() - 1));
                 return (
-                  <>
+                  <Show
+                    when={!tucked(i())}
+                    fallback={
+                      <Show when={firstTucked()}>
+                        <button type="button" class="tucked" onClick={() => setAllLines(true)}>
+                          <span class="rule" />
+                          Earlier in this conversation · {tuckedCount()} {tuckedCount() === 1 ? "message" : "messages"}
+                          <span class="rule" />
+                        </button>
+                      </Show>
+                    }
+                  >
                     <Show when={gap(i())}>{(g) => <div class="gap">{g()}</div>}</Show>
                     <article
                       class="card row"
@@ -1112,7 +1170,7 @@ export function ConversationView(props: {
                         </div>
                       </Show>
                     </article>
-                  </>
+                  </Show>
                 );
               }}
             </For>

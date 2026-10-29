@@ -19,6 +19,10 @@ every release needs one here before it is tagged.
   phase at night, and snows a little in winter.
 - The tide report: on Sundays Inbox Zero shows your week in mail — how much came in, how much you cleared, the days
   you reached zero and the quietest day. It's counted on this computer.
+- Coming back to a long conversation: "Since you last read: 3 new · a question for you" with a jump to the first
+  new message, and older messages you've read wait behind one "Earlier in this conversation" line.
+- Who writes most (Settings, or "Who fills your inbox" in the command bar): the senders behind the last 30 days'
+  mail, most first, with Unsubscribe where they offer it and a way to send them to Other.
 - Wing beat: a soft sound when a message leaves the outbox. Off by default; Settings → Notifications → Sound when
   mail leaves. Quiet hours keep it quiet.
 
