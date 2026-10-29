@@ -150,9 +150,9 @@ function HtmlBody(props: {
   const onLoad = (e: Event) => {
     frame = e.currentTarget as HTMLIFrameElement;
     const doc = docOf(frame);
-    // The frame left the message for a web page (a link no handler caught): the message comes back rather than a
-    // dark, empty frame, and nothing below runs on a page that isn't the mail.
-    if (!doc?.URL.startsWith("about:")) {
+    // The frame left the message for a web page (a link no handler caught), which shuts us out of it: the message
+    // comes back rather than a dark, empty frame.
+    if (!doc) {
       const html = srcdoc();
       frame.srcdoc = "";
       frame.srcdoc = html;

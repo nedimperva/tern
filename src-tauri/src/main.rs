@@ -4,6 +4,7 @@ mod cache;
 mod commands;
 mod desktop;
 mod diagnostics;
+mod links;
 mod omarchy;
 mod update;
 
@@ -119,6 +120,7 @@ fn main() {
             Some(vec![desktop::HIDDEN]),
         ))
         .plugin(tauri_plugin_opener::init())
+        .plugin(links::plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(desktop::Desktop::new())
