@@ -7,6 +7,8 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-29
+
 ### Changed
 
 - A warmer, calmer look: warm greys instead of cool ones, the logo's navy as the accent, rounded rows. Dark mode
