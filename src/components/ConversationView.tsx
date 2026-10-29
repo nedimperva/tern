@@ -4,6 +4,7 @@ import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { catchUp } from "../catchup";
 import { filesOf } from "../files";
+import { docOf, windowOf } from "../frames";
 import { unsubscribeTarget } from "../unsubscribe";
 import { foldAt, HTML_FOLD_SELECTOR, markQuotes } from "../fold";
 import { linkify } from "../linkify";
@@ -148,7 +149,7 @@ function HtmlBody(props: {
   // Same-origin without scripts: the frame cannot run anything, but we can measure it and catch link clicks.
   const onLoad = (e: Event) => {
     frame = e.currentTarget as HTMLIFrameElement;
-    const doc = frame.contentDocument;
+    const doc = docOf(frame);
     if (!doc) return;
     if (darkened()) darken(doc);
     setReady(true);
@@ -282,7 +283,7 @@ function HtmlBody(props: {
           aria-expanded={unfolded()}
           onClick={() => {
             setUnfolded(!unfolded());
-            frame?.contentDocument?.documentElement.classList.toggle("tern-fold", !unfolded());
+            docOf(frame)?.documentElement.classList.toggle("tern-fold", !unfolded());
           }}
         >
           ···
@@ -446,7 +447,7 @@ export function takeQuote(): { id: number; text: string } | null {
   }
   // In mail HTML the selection lives in the message's frame.
   for (const frame of document.querySelectorAll<HTMLIFrameElement>(".card[data-message] iframe")) {
-    const inner = frame.contentWindow?.getSelection();
+    const inner = windowOf(frame)?.getSelection();
     const text = inner && !inner.isCollapsed ? inner.toString().trim() : "";
     if (text) {
       inner!.removeAllRanges();
@@ -788,7 +789,7 @@ export function ConversationView(props: {
   });
   const toPart = (i: number) => {
     const frame = document.querySelector<HTMLIFrameElement>(`.card[data-message="${last().id}"] iframe`);
-    const heading = frame?.contentDocument?.querySelectorAll("h2")[i];
+    const heading = docOf(frame)?.querySelectorAll("h2")[i];
     if (!heading) return;
     const range = heading.ownerDocument.createRange();
     range.selectNode(heading);
@@ -864,7 +865,7 @@ export function ConversationView(props: {
   const [markProblem, setMarkProblem] = createSignal("");
   const unselect = () => {
     document.getSelection()?.removeAllRanges();
-    for (const f of document.querySelectorAll<HTMLIFrameElement>(".card iframe")) f.contentWindow?.getSelection()?.removeAllRanges();
+    for (const f of document.querySelectorAll<HTMLIFrameElement>(".card iframe")) windowOf(f)?.getSelection()?.removeAllRanges();
   };
   const markIt = async (withNote: boolean) => {
     const p = pick();
