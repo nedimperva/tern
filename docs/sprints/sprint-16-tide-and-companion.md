@@ -11,9 +11,9 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
 ## Tasks
 
 ### A. Moods (themes)
-- [ ] Three named moods: Dawn (today's light), Dusk (today's dark) and Night Sea (the Inbox Zero navy). System
+- [x] Three named moods: Dawn (today's light), Dusk (today's dark) and Night Sea (the Inbox Zero navy). System
   still picks Dawn or Dusk from the desktop.
-- [ ] Follow Omarchy (Linux): read `~/.local/state/omarchy/current/theme/colors.toml`, map it onto the tokens the
+- [x] Follow Omarchy (Linux): read `~/.local/state/omarchy/current/theme/colors.toml`, map it onto the tokens the
   way Omarchy's own T3 Code template does, and change with it when the theme is switched. Only offered when the
   file exists.
 
@@ -55,3 +55,5 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
 ## Log
 
 - 2026-10-29: Package written from the owner's picks on the design board. Started slice A.
+- 2026-10-29: Slice A done: moods and Follow Omarchy, tried in `tauri dev` on Hyprland with the Evergreen theme
+  (Omarchy) and Night Sea. A live theme switch was not tried: it would change the owner's desktop.

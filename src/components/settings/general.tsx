@@ -2,7 +2,7 @@
 
 import { createResource, createSignal, onMount, Show } from "solid-js";
 import { api } from "../../api";
-import { setSetting, settings } from "../../settings";
+import { omarchyAvailable, setSetting, settings } from "../../settings";
 import { NIGHT_SHIFT, SCENES } from "../../zero";
 import { Select } from "./shared";
 
@@ -11,12 +11,18 @@ export function AppearanceSettings() {
     <>
       <Select
         name="theme"
-        title="Theme"
-        help="System follows your desktop's light or dark setting."
+        title="Mood"
+        help={
+          omarchyAvailable()
+            ? "System picks Dawn or Dusk from your desktop. Omarchy takes the colours of your Omarchy theme and changes with it."
+            : "System picks Dawn or Dusk from your desktop's light or dark setting."
+        }
         choices={[
           { label: "System", value: "system" },
-          { label: "Light", value: "light" },
-          { label: "Dark", value: "dark" },
+          { label: "Dawn", value: "light" },
+          { label: "Dusk", value: "dark" },
+          { label: "Night Sea", value: "sea" },
+          ...(omarchyAvailable() || settings.theme === "omarchy" ? [{ label: "Omarchy", value: "omarchy" as const }] : []),
         ]}
       />
       <Select

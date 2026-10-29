@@ -479,6 +479,60 @@ button.primary kbd {
     --t8: #3d5590;
   }
 }
+/* Night Sea keeps the first Inbox Zero's navy, by day and by night. */
+:root[data-mood="sea"] .zero,
+:root[data-mood="sea"] .zero .after-dark,
+:root[data-mood="sea"] .zero-night {
+  --z-ground: #111318;
+  --z-sky: #121722;
+  --z-sea: #0f1c2e;
+  --z-sand: #1b1a1d;
+  --z-line: #26364d;
+  --z-faint: #1f2a3a;
+  --z-route: #3d5a80;
+  --z-flown: #60a5fa;
+  --z-kicker: #7cb4f7;
+  --z-cap: #475569;
+  --t1: #7dd3fc;
+  --t2: #38bdf8;
+  --t3: #93c5fd;
+  --t4: #60a5fa;
+  --t5: #3b82f6;
+  --t6: #2563eb;
+  --t7: #1d4ed8;
+  --t8: #1e40af;
+}
+/* Following Omarchy, the scene is drawn from the theme's own colours: its grounds, and its accent for the terns. */
+:root[data-mood="omarchy"] .zero,
+:root[data-mood="omarchy"] .zero .after-dark,
+:root[data-mood="omarchy"] .zero-night {
+  --z-ground: var(--bg-0);
+  --z-sky: var(--bg-0);
+  --z-sea: var(--bg-2);
+  --z-sand: var(--bg-1);
+  --z-line: var(--line-strong);
+  --z-faint: var(--line);
+  --z-route: var(--fg-2);
+  --z-flown: var(--accent);
+  --z-kicker: var(--accent);
+  --z-cap: var(--fg-2);
+  --t1: color-mix(in srgb, var(--accent) 45%, var(--fg-0));
+  --t2: color-mix(in srgb, var(--accent) 65%, var(--fg-0));
+  --t3: color-mix(in srgb, var(--accent) 82%, var(--fg-0));
+  --t4: var(--accent);
+  --t5: color-mix(in srgb, var(--accent) 85%, var(--bg-0));
+  --t6: color-mix(in srgb, var(--accent) 72%, var(--bg-0));
+  --t7: color-mix(in srgb, var(--accent) 60%, var(--bg-0));
+  --t8: color-mix(in srgb, var(--accent) 48%, var(--bg-0));
+}
+:root[data-mood="sea"] .zero-night,
+:root[data-mood="omarchy"] .zero-night {
+  color: var(--fg-0);
+}
+:root[data-mood="sea"] .zero-night .zero-line,
+:root[data-mood="omarchy"] .zero-night .zero-line {
+  color: var(--fg-1);
+}
 .zero-art {
   position: absolute;
   inset: 0;

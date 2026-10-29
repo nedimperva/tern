@@ -7,6 +7,12 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Moods: Settings → Appearance → Mood has Dawn (the light look), Dusk (the dark one), Night Sea (the navy of the
+  first Inbox Zero) and System. On Omarchy there is Omarchy too: Tern takes the colours of your Omarchy theme and
+  changes with it when you switch themes.
+
 ### Fixed
 
 - On Linux the window is frameless again, as before 1.5.0: Tern's title bar and its minimize, maximize and close

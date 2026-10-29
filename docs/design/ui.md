@@ -27,6 +27,16 @@ app; the window draws its own title bar and the sidebar stays open beside the li
 All tokens are CSS custom properties on `:root` (light) and `[data-theme="dark"]`. Nothing in a component
 uses a raw colour, size or duration. File: `src/styles/tokens.css`.
 
+### Moods
+
+Settings → Appearance → Mood (owner, 2026-10-29). **Dawn** is the light tokens, **Dusk** the dark ones, and
+**System** picks between them from the desktop. **Night Sea** draws with `data-theme="dark"` plus
+`data-mood="sea"`, which swaps the grounds and text for the navy of the first Inbox Zero (`tokens.css`, last
+block). **Omarchy** (Linux, offered only when `~/.local/state/omarchy/current/theme/colors.toml` exists) sets the
+tokens inline from that file, mapped the way Omarchy's T3 Code template maps it: `--bg-1` on `dark_background`,
+`--line-strong` on `muted`, `--fg-2` mixed 75% toward the ground for contrast, the accent's text picked by
+luminance; Inbox Zero draws from the same tokens. Tern watches `theme.generation` and changes with the theme.
+
 ### Colour
 
 | Token | Light | Dark | Use |
