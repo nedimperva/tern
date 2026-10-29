@@ -4,7 +4,7 @@ import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { catchUp } from "../catchup";
 import { unsubscribeTarget } from "../unsubscribe";
-import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
+import { foldAt, HTML_FOLD_SELECTOR, markQuotes } from "../fold";
 import { linkify } from "../linkify";
 import { drawHits } from "../hits";
 import { hostOf, misleading } from "../links";
@@ -151,6 +151,7 @@ function HtmlBody(props: {
     if (!doc) return;
     if (darkened()) darken(doc);
     setReady(true);
+    markQuotes(doc);
     setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
     doc.documentElement.classList.toggle("tern-fold", !unfolded());
     const size = () => fitFrame(frame!, doc);
@@ -746,6 +747,7 @@ export function ConversationView(props: {
     const web = webs().get(m.id);
     if (!web) return null;
     const doc = new DOMParser().parseFromString(web.html, "text/html");
+    markQuotes(doc);
     doc.querySelectorAll(HTML_FOLD_SELECTOR).forEach((n) => n.remove());
     return doc.body.innerHTML;
   };
@@ -757,6 +759,7 @@ export function ConversationView(props: {
     }
     if (!m.bodyHtml) return "";
     const doc = new DOMParser().parseFromString(m.bodyHtml, "text/html");
+    markQuotes(doc);
     doc.querySelectorAll(`style, script, ${HTML_FOLD_SELECTOR}`).forEach((n) => n.remove());
     doc.querySelectorAll("br, p, div, li, tr, h1, h2, h3").forEach((n) => n.append("\n"));
     return doc.body.textContent ?? "";

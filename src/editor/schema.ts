@@ -52,7 +52,8 @@ const QUOTE_STYLE = "margin:0 0 0 .8ex;border-left:2px solid #ccc;padding-left:1
 export function toHtml(doc: Node): string {
   const box = inert.createElement("div");
   box.appendChild(DOMSerializer.fromSchema(schema).serializeFragment(doc.content, { document: inert }));
-  box.querySelectorAll("blockquote").forEach((q) => q.setAttribute("style", QUOTE_STYLE));
+  // type="cite" is how mail apps (Tern too) know a quote to fold it.
+  box.querySelectorAll("blockquote").forEach((q) => (q.setAttribute("style", QUOTE_STYLE), q.setAttribute("type", "cite")));
   box.querySelectorAll("p").forEach((p) => p.setAttribute("style", "margin:0 0 1em"));
   return box.innerHTML;
 }

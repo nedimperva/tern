@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { mentionsAttachment, outside } from "../attachmentWords";
 import { findAsks, findCodes, findWhere } from "../facts";
-import { foldAt } from "../fold";
+import { foldAt, markQuotes } from "../fold";
 import { keyLabel } from "../keys";
 
 describe("foldAt", () => {
@@ -51,5 +51,25 @@ describe("keyLabel", () => {
     expect(keyLabel("U")).toBe("Shift U");
     expect(keyLabel("Ctrl+k")).toBe("Ctrl K");
     expect(keyLabel("Escape")).toBe("Esc");
+  });
+});
+
+describe("markQuotes", () => {
+  const doc = (html: string) => new DOMParser().parseFromString(html, "text/html");
+  const marked = (d: Document) => [...d.querySelectorAll(".tern-quote")].map((e) => e.textContent?.slice(0, 12));
+
+  it("folds a plain quote after its wrote line, and a signature with what follows", () => {
+    const d = doc(
+      `<p>Plaćeno.</p><p>--</p><p>S poštovanjem, Nedim</p><p>On Oct 27, 2026, Nedim wrote:</p><blockquote><p>Molim vas</p><blockquote><p>older</p></blockquote></blockquote>`,
+    );
+    markQuotes(d);
+    expect(marked(d)).toEqual(["--", "S poštovanje", "On Oct 27, 2", "Molim vasold"]);
+    expect(d.querySelector("p")?.classList.contains("tern-quote")).toBe(false);
+  });
+
+  it("leaves a quote without a wrote line, and a message that is only a signature", () => {
+    const d = doc(`<p>--</p><p>Ana</p><blockquote><p>a cited line</p></blockquote>`);
+    markQuotes(d);
+    expect(marked(d)).toEqual([]);
   });
 });
