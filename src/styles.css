@@ -49,6 +49,29 @@ button.danger {
   color: var(--danger);
 }
 
+/* Keyboard focus: a soft ring in the accent, never the browser's black one. What shows its focus another way draws
+   none: the list (its focused row), the text editor (its caret), fields (their accent border), and elements that are
+   only focused from code. */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+/* The title bar's buttons fill its height, so a ring outside them would be cut off. */
+.titlebar button:focus-visible {
+  outline-offset: -2px;
+}
+.vlist:focus-visible,
+.ProseMirror:focus-visible,
+[tabindex="-1"]:focus-visible,
+input:not([type="checkbox"], [type="radio"], [type="range"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
 input,
 textarea,
 select {
@@ -85,9 +108,89 @@ button.primary kbd {
   border-color: rgba(255, 255, 255, 0.4);
 }
 
+/* MARK: Window (§3) */
+
+/* The system draws no frame: Tern's title bar on top, the docked sidebar and the app under it. */
+.window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.window-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.titlebar {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: var(--titlebar-h);
+  background: var(--bg-0);
+}
+.titlebar-side {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--s-2);
+}
+/* Over the docked sidebar the bar takes its tone, so the two read as one column. */
+.titlebar.side-tone .titlebar-side {
+  width: var(--side-w);
+  background: var(--bg-1);
+}
+.titlebar-fill {
+  flex: 1;
+}
+/* A line under the bar, except over the docked sidebar. */
+.titlebar-fill,
+.window-buttons,
+.titlebar:not(.side-tone) .titlebar-side {
+  border-bottom: 1px solid var(--line);
+}
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg-1);
+}
+.icon-button:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.window-buttons {
+  display: flex;
+}
+.window-buttons button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--fg-1);
+}
+.window-buttons button:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+/* Red under the pointer, as on Windows. */
+.window-buttons .close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
 /* MARK: Layout */
 
 .app {
+  flex: 1;
+  min-width: 0;
   display: grid;
   grid-template-columns: 1fr;
   height: 100%;
@@ -111,6 +214,11 @@ button.primary kbd {
 .app.split .list-pane {
   background: var(--bg-1);
 }
+/* With the sidebar docked on that tone, the list goes back to the ground and a hairline sets it off. */
+.window.docked .app.split .list-pane {
+  background: var(--bg-0);
+  border-right: 1px solid var(--line);
+}
 .list-header {
   display: flex;
   align-items: center;
@@ -127,11 +235,6 @@ button.primary kbd {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.rail-button {
-  flex: none;
-  display: flex;
-  color: var(--fg-1);
 }
 /* Roomier densities also set type a pixel larger (§2). */
 :root[data-density="comfortable"] .crow {
@@ -169,7 +272,7 @@ button.primary kbd {
   width: auto;
   z-index: 1;
 }
-.app.split .list-header > .link:not(.rail-button) {
+.app.split .list-header > .link {
   display: none;
 }
 
@@ -282,29 +385,30 @@ button.primary kbd {
 }
 
 /* Inbox Zero gets the best screen in the app (§4.7): a tern scene a day (components/InboxZero.tsx). The scenes'
-   colours are here, light and dark; the tern keeps the icon's blues, a shade lighter at night. */
+   colours are here, light and dark. Since 2026-10-29 they follow the warm look: paper and sand for the sky and the
+   land, stone for the sea, terracotta for the kicker, and the terns in the logo's navy, a shade lighter at night. */
 .zero {
-  --z-ground: #fbfcfe;
-  --z-sky: #f6f9fc;
-  --z-sea: #e7f1f9;
-  --z-sand: #f4ede0;
-  --z-line: #c9dcec;
-  --z-faint: #dbe7f3;
-  --z-route: #9cc5ea;
-  --z-flown: #2563eb;
-  --z-moon: #e8edf7;
-  --z-sun: #f6b73c;
-  --z-kicker: #2563eb;
-  --z-cap: #1f2937;
-  --z-beak: #ea580c;
-  --t1: #38bdf8;
-  --t2: #0ea5e9;
-  --t3: #60a5fa;
-  --t4: #3b82f6;
-  --t5: #2563eb;
-  --t6: #1e40af;
-  --t7: #1d4ed8;
-  --t8: #1e3a8a;
+  --z-ground: #fcfbf9;
+  --z-sky: #f8f5ef;
+  --z-sea: #e9e6de;
+  --z-sand: #f1e9db;
+  --z-line: #d8d0c2;
+  --z-faint: #ebe5da;
+  --z-route: #c9b89c;
+  --z-flown: #2f4f9a;
+  --z-moon: #efe9dd;
+  --z-sun: #e3a04a;
+  --z-kicker: #9c532c;
+  --z-cap: #1f1e1b;
+  --z-beak: #cf5f2c;
+  --t1: #9aabd2;
+  --t2: #7d93c6;
+  --t3: #6680b9;
+  --t4: #516ead;
+  --t5: #3f5ea3;
+  --t6: #2f4f9a;
+  --t7: #27437f;
+  --t8: #1e3565;
   flex: 1;
   position: relative;
   display: flex;
@@ -315,60 +419,60 @@ button.primary kbd {
 }
 .zero .after-dark,
 .zero-night {
-  --z-sky: #0f1420;
-  --z-sea: #0b1626;
-  --z-sand: #17161a;
-  --z-line: #22324a;
-  --z-moon: #e8edf7;
+  --z-sky: #1c1a19;
+  --z-sea: #23211e;
+  --z-sand: #191817;
+  --z-line: #3a3630;
+  --z-moon: #efe9dd;
 }
 .zero-night {
-  --z-ground: #0f1420;
-  --z-cap: #475569;
-  color: #ededf0;
+  --z-ground: #1c1a19;
+  --z-cap: #6f695f;
+  color: #ece8e1;
 }
 .zero-night .zero-line {
-  color: #a1a1aa;
+  color: #b5b0a6;
 }
 :root[data-theme="dark"] .zero {
-  --z-ground: #111318;
-  --z-sky: #121722;
-  --z-sea: #0f1c2e;
-  --z-sand: #1b1a1d;
-  --z-line: #26364d;
-  --z-faint: #1f2a3a;
-  --z-route: #3d5a80;
-  --z-flown: #60a5fa;
-  --z-kicker: #7cb4f7;
-  --z-cap: #475569;
-  --t1: #7dd3fc;
-  --t2: #38bdf8;
-  --t3: #93c5fd;
-  --t4: #60a5fa;
-  --t5: #3b82f6;
-  --t6: #2563eb;
-  --t7: #1d4ed8;
-  --t8: #1e40af;
+  --z-ground: #1a1918;
+  --z-sky: #201f1d;
+  --z-sea: #282623;
+  --z-sand: #1e1d1b;
+  --z-line: #3d3933;
+  --z-faint: #2c2a27;
+  --z-route: #6e624f;
+  --z-flown: #7b97de;
+  --z-kicker: #dba379;
+  --z-cap: #6f695f;
+  --t1: #c3cdea;
+  --t2: #aab9e3;
+  --t3: #94a8dd;
+  --t4: #7b97de;
+  --t5: #6a86cf;
+  --t6: #5a75bd;
+  --t7: #4b65a8;
+  --t8: #3d5590;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .zero {
-    --z-ground: #111318;
-    --z-sky: #121722;
-    --z-sea: #0f1c2e;
-    --z-sand: #1b1a1d;
-    --z-line: #26364d;
-    --z-faint: #1f2a3a;
-    --z-route: #3d5a80;
-    --z-flown: #60a5fa;
-    --z-kicker: #7cb4f7;
-    --z-cap: #475569;
-    --t1: #7dd3fc;
-    --t2: #38bdf8;
-    --t3: #93c5fd;
-    --t4: #60a5fa;
-    --t5: #3b82f6;
-    --t6: #2563eb;
-    --t7: #1d4ed8;
-    --t8: #1e40af;
+    --z-ground: #1a1918;
+    --z-sky: #201f1d;
+    --z-sea: #282623;
+    --z-sand: #1e1d1b;
+    --z-line: #3d3933;
+    --z-faint: #2c2a27;
+    --z-route: #6e624f;
+    --z-flown: #7b97de;
+    --z-kicker: #dba379;
+    --z-cap: #6f695f;
+    --t1: #c3cdea;
+    --t2: #aab9e3;
+    --t3: #94a8dd;
+    --t4: #7b97de;
+    --t5: #6a86cf;
+    --t6: #5a75bd;
+    --t7: #4b65a8;
+    --t8: #3d5590;
   }
 }
 .zero-art {
@@ -412,7 +516,7 @@ button.primary kbd {
 .zero .chick { fill: var(--t1); }
 .zero .cap { fill: var(--z-cap); }
 .zero .beak { fill: var(--z-beak); }
-.zero .zzz { font: 600 20px var(--font, inherit); fill: #a1a1aa; }
+.zero .zzz { font: 600 20px var(--font, inherit); fill: #9b958b; }
 .zero .zzz.small { font-size: 14px; }
 .zero .ripples ellipse { fill: none; stroke: var(--z-route); stroke-width: 2.5; }
 
@@ -603,6 +707,8 @@ button.primary kbd {
 .crow {
   position: relative;
   height: 100%;
+  margin: 0 var(--s-2);
+  border-radius: var(--r-md);
   display: flex;
   align-items: center;
   gap: var(--s-3);
@@ -620,15 +726,6 @@ button.primary kbd {
 }
 .crow.focused {
   background: var(--bg-3);
-}
-.crow.focused::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--accent);
 }
 /* Two lines: who and when on top, the subject under them. */
 .crow.two {
@@ -717,10 +814,10 @@ button.primary kbd {
   padding: 0 7px 0 6px;
   border-radius: var(--r-sm);
   /* The label's own colour, tinted: readable on light and dark alike. */
-  background: color-mix(in srgb, var(--label, var(--fg-2)) 16%, transparent);
-  color: color-mix(in srgb, var(--label, var(--fg-2)) 75%, var(--fg-0));
+  background: color-mix(in srgb, var(--label, var(--fg-2)) 11%, transparent);
+  color: color-mix(in srgb, var(--label, var(--fg-2)) 60%, var(--fg-0));
   font-size: var(--t-xs);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 18px;
   white-space: nowrap;
 }
@@ -883,82 +980,278 @@ button.primary kbd {
 
 .scrim {
   position: fixed;
-  inset: 0;
+  /* Under the title bar, which stays usable. */
+  inset: var(--titlebar-h) 0 0;
   background: var(--scrim);
   z-index: 15;
 }
 .rail {
   position: absolute;
   inset: 0 auto 0 0;
-  width: 240px;
+  width: var(--side-w);
   background: var(--bg-1);
   box-shadow: var(--shadow);
-  padding: var(--s-3) var(--s-2);
-  overflow-y: auto;
+  padding: var(--s-3) var(--s-2) var(--s-2);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 2px;
   animation: slide-in var(--d-base) var(--ease);
+}
+/* Docked: a column beside the list, on the tone the title bar gives it, and no shadow. */
+.rail.docked {
+  position: static;
+  flex: none;
+  box-shadow: none;
+  animation: none;
+  padding-top: var(--s-1);
 }
 @keyframes slide-in {
   from {
     transform: translateX(-100%);
   }
 }
-.rail h3 {
+/* New mail: the one raised control in the rail, a card on the rail's tone. */
+.rail-compose {
   display: flex;
-  gap: 6px;
-  align-items: baseline;
-  font-size: var(--t-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--fg-2);
-  margin: var(--s-4) var(--s-2) var(--s-1);
-  white-space: nowrap;
-}
-.rail h4 {
-  font-size: var(--t-xs);
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  flex: none;
+  padding: 0 var(--s-2) 0 10px;
+  margin-bottom: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-size: var(--t-md);
   font-weight: 500;
+  text-align: left;
+  box-shadow: var(--raise);
+}
+.rail-compose:hover {
+  border-color: var(--line-strong);
+}
+.rail-compose svg {
+  color: var(--accent);
+}
+.rail-compose kbd {
+  margin-left: auto;
+  border: 0;
+  background: none;
   color: var(--fg-2);
-  margin: var(--s-2) var(--s-2) var(--s-1);
 }
-.rail h3 > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
+.rail-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: none;
 }
+.rail-group + .rail-group {
+  margin-top: var(--s-3);
+}
+/* Rows: 30 px, the icon and the name in --fg-1, the open one on --bg-3 in --fg-0. */
 .rail .rail-item {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
   width: 100%;
   min-width: 0;
-  padding: 5px var(--s-2);
+  height: 30px;
+  flex: none;
+  padding: 0 var(--s-2) 0 10px;
   border: 0;
   border-radius: var(--r-md);
   background: none;
+  color: var(--fg-1);
   font-size: var(--t-md);
   text-align: left;
   cursor: default;
 }
-.rail .rail-item:hover {
-  background: var(--bg-2);
-}
-.rail .rail-item.active {
-  background: var(--bg-3);
-  font-weight: 600;
-}
-.rail .count {
+.rail .rail-item svg {
+  flex: none;
   color: var(--fg-2);
-  font-variant-numeric: tabular-nums;
 }
-/* A saved search: its words, and × to forget it on hover. */
-.rail .saved-search .query {
+.rail .rail-item .slot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 15px;
+}
+.rail .rail-item .name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
 }
+.rail .rail-item:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+/* Keyboard focus in the rail is a tone, as under the pointer, not a ring. */
+.rail .rail-item:focus-visible,
+.rail-head:focus-visible,
+.rail-sub:focus-visible,
+.rail-more:focus-visible,
+.rail-foot button:focus-visible,
+.rail-compose:focus-visible {
+  outline: none;
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.rail-compose:focus-visible {
+  background: var(--bg-0);
+  border-color: var(--line-strong);
+}
+.rail .rail-item.active:focus-visible {
+  background: var(--bg-3);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.rail .rail-item.active {
+  background: var(--bg-3);
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.rail .rail-item.active svg {
+  color: var(--fg-0);
+}
+.rail .count {
+  flex: none;
+  font-size: var(--t-sm);
+  font-weight: 400;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.rail .rail-item.active .count {
+  color: var(--fg-1);
+}
+/* A group's heading folds it; its chevron shows under the pointer or while folded. */
+.rail-head,
+.rail-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  flex: none;
+  padding: 0 var(--s-2) 0 10px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+.rail-head .name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rail-head:hover,
+.rail-sub:hover {
+  color: var(--fg-0);
+}
+.rail-head > svg:last-child,
+.rail-sub > svg:last-child {
+  flex: none;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity var(--d-fast) var(--ease);
+}
+.rail-head .count {
+  margin-left: auto;
+}
+.rail-head .count + svg {
+  margin-left: 0;
+}
+.rail-head:hover > svg:last-child,
+.rail-sub:hover > svg:last-child,
+.rail-head:focus-visible > svg:last-child,
+.rail-sub:focus-visible > svg:last-child,
+.rail-head[aria-expanded="false"] > svg:last-child,
+.rail-sub[aria-expanded="false"] > svg:last-child {
+  opacity: 1;
+}
+.rail-head {
+  gap: 9px;
+}
+/* Inside an account, "Labels" and "More" start where the folder names do. */
+.rail-sub {
+  margin-top: var(--s-1);
+  padding-left: 35px;
+}
+/* "More · 4": the account's other folders, folded by default. */
+.rail-more {
+  align-self: flex-start;
+  height: 26px;
+  padding: 0 var(--s-2) 0 35px;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
+.rail-more:hover {
+  color: var(--fg-0);
+}
+/* The places between New mail and the foot scroll on their own, with a thin bar that shows under the pointer. A
+   stable gutter keeps the rows from shifting when it does; the negative margin gives that gutter the rail's
+   padding instead of narrowing the rows. */
+.rail-scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: stable;
+  margin-right: calc(-1 * var(--s-2));
+  padding-right: 0;
+}
+.rail-scroll:hover,
+.rail-scroll:focus-within {
+  scrollbar-color: var(--line-strong) transparent;
+}
+/* Settings and Add account at the foot, on one line. */
+.rail-foot {
+  display: flex;
+  gap: 2px;
+  padding-top: var(--s-2);
+  flex: none;
+}
+.rail-foot button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 30px;
+  padding: 0 var(--s-2) 0 10px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-md);
+  text-align: left;
+}
+.rail-foot button:first-child {
+  flex: 1;
+}
+.rail-foot .rail-add {
+  justify-content: center;
+  width: 30px;
+  padding: 0;
+}
+.rail-foot button:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.rail-foot button svg {
+  color: var(--fg-2);
+}
+/* A saved search: its words, and × to forget it on hover. */
 .rail .saved-search {
   position: relative;
 }
@@ -970,11 +1263,20 @@ button.primary kbd {
   right: var(--s-1);
   top: 50%;
   transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
   opacity: 0;
   border: 0;
+  border-radius: var(--r-sm);
   background: none;
   color: var(--fg-2);
-  padding: 0 var(--s-1);
+  padding: 0;
+}
+.rail .saved-search .forget:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
 }
 .rail .saved-search:hover .forget,
 .rail .saved-search .forget:focus-visible {
@@ -987,38 +1289,6 @@ button.primary kbd {
 }
 .save-search.on {
   color: var(--accent);
-}
-/* The accounts as badges at the top of the rail: a click opens that account's inbox. */
-.rail .account-switch {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
-  min-width: 0;
-  margin: 0;
-  border: 0;
-  padding: 0 var(--s-2) var(--s-2);
-}
-.rail .account-switch button {
-  position: relative;
-  border-radius: 50%;
-  padding: 2px;
-  box-shadow: 0 0 0 2px transparent;
-}
-.rail .account-switch button.active {
-  box-shadow: 0 0 0 2px var(--accent);
-}
-.rail .account-switch .unread-dot {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: 2px solid var(--bg-1);
-}
-.rail h3 .account-avatar {
-  align-self: center;
 }
 .account-avatar {
   display: inline-grid;
@@ -1056,10 +1326,6 @@ button.primary kbd {
   box-shadow:
     0 0 0 2px var(--bg-1),
     0 0 0 4px var(--fg-0);
-}
-.rail .add-account {
-  margin: var(--s-4) var(--s-2) 0;
-  text-align: left;
 }
 .sync-state {
   flex: none;
@@ -1780,7 +2046,7 @@ button.fold {
 
 .overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h) 0 0;
   background: var(--scrim);
   display: grid;
   place-items: start center;
@@ -2569,7 +2835,7 @@ button.fold {
 }
 .compose.focus {
   width: 100vw;
-  height: 100vh;
+  height: calc(100vh - var(--titlebar-h));
   max-height: none;
   border-radius: 0;
   box-shadow: none;
@@ -2711,30 +2977,42 @@ button.fold {
 
 .settings-page {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h) 0 0;
   z-index: 12;
   display: grid;
-  grid-template-columns: 232px 1fr;
+  grid-template-columns: var(--side-w) 1fr;
   background: var(--bg-0);
 }
+/* In the sidebar's place, on its tone and with its rows, so it reads as the sidebar showing settings. */
 .settings-page nav {
   background: var(--bg-1);
-  border-right: 1px solid var(--line);
-  padding: var(--s-5) var(--s-3) var(--s-4);
+  padding: var(--s-3) var(--s-2) var(--s-2);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.settings-page nav:hover {
+  scrollbar-color: var(--line-strong) transparent;
 }
 .settings-page .nav-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 var(--s-2) var(--s-3);
+  height: 34px;
+  margin: 0 var(--s-1) var(--s-2) 10px;
 }
 .settings-page nav h2 {
   font-size: var(--t-lg);
+  font-weight: 600;
   margin: 0;
+}
+.settings-page .nav-head kbd {
+  border: 0;
+  background: none;
+  color: var(--fg-2);
 }
 .settings-page .find {
   width: 100%;
@@ -2742,22 +3020,31 @@ button.fold {
   font-size: var(--t-md);
 }
 .settings-page nav .find {
-  margin-bottom: var(--s-3);
+  height: 32px;
+  flex: none;
+  margin-bottom: var(--s-2);
+  padding: 0 10px;
+  background: var(--bg-0);
 }
 .settings-page .nav-group {
-  padding: var(--s-3) 10px var(--s-1);
-  font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--fg-2);
-}
-.settings-page nav button:not(.link) {
   display: flex;
   align-items: center;
-  gap: var(--s-2);
+  height: 26px;
+  flex: none;
+  margin-top: var(--s-3);
+  padding: 0 10px;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.settings-page nav button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
-  padding: 7px 10px;
+  height: 30px;
+  flex: none;
+  padding: 0 var(--s-2) 0 10px;
   border: 0;
   border-radius: var(--r-md);
   background: none;
@@ -2766,13 +3053,33 @@ button.fold {
   text-align: left;
   cursor: default;
 }
-.settings-page nav button:not(.link):hover {
+.settings-page nav button .slot {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  flex: none;
+  color: var(--fg-2);
+}
+.settings-page nav button .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-page nav button:hover,
+.settings-page nav button:focus-visible {
+  outline: none;
   background: var(--bg-2);
+  color: var(--fg-0);
 }
 .settings-page nav button.active {
   background: var(--bg-3);
   color: var(--fg-0);
-  font-weight: 600;
+  font-weight: 500;
+}
+.settings-page nav button.active .slot {
+  color: var(--fg-0);
 }
 .settings-page .nav-none {
   margin: var(--s-2) 10px;
@@ -2781,10 +3088,11 @@ button.fold {
 }
 .settings-page nav .close {
   margin-top: auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--s-2) 10px;
+}
+.settings-page nav .close kbd {
+  border: 0;
+  background: none;
+  color: var(--fg-2);
 }
 .settings-page .dot {
   width: 8px;
@@ -2797,33 +3105,72 @@ button.fold {
 .settings-body {
   min-width: 0;
   overflow-y: auto;
-  padding: var(--s-5) var(--s-6) var(--s-6);
+  padding: var(--s-6) var(--s-6) 64px;
 }
 .settings-content {
-  max-width: 640px;
+  max-width: 680px;
+  margin: 0 auto;
 }
 .settings-content.wide {
   max-width: 1280px;
 }
 .settings-body h1 {
   font-size: var(--t-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   margin: 0 0 var(--s-5);
 }
+
+/* A setting: its name and a line on it at the left, its control at the right, centred against both. Settings next
+   to each other share one card (--card, a --line edge, --r-lg corners), a rule between them. */
 .setting {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: var(--s-1) var(--s-4);
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--s-5);
+  row-gap: 2px;
   align-items: center;
-  padding: var(--s-3) 0;
-  border-bottom: 1px solid var(--line);
+  padding: 14px var(--s-4);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-bottom: 0;
 }
-.setting .title {
-  font-size: var(--t-rd);
+.setting > .title {
+  grid-column: 1;
+  font-size: var(--t-md);
+  font-weight: 500;
+  color: var(--fg-0);
 }
-.setting .help {
-  grid-column: 1 / -1;
+/* The control: whatever follows the name, unless it is the line on it; centred against the name and its line. */
+.setting > .title + :not(.help) {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  max-width: 340px;
+}
+.setting:has(> .help) > .title + :not(.help) {
+  grid-row: 1 / span 2;
+}
+.setting > .help {
+  grid-column: 1;
   font-size: var(--t-sm);
+  line-height: 1.5;
   color: var(--fg-2);
+}
+/* What needs the row's width: a form that opens in it, details, a list of accounts. */
+.setting > :is(.ai-key, .about-details, .backup-accounts, .backup-passphrase) {
+  grid-column: 1 / -1;
+  margin-top: var(--s-2);
+}
+.settings-content > :not(.setting) + .setting,
+.settings-content > .setting:first-child {
+  border-top-left-radius: var(--r-lg);
+  border-top-right-radius: var(--r-lg);
+}
+.settings-content > .setting:not(:has(+ .setting)) {
+  border-bottom: 1px solid var(--line);
+  border-bottom-left-radius: var(--r-lg);
+  border-bottom-right-radius: var(--r-lg);
+  margin-bottom: var(--s-5);
 }
 .setting .mono {
   font: var(--t-sm) / 1.4 var(--mono);
@@ -2834,6 +3181,88 @@ button.fold {
   color: var(--fg-2);
   line-height: 1.6;
 }
+
+/* Controls in settings: quiet fields, 32 px tall, a chevron drawn in --fg-2 on selects, and buttons on the card's
+   tone with a --line edge. */
+.settings-page :is(select, input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"])) {
+  height: 32px;
+  box-sizing: border-box;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: var(--t-md);
+  background-color: var(--bg-0);
+  border-color: var(--line);
+}
+.settings-page select {
+  appearance: none;
+  padding-right: 30px;
+  background-image: var(--chevron);
+  background-position: calc(100% - 10px) 50%;
+  background-size: 12px 12px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+.settings-page :is(select, input):hover:not(:focus, :disabled) {
+  border-color: var(--line-strong);
+}
+.settings-page :is(select, input):focus {
+  border-color: var(--accent);
+}
+.setting button:not(.link, .primary, [role="radio"]) {
+  height: 32px;
+  padding: 0 var(--s-3);
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  font-size: var(--t-md);
+  white-space: nowrap;
+  box-shadow: var(--raise);
+}
+.setting button:not(.link, .primary, [role="radio"]):hover:not(:disabled) {
+  background: var(--bg-2);
+  border-color: var(--line-strong);
+}
+.setting button.primary {
+  height: 32px;
+  padding: 0 var(--s-3);
+  font-size: var(--t-md);
+  font-weight: 500;
+}
+.setting .value-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--fg-1);
+  font-size: var(--t-md);
+}
+.setting .ai-key {
+  display: flex;
+  gap: var(--s-2);
+}
+.setting .ai-key input {
+  flex: 1;
+}
+.settings-page input[type="checkbox"],
+.settings-page input[type="radio"] {
+  accent-color: var(--accent);
+}
+.settings-content
+  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions)
+  button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button) {
+  height: 32px;
+  padding: 0 var(--s-3);
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font-size: var(--t-md);
+  white-space: nowrap;
+  box-shadow: var(--raise);
+}
+.settings-content
+  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions)
+  button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button):hover:not(:disabled) {
+  background: var(--bg-2);
+  border-color: var(--line-strong);
+}
 .settings-body h1 + .snippets-settings,
 .settings-body h1 + .signatures-settings {
   margin-top: calc(-1 * var(--s-4));
@@ -2842,7 +3271,7 @@ button.fold {
 .panel {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--bg-0);
+  background: var(--card);
 }
 .master.panel {
   padding: var(--s-3);
@@ -3398,6 +3827,7 @@ button.place.muted {
 .segmented {
   display: inline-flex;
   align-self: flex-start;
+  gap: 2px;
   padding: 2px;
   border-radius: var(--r-md);
   background: var(--bg-2);
@@ -3407,18 +3837,22 @@ button.place.muted {
   align-items: center;
   height: 28px;
   padding: 0 var(--s-3);
-  border-radius: var(--r-md);
+  border-radius: 6px;
   color: var(--fg-1);
+  font-size: var(--t-md);
   cursor: pointer;
 }
+.segmented label:hover {
+  color: var(--fg-0);
+}
 .segmented label.on {
-  background: var(--bg-0);
+  background: var(--card);
   color: var(--fg-0);
   font-weight: 500;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--raise);
 }
-.segmented label:focus-within {
-  outline: 2px solid var(--accent);
+.segmented label:has(:focus-visible) {
+  outline: 2px solid var(--focus-ring);
 }
 .segmented input {
   position: absolute;
@@ -3550,7 +3984,7 @@ button.place.muted {
 /* MARK: Attachment viewer (docs/design/ui.md §4.11): the file over everything, on a dark scrim in either theme. */
 .viewer {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h) 0 0;
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -3887,23 +4321,6 @@ button.place.muted {
 .ai-test.bad {
   color: var(--danger);
 }
-.ai-accounts {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2) var(--s-4);
-}
-.ai-accounts label {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-  font-size: var(--t-rd);
-}
-.ai-accounts .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
 .ai-sheet {
   margin: var(--s-3) 0;
   padding: var(--s-4) var(--s-5);
@@ -4008,19 +4425,33 @@ button.ai-line:hover {
   margin-right: auto;
 }
 
-/* Settings → AI → Your writing style: one note per account. */
-.ai-styles .style-note {
-  grid-column: 1 / -1;
+/* Settings → Writing style: a card per account, its name and Learn on top. */
+.ai-styles {
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
-  margin-top: var(--s-2);
+  gap: var(--s-4);
+}
+/* Inside a style card, its parts sit on the sidebar's tone: --soft is too close to --card in dark mode. */
+.ai-styles :is(.style-part, .style-preview) {
+  background: var(--bg-1);
+}
+.ai-styles .style-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
 }
 .style-head {
   display: flex;
   align-items: center;
   gap: var(--s-2);
   font-size: var(--t-rd);
+}
+.style-head strong {
+  font-weight: 600;
 }
 .style-head .dot {
   width: 8px;
@@ -4243,6 +4674,13 @@ fieldset.plain {
 .ai-status .help {
   margin: 0;
 }
+/* On: a card with what it sends to and Turn off. */
+.ai-status:has(.on) {
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
 .ai-status .on {
   flex: 1;
   display: inline-flex;
@@ -4260,8 +4698,7 @@ fieldset.plain {
 .ai-step {
   display: flex;
   gap: var(--s-3);
-  padding: var(--s-4) 0;
-  border-bottom: 1px solid var(--line);
+  padding: var(--s-3) 0 var(--s-5);
 }
 .ai-step-mark {
   flex: none;
@@ -4291,7 +4728,7 @@ fieldset.plain {
   gap: var(--s-2);
 }
 .ai-step-body h2 {
-  margin: 3px 0 0;
+  margin: 3px 0 var(--s-1);
   font-size: var(--t-rd);
   font-weight: 600;
 }
@@ -4332,36 +4769,29 @@ fieldset.plain {
   font-size: var(--t-sm);
   color: var(--fg-1);
 }
-.ai-redact {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-2);
-  font-size: var(--t-sm);
-  color: var(--fg-1);
-}
 .ai-ledger {
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--soft);
+  background: var(--card);
   overflow: hidden;
 }
 .ai-ledger .row {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr) 170px 32px;
   gap: var(--s-3);
-  align-items: start;
+  align-items: center;
   padding: var(--s-3) var(--s-4);
-  background: var(--bg-0);
-  border-top: 1px solid var(--bg-2);
+  border-top: 1px solid var(--line);
 }
 .ai-ledger .row.head {
-  background: transparent;
+  background: var(--bg-1);
   border-top: none;
   padding-block: var(--s-2);
   font-size: var(--t-xs);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--fg-1);
+  color: var(--fg-2);
 }
 .ai-ledger .name {
   font-size: var(--t-md);
@@ -4379,13 +4809,15 @@ fieldset.plain {
   color: var(--fg-1);
 }
 .ai-ledger input {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   margin: 0;
 }
 .ai-ledger .foot {
   margin: 0;
-  padding: var(--s-2) var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--line);
+  background: var(--bg-1);
   font-size: var(--t-sm);
   line-height: 1.5;
   color: var(--fg-1);
@@ -4396,8 +4828,9 @@ fieldset.plain {
   gap: var(--s-3);
   margin: var(--s-4) 0;
   padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--soft);
+  background: var(--card);
   font-size: var(--t-md);
   color: var(--fg-1);
 }
@@ -4417,6 +4850,7 @@ fieldset.plain {
   padding: var(--s-3) var(--s-4);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
+  background: var(--card);
   font-size: var(--t-md);
 }
 .ai-card .kicker,
@@ -4447,25 +4881,91 @@ fieldset.plain {
 .ai-inline select {
   max-width: 60%;
 }
-.ai-styles {
+/* Mail it may read: the accounts and the redaction as rows of one card. */
+.ai-checks {
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
-  padding: var(--s-4) 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  overflow: hidden;
+}
+.ai-checks label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--t-md);
+  cursor: pointer;
+}
+.ai-checks label + label {
   border-top: 1px solid var(--line);
 }
-.ai-styles h2 {
+.ai-checks input {
+  flex: none;
+  width: 16px;
+  height: 16px;
   margin: 0;
-  font-size: var(--t-rd);
-  font-weight: 600;
+}
+.ai-checks .dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.ai-checks .redact .what {
+  padding-left: 0;
+}
+/* A row's words with a quieter line under them, in the AI cards. */
+:is(.ai-checks, .ai-link) .what {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--fg-0);
+  font-weight: 500;
+}
+:is(.ai-checks, .ai-link) .sub {
+  font-size: var(--t-sm);
+  font-weight: 400;
+  color: var(--fg-2);
+}
+/* Writing style, its own page: a card row that goes there. */
+.ai-link {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  margin: var(--s-4) 0 0;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  font-size: var(--t-md);
+  text-align: left;
+}
+.ai-link:hover {
+  border-color: var(--line-strong);
+}
+.ai-link .what {
+  flex: 1;
+}
+.ai-link svg {
+  flex: none;
+  color: var(--fg-2);
 }
 .ai-kept {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: var(--s-4) 0;
-  border-top: 1px solid var(--line);
-  font-size: var(--t-sm);
+  margin-top: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  font-size: var(--t-md);
   color: var(--fg-1);
 }
 .ai-kept .spacer,
@@ -4603,26 +5103,25 @@ fieldset.plain {
   color: var(--fg-2);
   font: inherit;
 }
-.segmented {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--r-md);
-  background: var(--bg-0);
-}
 .segmented button {
   flex: 1;
-  padding: var(--s-1);
+  height: 28px;
+  padding: 0 var(--s-3);
   border: none;
-  border-radius: var(--r-sm);
+  border-radius: 6px;
   background: transparent;
   color: var(--fg-1);
   font: inherit;
-  font-size: var(--t-sm);
+  font-size: var(--t-md);
+}
+.segmented button:hover {
+  color: var(--fg-0);
 }
 .segmented button.on {
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--card);
+  color: var(--fg-0);
+  font-weight: 500;
+  box-shadow: var(--raise);
 }
 button.link.danger {
   color: var(--danger);
@@ -4791,8 +5290,9 @@ button.link.danger {
 .ai-provider-list {
   display: flex;
   flex-direction: column;
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--soft);
+  background: var(--card);
   overflow: hidden;
 }
 .ai-provider {
@@ -4800,9 +5300,10 @@ button.link.danger {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border-top: 1px solid var(--bg-2);
-  background: var(--bg-0);
+  min-height: 52px;
+  box-sizing: border-box;
+  padding: var(--s-2) var(--s-3) var(--s-2) var(--s-4);
+  border-top: 1px solid var(--line);
 }
 .ai-provider:first-child {
   border-top: none;
@@ -4914,7 +5415,7 @@ button.link.danger {
 .day-screen,
 .day-deck {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h) 0 0;
   /* Over the inbox, under what they open: compose (10, docked 30), the snooze picker and the palette. */
   z-index: 9;
   display: flex;
@@ -4933,14 +5434,15 @@ button.link.danger {
   width: 100%;
   height: 100%;
 }
+/* Two hills of the scenes' sand and stone. */
 .day-land path {
-  fill: color-mix(in srgb, var(--fg-0) 6%, transparent);
+  fill: var(--z-sand);
 }
 .day-land path + path {
-  fill: color-mix(in srgb, var(--fg-0) 9%, transparent);
+  fill: var(--z-sea);
 }
 .day-land .bird {
-  fill: var(--fg-1);
+  fill: var(--t6);
 }
 .day-screen header,
 .day-deck header {
@@ -4970,7 +5472,7 @@ button.link.danger {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--fg-1);
+  color: var(--z-kicker);
 }
 .day-words h1 {
   margin: 0;
@@ -5263,7 +5765,7 @@ button.link.danger {
   position: sticky;
   top: 0;
   /* The pane's height, less the window's title bar and status strip; scrolls on its own, its bar shown on hover. */
-  max-height: calc(100vh - 72px);
+  max-height: calc(100vh - 72px - var(--titlebar-h));
   overflow-x: hidden;
   overflow-y: auto;
   overflow-wrap: anywhere;

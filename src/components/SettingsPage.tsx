@@ -1,9 +1,10 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from "solid-js";
 import type { Account } from "../api";
 import { colourOf } from "../colours";
+import { Icon, type IconName } from "./Icon";
 import { accountName } from "./settings/shared";
 import { AppearanceSettings, ReadingSettings, ComposeSettings, AboutSettings, NotificationSettings, DesktopSettings } from "./settings/general";
-import { AiSettingsPage } from "./settings/ai";
+import { AiSettingsPage, AiStylePage } from "./settings/ai";
 import { SnippetSettings } from "./settings/snippets";
 import { SignatureSettings } from "./settings/signatures";
 import { AccountPage } from "./settings/account";
@@ -17,6 +18,8 @@ type Section = {
   /** What search finds it by, besides its name. */
   words: string;
   body: () => JSX.Element;
+  /** Drawn before the name; an account has its colour's dot instead. */
+  icon?: IconName;
   dot?: string;
 };
 
@@ -33,42 +36,60 @@ export function SettingsPage(props: {
     {
       id: "Appearance",
       name: "Appearance",
+      icon: "palette",
       group: "General",
-      words: "theme dark light density rows inbox zero empty tern scene",
+      words: "theme dark light density rows sidebar inbox zero empty tern scene",
       body: () => <AppearanceSettings />,
     },
     {
       id: "Reading",
       name: "Reading",
+      icon: "book-open",
       group: "General",
       words: "open conversations mark read inbox split important other images logos designed dark start day morning",
       body: () => <ReadingSettings />,
     },
-    { id: "Notifications", name: "Notifications", group: "General", words: "notify new mail quiet hours", body: () => <NotificationSettings /> },
-    { id: "Desktop", name: "Desktop", group: "General", words: "background tray close login start email links mailto default", body: () => <DesktopSettings /> },
+    { id: "Notifications", name: "Notifications",
+      icon: "bell", group: "General", words: "notify new mail quiet hours", body: () => <NotificationSettings /> },
+    { id: "Desktop", name: "Desktop",
+      icon: "monitor", group: "General", words: "background tray close login start email links mailto default", body: () => <DesktopSettings /> },
     {
       id: "AI",
       name: "AI",
+      icon: "sparkles",
       group: "General",
       words: "ai claude anthropic openai gpt gemini google api key summary summarize replies suggest write rewrite style voice model privacy",
-      body: () => <AiSettingsPage accounts={props.accounts} />,
+      body: () => <AiSettingsPage accounts={props.accounts} onStyles={() => setSection("Writing style")} />,
     },
     {
       id: "Backup",
       name: "Backup",
+      icon: "archive",
       group: "General",
       words: "export import move another computer copy file json settings snippets signatures accounts passwords passphrase encrypted",
       body: () => <BackupSettings accounts={props.accounts} onAccountsChanged={props.onAccountsChanged} />,
     },
-    { id: "About", name: "About", group: "General", words: "version log bug report problem help beta downloaded attachments cache disk space clear", body: () => <AboutSettings /> },
-    { id: "Compose", name: "Compose", group: "Writing", words: "undo send delay attachment forgotten attached prilog anhang", body: () => <ComposeSettings /> },
-    { id: "Snippets", name: "Snippets", group: "Writing", words: "saved replies templates shortcut text", body: () => <SnippetSettings accounts={props.accounts} /> },
+    { id: "About", name: "About",
+      icon: "info", group: "General", words: "version log bug report problem help beta downloaded attachments cache disk space clear", body: () => <AboutSettings /> },
+    { id: "Compose", name: "Compose",
+      icon: "send", group: "Writing", words: "undo send delay attachment forgotten attached prilog anhang", body: () => <ComposeSettings /> },
+    { id: "Snippets", name: "Snippets",
+      icon: "file-text", group: "Writing", words: "saved replies templates shortcut text", body: () => <SnippetSettings accounts={props.accounts} /> },
     {
       id: "Signatures",
       name: "Signatures",
+      icon: "pen-line",
       group: "Writing",
       words: "signature replies quoted below above",
       body: () => <SignatureSettings accounts={props.accounts} account={signatureAccount()} onAccount={setSignatureAccount} />,
+    },
+    {
+      id: "Writing style",
+      name: "Writing style",
+      icon: "feather",
+      group: "Writing",
+      words: "ai style voice learn sent tone length greetings sign-offs habits",
+      body: () => <AiStylePage accounts={props.accounts} onAi={() => setSection("AI")} />,
     },
     ...props.accounts.map(
       (a): Section => ({
@@ -137,10 +158,12 @@ export function SettingsPage(props: {
               <For each={found().filter((s) => s.group === group)}>
                 {(s) => (
                   <button type="button" classList={{ active: s.id === section() }} aria-current={s.id === section() ? "page" : undefined} onClick={() => setSection(s.id)}>
-                    <Show when={s.dot}>
-                      <span class="dot" style={{ background: s.dot }} />
-                    </Show>
-                    {s.name}
+                    <span class="slot">
+                      <Show when={s.icon} fallback={<span class="dot" style={{ background: s.dot }} />}>
+                        {(name) => <Icon name={name()} size={15} />}
+                      </Show>
+                    </span>
+                    <span class="name">{s.name}</span>
                   </button>
                 )}
               </For>
@@ -150,8 +173,12 @@ export function SettingsPage(props: {
         <Show when={!found().length}>
           <p class="nav-none">No setting matches.</p>
         </Show>
-        <button class="link close" onClick={props.onClose}>
-          Close settings <kbd>Esc</kbd>
+        <button type="button" class="close" onClick={props.onClose}>
+          <span class="slot">
+            <Icon name="x" size={15} />
+          </span>
+          <span class="name">Close settings</span>
+          <kbd>Esc</kbd>
         </button>
       </nav>
       <div class="settings-body">

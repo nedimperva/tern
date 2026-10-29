@@ -8,7 +8,9 @@ Delivery scope comes from `docs/PLAN.md`: future screens in this spec are not fi
 Use the roadmap's end-to-end performance evidence; a signal-update timing is not input-to-paint latency.
 
 Direction (owner's decision): **match Superhuman's look and feel as closely as reasonable.** Dense,
-calm, keyboard-first, one accent colour, no chrome.
+calm, keyboard-first, one accent colour, no chrome. Since 2026-10-28 (canvas "Tern warm directions", A, the
+owner's pick) the greys are warm neutrals and the accent is the logo's navy, in the spirit of the Claude desktop
+app; the window draws its own title bar and the sidebar stays open beside the list.
 
 ## 1. Principles
 
@@ -29,24 +31,26 @@ uses a raw colour, size or duration. File: `src/styles/tokens.css`.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--bg-0` | `#ffffff` | `#111113` | App background, list |
-| `--bg-1` | `#fafafa` | `#18181b` | Panels, compose, sidebar |
-| `--bg-2` | `#f4f4f5` | `#1f1f23` | Hover rows, chips |
-| `--bg-3` | `#e9e9ec` | `#27272b` | Selected/focused row |
-| `--fg-0` | `#18181b` | `#ededef` | Primary text, unread |
-| `--fg-1` | `#52525b` | `#a1a1aa` | Secondary text, read rows |
-| `--fg-2` | `#a1a1aa` | `#71717a` | Meta, snippets, placeholders |
-| `--line` | `#e4e4e7` | `#27272a` | The few borders we draw |
-| `--accent` | `#5b5bd6` | `#7c7cf0` | Focus bar, links, primary button, selection dot |
-| `--accent-fg` | `#ffffff` | `#ffffff` | Text on accent |
-| `--accent-soft` | `#eeeefb` | `#232347` | Selected chip, palette match highlight |
+| `--bg-0` | `#fcfbf9` | `#201f1d` | App background, list |
+| `--bg-1` | `#f5f3ef` | `#1a1918` | Panels, compose, sidebar |
+| `--bg-2` | `#eeebe5` | `#2a2926` | Hover rows, chips |
+| `--bg-3` | `#e8e4dc` | `#32302c` | Selected/focused row |
+| `--fg-0` | `#1f1e1b` | `#ece8e1` | Primary text, unread |
+| `--fg-1` | `#57534b` | `#b5b0a6` | Secondary text, read rows |
+| `--fg-2` | `#66625a` | `#a29d93` | Meta, snippets, placeholders |
+| `--line` | `#e9e5dd` | `#302e2a` | The few borders we draw |
+| `--line-strong` | `#d8d3c9` | `#403d38` | A raised control's edge under the pointer |
+| `--raise` | `0 1px 2px` warm 6 % | `0 1px 2px` black 30 % | New mail in the sidebar |
+| `--accent` | `#2f4f9a` | `#7b97de` | Links, primary button, selection dot |
+| `--accent-fg` | `#ffffff` | `#16171b` | Text on accent |
+| `--accent-soft` | `#e9edf5` | `#262e42` | Selected chip, palette match highlight |
 | `--ok` | `#2f9e6e` | `#3fbf85` | Sent, synced |
 | `--warn` | `#c98a1b` | `#e0a63a` | Offline, waiting |
 | `--danger` | `#d0453f` | `#ef6b66` | Errors, discard |
 | `--star` | `#e9b81c` | `#f2c94c` | Star |
 | `--shadow` | `0 8px 30px rgba(0,0,0,.12)` | `0 8px 30px rgba(0,0,0,.6)` | Palette, dialogs |
-| `--soft` | `#f5f5f7` | `#1a1a1e` | Files, the reply row, an inline reply (`--soft-hover` on hover) |
-| `--tip` / `--tip-fg` | `#18181b` / `#fafafa` | `#ededef` / `#111113` | Tooltips on the conversation's header icons |
+| `--soft` | `#f4f2ed` | `#262522` | Files, the reply row, an inline reply (`--soft-hover` on hover) |
+| `--tip` / `--tip-fg` | `#1f1e1b` / `#fbfaf7` | `#ece8e1` / `#201f1d` | Tooltips on the conversation's header icons |
 
 Account colours (unified inbox dots, calendar): a fixed palette of 8 — `#5b5bd6 #2f9e6e #d0453f #c98a1b #0e9bb5 #b24fb0 #7a7f8a #e07a30` — assigned in order of account creation.
 
@@ -68,7 +72,7 @@ Mail HTML is rendered in its own iframe with the sender's styling; we only set a
 ### Space, radius, motion
 
 - Spacing scale: `4 8 12 16 24 32` px (`--s-1 … --s-6`). Rows use 12 px horizontal padding; panels 16; dialogs 24.
-- Radius: `--r-sm 4` (chips, keycaps) · `--r-md 6` (buttons, inputs, rows in palette) · `--r-lg 10` (palette, dialogs, compose modal).
+- Radius: `--r-sm 4` (chips, keycaps) · `--r-md 8` (buttons, inputs, list rows, sidebar rows) · `--r-lg 12` (palette, dialogs, compose modal, cards).
 - Motion: `--d-fast 120ms` list and focus moves · `--d-base 160ms` panels and toasts · `--d-slow 240ms` dialogs. Easing `cubic-bezier(.2,.8,.2,1)`. Everything is `0ms` under `prefers-reduced-motion`.
 - Density setting: `dense` row 36 px (default), `comfortable` 44 px, `spacious` 52 px. Only row height and a 1–2 px type bump change.
 
@@ -80,20 +84,37 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ [rail]  │  Important · 12   Other · 48   Calendar · 2        [search ⌕] │  ← 40 px split bar
-│         ├──────────────────────────────────────────────────────┬────────┤
-│ hidden  │  ▍ Ana Rossi, me 3      Q3 numbers — here's the…  14:02     │        │
-│ by      │    GitHub               [tern] CI failed on main   Mon      │  conv  │
-│ default │    Linear               LIN-233 moved to Done      Mon      │  pane  │
-│         │    …                                                        │ (opt.) │
-│         │                                                             │        │
-│         ├──────────────────────────────────────────────────────┴────────┤
-│         │  ● Synced · 2 changes waiting            ↩ Undo archive  Z    │  ← 28 px status strip
-└──────────────────────────────────────────────────────────────────────────┘
+│ [▯]           ·  drags the window, double click maximizes  ·    –  ▢  ✕ │  ← 40 px title bar
+├──────────┬───────────────────────────────────────────────────┬───────────┤
+│ ✎ New    │  Important · 12   Other · 48   Calendar · 2   [⌕]  │           │
+│ ▭ Inbox  │    Ana Rossi, me 3   Q3 numbers — here's the… 14:02 │   conv    │
+│ Snoozed  │    GitHub            [tern] CI failed on main  Mon  │   pane    │
+│ account  │    Linear            LIN-233 moved to Done     Mon  │  (opt.)   │
+│ folders  │    …                                                │           │
+│ More · 3 ├────────────────────────────────────────────────────┤           │
+│ ⚙ Settin │  ● Synced · 2 changes waiting    ↩ Undo archive  Z │           │
+└──────────┴────────────────────────────────────────────────────┴───────────┘
 ```
 
 - **Window minimum** 720 × 480. At < 960 px wide the conversation always opens full-width over the list.
-- **Rail** (`Ctrl+\`): 240 px slide-over from the left with a scrim; accounts (avatar dot + name + unread), labels, settings. It never stays open by default. On ≥ 1440 px the user can pin it (setting).
+- **Title bar** (owner's pick, 2026-10-28): the system draws no frame (`decorations: false`). Tern's bar is 40 px:
+  the sidebar button (`panel-left`, `Ctrl+\`) at the left, then New mail when the sidebar is hidden; minimize,
+  maximize/restore and close (red under the pointer) at the right, 46 px each. The rest drags the window and a
+  double click maximizes (`data-tauri-drag-region="deep"`). No app name. Over the docked sidebar (or settings'
+  sections) the bar takes `--bg-1`; elsewhere a `--line` rule runs under it. Full-window overlays (scrims,
+  dialogs, settings, the viewer, the day screen) start under it, so the window can always be moved and closed.
+- **Sidebar** (`Ctrl+\`, the title bar's button): 240 px (`--side-w`) on `--bg-1`, docked beside the list from 1100 px
+  wide and open by default (Settings → Appearance → Sidebar); the button hides it for good until shown again.
+  Narrower, turned off, or in focus mode, the same column slides over the list with a scrim and closes on `Esc`
+  or after going somewhere. New mail at the top (the one raised control: `--bg-0`, a `--line` edge, `--raise`),
+  then Inbox (All Inboxes with more than one account), Snoozed, Read later and Marks with icons, saved searches,
+  and each account: Inbox, Drafts, Sent, Archive, the rest under "More · N", then its labels. Accounts, Labels
+  and Searches fold under their headings (the chevron shows on hover or while folded; labels start folded past
+  six); a folded folder that is open still shows. Settings and + (Add account) share the foot. Search lives in the
+  list's header. Rows are 30 px, 8 px rounded, every name in one column (an empty icon slot where there is no
+  icon, a label's dot in it); the current row is `--bg-3`. Unread counts show for inboxes, labels and the
+  person's own folders, not for Drafts, Sent, Archive, All Mail, Junk or Trash. Beside a docked sidebar an open conversation's narrow list is on `--bg-0` with a
+  `--line` rule before the conversation.
 - **Split bar**: tabs with unread counts, active tab has a 2 px `--accent` underline; search field right-aligned (`/` focuses it; it expands to 320 px on focus).
 - **List**: full width when nothing is open. With the conversation open in split mode the list is a 340 px column
   (canvas "Tern reading ideas", R2) of two-line rows, 20 px taller: names, chips, icons and the date on top, the
@@ -109,16 +130,17 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ### 4.1 Conversation row
 
 ```
-▍ ● Ana Rossi, Tom Berg, me 3   Q3 numbers — here's the deck we talked about… ⌁ ★   14:02
-│ │ └ participants (600 if unread) └ subject (600 if unread) └ snippet (--fg-2)  │  │  └ date (--t-sm, tnum, --fg-2)
-│ └ account dot (unified views only)                                           │  └ star (--star when set, hidden otherwise unless hovered)
-└ 3 px focus bar (--accent), full row height                                   └ attachment glyph
+● Ana Rossi, Tom Berg, me 3   Q3 numbers — here's the deck we talked about… ⌁ ★   14:02
+│ └ participants (600 if unread) └ subject (600 if unread) └ snippet (--fg-2)  │  │  └ date (--t-sm, tnum, --fg-2)
+└ account dot (unified views only)                                           │  └ star (--star when set, hidden otherwise unless hovered)
+                                                                             └ attachment glyph
 ```
 
 - One line. Participants column is fixed at 180 px (dense) and ellipsised; subject + snippet share the rest, subject never truncates below 40 % of its container.
 - Participant names: first names when there are ≥ 2; "me" for our addresses; sender of the last unread message first; count badge (`3`) only when > 1.
-- Label chips after the subject: max 2, `--t-xs` 600, the label's colour tinted to 16 % as the background and mixed 75 % into `--fg-0` for the text, with a 6 px dot in the full colour; a `+2` chip for the rest. Chips never push the date. Gmail's colours don't come over IMAP, so a label's colour comes from its name (`labelColour`, the account palette): the same label, the same colour in rows, the conversation, the rail and the picker.
-- States: `focused` → `--bg-3` + focus bar; `selected` (`x`) → `--accent-soft` background + checkbox replaces the account dot; `hover` → `--bg-2` (no focus bar); `unread` → `--fg-0` weight 600 for participants and subject, otherwise `--fg-1` and 400.
+- Label chips after the subject: max 2, `--t-xs` 500, the label's colour tinted to 11 % as the background and mixed 60 % into `--fg-0` for the text, with a 6 px dot in the full colour; a `+2` chip for the rest. Chips never push the date. Gmail's colours don't come over IMAP, so a label's colour comes from its name (`labelColour`, the account palette): the same label, the same colour in rows, the conversation, the rail and the picker.
+- Rows sit 8 px in from the list's sides with `--r-md` corners, so states show as rounded tiles.
+- States: `focused` → `--bg-3` (no bar: the owner found the accent edge noisy, 2026-10-29); `selected` (`x`) → `--accent-soft` background + checkbox replaces the account dot; `hover` → `--bg-2` (no focus bar); `unread` → `--fg-0` weight 600 for participants and subject, otherwise `--fg-1` and 400.
 - Snoozed shows a small clock + due text instead of the date; scheduled drafts likewise.
 - Row removal (archive, snooze): 120 ms height collapse; focus moves to the next row immediately.
 
@@ -305,7 +327,9 @@ panel icon or the column's own × hides it, for every conversation until shown a
   commonly given figures (about 70,000 km a year, 2.4 million km a life, the most daylight of any animal).
 - Layout: "side" scenes put the words left (kicker in `--z-kicker`, the time or a count at 56 px, one line) and the
   picture right; "center" ones put the words at the bottom over a full picture. Under 760 px wide the picture steps
-  back to 35 % behind centred words. Colours are `--z-*` and `--t1…8` tokens on `.zero`, light and dark.
+  back to 35 % behind centred words. Colours are `--z-*` and `--t1…8` tokens on `.zero`, light and dark: since
+  2026-10-29 warm like the rest (a paper sky, sand and stone, a terracotta kicker, terns in shades of the logo's
+  navy). The morning screen uses the same tokens: its hills are `--z-sand` and `--z-sea`, its terns `--t6`.
 - Settings → Appearance → Inbox Zero: a different tern each day (default) or one scene. The counts
   are kept with the settings (`zeroLog`), on this computer: what is cleared in another app isn't in them. No buttons.
   `C` still composes.
@@ -335,10 +359,18 @@ Settings → Reading → Start of the day: the screen and the line, only the lin
 ### 4.8 Settings (`Ctrl+,`)
 
 - Full-screen page over the list with a 232 px left list of sections in three groups, each under a `--t-xs`
-  label: General (Appearance · Reading · Notifications · Desktop · AI · About), Writing (Compose · Snippets · Signatures) and
+  label: General (Appearance · Reading · Notifications · Desktop · AI · Backup · About), Writing (Compose · Snippets ·
+  Signatures · Writing style) and
   Accounts (one entry per account, with its colour dot). A search field at the top of the list narrows it to the
-  sections whose settings match. Content sits in a 640 px column. Controls are plain: toggles, selects, text
+  sections whose settings match. Content sits in a 680 px column, centred. Controls are plain: toggles, selects, text
   fields. Every setting has one line of explanation under it.
+- Redrawn 2026-10-29: the section list is the sidebar's (30 px rows, a 15 px icon or an account's dot, group labels
+  in `--t-sm` 500 `--fg-2`, Close settings at the foot). Settings next to each other share a card (`--card`, a
+  `--line` edge, `--r-lg`, a rule between rows): the name (`--t-md` 500) and its line (`--t-sm` `--fg-2`) on the
+  left, the control on the right, centred against both. Fields and selects are 32 px on `--bg-0` (a `--chevron` on
+  selects); buttons are `--bg-0` with a `--line` edge and `--raise`; checkboxes take `accent-color`. Segmented
+  controls are a `--bg-2` track with the picked part on `--card`. The AI page's provider list, feature table, cards
+  and the snippet and signature panels are cards the same way.
 - Built (2026-10-19), Snippets and Signatures use a wider (1040 px) list-and-detail layout. On the left, a list
   of rows (name, `;shortcut` or "New mail · Replies" in `--fg-2`); the picked row is `--bg-3`, nothing more, and a
   pressed filter pill is `--bg-3` too. Colour is for accounts: a per-account tab is underlined in that account's colour.
@@ -358,9 +390,13 @@ Settings → Reading → Start of the day: the screen and the line, only the lin
   the model, picked from every provider with a key in groups by provider, and a checkbox; a footer line on what
   never goes). A model from a provider not yet allowed opens a row on `--accent-soft` under its feature ("gpt-6-luna
   sends summaries to OpenAI, …", Allow OpenAI / Cancel) and the list keeps the model in use until then. "Review and
-  turn on" opens the privacy sheet naming every provider in use; once on, a status line (On · providers, Turn off),
-  two cards (Today: tokens against the daily limit as a meter; Limit), "Your writing style" per account, and what is
-  kept with Delete AI cache.
+  turn on" opens the privacy sheet naming every provider in use; once on, a status card (On · providers, Turn off),
+  two cards (Today: tokens against the daily limit as a meter; Limit), a card row that opens Writing style, and what
+  is kept with Delete AI cache, as a card. Mail it may read is one card: a row per account (checkbox, dot, name and
+  address) and the redaction row.
+  Writing style (since 2026-10-29 its own section under Writing, as the notes took most of the AI page): a line on
+  what it is, then a card per account AI may read, its parts on `--bg-1` inside. With AI off, Write in my style off
+  or no account ticked, one card says which and opens Settings → AI.
   Writing style: after Learn, "Does this sound like you?" (made-up notes written plainly and in the person's style,
   the second with a 2 px `--accent` border, what it picked up as `--accent-soft` tags; Sounds like me, Adjust the
   note, Don't use a style). After that the note shows as parts on `--soft`: greetings and sign-offs as removable
@@ -385,6 +421,9 @@ Settings → Reading → Start of the day: the screen and the line, only the lin
 ## 5. Interaction rules
 
 - Focus is always visible and always exactly one place: a row, a message, a field, or a palette item.
+  Keyboard focus on a control is a 2 px `--focus-ring` outline (the accent at 45 %), 1 px out (inset in the title
+  bar); never the browser's own. The list, the editor and text fields show focus their own way and draw none; the
+  sidebar shows it as `--bg-2`, like hover.
 - `Esc` goes one level up, never two. Palette → pane → list → clears selection.
 - Actions on the selection if non-empty, else the focused item. The toast says which: "Archived 12 conversations".
 - Destructive actions (trash, discard, mark all done) never confirm; they undo. Exception: emptying Trash/Spam.
@@ -426,5 +465,3 @@ Prototypes are throwaway; delete them once the real component lands.
 ## 9. Open questions for the owner
 
 - Empty-state imagery: curated photos (Superhuman-like) or generated gradients? Photos need licences (Unsplash licence is fine).
-- Accent colour: the indigo above or something closer to Omarchy's current theme accent?
-- Should the rail be pinnable at all, or always a slide-over like Superhuman?

@@ -148,10 +148,19 @@ function HtmlBody(props: {
     setReady(true);
     setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
     doc.documentElement.classList.toggle("tern-fold", !unfolded());
-    const fit = () => fitFrame(frame!, doc);
-    // biome-ignore lint/suspicious/noFocusedTests: `fit` sizes the frame; it isn't a test runner's fit()
-    fit();
-    new ResizeObserver(fit).observe(doc.body);
+    const size = () => fitFrame(frame!, doc);
+    size();
+    // On the next frame, not in the callback: sizing the frame there could resize the body in the same frame (mail
+    // laid out in vh, a scroll bar coming and going), and the observer reported a loop thousands of times.
+    let queued = false;
+    new ResizeObserver(() => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        size();
+      });
+    }).observe(doc.body);
     quietMenu(doc);
     const marks = doc.createElement("style");
     marks.textContent = FRAME_MARK_STYLE;

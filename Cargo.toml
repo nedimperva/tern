@@ -16,3 +16,11 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
+
+# SQLite unoptimised made every list query in a dev build take 150-200 ms against a real mailbox (release: a few
+# ms), so the slow-query warning fired on each move. Optimising just these two costs one rebuild of them.
+[profile.dev.package.libsqlite3-sys]
+opt-level = 3
+
+[profile.dev.package.rusqlite]
+opt-level = 3

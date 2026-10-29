@@ -48,14 +48,12 @@ import {
   palette,
   perf,
   problems,
-  rail,
   rows,
   searchBox,
   setExpanded,
   setFocusMode,
   setPalette,
   setPerf,
-  setRail,
   setReviewing,
   setSelection,
   setSettingsOpen,
@@ -63,6 +61,7 @@ import {
   setSheet,
   setSnoozing,
   searching,
+  toggleSidebar,
   update,
 } from "./state";
 import { late, paused } from "./status";
@@ -160,7 +159,7 @@ export const bindings = (): Binding[] => [
   { keys: "", name: paused() ? "Resume sync" : "Pause sync", run: () => void api.setSyncPaused(!paused()) },
   ...(update() ? [{ keys: "", name: `Restart to update to ${update()}`, run: restartToUpdate }] : []),
   { keys: "Ctrl+P", name: "Performance overlay", run: () => setPerf(!perf()) },
-  { keys: "Ctrl+\\", name: "Accounts and folders", run: () => setRail(!rail()) },
+  { keys: "Ctrl+\\", name: "Show or hide the sidebar", run: toggleSidebar },
   { keys: "Ctrl+k", name: "Command palette", run: () => setPalette(!palette()), hidden: true },
 ];
 

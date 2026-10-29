@@ -235,10 +235,10 @@ export function InboxZero(props: { accounts: Account[] }) {
                 </For>
               </g>
             </Show>
-            <circle cx="790" cy={night ? 300 : 388} r={night ? 40 : 64} style={{ fill: night ? "var(--z-moon)" : `hsl(${hue} 88% 64%)` }} />
+            <circle cx="790" cy={night ? 300 : 388} r={night ? 40 : 64} style={{ fill: night ? "var(--z-moon)" : `hsl(${hue} 72% 64%)` }} />
             <rect class="sea" y="388" width={W} height={H - 388} />
             <path class="shoreline" d={`M0 388 h${W}`} />
-            <path class="glint" style={{ stroke: night ? "var(--z-moon)" : `hsl(${hue} 88% 64%)` }} d="M720 420 h140 M752 440 h76 M776 458 h28" />
+            <path class="glint" style={{ stroke: night ? "var(--z-moon)" : `hsl(${hue} 72% 64%)` }} d="M720 420 h140 M752 440 h76 M776 458 h28" />
             <path class="wave" d="M120 440 h60 M260 470 h90 M520 452 h40 M940 476 h70" />
             <Tern at="translate(300 150) scale(1.35)" />
           </g>

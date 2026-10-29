@@ -8,6 +8,8 @@ export type Settings = {
   /** "system" follows the desktop's light or dark. */
   theme: "system" | "light" | "dark";
   density: "dense" | "comfortable" | "spacious";
+  /** The sidebar (accounts and folders) stays open beside the list in a wide enough window. */
+  sidebar: boolean;
   /** "auto": beside the list in a wide window, over it in a narrow one. */
   openMode: "auto" | "split" | "full";
   /** How long a conversation stays open before it counts as read; -1 = only when marked by hand. */
@@ -97,6 +99,7 @@ export type AiSettings = {
 export const DEFAULTS: Settings = {
   theme: "system",
   density: "dense",
+  sidebar: true,
   openMode: "auto",
   readAfterMs: 1000,
   loadImages: "ask",
