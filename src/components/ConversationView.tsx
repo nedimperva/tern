@@ -150,56 +150,15 @@ function HtmlBody(props: {
   const onLoad = (e: Event) => {
     frame = e.currentTarget as HTMLIFrameElement;
     const doc = docOf(frame);
-    if (!doc) return;
-    if (darkened()) darken(doc);
-    setReady(true);
-    markQuotes(doc);
-    setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
-    doc.documentElement.classList.toggle("tern-fold", !unfolded());
-    const size = () => fitFrame(frame!, doc);
-    size();
-    // On the next frame, not in the callback: sizing the frame there could resize the body in the same frame (mail
-    // laid out in vh, a scroll bar coming and going), and the observer reported a loop thousands of times.
-    let queued = false;
-    new ResizeObserver(() => {
-      if (queued) return;
-      queued = true;
-      requestAnimationFrame(() => {
-        queued = false;
-        size();
-      });
-    }).observe(doc.body);
-    quietMenu(doc);
-    const marks = doc.createElement("style");
-    marks.textContent = FRAME_MARK_STYLE;
-    doc.head?.append(marks);
-    window.dispatchEvent(new Event(FRAME_LOADED));
-    // A selection in the message offers Quote, Mark, Note and Copy; the frame's own coordinates are moved into the
-    // window's, where the bar is drawn.
-    doc.addEventListener("mouseup", () =>
-      setTimeout(() => {
-        const box = frame!.getBoundingClientRect();
-        props.onPick?.(picked(doc, props.messageId, box));
-      }),
-    );
-    doc.addEventListener("mousedown", () => props.onPick?.(null));
-    // Keys typed while the message has focus (after selecting text in it) still reach Tern's shortcuts.
-    doc.addEventListener("keydown", (ev) => {
-      // A form field in the mail keeps its typing.
-      const t = ev.target as HTMLElement;
-      if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-      const copy = new KeyboardEvent("keydown", {
-        key: ev.key,
-        code: ev.code,
-        ctrlKey: ev.ctrlKey,
-        shiftKey: ev.shiftKey,
-        altKey: ev.altKey,
-        metaKey: ev.metaKey,
-        cancelable: true,
-      });
-      window.dispatchEvent(copy);
-      if (copy.defaultPrevented) ev.preventDefault();
-    });
+    // The frame left the message for a web page (a link no handler caught): the message comes back rather than a
+    // dark, empty frame, and nothing below runs on a page that isn't the mail.
+    if (!doc?.URL.startsWith("about:")) {
+      const html = srcdoc();
+      frame.srcdoc = "";
+      frame.srcdoc = html;
+      return;
+    }
+    // Links first: whatever the steps after them run into, a click on a link goes to the browser, never the frame.
     const menuAt = (ev: MouseEvent, a: HTMLAnchorElement) => {
       const box = frame!.getBoundingClientRect();
       // Kept inside the window near its right and bottom edges.
@@ -226,6 +185,60 @@ function HtmlBody(props: {
     doc.addEventListener("mouseover", (ev) => hover((ev.target as Element).closest?.("a") ?? null, frame));
     doc.addEventListener("mouseleave", () => setHovered(null));
     doc.addEventListener("mousedown", (ev) => ev.button === 0 && setLinkMenu(null));
+    // The rest only dresses the message: a step that fails (a mail no rule expected) is skipped, not fatal.
+    setReady(true);
+    try {
+      if (darkened()) darken(doc);
+      markQuotes(doc);
+      setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
+      doc.documentElement.classList.toggle("tern-fold", !unfolded());
+      const size = () => fitFrame(frame!, doc);
+      size();
+      // On the next frame, not in the callback: sizing the frame there could resize the body in the same frame (mail
+      // laid out in vh, a scroll bar coming and going), and the observer reported a loop thousands of times.
+      let queued = false;
+      new ResizeObserver(() => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => {
+          queued = false;
+          size();
+        });
+      }).observe(doc.body);
+      quietMenu(doc);
+      const marks = doc.createElement("style");
+      marks.textContent = FRAME_MARK_STYLE;
+      doc.head?.append(marks);
+      window.dispatchEvent(new Event(FRAME_LOADED));
+      // A selection in the message offers Quote, Mark, Note and Copy; the frame's own coordinates are moved into the
+      // window's, where the bar is drawn.
+      doc.addEventListener("mouseup", () =>
+        setTimeout(() => {
+          const box = frame!.getBoundingClientRect();
+          props.onPick?.(picked(doc, props.messageId, box));
+        }),
+      );
+      doc.addEventListener("mousedown", () => props.onPick?.(null));
+      // Keys typed while the message has focus (after selecting text in it) still reach Tern's shortcuts.
+      doc.addEventListener("keydown", (ev) => {
+        // A form field in the mail keeps its typing.
+        const t = ev.target as HTMLElement;
+        if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+        const copy = new KeyboardEvent("keydown", {
+          key: ev.key,
+          code: ev.code,
+          ctrlKey: ev.ctrlKey,
+          shiftKey: ev.shiftKey,
+          altKey: ev.altKey,
+          metaKey: ev.metaKey,
+          cancelable: true,
+        });
+        window.dispatchEvent(copy);
+        if (copy.defaultPrevented) ev.preventDefault();
+      });
+    } catch (err) {
+      console.warn("message frame:", err);
+    }
   };
 
   const body = (
