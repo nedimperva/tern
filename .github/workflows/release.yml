@@ -62,10 +62,12 @@ jobs:
         id: draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # The id comes from the call that makes the draft. Looking the draft up in the list of releases straight
+        # after found nothing for v1.5.0, and the builds, given no id, skipped every upload.
         run: |
-          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Tern $GITHUB_REF_NAME" \
-            --notes-file "$RUNNER_TEMP/notes.md"
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq "[.[] | select(.draft and .tag_name == \"$GITHUB_REF_NAME\")][0].id")
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" -f tag_name="$GITHUB_REF_NAME" -f name="Tern $GITHUB_REF_NAME" \
+            -F draft=true -F body=@"$RUNNER_TEMP/notes.md" --jq .id)
+          [ -n "$id" ] || { echo "::error::no id for the draft release"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
   build:
