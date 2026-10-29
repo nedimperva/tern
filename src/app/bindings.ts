@@ -10,7 +10,7 @@ import { ROLE_NAMES, targetOf } from "../components/Rail";
 import { start } from "../day";
 import { keyLabel, type Binding } from "../keys";
 import { jumpMark } from "../marks";
-import { aiOn, setSetting, settings } from "../settings";
+import { aiOn, omarchyAvailable, setSetting, settings, type Settings } from "../settings";
 import {
   accountOf,
   act,
@@ -226,13 +226,18 @@ export const commands = (all: Binding[]): Command[] => [
     args: () => accounts().map((a, i) => ({ name: a.email, keys: `Ctrl ${i + 1}`, run: () => switchAccount(i) })),
   },
   {
-    name: "Theme …",
+    name: "Mood …",
     group: "Settings",
     args: () =>
-      (["system", "light", "dark"] as const).map((t) => ({
-        name: t === "system" ? "Follow the system" : t === "light" ? "Light" : "Dark",
-        run: () => setSetting("theme", t),
-      })),
+      (
+        [
+          ["system", "Follow the system"],
+          ["light", "Dawn"],
+          ["dark", "Dusk"],
+          ["sea", "Night Sea"],
+          ...(omarchyAvailable() ? [["omarchy", "Follow Omarchy"]] : []),
+        ] as [Settings["theme"], string][]
+      ).map(([t, name]) => ({ name, run: () => setSetting("theme", t) })),
   },
   { name: "Settings", keys: keyLabel("Ctrl+,"), group: "Settings", run: () => setSettingsOpen("Appearance") },
   ...(openRow() && openMuted() ? [{ name: "Unmute conversation", group: "Actions", run: () => void unmute() }] : []),

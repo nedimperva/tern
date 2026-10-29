@@ -5,8 +5,9 @@ import { createStore } from "solid-js/store";
 import { api, type AiProvider } from "./api";
 
 export type Settings = {
-  /** "system" follows the desktop's light or dark. */
-  theme: "system" | "light" | "dark";
+  /** The mood: "system" picks Dawn or Dusk from the desktop's light or dark; "light" is Dawn, "dark" Dusk, "sea"
+   * Night Sea, and "omarchy" follows the Omarchy theme (Linux), or the system without one. */
+  theme: "system" | "light" | "dark" | "sea" | "omarchy";
   density: "dense" | "comfortable" | "spacious";
   /** The sidebar (accounts and folders) stays open beside the list in a wide enough window. */
   sidebar: boolean;
@@ -194,17 +195,84 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 const scheme = window.matchMedia("(prefers-color-scheme: dark)");
 const [systemDark, setSystemDark] = createSignal(scheme.matches);
 scheme.addEventListener("change", (e) => setSystemDark(e.matches));
-/** Whether Tern is drawn dark now: the setting, or the desktop's when it follows the system. */
-export const isDark = () => settings.theme === "dark" || (settings.theme === "system" && systemDark());
+const [omarchy, setOmarchy] = createSignal<Record<string, string> | null>(null);
+void api.omarchyTheme().then(setOmarchy, () => {});
+api.onOmarchyTheme(setOmarchy);
+/** Whether there is an Omarchy theme to follow, so the choice is only offered where it does something. */
+export const omarchyAvailable = () => omarchy() !== null;
 
-// The theme goes on <html>, where the tokens read it; "system" leaves it to prefers-color-scheme.
+/** The Omarchy colours while following them; without Omarchy the mood falls back to the system's. */
+const following = () => (settings.theme === "omarchy" ? omarchy() : null);
+
+/** Whether Tern is drawn dark now: the mood, or the desktop's when it follows the system. */
+export const isDark = () => {
+  const o = following();
+  if (o) return o.mode !== "light";
+  return settings.theme === "dark" || settings.theme === "sea" || (settings.theme !== "light" && systemDark());
+};
+
+/** Omarchy's colours on Tern's tokens, the way its own T3 Code template maps them: the sidebar on
+ * `dark_background`, borders from `muted`, the rest mixed so text keeps its contrast. */
+function omarchyTokens(o: Record<string, string>): Record<string, string> {
+  const bg = o.background;
+  const fg = o.foreground;
+  const accent = o.accent ?? o.blue ?? fg;
+  const muted = o.muted ?? `color-mix(in srgb, ${fg} 30%, ${bg})`;
+  const mix = (a: string, b: string, pct: number) => `color-mix(in srgb, ${a} ${pct}%, ${b})`;
+  return {
+    "--bg-0": bg,
+    "--bg-1": o.dark_background ?? bg,
+    "--bg-2": mix(fg, o.dark_background ?? bg, 7),
+    "--bg-3": o.selection ?? mix(fg, bg, 14),
+    "--fg-0": o.bright_foreground ?? fg,
+    "--fg-1": fg,
+    "--fg-2": mix(fg, bg, 75),
+    "--line": mix(muted, bg, 40),
+    "--line-strong": muted,
+    "--card": mix(fg, bg, 4),
+    "--soft": mix(fg, bg, 4),
+    "--soft-hover": mix(fg, bg, 8),
+    "--accent": accent,
+    "--accent-fg": light(accent) ? "#111111" : "#ffffff",
+    "--accent-soft": mix(accent, bg, 18),
+    "--ok": o.green ?? "#3fbf85",
+    "--ok-soft": mix(o.green ?? "#3fbf85", bg, 15),
+    "--warn": o.yellow ?? "#e0a63a",
+    "--warn-soft": mix(o.yellow ?? "#e0a63a", bg, 15),
+    "--warn-fg": mix(o.yellow ?? "#e0a63a", fg, 70),
+    "--danger": o.red ?? "#ef6b66",
+    "--star": o.yellow ?? "#f2c94c",
+    "--tip": o.bright_foreground ?? fg,
+    "--tip-fg": bg,
+  };
+}
+
+/** Whether dark text reads better than white on this colour (relative luminance past the midpoint). */
+function light(hex: string) {
+  const c = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255);
+  const [r, g, b] = c.map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.179;
+}
+
+let painted: string[] = [];
+
+// The mood goes on <html>, where the tokens read it: data-theme is light or dark (every dark rule keys on it) and
+// data-mood names Night Sea or Omarchy. "system" leaves the theme to prefers-color-scheme.
 createRoot(() =>
   createEffect(() => {
     const root = document.documentElement;
-    if (settings.theme === "system") delete root.dataset.theme;
-    else root.dataset.theme = settings.theme;
+    const o = following();
+    const mood = settings.theme === "omarchy" && !o ? "system" : settings.theme;
+    if (mood === "system") delete root.dataset.theme;
+    else root.dataset.theme = isDark() ? "dark" : "light";
+    if (mood === "sea" || mood === "omarchy") root.dataset.mood = mood;
+    else delete root.dataset.mood;
+    for (const name of painted) root.style.removeProperty(name);
+    const tokens = o ? omarchyTokens(o) : {};
+    for (const [name, value] of Object.entries(tokens)) root.style.setProperty(name, value);
+    painted = Object.keys(tokens);
     // The title bar too, or a dark Tern on a light Windows has a white bar on top.
-    api.setWindowTheme(settings.theme === "system" ? null : settings.theme);
+    api.setWindowTheme(mood === "system" ? null : isDark() ? "dark" : "light");
     root.dataset.density = settings.density;
   }),
 );

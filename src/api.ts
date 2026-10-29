@@ -12,6 +12,8 @@ export type DayStart = {
   back: ThreadRow[];
   waiting: ThreadRow[];
   rest: number;
+  /** The Read later shelf, then lists that wrote since; minutes is null while only the headers are here. */
+  toRead: (ThreadRow & { minutes: number | null })[];
 };
 /** An AI summary of a conversation (package 10): one line, then the points under it. */
 export type AiSummary = { line: string; facts: AiFact[]; points: string[]; cached: boolean };
@@ -436,6 +438,10 @@ export interface Api {
   openLogs(): Promise<void>;
   /** The window's own frame (the title bar on Windows) in Tern's theme; null follows the system. */
   setWindowTheme(theme: "light" | "dark" | null): void;
+  /** The active Omarchy theme's colours (`name → #rrggbb`, and `mode`), or null without Omarchy. */
+  omarchyTheme(): Promise<Record<string, string> | null>;
+  /** Called with the new colours each time the Omarchy theme is switched. */
+  onOmarchyTheme(f: (colors: Record<string, string>) => void): void;
   /** The window's own buttons, drawn in Tern's title bar: the system draws none. Close asks like the system's. */
   windowButton(button: "minimize" | "maximize" | "close"): void;
   /** Whether the window is maximized, now and after each change; returns the way to stop. */
@@ -628,6 +634,8 @@ const tauri: Api = {
   openLogs: () => invoke("open_logs"),
   setWindowTheme: (theme) =>
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => getCurrentWindow().setTheme(theme).catch(() => {})),
+  omarchyTheme: () => invoke("omarchy_theme"),
+  onOmarchyTheme: (f) => void listen<Record<string, string>>("omarchy-theme", (e) => f(e.payload)),
   windowButton: (button) =>
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
       const w = getCurrentWindow();
@@ -1260,6 +1268,8 @@ function fake(): Api {
     }),
     openLogs: async () => {},
     setWindowTheme: () => {},
+    omarchyTheme: async () => null,
+    onOmarchyTheme: () => {},
     windowButton: () => {},
     onMaximized: (f) => (f(false), () => {}),
     // AI in the browser: a made-up answer, streamed a word at a time like the real one. The key "fail" fails.
@@ -1277,6 +1287,10 @@ function fake(): Api {
         back: people.slice(5, 7),
         waiting: people.slice(7, 8),
         rest: rows.filter((r) => r.date > since && /github|stripe/i.test(r.fromName)).length,
+        toRead: rows
+          .filter((r) => /github|stripe/i.test(r.fromName))
+          .slice(0, 5)
+          .map((r, i) => ({ ...r, minutes: [6, 9, 3, null, 12][i] })),
       };
     },
     aiHasKey: async (provider) => localStorage.getItem(`tern.fake.aiKey.${provider}`) != null,

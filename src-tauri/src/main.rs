@@ -4,6 +4,7 @@ mod cache;
 mod commands;
 mod desktop;
 mod diagnostics;
+mod omarchy;
 mod update;
 
 use std::collections::HashMap;
@@ -182,6 +183,7 @@ fn main() {
             desktop::mail_changed(app.handle());
             desktop::watch_snoozes(app.handle());
             update::watch(app.handle());
+            omarchy::watch(app.handle());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn_blocking(move || cache::tidy(&handle));
             Ok(())
@@ -273,6 +275,7 @@ fn main() {
             commands::set_sync_paused,
             commands::about,
             commands::open_logs,
+            omarchy::omarchy_theme,
             commands::send_now,
             commands::update_ready,
             commands::restart_to_update,

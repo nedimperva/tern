@@ -161,6 +161,18 @@ pub struct DayStart {
     pub waiting: Vec<ThreadRow>,
     /// Conversations with mail since then in Other (updates, lists).
     pub rest: i64,
+    /// What there is to read when there's time: the Read later shelf, then lists that wrote since then.
+    pub to_read: Vec<ToRead>,
+}
+
+/// A conversation to read, with roughly how long it takes.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToRead {
+    #[serde(flatten)]
+    pub thread: ThreadRow,
+    /// Minutes at about 230 words a minute; None while only the headers are here.
+    pub minutes: Option<i64>,
 }
 
 /// A passage the person marked while reading, with an optional note. Only on this computer.

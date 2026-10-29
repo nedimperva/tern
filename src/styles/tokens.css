@@ -182,3 +182,27 @@
     --d-slow: 0ms;
   }
 }
+
+/* Night Sea: the navy of the first Inbox Zero, as a whole mood. Drawn with data-theme="dark" too, so every dark
+   rule applies and only the colours change. Last, so it wins over both dark blocks. */
+:root[data-mood="sea"] {
+  --bg-0: #131926;
+  --bg-1: #0f1420;
+  --bg-2: #1b2334;
+  --bg-3: #232d42;
+  --fg-0: #e6ebf5;
+  --fg-1: #b2bcd0;
+  /* AA (4.5:1) on every row background. */
+  --fg-2: #9aa6bd;
+  --line: #222b3d;
+  --card: #171e2d;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239aa6bd' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --line-strong: #2f3a51;
+  --accent: #6fa0f5;
+  --accent-fg: #0b1020;
+  --accent-soft: #1d2b48;
+  --soft: #182030;
+  --soft-hover: #1f2839;
+  --tip: #e6ebf5;
+  --tip-fg: #131926;
+}

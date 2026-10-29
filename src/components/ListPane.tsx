@@ -30,6 +30,7 @@ import { ConversationRow, participants } from "./ConversationRow";
 import { DayLine } from "./DayLine";
 import { Icon } from "./Icon";
 import { InboxZero } from "./InboxZero";
+import { rowId } from "../motion";
 import { StatusStrip } from "./StatusStrip";
 import { VirtualList } from "./VirtualList";
 
@@ -53,7 +54,6 @@ export function ListPane(props: {
     const a = mixed() ? accounts().find((x) => x.id === row.accountId) : undefined;
     return a ? { colour: colourOf(accounts(), a.id), email: a.email } : undefined;
   };
-  const rowId = (row: ThreadRow) => `crow-${keyOf(row).replace(/[^\w-]/g, "_")}`;
   // j and k move the focus with the keys anywhere in the window, so a screen reader hears the focused conversation
   // here; while the list itself has focus, aria-activedescendant says it instead.
   const spoken = createMemo(() => {

@@ -315,6 +315,14 @@ fn the_day_starts_with_who_waits_on_you_longest() {
     assert_eq!(waiting, ["Contract", "Numbers"], "longest waiting first, not the answered one, not lists");
     assert_eq!(start.new_since, 3, "conversations with mail after `since`");
     assert_eq!(start.rest, 1, "the list mail is in Other");
+    let reading: Vec<(&str, Option<i64>)> =
+        start.to_read.iter().map(|r| (r.thread.latest.subject.as_str(), r.minutes)).collect();
+    assert_eq!(reading, [("Weekly news", Some(1))], "a list that wrote since, about a minute long");
+    store.read_later(&[start.need_you[1].latest.id], true, 160).unwrap();
+    let shelf: Vec<String> =
+        store.day_start(150).unwrap().to_read.iter().map(|r| r.thread.latest.subject.clone()).collect();
+    assert_eq!(shelf, ["Numbers", "Weekly news"], "the Read later shelf comes first");
+    store.read_later(&[start.need_you[1].latest.id], false, 170).unwrap();
 
     let ids: Vec<i64> = start.need_you.iter().map(|t| t.latest.id).collect();
     store.snooze(&ids[..1], 10_000, 160).unwrap();
