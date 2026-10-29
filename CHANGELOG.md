@@ -12,6 +12,9 @@ every release needs one here before it is tagged.
 - Moods: Settings → Appearance → Mood has Dawn (the light look), Dusk (the dark one), Night Sea (the navy of the
   first Inbox Zero) and System. On Omarchy there is Omarchy too: Tern takes the colours of your Omarchy theme and
   changes with it when you switch themes.
+- A little motion that says where things went: a conversation you mark done slides right, one you delete slides
+  left, a snoozed one lifts away, and the rows below close up instead of jumping. A star pops when you put it on.
+  None of it with reduced motion.
 
 ### Fixed
 

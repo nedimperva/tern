@@ -3,6 +3,7 @@
 
 import { batch } from "solid-js";
 import { api, moves, type Action, type Applied, type Folder, type ThreadRow } from "../api";
+import { leave, pop, type Way } from "../motion";
 import { ROLE_NAMES } from "../components/Rail";
 import { until } from "../components/ConversationRow";
 import { countCleared } from "../zero";
@@ -51,8 +52,10 @@ export function targets(): ThreadRow[] {
   return one ? [one] : [];
 }
 
-/** Takes conversations off the list at once (they moved away); focus goes to the row that takes their place. */
-function dropRows(hit: ThreadRow[]) {
+/** Takes conversations off the list at once (they moved away); focus goes to the row that takes their place. They
+ * leave the way they went (motion.ts). */
+function dropRows(hit: ThreadRow[], way: Way = "fade") {
+  leave(hit, way);
   const keys = new Set(hit.map(keyOf));
   const first = rows().findIndex((r) => keys.has(keyOf(r)));
   const left = rows().filter((r) => !keys.has(keyOf(r)));
@@ -79,7 +82,7 @@ export async function snoozeUntil(due: number) {
   afterSnooze = null;
   const ids = hit.map((r) => r.id);
   const snoozedView = role() === "snoozed";
-  if (!snoozedView) dropRows(hit);
+  if (!snoozedView) dropRows(hit, "up");
   try {
     await api.snooze(ids, due);
   } catch (e) {
@@ -99,7 +102,7 @@ export async function shelve(hit = targets()) {
   if (!hit.length) return;
   const ids = hit.map((r) => r.id);
   const on = !onShelf();
-  dropRows(hit);
+  dropRows(hit, "up");
   try {
     await api.readLater(ids, on);
   } catch (e) {
@@ -144,7 +147,7 @@ export async function act(action: Action, hit = targets(), announce = true): Pro
   if (!hit.length) return [];
   const keys = new Set(hit.map(keyOf));
   if (moves(action)) {
-    dropRows(hit);
+    dropRows(hit, action === "archive" ? "right" : action === "trash" || action === "junk" ? "left" : "fade");
     // Done or moved away from the shelf: off it, so it does not hide again if it comes back to the inbox.
     if (onShelf()) void api.readLater(hit.map((r) => r.id), false);
   } else {
@@ -155,6 +158,7 @@ export async function act(action: Action, hit = targets(), announce = true): Pro
           ? { ...r, unread: Math.max(1, r.unread), seen: false }
           : { ...r, flagged: action === "star" };
     setRows(rows().map((r) => (keys.has(keyOf(r)) ? patch(r) : r)));
+    if (action === "star") pop(hit);
   }
   try {
     let token: number[] = [];

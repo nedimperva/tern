@@ -18,7 +18,7 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
   file exists.
 
 ### B. Motion
-- [ ] Actions say where things went: archive, snooze, delete, star and read get a short, calm motion (160 ms,
+- [x] Actions say where things went: archive, snooze, delete, star and read get a short, calm motion (160 ms,
   none with reduced motion).
 
 ### C. The tide (replaces the day screen)
@@ -57,3 +57,5 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
 - 2026-10-29: Package written from the owner's picks on the design board. Started slice A.
 - 2026-10-29: Slice A done: moods and Follow Omarchy, tried in `tauri dev` on Hyprland with the Evergreen theme
   (Omarchy) and Night Sea. A live theme switch was not tried: it would change the owner's desktop.
+- 2026-10-29: Slice B done: motion on actions, tried with `npm run dev` (fake mailbox) in headless Chromium, frames
+  caught mid-archive and after a star. Not on the real dev store: archiving there reaches the owner's server.

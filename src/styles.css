@@ -291,6 +291,13 @@ button.primary kbd {
   right: 0;
   top: 0;
   will-change: transform;
+  /* When a row leaves, the ones below close up instead of jumping; new mail pushes the list down the same way. */
+  transition: transform var(--d-base) var(--ease);
+}
+/* A row that just left, drawn once more while it slides away (motion.ts). */
+.vrow-ghost {
+  pointer-events: none;
+  z-index: 1;
 }
 
 .empty {

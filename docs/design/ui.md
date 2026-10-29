@@ -84,6 +84,10 @@ Mail HTML is rendered in its own iframe with the sender's styling; we only set a
 - Spacing scale: `4 8 12 16 24 32` px (`--s-1 … --s-6`). Rows use 12 px horizontal padding; panels 16; dialogs 24.
 - Radius: `--r-sm 4` (chips, keycaps) · `--r-md 8` (buttons, inputs, list rows, sidebar rows) · `--r-lg 12` (palette, dialogs, compose modal, cards).
 - Motion: `--d-fast 120ms` list and focus moves · `--d-base 160ms` panels and toasts · `--d-slow 240ms` dialogs. Easing `cubic-bezier(.2,.8,.2,1)`. Everything is `0ms` under `prefers-reduced-motion`.
+- Actions say where things went (`src/motion.ts`, owner 2026-10-29): rows below a leaving row close up
+  (`.vrow` eases its transform over `--d-base`), and a copy of the leaving row slides off over `--d-slow`: right
+  for Done, left for Trash and Junk, up for Snooze and Read later, a fade for other moves. A new star grows for a
+  moment. No motion on a row that only changes (read, labels).
 - Density setting: `dense` row 36 px (default), `comfortable` 44 px, `spacious` 52 px. Only row height and a 1–2 px type bump change.
 
 ### Keycaps
