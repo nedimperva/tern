@@ -1,6 +1,7 @@
 // What a message repeats or signs off with, folded away behind "···" (docs/design/ui.md §4.2).
 
 /** The header Outlook writes over the mail it quotes, in English and Bosnian/Croatian/Serbian, German, French. */
+const HEADER_START = /^(From|Od|Von|De|Šalje):/i;
 const OUTLOOK_HEADER = /^(From|Od|Von|De|Šalje):\s.{3,300}?\b(Sent|Poslano|Poslato|Gesendet|Envoyé|Date|Datum):\s/is;
 
 /** A legal notice a company's mail server puts under every message ("NOTICE: … intended recipient …"), in English
@@ -51,23 +52,30 @@ export function markQuotes(doc: Document) {
       before.classList.add("tern-quote");
     }
   }
-  // Outlook marks nothing: its quote starts with a "From: … Sent: …" block, and everything after that block in the
-  // message (its siblings, and theirs on each level up) is the earlier mail.
-  for (const el of doc.querySelectorAll("p, div")) {
-    if (el.closest(".tern-quote") || el.querySelector("p, div")) continue;
-    const text = (el.textContent ?? "").replace(/\u00a0/g, " ").trim();
-    if (!OUTLOOK_HEADER.test(text) || !el.previousElementSibling && el.parentElement === doc.body) continue;
-    for (let at: Element | null = el; at && at !== doc.body; at = at.parentElement) {
-      if (at === el) at.classList.add("tern-quote");
-      for (let next = at.nextElementSibling; next; next = next.nextElementSibling) next.classList.add("tern-quote");
+  // Outlook's header and legal notices are found from the text, once through it: asking every block about the
+  // blocks inside it took time by the square of the mail's size, and a big newsletter opened noticeably slower.
+  const walker = doc.createTreeWalker(doc.body ?? doc, NodeFilter.SHOW_TEXT);
+  let outlook: Element | null = null;
+  const notices = new Set<Element>();
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const data = (n as Text).data;
+    const block = n.parentElement?.closest("p, div, td") ?? null;
+    if (!block || block === doc.body) continue;
+    if (!outlook && HEADER_START.test(data.trimStart())) {
+      const text = (block.textContent ?? "").replace(/\u00a0/g, " ").trim();
+      if (OUTLOOK_HEADER.test(text) && !block.closest(".tern-quote") && (block.previousElementSibling || block.parentElement !== doc.body))
+        outlook = block;
     }
-    break;
+    if (NOTICE.test(data) && !notices.has(block) && block !== doc.body?.firstElementChild && isNotice((block.textContent ?? "").replace(/\u00a0/g, " ")))
+      notices.add(block);
   }
-  // Legal notices, wherever they are: the smallest block that holds one, never the whole message.
-  for (const el of doc.querySelectorAll("p, div, td")) {
-    if (el.querySelector("p, div, table, blockquote") || el === doc.body.firstElementChild) continue;
-    if (isNotice((el.textContent ?? "").replace(/\u00a0/g, " "))) el.classList.add("tern-quote");
+  // Everything after Outlook's "From: … Sent: …" block in the message (its siblings, and theirs on each level up)
+  // is the earlier mail.
+  for (let at: Element | null = outlook; at && at !== doc.body; at = at.parentElement) {
+    if (at === outlook) at.classList.add("tern-quote");
+    for (let next = at.nextElementSibling; next; next = next.nextElementSibling) next.classList.add("tern-quote");
   }
+  for (const el of notices) el.classList.add("tern-quote");
   for (const p of doc.querySelectorAll("p")) {
     if (p.closest("blockquote") || (p.textContent ?? "").replace(/\u00a0/g, " ").trim() !== "--") continue;
     // Only a signature under words of the message's own, not one that is all there is.
