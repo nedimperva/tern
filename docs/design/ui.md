@@ -31,24 +31,26 @@ uses a raw colour, size or duration. File: `src/styles/tokens.css`.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--bg-0` | `#fbfaf7` | `#22211f` | App background, list |
-| `--bg-1` | `#f3f1ec` | `#1b1a18` | Panels, compose, sidebar |
-| `--bg-2` | `#ebe8e1` | `#2c2b28` | Hover rows, chips |
-| `--bg-3` | `#e5e1d8` | `#34322f` | Selected/focused row |
+| `--bg-0` | `#fcfbf9` | `#201f1d` | App background, list |
+| `--bg-1` | `#f5f3ef` | `#1a1918` | Panels, compose, sidebar |
+| `--bg-2` | `#eeebe5` | `#2a2926` | Hover rows, chips |
+| `--bg-3` | `#e8e4dc` | `#32302c` | Selected/focused row |
 | `--fg-0` | `#1f1e1b` | `#ece8e1` | Primary text, unread |
-| `--fg-1` | `#55524a` | `#b5b0a6` | Secondary text, read rows |
+| `--fg-1` | `#57534b` | `#b5b0a6` | Secondary text, read rows |
 | `--fg-2` | `#66625a` | `#a29d93` | Meta, snippets, placeholders |
-| `--line` | `#e6e2d9` | `#34322e` | The few borders we draw |
-| `--accent` | `#2f4f9a` | `#7b97de` | Focus bar, links, primary button, selection dot |
+| `--line` | `#e9e5dd` | `#302e2a` | The few borders we draw |
+| `--line-strong` | `#d8d3c9` | `#403d38` | A raised control's edge under the pointer |
+| `--raise` | `0 1px 2px` warm 6 % | `0 1px 2px` black 30 % | New mail in the sidebar |
+| `--accent` | `#2f4f9a` | `#7b97de` | Links, primary button, selection dot |
 | `--accent-fg` | `#ffffff` | `#16171b` | Text on accent |
-| `--accent-soft` | `#e6ebf5` | `#283249` | Selected chip, palette match highlight |
+| `--accent-soft` | `#e9edf5` | `#262e42` | Selected chip, palette match highlight |
 | `--ok` | `#2f9e6e` | `#3fbf85` | Sent, synced |
 | `--warn` | `#c98a1b` | `#e0a63a` | Offline, waiting |
 | `--danger` | `#d0453f` | `#ef6b66` | Errors, discard |
 | `--star` | `#e9b81c` | `#f2c94c` | Star |
 | `--shadow` | `0 8px 30px rgba(0,0,0,.12)` | `0 8px 30px rgba(0,0,0,.6)` | Palette, dialogs |
-| `--soft` | `#f2efe9` | `#282724` | Files, the reply row, an inline reply (`--soft-hover` on hover) |
-| `--tip` / `--tip-fg` | `#1f1e1b` / `#fbfaf7` | `#ece8e1` / `#22211f` | Tooltips on the conversation's header icons |
+| `--soft` | `#f4f2ed` | `#262522` | Files, the reply row, an inline reply (`--soft-hover` on hover) |
+| `--tip` / `--tip-fg` | `#1f1e1b` / `#fbfaf7` | `#ece8e1` / `#201f1d` | Tooltips on the conversation's header icons |
 
 Account colours (unified inbox dots, calendar): a fixed palette of 8 — `#5b5bd6 #2f9e6e #d0453f #c98a1b #0e9bb5 #b24fb0 #7a7f8a #e07a30` — assigned in order of account creation.
 
@@ -84,12 +86,12 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ [▯]           ·  drags the window, double click maximizes  ·    –  ▢  ✕ │  ← 40 px title bar
 ├──────────┬───────────────────────────────────────────────────┬───────────┤
-│ + New    │  Important · 12   Other · 48   Calendar · 2   [⌕]  │           │
-│ ⌕ Search │  ▍ Ana Rossi, me 3   Q3 numbers — here's the… 14:02 │   conv    │
-│ Inboxes  │    GitHub            [tern] CI failed on main  Mon  │   pane    │
-│ Snoozed  │    Linear            LIN-233 moved to Done     Mon  │  (opt.)   │
-│ account  │    …                                                │           │
-│ folders  ├────────────────────────────────────────────────────┤           │
+│ ✎ New    │  Important · 12   Other · 48   Calendar · 2   [⌕]  │           │
+│ ▭ Inbox  │    Ana Rossi, me 3   Q3 numbers — here's the… 14:02 │   conv    │
+│ Snoozed  │    GitHub            [tern] CI failed on main  Mon  │   pane    │
+│ account  │    Linear            LIN-233 moved to Done     Mon  │  (opt.)   │
+│ folders  │    …                                                │           │
+│ More · 3 ├────────────────────────────────────────────────────┤           │
 │ ⚙ Settin │  ● Synced · 2 changes waiting    ↩ Undo archive  Z │           │
 └──────────┴────────────────────────────────────────────────────┴───────────┘
 ```
@@ -104,9 +106,14 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - **Sidebar** (`Ctrl+\`, the title bar's button): 240 px (`--side-w`) on `--bg-1`, docked beside the list from 1100 px
   wide and open by default (Settings → Appearance → Sidebar); the button hides it for good until shown again.
   Narrower, turned off, or in focus mode, the same column slides over the list with a scrim and closes on `Esc`
-  or after going somewhere. New mail and Search at the top, then All Inboxes, Snoozed, Read later, Marks, saved
-  searches, each account's folders and labels, + Add account, and Settings at the foot. Rows are 8 px rounded,
-  the current one `--bg-3`. Beside a docked sidebar an open conversation's narrow list is on `--bg-0` with a
+  or after going somewhere. New mail at the top (the one raised control: `--bg-0`, a `--line` edge, `--raise`),
+  then Inbox (All Inboxes with more than one account), Snoozed, Read later and Marks with icons, saved searches,
+  and each account: Inbox, Drafts, Sent, Archive, the rest under "More · N", then its labels. Accounts, Labels
+  and Searches fold under their headings (the chevron shows on hover or while folded; labels start folded past
+  six); a folded folder that is open still shows. Settings and + (Add account) share the foot. Search lives in the
+  list's header. Rows are 30 px, 8 px rounded, every name in one column (an empty icon slot where there is no
+  icon, a label's dot in it); the current row is `--bg-3`. Unread counts show for inboxes, labels and the
+  person's own folders, not for Drafts, Sent, Archive, All Mail, Junk or Trash. Beside a docked sidebar an open conversation's narrow list is on `--bg-0` with a
   `--line` rule before the conversation.
 - **Split bar**: tabs with unread counts, active tab has a 2 px `--accent` underline; search field right-aligned (`/` focuses it; it expands to 320 px on focus).
 - **List**: full width when nothing is open. With the conversation open in split mode the list is a 340 px column
@@ -123,17 +130,17 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ### 4.1 Conversation row
 
 ```
-▍ ● Ana Rossi, Tom Berg, me 3   Q3 numbers — here's the deck we talked about… ⌁ ★   14:02
-│ │ └ participants (600 if unread) └ subject (600 if unread) └ snippet (--fg-2)  │  │  └ date (--t-sm, tnum, --fg-2)
-│ └ account dot (unified views only)                                           │  └ star (--star when set, hidden otherwise unless hovered)
-└ 3 px focus bar (--accent), 8 px in from top and bottom                         └ attachment glyph
+● Ana Rossi, Tom Berg, me 3   Q3 numbers — here's the deck we talked about… ⌁ ★   14:02
+│ └ participants (600 if unread) └ subject (600 if unread) └ snippet (--fg-2)  │  │  └ date (--t-sm, tnum, --fg-2)
+└ account dot (unified views only)                                           │  └ star (--star when set, hidden otherwise unless hovered)
+                                                                             └ attachment glyph
 ```
 
 - One line. Participants column is fixed at 180 px (dense) and ellipsised; subject + snippet share the rest, subject never truncates below 40 % of its container.
 - Participant names: first names when there are ≥ 2; "me" for our addresses; sender of the last unread message first; count badge (`3`) only when > 1.
-- Label chips after the subject: max 2, `--t-xs` 600, the label's colour tinted to 16 % as the background and mixed 75 % into `--fg-0` for the text, with a 6 px dot in the full colour; a `+2` chip for the rest. Chips never push the date. Gmail's colours don't come over IMAP, so a label's colour comes from its name (`labelColour`, the account palette): the same label, the same colour in rows, the conversation, the rail and the picker.
+- Label chips after the subject: max 2, `--t-xs` 500, the label's colour tinted to 11 % as the background and mixed 60 % into `--fg-0` for the text, with a 6 px dot in the full colour; a `+2` chip for the rest. Chips never push the date. Gmail's colours don't come over IMAP, so a label's colour comes from its name (`labelColour`, the account palette): the same label, the same colour in rows, the conversation, the rail and the picker.
 - Rows sit 8 px in from the list's sides with `--r-md` corners, so states show as rounded tiles.
-- States: `focused` → `--bg-3` + focus bar; `selected` (`x`) → `--accent-soft` background + checkbox replaces the account dot; `hover` → `--bg-2` (no focus bar); `unread` → `--fg-0` weight 600 for participants and subject, otherwise `--fg-1` and 400.
+- States: `focused` → `--bg-3` (no bar: the owner found the accent edge noisy, 2026-10-29); `selected` (`x`) → `--accent-soft` background + checkbox replaces the account dot; `hover` → `--bg-2` (no focus bar); `unread` → `--fg-0` weight 600 for participants and subject, otherwise `--fg-1` and 400.
 - Snoozed shows a small clock + due text instead of the date; scheduled drafts likewise.
 - Row removal (archive, snooze): 120 ms height collapse; focus moves to the next row immediately.
 

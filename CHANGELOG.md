@@ -14,8 +14,18 @@ every release needs one here before it is tagged.
 - Tern draws its own title bar: the sidebar button at the top left, minimize, maximize and close at the right, and
   the rest drags the window. The system's title bar is gone.
 - The sidebar (accounts, folders, labels, saved searches) stays open beside the list in a wide window, with New
-  mail and Search at its top and Settings at its foot. The button at the top left or `Ctrl+\` hides it until
+  mail at its top and Settings and Add account at its foot. The button at the top left or `Ctrl+\` hides it until
   shown again; Settings → Appearance → Sidebar sets it to slide over the list only when asked.
+- A calmer sidebar: each account shows Inbox, Drafts, Sent and Archive, with its other folders under "More";
+  accounts, labels and saved searches fold under their headings, and Tern remembers what you folded. Counts show
+  only where unread mail matters. With one account there is a single Inbox row at the top.
+- The focused row in the list no longer has a coloured bar at its left; its background shows it. Label chips are
+  softer, and the greys are a little lighter and cleaner in both themes.
+
+### Fixed
+
+- Opening some mail could flood the log with "ResizeObserver loop" errors while the message was sized.
+- Development builds compile SQLite optimised, so the list no longer takes 150–200 ms per move there.
 
 ## [1.4.0] - 2026-10-28
 

@@ -2,18 +2,22 @@
    default; dark follows the system unless a theme is set on <html data-theme>. */
 
 :root {
-  --bg-0: #fbfaf7;
-  --bg-1: #f3f1ec;
-  --bg-2: #ebe8e1;
-  --bg-3: #e5e1d8;
+  --bg-0: #fcfbf9;
+  --bg-1: #f5f3ef;
+  --bg-2: #eeebe5;
+  --bg-3: #e8e4dc;
   --fg-0: #1f1e1b;
-  --fg-1: #55524a;
+  --fg-1: #57534b;
   /* Meta text stays at AA (4.5:1) on every row background, focused included. */
   --fg-2: #66625a;
-  --line: #e6e2d9;
+  --line: #e9e5dd;
+  /* A border that has to show: a raised control's edge under the pointer. */
+  --line-strong: #d8d3c9;
+  /* The one raised control in the sidebar (New mail). */
+  --raise: 0 1px 2px rgba(60, 50, 30, 0.06);
   --accent: #2f4f9a;
   --accent-fg: #ffffff;
-  --accent-soft: #e6ebf5;
+  --accent-soft: #e9edf5;
   --ok: #2f9e6e;
   --warn: #c98a1b;
   --warn-soft: #fdf3e2;
@@ -26,8 +30,8 @@
   --scrim: rgba(30, 25, 15, 0.25);
   /* The reading pane draws no outlines: the one soft surface (files, the reply row, an inline reply, the
      history of a conversation) is a tone of the background. */
-  --soft: #f2efe9;
-  --soft-hover: #ebe7df;
+  --soft: #f4f2ed;
+  --soft-hover: #eeebe4;
   --ok-soft: #e8f5ee;
   /* Tooltips: dark on light, light on dark. */
   --tip: #1f1e1b;
@@ -97,62 +101,66 @@
 
 
 :root[data-theme="dark"] {
-  --bg-0: #22211f;
-  --bg-1: #1b1a18;
-  --bg-2: #2c2b28;
-  --bg-3: #34322f;
+  --bg-0: #201f1d;
+  --bg-1: #1a1918;
+  --bg-2: #2a2926;
+  --bg-3: #32302c;
   --fg-0: #ece8e1;
   --fg-1: #b5b0a6;
   /* AA (4.5:1) on every row background. */
   --fg-2: #a29d93;
-  --line: #34322e;
+  --line: #302e2a;
+  --line-strong: #403d38;
+  --raise: 0 1px 2px rgba(0, 0, 0, 0.3);
   --accent: #7b97de;
   --accent-fg: #16171b;
-  --accent-soft: #283249;
+  --accent-soft: #262e42;
   --ok: #3fbf85;
   --warn: #e0a63a;
   --warn-soft: #33270f;
-  --mark-soft: rgba(242, 201, 76, 0.22);
+    --mark-soft: rgba(242, 201, 76, 0.22);
   --warn-fg: #f0c674;
   --danger: #ef6b66;
   --star: #f2c94c;
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
   --scrim: rgba(0, 0, 0, 0.5);
-  --soft: #282724;
-  --soft-hover: #302e2b;
+  --soft: #262522;
+  --soft-hover: #2e2c29;
   --ok-soft: #142a20;
   --tip: #ece8e1;
-  --tip-fg: #22211f;
+  --tip-fg: #201f1d;
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg-0: #22211f;
-    --bg-1: #1b1a18;
-    --bg-2: #2c2b28;
-    --bg-3: #34322f;
+    --bg-0: #201f1d;
+    --bg-1: #1a1918;
+    --bg-2: #2a2926;
+    --bg-3: #32302c;
     --fg-0: #ece8e1;
     --fg-1: #b5b0a6;
     --fg-2: #a29d93;
-    --line: #34322e;
+    --line: #302e2a;
+    --line-strong: #403d38;
+    --raise: 0 1px 2px rgba(0, 0, 0, 0.3);
     --accent: #7b97de;
     --accent-fg: #16171b;
-    --accent-soft: #283249;
+    --accent-soft: #262e42;
     --ok: #3fbf85;
     --warn: #e0a63a;
     --warn-soft: #33270f;
-  --mark-soft: rgba(242, 201, 76, 0.22);
+    --mark-soft: rgba(242, 201, 76, 0.22);
     --warn-fg: #f0c674;
     --danger: #ef6b66;
     --star: #f2c94c;
     --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     --scrim: rgba(0, 0, 0, 0.5);
-    --soft: #282724;
-    --soft-hover: #302e2b;
+    --soft: #262522;
+    --soft-hover: #2e2c29;
     --ok-soft: #142a20;
     --tip: #ece8e1;
-    --tip-fg: #22211f;
+    --tip-fg: #201f1d;
     color-scheme: dark;
   }
 }

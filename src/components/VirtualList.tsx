@@ -18,7 +18,9 @@ export function VirtualList<T>(props: {
   const overscan = 8;
 
   onMount(() => {
-    const ro = new ResizeObserver(() => setHeight(el.clientHeight));
+    // Read on the next frame: drawing more rows inside the callback can resize the list in the same frame, and the
+    // observer then reports a loop.
+    const ro = new ResizeObserver(() => requestAnimationFrame(() => setHeight(el.clientHeight)));
     ro.observe(el);
     onCleanup(() => ro.disconnect());
   });

@@ -64,7 +64,6 @@ import {
   ready,
   reviewing,
   rows,
-  searchBox,
   searching,
   settingsOpen,
   setAccounts,
@@ -138,7 +137,6 @@ function Sidebar(props: { docked: boolean }) {
       onAddAccount={() => setSetup(true)}
       onClose={() => setRail(false)}
       onCompose={newMessage}
-      onFind={() => searchBox.input?.focus()}
       onSettings={() => setSettingsOpen("Appearance")}
       searches={settings.savedSearches}
       searching={query().trim()}

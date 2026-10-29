@@ -134,7 +134,8 @@ export function fitFrame(frame: HTMLIFrameElement, doc: Document) {
     const wide = Math.max(body.scrollWidth, doc.documentElement.scrollWidth);
     if (room > 0 && wide > room + 1) body.style.zoom = String(room / wide);
   }
-  frame.style.height = `${Math.ceil(body.getBoundingClientRect().height)}px`;
+  const height = `${Math.ceil(body.getBoundingClientRect().height)}px`;
+  if (frame.style.height !== height) frame.style.height = height;
 }
 
 /** Text mail in Tern's type, on the app's own background: the sender's fonts and colours give way, so it reads

@@ -703,16 +703,6 @@ button.primary kbd {
 .crow.focused {
   background: var(--bg-3);
 }
-.crow.focused::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--accent);
-}
 /* Two lines: who and when on top, the subject under them. */
 .crow.two {
   display: grid;
@@ -800,10 +790,10 @@ button.primary kbd {
   padding: 0 7px 0 6px;
   border-radius: var(--r-sm);
   /* The label's own colour, tinted: readable on light and dark alike. */
-  background: color-mix(in srgb, var(--label, var(--fg-2)) 16%, transparent);
-  color: color-mix(in srgb, var(--label, var(--fg-2)) 75%, var(--fg-0));
+  background: color-mix(in srgb, var(--label, var(--fg-2)) 11%, transparent);
+  color: color-mix(in srgb, var(--label, var(--fg-2)) 60%, var(--fg-0));
   font-size: var(--t-xs);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 18px;
   white-space: nowrap;
 }
@@ -977,11 +967,10 @@ button.primary kbd {
   width: var(--side-w);
   background: var(--bg-1);
   box-shadow: var(--shadow);
-  padding: var(--s-3) var(--s-2);
-  overflow-y: auto;
+  padding: var(--s-3) var(--s-2) var(--s-2);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 2px;
   animation: slide-in var(--d-base) var(--ease);
 }
 /* Docked: a column beside the list, on the tone the title bar gives it, and no shadow. */
@@ -992,103 +981,234 @@ button.primary kbd {
   animation: none;
   padding-top: var(--s-1);
 }
-/* New mail and Search on top, Settings at the foot, like the rows between them. */
-.rail-actions,
-.rail-foot {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.rail-actions {
-  margin-bottom: var(--s-2);
-}
-.rail-foot {
-  margin-top: auto;
-  padding-top: var(--s-3);
-}
-.rail-actions button,
-.rail-foot button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px var(--s-2);
-  border: 0;
-  border-radius: var(--r-md);
-  background: none;
-  font-size: var(--t-md);
-  text-align: left;
-}
-.rail-actions button:hover,
-.rail-foot button:hover {
-  background: var(--bg-2);
-}
-.rail-actions button svg,
-.rail-foot button svg {
-  color: var(--fg-1);
-}
-.rail-actions kbd {
-  margin-left: auto;
-  border: 0;
-  background: none;
-  color: var(--fg-2);
-}
 @keyframes slide-in {
   from {
     transform: translateX(-100%);
   }
 }
-.rail h3 {
+/* New mail: the one raised control in the rail, a card on the rail's tone. */
+.rail-compose {
   display: flex;
-  gap: 6px;
-  align-items: baseline;
-  font-size: var(--t-sm);
-  font-weight: 400;
-  color: var(--fg-2);
-  margin: var(--s-4) var(--s-2) var(--s-1);
-  white-space: nowrap;
-}
-.rail h4 {
-  font-size: var(--t-xs);
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  flex: none;
+  padding: 0 var(--s-2) 0 10px;
+  margin-bottom: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-size: var(--t-md);
   font-weight: 500;
+  text-align: left;
+  box-shadow: var(--raise);
+}
+.rail-compose:hover {
+  border-color: var(--line-strong);
+}
+.rail-compose svg {
+  color: var(--accent);
+}
+.rail-compose kbd {
+  margin-left: auto;
+  border: 0;
+  background: none;
   color: var(--fg-2);
-  margin: var(--s-2) var(--s-2) var(--s-1);
 }
-.rail h3 > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
+.rail-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: none;
 }
+.rail-group + .rail-group {
+  margin-top: var(--s-3);
+}
+/* Rows: 30 px, the icon and the name in --fg-1, the open one on --bg-3 in --fg-0. */
 .rail .rail-item {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
   width: 100%;
   min-width: 0;
-  padding: 7px var(--s-2);
+  height: 30px;
+  flex: none;
+  padding: 0 var(--s-2) 0 10px;
   border: 0;
   border-radius: var(--r-md);
   background: none;
+  color: var(--fg-1);
   font-size: var(--t-md);
   text-align: left;
   cursor: default;
 }
-.rail .rail-item:hover {
-  background: var(--bg-2);
-}
-.rail .rail-item.active {
-  background: var(--bg-3);
-  font-weight: 500;
-}
-.rail .count {
+.rail .rail-item svg {
+  flex: none;
   color: var(--fg-2);
-  font-variant-numeric: tabular-nums;
 }
-/* A saved search: its words, and × to forget it on hover. */
-.rail .saved-search .query {
+.rail .rail-item .slot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 15px;
+}
+.rail .rail-item .name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
 }
+.rail .rail-item:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.rail .rail-item.active {
+  background: var(--bg-3);
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.rail .rail-item.active svg {
+  color: var(--fg-0);
+}
+.rail .count {
+  flex: none;
+  font-size: var(--t-sm);
+  font-weight: 400;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.rail .rail-item.active .count {
+  color: var(--fg-1);
+}
+/* A group's heading folds it; its chevron shows under the pointer or while folded. */
+.rail-head,
+.rail-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  flex: none;
+  padding: 0 var(--s-2) 0 10px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+.rail-head .name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rail-head:hover,
+.rail-sub:hover {
+  color: var(--fg-0);
+}
+.rail-head > svg:last-child,
+.rail-sub > svg:last-child {
+  flex: none;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity var(--d-fast) var(--ease);
+}
+.rail-head .count {
+  margin-left: auto;
+}
+.rail-head .count + svg {
+  margin-left: 0;
+}
+.rail-head:hover > svg:last-child,
+.rail-sub:hover > svg:last-child,
+.rail-head:focus-visible > svg:last-child,
+.rail-sub:focus-visible > svg:last-child,
+.rail-head[aria-expanded="false"] > svg:last-child,
+.rail-sub[aria-expanded="false"] > svg:last-child {
+  opacity: 1;
+}
+.rail-head {
+  gap: 9px;
+}
+/* Inside an account, "Labels" and "More" start where the folder names do. */
+.rail-sub {
+  margin-top: var(--s-1);
+  padding-left: 35px;
+}
+/* "More · 4": the account's other folders, folded by default. */
+.rail-more {
+  align-self: flex-start;
+  height: 26px;
+  padding: 0 var(--s-2) 0 35px;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
+.rail-more:hover {
+  color: var(--fg-0);
+}
+/* The places between New mail and the foot scroll on their own, with a thin bar that shows under the pointer. A
+   stable gutter keeps the rows from shifting when it does; the negative margin gives that gutter the rail's
+   padding instead of narrowing the rows. */
+.rail-scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: stable;
+  margin-right: calc(-1 * var(--s-2));
+  padding-right: 0;
+}
+.rail-scroll:hover,
+.rail-scroll:focus-within {
+  scrollbar-color: var(--line-strong) transparent;
+}
+/* Settings and Add account at the foot, on one line. */
+.rail-foot {
+  display: flex;
+  gap: 2px;
+  padding-top: var(--s-2);
+  flex: none;
+}
+.rail-foot button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 30px;
+  padding: 0 var(--s-2) 0 10px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-md);
+  text-align: left;
+}
+.rail-foot button:first-child {
+  flex: 1;
+}
+.rail-foot .rail-add {
+  justify-content: center;
+  width: 30px;
+  padding: 0;
+}
+.rail-foot button:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.rail-foot button svg {
+  color: var(--fg-2);
+}
+/* A saved search: its words, and × to forget it on hover. */
 .rail .saved-search {
   position: relative;
 }
@@ -1100,11 +1220,20 @@ button.primary kbd {
   right: var(--s-1);
   top: 50%;
   transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
   opacity: 0;
   border: 0;
+  border-radius: var(--r-sm);
   background: none;
   color: var(--fg-2);
-  padding: 0 var(--s-1);
+  padding: 0;
+}
+.rail .saved-search .forget:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
 }
 .rail .saved-search:hover .forget,
 .rail .saved-search .forget:focus-visible {
@@ -1117,38 +1246,6 @@ button.primary kbd {
 }
 .save-search.on {
   color: var(--accent);
-}
-/* The accounts as badges at the top of the rail: a click opens that account's inbox. */
-.rail .account-switch {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
-  min-width: 0;
-  margin: 0;
-  border: 0;
-  padding: 0 var(--s-2) var(--s-2);
-}
-.rail .account-switch button {
-  position: relative;
-  border-radius: 50%;
-  padding: 2px;
-  box-shadow: 0 0 0 2px transparent;
-}
-.rail .account-switch button.active {
-  box-shadow: 0 0 0 2px var(--accent);
-}
-.rail .account-switch .unread-dot {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: 2px solid var(--bg-1);
-}
-.rail h3 .account-avatar {
-  align-self: center;
 }
 .account-avatar {
   display: inline-grid;
@@ -1186,10 +1283,6 @@ button.primary kbd {
   box-shadow:
     0 0 0 2px var(--bg-1),
     0 0 0 4px var(--fg-0);
-}
-.rail .add-account {
-  margin: var(--s-4) var(--s-2) 0;
-  text-align: left;
 }
 .sync-state {
   flex: none;
