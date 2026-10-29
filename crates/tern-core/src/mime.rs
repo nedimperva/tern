@@ -38,7 +38,7 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
         snippet: body_text.as_deref().map(snippet).unwrap_or_default(),
         seen,
         flagged,
-        has_attachments: msg.attachment_count() > 0,
+        has_attachments: !attachments(&msg).is_empty(),
         body_text,
         body_html,
         size: None,
@@ -230,8 +230,19 @@ pub fn runs_as_program(name: &str) -> bool {
 }
 
 /// The attachments of a parsed message, as parts. They have no IMAP section number (the body is already here).
+/// Pictures the message's own HTML shows (`cid:`), such as the logo and icons in a signature, are part of the
+/// message, not files sent with it.
 fn attachments(msg: &mail_parser::Message) -> Vec<Part> {
+    let html = msg.body_html(0).map(|h| h.to_ascii_lowercase()).unwrap_or_default();
+    let shown = |a: &mail_parser::MessagePart| {
+        a.content_type().is_some_and(|t| t.ctype().eq_ignore_ascii_case("image"))
+            && a.content_id().is_some_and(|id| {
+                let id = id.trim().trim_start_matches('<').trim_end_matches('>').to_ascii_lowercase();
+                !id.is_empty() && html.contains(&format!("cid:{id}"))
+            })
+    };
     msg.attachments()
+        .filter(|a| !shown(a))
         .map(|a| {
             let mime = a
                 .content_type()
@@ -401,6 +412,20 @@ mod tests {
         assert_eq!(sort_date(4_000_000_000, Some(got), now), got);
         assert_eq!(sort_date(4_000_000_000, None, now), now);
         assert_eq!(sort_date(0, None, now), 0);
+    }
+
+    #[test]
+    fn pictures_the_html_shows_are_not_attachments() {
+        let raw = b"From: a@x\r\nSubject: s\r\nContent-Type: multipart/mixed; boundary=m\r\n\r\n\
+--m\r\nContent-Type: multipart/related; boundary=b\r\n\r\n\
+--b\r\nContent-Type: text/html\r\n\r\n<p>Hi</p><img src=\"cid:image002.jpg@01DD\">\r\n\
+--b\r\nContent-Type: image/jpeg; name=image002.jpg\r\nContent-ID: <image002.jpg@01DD>\r\n\
+Content-Transfer-Encoding: base64\r\n\r\nTWFu\r\n--b--\r\n\
+--m\r\nContent-Type: application/pdf; name=costs.pdf\r\nContent-Disposition: attachment; filename=costs.pdf\r\n\r\nxyz\r\n--m--\r\n";
+        let m = parse(1, raw, false, false).unwrap();
+        let names: Vec<_> = m.parts.unwrap().into_iter().filter_map(|p| p.name).collect();
+        assert_eq!(names, ["costs.pdf"]);
+        assert!(m.has_attachments);
     }
 
     #[test]

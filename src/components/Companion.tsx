@@ -4,6 +4,7 @@
 
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { api, type AiAnswer, type ThreadMessage } from "../api";
+import { filesOf } from "../files";
 import { promisesIn } from "../promises";
 import { aiOn, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
@@ -321,7 +322,7 @@ function Promises(props: { messages: ThreadMessage[]; mine: (addr: string) => bo
 
 function Files(props: { messages: ThreadMessage[]; sender: (m: ThreadMessage) => string }) {
   const files = createMemo(() =>
-    props.messages.flatMap((m) => m.attachments.map((a, index) => ({ m, a, index }))).reverse(),
+    props.messages.flatMap((m) => filesOf(m).map(({ file: a, index }) => ({ m, a, index }))).reverse(),
   );
   const kb = (n: number) => (n > 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1000))} kB`);
   return (

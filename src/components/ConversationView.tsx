@@ -3,6 +3,7 @@ import { api, type Mailto, type Mark, type ThreadMessage } from "../api";
 import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { catchUp } from "../catchup";
+import { filesOf } from "../files";
 import { unsubscribeTarget } from "../unsubscribe";
 import { foldAt, HTML_FOLD_SELECTOR, markQuotes } from "../fold";
 import { linkify } from "../linkify";
@@ -412,14 +413,14 @@ function Attachments(props: { message: ThreadMessage; onView: (index: number) =>
   return (
     <>
       <section class="attachments" aria-label="Attachments">
-        <For each={props.message.attachments}>
-          {(_, i) => (
+        <For each={filesOf(props.message)}>
+          {({ index }) => (
             <FileCard
               message={props.message}
-              index={i()}
-              busy={busy() === i()}
-              onOpen={() => props.onView(i())}
-              onSave={() => void run(i(), () => api.saveAttachment(props.message.id, i()))}
+              index={index}
+              busy={busy() === index}
+              onOpen={() => props.onView(index)}
+              onSave={() => void run(index, () => api.saveAttachment(props.message.id, index))}
             />
           )}
         </For>
@@ -562,7 +563,7 @@ function MessageBody(props: {
           )}
         </Show>
       </Show>
-      <Show when={props.m.attachments.length}>
+      <Show when={filesOf(props.m).length}>
         <Attachments message={props.m} onView={props.onView} />
       </Show>
     </>
@@ -1148,13 +1149,13 @@ export function ConversationView(props: {
                             </span>
                           </Show>
                         </span>
-                        <Show when={m.attachments.length || m.hasAttachments}>
+                        <Show when={filesOf(m).length || (m.hasAttachments && !m.attachments.length)}>
                           <span
                             class="clip"
-                            title={m.attachments.length === 1 ? "1 attachment" : m.attachments.length ? `${m.attachments.length} attachments` : "Attachments"}
+                            title={filesOf(m).length === 1 ? "1 attachment" : filesOf(m).length ? `${filesOf(m).length} attachments` : "Attachments"}
                           >
                             <Icon name="paperclip" size={13} />
-                            <Show when={m.attachments.length > 1}>{m.attachments.length}</Show>
+                            <Show when={filesOf(m).length > 1}>{filesOf(m).length}</Show>
                           </span>
                         </Show>
                         <time title={full(m.date)}>{when(m.date)}</time>
