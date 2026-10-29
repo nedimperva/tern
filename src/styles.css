@@ -49,6 +49,29 @@ button.danger {
   color: var(--danger);
 }
 
+/* Keyboard focus: a soft ring in the accent, never the browser's black one. What shows its focus another way draws
+   none: the list (its focused row), the text editor (its caret), fields (their accent border), and elements that are
+   only focused from code. */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+/* The title bar's buttons fill its height, so a ring outside them would be cut off. */
+.titlebar button:focus-visible {
+  outline-offset: -2px;
+}
+.vlist:focus-visible,
+.ProseMirror:focus-visible,
+[tabindex="-1"]:focus-visible,
+input:not([type="checkbox"], [type="radio"], [type="range"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
 input,
 textarea,
 select {
@@ -1064,6 +1087,25 @@ button.primary kbd {
 .rail .rail-item:hover {
   background: var(--bg-2);
   color: var(--fg-0);
+}
+/* Keyboard focus in the rail is a tone, as under the pointer, not a ring. */
+.rail .rail-item:focus-visible,
+.rail-head:focus-visible,
+.rail-sub:focus-visible,
+.rail-more:focus-visible,
+.rail-foot button:focus-visible,
+.rail-compose:focus-visible {
+  outline: none;
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.rail-compose:focus-visible {
+  background: var(--bg-0);
+  border-color: var(--line-strong);
+}
+.rail .rail-item.active:focus-visible {
+  background: var(--bg-3);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 .rail .rail-item.active {
   background: var(--bg-3);

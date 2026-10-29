@@ -409,6 +409,9 @@ Settings → Reading → Start of the day: the screen and the line, only the lin
 ## 5. Interaction rules
 
 - Focus is always visible and always exactly one place: a row, a message, a field, or a palette item.
+  Keyboard focus on a control is a 2 px `--focus-ring` outline (the accent at 45 %), 1 px out (inset in the title
+  bar); never the browser's own. The list, the editor and text fields show focus their own way and draw none; the
+  sidebar shows it as `--bg-2`, like hover.
 - `Esc` goes one level up, never two. Palette → pane → list → clears selection.
 - Actions on the selection if non-empty, else the focused item. The toast says which: "Archived 12 conversations".
 - Destructive actions (trash, discard, mark all done) never confirm; they undo. Exception: emptying Trash/Spam.

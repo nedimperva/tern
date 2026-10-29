@@ -23,6 +23,8 @@ every release needs one here before it is tagged.
   softer, and the greys are a little lighter and cleaner in both themes.
 - Inbox Zero and the morning screen take the warm look too: a paper sky, sand and stone below, a terracotta
   heading, and terns in the logo's navy.
+- Moving with the keyboard shows a soft ring in the accent colour, and only where it helps: no more black outline
+  around the list, the editor or fields. In the sidebar, focus is a tone, as under the pointer.
 
 ### Fixed
 
