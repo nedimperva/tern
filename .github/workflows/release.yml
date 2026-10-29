@@ -9,6 +9,10 @@ name: release
 # is neither a draft nor a pre-release, so a release reaches them when it is published.
 # "Continue with Google" needs the TERN_GOOGLE_CLIENT_ID and TERN_GOOGLE_CLIENT_SECRET secrets (the Google Cloud
 # desktop client; see src-tauri/build.rs). Without them the build still works and Gmail takes an app password.
+#
+# One job makes the draft and the builds upload into it by id: left to find it by tag, each build made a draft
+# of its own (a draft has no tag yet), each with a latest.json for its platform alone. The builds take turns so
+# the second adds its platforms to latest.json instead of racing the first, and a last job checks it is whole.
 on:
   push:
     tags: ["v*"]
@@ -20,9 +24,58 @@ permissions:
   contents: write
 
 jobs:
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    outputs:
+      id: ${{ steps.draft.outputs.id }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # A tag without its CHANGELOG.md section, or one that doesn't match package.json, fails here, before
+      # anything is built.
+      - name: Release notes
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME doesn't match package.json version $version"
+            exit 1
+          fi
+          notes=$(awk -v v="[$version]" '/^## \[/ { on = index($0, v) == 4; next } /^\[.*\]: / { next } on' CHANGELOG.md)
+          if [ -z "${notes//[[:space:]]/}" ]; then
+            echo "::error::CHANGELOG.md has no section for $version"
+            exit 1
+          fi
+          {
+            echo "$notes"
+            echo
+            echo '### Install'
+            echo
+            echo 'Linux: the `.AppImage` runs as is and updates itself; `.deb` and `.rpm` install with the system'"'"'s package'
+            echo 'tool, and on Arch `yay -S tern-bin`.'
+            echo 'Windows: download the `-setup.exe` and run it. The installer isn'"'"'t signed yet, so Windows may show'
+            echo '"Windows protected your PC": choose More info, then Run anyway.'
+          } > "$RUNNER_TEMP/notes.md"
+
+      - name: Draft release
+        id: draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Tern $GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq "[.[] | select(.draft and .tag_name == \"$GITHUB_REF_NAME\")][0].id")
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: release
+    # Runs without the release job too: a PR or a manual run only builds.
+    if: ${{ !failure() && !cancelled() }}
     strategy:
       fail-fast: false
+      # One at a time: each adds its platforms to the draft's latest.json, and two at once would lose one.
+      max-parallel: 1
       matrix:
         os: [ubuntu-22.04, windows-2022]
     runs-on: ${{ matrix.os }}
@@ -49,30 +102,6 @@ jobs:
 
       - run: npm ci
 
-      # A tag without its CHANGELOG.md section fails here, before anything is built.
-      - name: Release notes
-        id: notes
-        shell: bash
-        run: |
-          version=$(node -p "require('./package.json').version")
-          notes=$(awk -v v="[$version]" '/^## \[/ { on = index($0, v) == 4; next } /^\[.*\]: / { next } on' CHANGELOG.md)
-          if [ -z "${notes//[[:space:]]/}" ] && [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            echo "::error::CHANGELOG.md has no section for $version"
-            exit 1
-          fi
-          {
-            echo 'body<<NOTES_END'
-            echo "$notes"
-            echo
-            echo '### Install'
-            echo
-            echo 'Linux: the `.AppImage` runs as is and updates itself; `.deb` and `.rpm` install with the system'"'"'s package'
-            echo 'tool, and on Arch `yay -S tern-bin`.'
-            echo 'Windows: download the `-setup.exe` and run it. The installer isn'"'"'t signed yet, so Windows may show'
-            echo '"Windows protected your PC": choose More info, then Run anyway.'
-            echo 'NOTES_END'
-          } >> "$GITHUB_OUTPUT"
-
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -81,12 +110,8 @@ jobs:
           TERN_GOOGLE_CLIENT_ID: ${{ secrets.TERN_GOOGLE_CLIENT_ID }}
           TERN_GOOGLE_CLIENT_SECRET: ${{ secrets.TERN_GOOGLE_CLIENT_SECRET }}
         with:
-          tagName: ${{ startsWith(github.ref, 'refs/tags/') && 'v__VERSION__' || '' }}
-          releaseName: Tern v__VERSION__
-          releaseBody: ${{ steps.notes.outputs.body }}
-          releaseDraft: true
-          # The updater reads releases/latest, which skips pre-releases.
-          prerelease: false
+          # Empty outside a tag, so the build only builds.
+          releaseId: ${{ needs.release.outputs.id }}
           # Only release builds sign updates, so a local `tauri build` needs no key.
           args: '--config {"bundle":{"createUpdaterArtifacts":true}}'
           # Windows updates through the NSIS installer, which the updater runs without questions.
@@ -104,3 +129,31 @@ jobs:
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
             target/release/bundle/**/*.sig
+
+  # The draft is only worth publishing when latest.json names every platform and each file it points at is in the
+  # release: an installed copy whose platform is missing never hears of the update.
+  check:
+    needs: [release, build]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: latest.json covers every platform
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ID: ${{ needs.release.outputs.id }}
+        run: |
+          release=$(gh api "repos/$GITHUB_REPOSITORY/releases/$ID")
+          json_id=$(jq -r '.assets[] | select(.name == "latest.json") | .id' <<<"$release")
+          [ -n "$json_id" ] || { echo "::error::the draft has no latest.json"; exit 1; }
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$json_id" > latest.json
+          status=0
+          for p in linux-x86_64 linux-x86_64-appimage linux-x86_64-deb linux-x86_64-rpm \
+                   windows-x86_64 windows-x86_64-nsis windows-x86_64-msi; do
+            url=$(jq -r --arg p "$p" '.platforms[$p].url // empty' latest.json)
+            if [ -z "$url" ]; then
+              echo "::error::latest.json has no $p"; status=1
+            elif ! jq -e --arg u "$url" 'any(.assets[]; .url == $u)' <<<"$release" >/dev/null; then
+              echo "::error::latest.json points $p at $url, which isn't in this release"; status=1
+            fi
+          done
+          exit $status
