@@ -7,6 +7,12 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Fixed
+
+- On Linux the window is frameless again, as before 1.5.0: Tern's title bar and its minimize, maximize and close
+  buttons (which did nothing on Hyprland) are gone, and the window manager handles the window. The sidebar button
+  is back at the top left of the list. Windows keeps Tern's title bar.
+
 ## [1.5.0] - 2026-10-29
 
 ### Changed

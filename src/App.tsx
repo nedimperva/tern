@@ -90,6 +90,7 @@ import {
   signatures,
   snoozing,
   syncStates,
+  ownTitleBar,
   toggleSidebar,
   viewing,
   width,
@@ -104,16 +105,20 @@ const SPLIT_WIDTH = 1200;
 /** Below this width there is no room for the list beside a conversation, whatever the setting (§3). */
 const MIN_SPLIT_WIDTH = 960;
 
-/** The main window: Tern's own title bar, the sidebar when it is docked, and the rest under them. */
+/** The main window: Tern's own title bar (Windows), the sidebar when it is docked, and the rest under them. */
 export default function App() {
+  // Overlays start under the title bar; without one they start at the top.
+  if (!ownTitleBar) document.documentElement.dataset.frame = "system";
   return (
     <div class="window" classList={{ docked: docked() }}>
-      <TitleBar
-        docked={docked()}
-        sideTone={docked() || settingsOpen() !== null}
-        onSidebar={toggleSidebar}
-        onCompose={newMessage}
-      />
+      <Show when={ownTitleBar}>
+        <TitleBar
+          docked={docked()}
+          sideTone={docked() || settingsOpen() !== null}
+          onSidebar={toggleSidebar}
+          onCompose={newMessage}
+        />
+      </Show>
       <div class="window-body">
         <Show when={docked()}>
           <Sidebar docked />

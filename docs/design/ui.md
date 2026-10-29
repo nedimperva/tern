@@ -103,6 +103,9 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   double click maximizes (`data-tauri-drag-region="deep"`). No app name. Over the docked sidebar (or settings'
   sections) the bar takes `--bg-1`; elsewhere a `--line` rule runs under it. Full-window overlays (scrims,
   dialogs, settings, the viewer, the day screen) start under it, so the window can always be moved and closed.
+  **Windows only** (owner, 2026-10-29): on Linux the window manager frames the window (Hyprland draws nothing and
+  ignores minimize and maximize), so there is no bar; the sidebar button sits at the left of the list header and
+  overlays start at the top (`--titlebar-h: 0`).
 - **Sidebar** (`Ctrl+\`, the title bar's button): 240 px (`--side-w`) on `--bg-1`, docked beside the list from 1100 px
   wide and open by default (Settings → Appearance → Sidebar); the button hides it for good until shown again.
   Narrower, turned off, or in focus mode, the same column slides over the list with a scrim and closes on `Esc`

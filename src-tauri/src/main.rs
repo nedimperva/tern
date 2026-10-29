@@ -139,6 +139,12 @@ fn main() {
             app.deep_link().on_open_url(move |event| {
                 desktop::open_links(&handle, &event.urls().iter().map(|u| u.to_string()).collect::<Vec<_>>())
             });
+            // Tern's own title bar is for Windows. On Linux the window manager frames the window, as before it
+            // (Hyprland draws no frame at all), and the UI leaves the bar out.
+            #[cfg(target_os = "linux")]
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.set_decorations(true);
+            }
             // The window starts hidden (tauri.conf.json) so a login start can stay in the tray.
             if !std::env::args().any(|a| a == desktop::HIDDEN) {
                 desktop::show(app.handle());
