@@ -1,6 +1,6 @@
 # Sprint 16 — The tide and the companion
 
-**Status:** in progress · started 2026-10-29
+**Status:** built, waiting on owner acceptance · started 2026-10-29
 
 ## Delivery scope
 
@@ -43,9 +43,9 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
 - [x] Promises: what you owe and what is owed to you, found locally by phrases; tick when done.
 
 ### G. Writing with AI
-- [ ] Bullets to a draft: `Ctrl+J` turns bullets into a draft in the style note, shown as ghost text; Tab keeps it,
+- [x] Bullets to a draft: `Ctrl+J` turns bullets into a draft in the style note, shown as ghost text; Tab keeps it,
   Esc drops it.
-- [ ] Tone dial: Shorter, Warmer, Firmer, shown as a change to accept or drop.
+- [x] Tone dial: Shorter, Warmer, Firmer, shown as a change to accept or drop.
 
 ## Decisions
 
@@ -75,3 +75,7 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
 - 2026-10-29: Slice F done: the companion with Ask (`ai::ask_about` and `prompts/ask.md`, tested against the
   scripted model incl. AI off), Person, Promises (`src/promises.ts`, tested) and Files. Tried with the fake mailbox
   in headless Chromium at 1440 and 1100 px; not against a real model.
+- 2026-10-29: Slice G done on top of package 10's Write with AI rather than a second path: "Write out these points"
+  for a draft of points, Warmer and Firmer asks (Friendlier became Warmer), a tone row in the footer, and the
+  change shown as a word diff (`src/wordDiff.ts`, tested). Tried with the fake mailbox in headless Chromium. Every
+  task in the package is ticked; owner acceptance is open.
