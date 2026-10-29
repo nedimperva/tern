@@ -34,6 +34,9 @@ decisions that aren't visible from the code.
   facts and parts to try them on.
   Look (2026-10-28, canvas "Tern warm directions", A): warm tokens, Tern's own title bar (`decorations: false`,
   `src/components/TitleBar.tsx`) and the sidebar docked beside the list (`settings.sidebar`, `docked()` in state.ts).
+  1.6.0 (2026-10-29, package 16): moods incl. Follow Omarchy, motion, the tide, the companion (`Ctrl+.`), and
+  folding of quotes, Outlook headers and legal notices. Schema 29 re-sorted subject-joined threads. Links in mail
+  open through a navigation plugin (`src-tauri/src/links.rs`): WebKitGTK runs no listeners in script-less frames.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items. Gmail still goes through IMAP, signed in with Google (XOAUTH2), with labels

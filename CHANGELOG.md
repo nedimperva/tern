@@ -7,6 +7,8 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-29
+
 ### Added
 
 - Moods: Settings → Appearance → Mood has Dawn (the light look), Dusk (the dark one), Night Sea (the navy of the
