@@ -21,6 +21,8 @@ every release needs one here before it is tagged.
   only where unread mail matters. With one account there is a single Inbox row at the top.
 - The focused row in the list no longer has a coloured bar at its left; its background shows it. Label chips are
   softer, and the greys are a little lighter and cleaner in both themes.
+- Inbox Zero and the morning screen take the warm look too: a paper sky, sand and stone below, a terracotta
+  heading, and terns in the logo's navy.
 
 ### Fixed
 

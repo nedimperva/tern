@@ -327,7 +327,9 @@ panel icon or the column's own × hides it, for every conversation until shown a
   commonly given figures (about 70,000 km a year, 2.4 million km a life, the most daylight of any animal).
 - Layout: "side" scenes put the words left (kicker in `--z-kicker`, the time or a count at 56 px, one line) and the
   picture right; "center" ones put the words at the bottom over a full picture. Under 760 px wide the picture steps
-  back to 35 % behind centred words. Colours are `--z-*` and `--t1…8` tokens on `.zero`, light and dark.
+  back to 35 % behind centred words. Colours are `--z-*` and `--t1…8` tokens on `.zero`, light and dark: since
+  2026-10-29 warm like the rest (a paper sky, sand and stone, a terracotta kicker, terns in shades of the logo's
+  navy). The morning screen uses the same tokens: its hills are `--z-sand` and `--z-sea`, its terns `--t6`.
 - Settings → Appearance → Inbox Zero: a different tern each day (default) or one scene. The counts
   are kept with the settings (`zeroLog`), on this computer: what is cleared in another app isn't in them. No buttons.
   `C` still composes.
