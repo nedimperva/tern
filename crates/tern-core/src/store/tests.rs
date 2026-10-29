@@ -334,6 +334,24 @@ fn the_day_starts_with_who_waits_on_you_longest() {
 }
 
 #[test]
+fn arrivals_count_the_weeks_mail_wherever_it_went() {
+    let (store, account, inbox, archive) = setup();
+    let sent = store.upsert_folder(account, "Sent", "sent").unwrap();
+    store.insert_messages(account, inbox, &[message(1, "New", 500), message(2, "Old", 50)]).unwrap();
+    store.insert_messages(account, archive, &[message(3, "Done", 300)]).unwrap();
+    // The same message under a second label counts once.
+    let mut again = message(4, "Done", 300);
+    again.message_id = Some("3@example.com".into());
+    store.insert_messages(account, inbox, &[again]).unwrap();
+    let mut mine = message(5, "Mine", 400);
+    mine.from_addr = "me@example.com".into();
+    store.insert_messages(account, sent, &[mine]).unwrap();
+    let mut dates = store.arrivals(100).unwrap();
+    dates.sort();
+    assert_eq!(dates, [300, 500]);
+}
+
+#[test]
 fn migration_26_keeps_a_style_note_per_account() {
     let (store, account, inbox, _) = setup();
     let conn = store.conn.into_inner().unwrap();

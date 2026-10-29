@@ -5,7 +5,8 @@ import { batch, createEffect, on } from "solid-js";
 import { api, type Target } from "../api";
 import { refreshStart } from "../day";
 import { timeQuery } from "../perf";
-import { setSetting, settings } from "../settings";
+import { wingBeat } from "../sound";
+import { quietNow, setSetting, settings } from "../settings";
 import { ROLE_NAMES } from "../components/Rail";
 import { asRow, keepRows, keyOf } from "./rows";
 import { close, open } from "./conversation";
@@ -36,6 +37,7 @@ import {
   setSplitUnread,
   setTarget,
   setWaiting,
+  waiting,
   splitUnread,
   target,
 } from "./state";
@@ -100,6 +102,14 @@ export async function refresh(signatures = true) {
     api.waiting(),
     api.splitUnread(),
   ]);
+  if (settings.wingBeat && !quietNow()) {
+    // A send that was past its undo window and is gone now, not to the problems: it went out.
+    const now = Date.now() / 1000;
+    const left = waiting().filter(
+      (b) => b.what.startsWith("Send") && b.notBefore <= now && !w.some((x) => x.id === b.id) && !p.some((x) => x.id === b.id),
+    );
+    if (left.length) wingBeat();
+  }
   batch(() => {
     setAccounts(a);
     setFolders(f);

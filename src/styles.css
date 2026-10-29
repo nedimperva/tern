@@ -560,6 +560,24 @@ button.primary kbd {
 .zero .shoreline { stroke: var(--z-line); stroke-width: 1.5; }
 .zero .wave { stroke: var(--z-line); stroke-width: 2; stroke-linecap: round; }
 .zero .glint { stroke-width: 3; stroke-linecap: round; opacity: 0.45; }
+.zero .low-sun { opacity: 0.12; }
+/* The tide report: a bar a day, the days that reached zero in the terns' paler blue, the quietest in their own. */
+.zero .tide-bar { fill: var(--z-line); }
+.zero .tide-bar.zero { fill: var(--t2); }
+.zero .tide-bar.quiet { fill: var(--t5); }
+.zero .tide-day { fill: var(--z-cap); font-size: 15px; font-family: var(--font); }
+.zero .moon-dark { fill: var(--z-moon); opacity: 0.08; }
+/* Winter: a little snow drifting down past the horizon, still with reduced motion. */
+.zero .snow circle { fill: var(--z-route); opacity: 0.7; animation: zero-snow 9s linear infinite; }
+.zero .after-dark .snow circle { fill: var(--z-moon); }
+@keyframes zero-snow {
+  from { transform: translateY(-40px); opacity: 0; }
+  15% { opacity: 0.7; }
+  to { transform: translateY(160px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zero .snow circle { animation: none; }
+}
 .zero .faint { fill: none; stroke: var(--z-faint); stroke-width: 1; }
 .zero .dashed { stroke-dasharray: 3 6; }
 .zero .route { fill: none; stroke: var(--z-route); stroke-width: 2; stroke-dasharray: 1 9; stroke-linecap: round; }

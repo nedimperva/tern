@@ -448,6 +448,8 @@ export interface Api {
   onMaximized(f: (maximized: boolean) => void): () => void;
   /** What came in since `since` (Unix seconds) and what needs the person. From the store only. */
   dayStart(since: number): Promise<DayStart>;
+  /** When each message from someone else arrived since `since`, wherever it is now (the tide report). */
+  arrivals(since: number): Promise<number[]>;
   // AI, only on the person's ask; the engine refuses while it is off or not allowed (Settings → AI).
   aiHasKey(provider: AiProvider): Promise<boolean>;
   aiSetKey(provider: AiProvider, key: string): Promise<void>;
@@ -655,6 +657,7 @@ const tauri: Api = {
     return () => ((stopped = true), stop?.());
   },
   dayStart: (since) => invoke("day_start", { since }),
+  arrivals: (since) => invoke("arrivals", { since }),
   aiHasKey: (provider) => invoke("ai_has_key", { provider }),
   aiSetKey: (provider, key) => invoke("ai_set_key", { provider, key }),
   aiForgetKey: (provider) => invoke("ai_forget_key", { provider }),
@@ -1274,6 +1277,7 @@ function fake(): Api {
     onMaximized: (f) => (f(false), () => {}),
     // AI in the browser: a made-up answer, streamed a word at a time like the real one. The key "fail" fails.
     // The start of the day in the browser: people's mail in the inbox, newest someone else's, oldest first.
+    arrivals: async (since) => messages.filter((m) => m.date > since && m.folderId !== 3).map((m) => m.date),
     dayStart: async (since) => {
       const inbox = messages.filter((m) => m.folderId === 1);
       const latest = new Map<string, (typeof messages)[number]>();

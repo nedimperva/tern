@@ -29,6 +29,8 @@ export type Settings = {
   notify: boolean;
   /** Notify for the inbox's Other split as well as Important (read by the engine). */
   notifyOther: boolean;
+  /** A soft wing beat when mail leaves the outbox. */
+  wingBeat: boolean;
   /** Quiet hours, "HH:MM" local time; no notifications from one to the other. Empty: none (read by the engine). */
   quietFrom: string;
   quietTo: string;
@@ -109,6 +111,7 @@ export const DEFAULTS: Settings = {
   signatureBelow: false,
   background: true,
   notify: true,
+  wingBeat: false,
   notifyOther: false,
   quietFrom: "",
   quietTo: "",
@@ -185,6 +188,14 @@ export async function loadSettings() {
     if (key === "ai" && key in saved) setStore("ai", { ...DEFAULTS.ai, ...(saved.ai as Partial<AiSettings>) });
     else if (key in saved) setStore(key, saved[key] as never);
   }
+}
+
+/** Inside the quiet hours (Settings → Notifications), when sounds keep quiet too. */
+export function quietNow(at = new Date()) {
+  const { quietFrom: from, quietTo: to } = settings;
+  if (!from || !to) return false;
+  const now = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+  return from <= to ? now >= from && now < to : now >= from || now < to;
 }
 
 export function setSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
