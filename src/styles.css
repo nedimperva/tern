@@ -116,6 +116,10 @@ button.primary kbd {
   flex-direction: column;
   height: 100%;
 }
+/* No title bar on Linux: overlays start at the top of the window. */
+:root[data-frame="system"] {
+  --titlebar-h: 0px;
+}
 .window-body {
   flex: 1;
   min-height: 0;

@@ -5,6 +5,7 @@ import { open } from "../app/conversation";
 import { keyOf } from "../app/rows";
 import {
   accounts,
+  docked,
   focus,
   openRow,
   partial,
@@ -18,6 +19,8 @@ import {
   setFocus,
   setPalette,
   setQuery,
+  ownTitleBar,
+  toggleSidebar,
 } from "../app/state";
 import { coverage, inboxZero } from "../app/status";
 import { ROW_HEIGHTS, settings, SPLIT_ROW_EXTRA } from "../settings";
@@ -25,6 +28,7 @@ import { colourOf } from "../colours";
 import type { ThreadRow } from "../api";
 import { ConversationRow, participants } from "./ConversationRow";
 import { DayLine } from "./DayLine";
+import { Icon } from "./Icon";
 import { InboxZero } from "./InboxZero";
 import { StatusStrip } from "./StatusStrip";
 import { VirtualList } from "./VirtualList";
@@ -70,6 +74,17 @@ export function ListPane(props: {
   return (
     <main class="list-pane">
       <header class="list-header">
+        <Show when={!ownTitleBar}>
+          <button
+            type="button"
+            class="icon-button"
+            onClick={toggleSidebar}
+            title={`${docked() ? "Hide" : "Show"} the sidebar (Ctrl+\\)`}
+            aria-label={docked() ? "Hide the sidebar" : "Show the sidebar"}
+          >
+            <Icon name="panel-left" size={17} />
+          </button>
+        </Show>
         <Show when={splitIndex() >= 0 && !searching()} fallback={<h2>{title()}</h2>}>
           <div class="splits" role="tablist" aria-label="Inbox views">
             <For each={SPLITS()}>
