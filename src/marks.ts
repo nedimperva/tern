@@ -69,14 +69,17 @@ export function drawMarks(marks: Mark[], on: number | null): Map<number, Range |
   // Clear every window that showed marks before, then draw the ones that have some now.
   const windows = new Set<Window>([window, ...[...document.querySelectorAll<HTMLIFrameElement>(".card iframe")].map((f) => f.contentWindow!).filter(Boolean)]);
   for (const w of windows) {
-    const reg = registry(w);
-    const Highlight = HighlightOf(w);
-    if (!reg || !Highlight) continue;
-    const entry = byWindow.get(w);
-    if (entry?.all.length) reg.set("tern-mark", new Highlight(...entry.all));
-    else reg.delete("tern-mark");
-    if (entry?.current.length) reg.set("tern-mark-on", new Highlight(...entry.current));
-    else reg.delete("tern-mark-on");
+    // A mail's frame on its way out refuses access and throws, which would stop the window's update (hits.ts).
+    try {
+      const reg = registry(w);
+      const Highlight = HighlightOf(w);
+      if (!reg || !Highlight) continue;
+      const entry = byWindow.get(w);
+      if (entry?.all.length) reg.set("tern-mark", new Highlight(...entry.all));
+      else reg.delete("tern-mark");
+      if (entry?.current.length) reg.set("tern-mark-on", new Highlight(...entry.current));
+      else reg.delete("tern-mark-on");
+    } catch {}
   }
   return found;
 }

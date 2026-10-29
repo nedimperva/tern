@@ -67,10 +67,14 @@ export function drawHits(words: string[]) {
     }
   }
   for (const [w, ranges] of byWindow) {
-    const api = w as unknown as { CSS?: { highlights?: Highlights }; Highlight?: new (...r: Range[]) => unknown };
-    const reg = api.CSS?.highlights;
-    if (!reg || !api.Highlight) continue;
-    if (ranges.length) reg.set("tern-hit", new api.Highlight(...ranges));
-    else reg.delete("tern-hit");
+    // A mail's frame on its way out (the conversation closing) refuses access and throws; thrown here, in the
+    // middle of an update, it stopped the window drawing the next conversation. It needs no clearing anyway.
+    try {
+      const api = w as unknown as { CSS?: { highlights?: Highlights }; Highlight?: new (...r: Range[]) => unknown };
+      const reg = api.CSS?.highlights;
+      if (!reg || !api.Highlight) continue;
+      if (ranges.length) reg.set("tern-hit", new api.Highlight(...ranges));
+      else reg.delete("tern-hit");
+    } catch {}
   }
 }
