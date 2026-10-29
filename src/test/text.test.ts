@@ -67,6 +67,15 @@ describe("markQuotes", () => {
     expect(d.querySelector("p")?.classList.contains("tern-quote")).toBe(false);
   });
 
+  it("folds a company's legal notice, in either language", () => {
+    const d = doc(
+      `<p>Plaćeno.</p><p><strong>&nbsp;We retain our right to contractual penalty due to delay in delivery.</strong></p><p>NAPOMENA: Informacije sadržane u ovoj poruci su povjerljive ili zaštićene zakonom.</p><p>Pozdrav</p>`,
+    );
+    markQuotes(d);
+    expect(marked(d)).toEqual(["\u00a0We retain o", "NAPOMENA: In"]);
+    expect(foldAt("Plaćeno.\n\nNOTICE: The information contained in this message is confidential or protected by law.")).toBe(8);
+  });
+
   it("leaves a quote without a wrote line, and a message that is only a signature", () => {
     const d = doc(`<p>--</p><p>Ana</p><blockquote><p>a cited line</p></blockquote>`);
     markQuotes(d);

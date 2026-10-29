@@ -1,5 +1,13 @@
 // What a message repeats or signs off with, folded away behind "···" (docs/design/ui.md §4.2).
 
+/** A legal notice a company's mail server puts under every message ("NOTICE: … intended recipient …"), in English
+ * and Bosnian/Croatian/Serbian. Replies carry each earlier copy, so they pile up. */
+const NOTICE =
+  /\b(intended recipient|contractual penalty|confidential(?:ity)? (?:notice|information)|is confidential|privileged|unauthori[sz]ed (?:copying|use|distribution|disclosure)|disclaimer|naznačeni primatelj|ugovornu kaznu|povjerljiv\w*|neovlašten\w* (?:kopiranje|korištenje|distribucija)|zaštićene zakonom)/i;
+
+/** A paragraph that is such a notice: long enough to be one, and saying what they say. */
+export const isNotice = (text: string) => text.trim().length >= 60 && NOTICE.test(text);
+
 /** Where in a plain-text body the quoted reply or the signature starts, so it can be folded; -1 if nowhere. */
 export function foldAt(text: string): number {
   const lines = text.split("\n");
@@ -15,7 +23,9 @@ export function foldAt(text: string): number {
     const quoted = line.startsWith(">") && lines.slice(i).filter((l) => l.trim()).every((l) => l.startsWith(">"));
     const signature = line === "--" && lines[i] === "-- ";
     const sentFrom = /^Sent from my \w+/i.test(line) && i >= lines.length - 3;
-    if (quoteHeader || original || outlook || quoted || signature || sentFrom) {
+    // A notice starts a fold too, unless it is all the message says.
+    const notice = offset > 0 && isNotice(line);
+    if (quoteHeader || original || outlook || quoted || signature || sentFrom || notice) {
       // Keep the blank lines before it with the visible part out of the fold.
       return text.slice(0, offset).trimEnd().length;
     }
@@ -37,6 +47,11 @@ export function markQuotes(doc: Document) {
       q.classList.add("tern-quote");
       before.classList.add("tern-quote");
     }
+  }
+  // Legal notices, wherever they are: the smallest block that holds one, never the whole message.
+  for (const el of doc.querySelectorAll("p, div, td")) {
+    if (el.querySelector("p, div, table, blockquote") || el === doc.body.firstElementChild) continue;
+    if (isNotice((el.textContent ?? "").replace(/\u00a0/g, " "))) el.classList.add("tern-quote");
   }
   for (const p of doc.querySelectorAll("p")) {
     if (p.closest("blockquote") || (p.textContent ?? "").replace(/\u00a0/g, " ").trim() !== "--") continue;
