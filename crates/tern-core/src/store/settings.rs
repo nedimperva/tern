@@ -139,6 +139,37 @@ impl Store {
         Ok(dates)
     }
 
+    /// The senders who wrote most since `since`, most first: who fills the inbox.
+    pub fn senders(&self, since: i64, limit: i64) -> Result<Vec<SenderVolume>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(
+            "SELECT m.account_id, lower(m.from_addr), max(m.from_name), count(DISTINCT coalesce(m.message_id, m.id)),
+                    max(m.id),
+                    (SELECT x.list_unsubscribe FROM messages x
+                      WHERE x.account_id = m.account_id AND lower(x.from_addr) = lower(m.from_addr)
+                        AND x.list_unsubscribe IS NOT NULL ORDER BY x.date DESC LIMIT 1),
+                    COALESCE((SELECT s.other FROM sender_splits s
+                               WHERE s.account_id = m.account_id AND s.addr = lower(m.from_addr)), max(m.bulk))
+             FROM messages m JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id
+             WHERE m.date > ?1 AND f.role NOT IN ('sent', 'drafts', 'junk') AND m.from_addr <> ''
+               AND lower(m.from_addr) <> lower(a.email)
+             GROUP BY m.account_id, lower(m.from_addr)
+             ORDER BY 4 DESC, 2 LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![since, limit], |r| {
+            Ok(SenderVolume {
+                account_id: r.get(0)?,
+                addr: r.get(1)?,
+                name: r.get(2)?,
+                count: r.get(3)?,
+                newest: r.get(4)?,
+                list_unsubscribe: r.get(5)?,
+                other: r.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     // MARK: AI
 
     /// A kept AI answer for exactly this request (see `ai::key_hash`).

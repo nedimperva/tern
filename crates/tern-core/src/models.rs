@@ -165,6 +165,23 @@ pub struct DayStart {
     pub to_read: Vec<ToRead>,
 }
 
+/// A sender and how much they wrote lately ("Who fills your inbox").
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SenderVolume {
+    pub account_id: i64,
+    pub addr: String,
+    pub name: String,
+    /// Messages since the time asked, a Gmail message once.
+    pub count: i64,
+    /// Their newest message, for moving them to Other or Important (`set_split`).
+    pub newest: i64,
+    /// Their newest List-Unsubscribe header, raw, if any of their mail had one.
+    pub list_unsubscribe: Option<String>,
+    /// Their mail goes to Other now.
+    pub other: bool,
+}
+
 /// A conversation to read, with roughly how long it takes.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

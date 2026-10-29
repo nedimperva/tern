@@ -3,6 +3,7 @@ import type { Account } from "../api";
 import { colourOf } from "../colours";
 import { Icon, type IconName } from "./Icon";
 import { accountName } from "./settings/shared";
+import { SendersSettings } from "./settings/senders";
 import { AppearanceSettings, ReadingSettings, ComposeSettings, AboutSettings, NotificationSettings, DesktopSettings } from "./settings/general";
 import { AiSettingsPage, AiStylePage } from "./settings/ai";
 import { SnippetSettings } from "./settings/snippets";
@@ -48,6 +49,14 @@ export function SettingsPage(props: {
       group: "General",
       words: "open conversations mark read inbox split important other images logos designed dark start day morning",
       body: () => <ReadingSettings />,
+    },
+    {
+      id: "Senders",
+      name: "Who writes most",
+      icon: "inbox",
+      group: "General",
+      words: "senders who fills inbox unsubscribe newsletters lists volume other important",
+      body: () => <SendersSettings />,
     },
     { id: "Notifications", name: "Notifications",
       icon: "bell", group: "General", words: "notify new mail quiet hours", body: () => <NotificationSettings /> },

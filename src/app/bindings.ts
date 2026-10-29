@@ -240,6 +240,7 @@ export const commands = (all: Binding[]): Command[] => [
       ).map(([t, name]) => ({ name, run: () => setSetting("theme", t) })),
   },
   { name: "Settings", keys: keyLabel("Ctrl+,"), group: "Settings", run: () => setSettingsOpen("Appearance") },
+  { name: "Who fills your inbox", group: "Settings", run: () => setSettingsOpen("Senders") },
   ...(openRow() && openMuted() ? [{ name: "Unmute conversation", group: "Actions", run: () => void unmute() }] : []),
   { name: "Add account", group: "Accounts", run: () => setSetup(true) },
   ...(problems().length || late().length

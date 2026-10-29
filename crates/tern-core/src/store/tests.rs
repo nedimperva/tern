@@ -352,6 +352,28 @@ fn arrivals_count_the_weeks_mail_wherever_it_went() {
 }
 
 #[test]
+fn senders_are_counted_by_volume() {
+    let (store, account, inbox, _) = setup();
+    let news: Vec<_> = (1..=3)
+        .map(|i| {
+            let mut m = message(i, "Issue", 100 + i as i64);
+            m.from_addr = "News@shop.example".into();
+            m.from_name = "Shop".into();
+            m.list_unsubscribe = Some("<https://shop.example/u>".into());
+            m
+        })
+        .collect();
+    store.insert_messages(account, inbox, &news).unwrap();
+    store.insert_messages(account, inbox, &[message(4, "Hi", 150), message(5, "Old", 10)]).unwrap();
+    let senders = store.senders(50, 10).unwrap();
+    let got: Vec<(&str, i64, bool)> =
+        senders.iter().map(|s| (s.addr.as_str(), s.count, s.list_unsubscribe.is_some())).collect();
+    assert_eq!(got, [("news@shop.example", 3, true), ("ada@example.com", 1, false)]);
+    store.set_split(&[senders[1].newest], true).unwrap();
+    assert!(store.senders(50, 10).unwrap()[1].other, "moved to Other");
+}
+
+#[test]
 fn migration_26_keeps_a_style_note_per_account() {
     let (store, account, inbox, _) = setup();
     let conn = store.conn.into_inner().unwrap();

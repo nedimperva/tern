@@ -200,6 +200,11 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   unless Settings → Reading says to keep its colours. Reading view (the book icon) shows a designed mail's words and pictures in
   Tern's colours with a book face. `src/mailview.ts` decides and draws all three.
 - Quoted text and signatures collapse behind a `···` pill.
+- Only what's new (owner, 2026-10-29): coming back to a conversation that had unread mail as it opened, and was read
+  before, a line on `--accent-soft` says "Since you last read: 3 new · a question for you" (a question: a `?` in a
+  new message's own words, quote and links aside; `src/catchup.ts`) with Jump to it. Past five earlier messages,
+  the older read, closed lines (all but the last two, never an unread, open or focused one) wait behind
+  "Earlier in this conversation · N messages" between two rules; a click, or `k` into them, brings them all out.
 - Attachments strip: file cards on `--soft`, with a type badge (PDF, XLSX…, coloured `--file-*`) or a picture preview once the file is on this computer, name, size and Save; clicking opens it.
 - Inline reply box at the bottom when replying (see Compose); `Esc` collapses it and keeps the draft.
 - AI (package 10, on request only, shown only when AI is on for the account; redesigned 2026-10-26 from the canvas
@@ -389,6 +394,11 @@ Settings → Reading → Start of the day: the screen and the line, only the lin
   that needed you." and the inbox.
 
 ### 4.8 Settings (`Ctrl+,`)
+
+- **Who writes most** (General, owner 2026-10-29; also "Who fills your inbox" in the palette): the senders of the
+  last 30 days, most first (`senders`, a Gmail message once, your own mail aside), each with a bar for how much,
+  Unsubscribe when their mail carries List-Unsubscribe (their page in the browser, or their mail in compose for the
+  person to send) and To Other / To Important (the sender's past and future mail, as `Shift+O` does).
 
 - Full-screen page over the list with a 232 px left list of sections in three groups, each under a `--t-xs`
   label: General (Appearance · Reading · Notifications · Desktop · AI · Backup · About), Writing (Compose · Snippets ·

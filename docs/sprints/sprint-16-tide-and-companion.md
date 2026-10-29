@@ -31,8 +31,8 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
 - [x] The tide report: on Sunday, how much came in, how fast it was cleared, the quietest day. Local, no streaks.
 
 ### E. Reading
-- [ ] Only what's new: in a long conversation each reply shows its new text; quoted history folds into a line.
-- [ ] Who fills your inbox: senders by volume over 30 days, with unsubscribe (List-Unsubscribe) or "always to
+- [x] Only what's new: in a long conversation each reply shows its new text; quoted history folds into a line.
+- [x] Who fills your inbox: senders by volume over 30 days, with unsubscribe (List-Unsubscribe) or "always to
   Other".
 
 ### F. The companion column
@@ -65,3 +65,6 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
 - 2026-10-29: Slice D done: Horizon by hour, moon phase and winter snow (`src/sky.ts`, tested); the tide report on
   Sundays (`arrivals` in the store, tested; `src/tide.ts`, tested); the wing beat (Web Audio, off by default). Sky
   and report tried with the fake mailbox in headless Chromium at fixed times; the sound was not heard (headless).
+- 2026-10-29: Slice E done: the catch-up line and tucked older lines (`src/catchup.ts`, tested; the fake mailbox's
+  `#long` has nine-message conversations to try them on) and Settings → Who writes most (`senders` in the store,
+  tested; List-Unsubscribe parsing moved to `src/unsubscribe.ts`). Tried with the fake mailbox in headless Chromium.

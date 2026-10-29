@@ -132,6 +132,16 @@ export type MessageRow = {
   hasAttachments: boolean;
 };
 
+/** A sender and how much they wrote lately. `newest` is their newest message, for `setSplit`. */
+export type SenderVolume = {
+  accountId: number;
+  addr: string;
+  name: string;
+  count: number;
+  newest: number;
+  listUnsubscribe: string | null;
+  other: boolean;
+};
 /** Someone to write to, from the mail on this computer. */
 export type Contact = { email: string; name: string };
 export type ContactCard = { email: string; name: string; sent: number; received: number; recent: MessageRow[] };
@@ -450,6 +460,8 @@ export interface Api {
   dayStart(since: number): Promise<DayStart>;
   /** When each message from someone else arrived since `since`, wherever it is now (the tide report). */
   arrivals(since: number): Promise<number[]>;
+  /** The senders who wrote most since `since`, most first (Settings → Who writes most). */
+  senders(since: number): Promise<SenderVolume[]>;
   // AI, only on the person's ask; the engine refuses while it is off or not allowed (Settings → AI).
   aiHasKey(provider: AiProvider): Promise<boolean>;
   aiSetKey(provider: AiProvider, key: string): Promise<void>;
@@ -658,6 +670,7 @@ const tauri: Api = {
   },
   dayStart: (since) => invoke("day_start", { since }),
   arrivals: (since) => invoke("arrivals", { since }),
+  senders: (since) => invoke("senders", { since }),
   aiHasKey: (provider) => invoke("ai_has_key", { provider }),
   aiSetKey: (provider, key) => invoke("ai_set_key", { provider, key }),
   aiForgetKey: (provider) => invoke("ai_forget_key", { provider }),
@@ -764,8 +777,9 @@ function fake(): Api {
       accountId: work ? 2 : 1,
       // #empty: everything archived, to see Inbox Zero.
       folderId: work ? 9 : i % 9 === 0 || location.hash === "#empty" ? 2 : 1,
-      // Every fifth message starts a conversation that the next two answer.
-      threadId: i % 5 < 3 ? `t${i - (i % 5)}` : `t${i}`,
+      // Every fifth message starts a conversation that the next two answer; #long makes them nine long, to see the
+      // older lines tucked away and the line for coming back.
+      threadId: location.hash === "#long" ? `t${i - (i % 10)}` : i % 5 < 3 ? `t${i - (i % 5)}` : `t${i}`,
       subject,
       fromName: name,
       fromAddr: `${name.toLowerCase().replace(/\s/g, ".")}@example.com`,
@@ -1277,6 +1291,16 @@ function fake(): Api {
     onMaximized: (f) => (f(false), () => {}),
     // AI in the browser: a made-up answer, streamed a word at a time like the real one. The key "fail" fails.
     // The start of the day in the browser: people's mail in the inbox, newest someone else's, oldest first.
+    senders: async (since) => {
+      const by = new Map<string, SenderVolume>();
+      for (const m of messages.filter((m) => m.date > since && m.folderId !== 3)) {
+        const s = by.get(m.fromAddr) ?? { accountId: m.accountId, addr: m.fromAddr, name: m.fromName, count: 0, newest: m.id, listUnsubscribe: null, other: isOther(m) };
+        s.count++;
+        if (/github|stripe/i.test(m.fromName)) s.listUnsubscribe = `<https://${m.fromName.toLowerCase()}.example/unsubscribe>`;
+        by.set(m.fromAddr, s);
+      }
+      return [...by.values()].sort((a, b) => b.count - a.count);
+    },
     arrivals: async (since) => messages.filter((m) => m.date > since && m.folderId !== 3).map((m) => m.date),
     dayStart: async (since) => {
       const inbox = messages.filter((m) => m.folderId === 1);

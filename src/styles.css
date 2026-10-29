@@ -1782,6 +1782,47 @@ span.tool {
 }
 
 /* Every earlier message, one line each on a soft panel above the stage; all there, none folded away. */
+/* Coming back to a conversation: what is new since it was last read. */
+.catch-up {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
+  color: var(--fg-0);
+  font-size: var(--t-md);
+}
+.catch-up svg {
+  color: var(--accent);
+}
+.catch-up .spacer {
+  flex: 1;
+}
+/* The older read lines of a long conversation, behind one line that brings them out. */
+.tucked {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-2) 10px;
+  border: none;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.tucked:hover {
+  background: var(--soft-hover);
+  color: var(--fg-1);
+}
+.tucked .rule {
+  flex: 1;
+  height: 1px;
+  background: var(--line-strong);
+}
 .history {
   margin-bottom: var(--s-5);
   padding: var(--s-1);
@@ -6311,4 +6352,86 @@ button.link.danger {
 ::highlight(tern-hit) {
   background-color: rgba(47, 158, 110, 0.26);
   color: inherit;
+}
+
+/* Settings → Who writes most: a sender a row, a bar for how much they wrote, and what to do about them. */
+.sender-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.sender-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(80px, 1fr) 220px;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+}
+.sender-list li:hover {
+  background: var(--soft);
+}
+.sender-list .who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sender-list .who strong,
+.sender-list .addr {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.sender-list .who strong {
+  font-weight: 600;
+}
+.sender-list .addr,
+.sender-list .said {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.sender-list .said {
+  color: var(--fg-1);
+}
+.sender-list .volume {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.sender-list .bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+  opacity: 0.7;
+}
+.sender-list .count {
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+}
+.sender-list .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+.sender-list .actions button {
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--fg-0);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.sender-list .actions button:hover {
+  background: var(--bg-2);
+}
+@media (max-width: 760px) {
+  .sender-list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-1);
+  }
 }

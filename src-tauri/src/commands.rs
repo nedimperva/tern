@@ -1271,6 +1271,12 @@ pub async fn arrivals(state: State<'_, AppState>, since: i64) -> Reply<Vec<i64>>
     state.store.arrivals(since).map_err(text)
 }
 
+/// The senders who wrote most since `since` ("Who fills your inbox").
+#[tauri::command]
+pub async fn senders(state: State<'_, AppState>, since: i64) -> Reply<Vec<tern_core::SenderVolume>> {
+    state.store.senders(since, 40).map_err(text)
+}
+
 // MARK: AI (package 10)
 
 // Every AI command but the key's own runs only on the person's ask, and the engine checks first that AI is on and
