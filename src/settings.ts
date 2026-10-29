@@ -29,6 +29,10 @@ export type Settings = {
   notify: boolean;
   /** Notify for the inbox's Other split as well as Important (read by the engine). */
   notifyOther: boolean;
+  /** The companion column is open beside a conversation (`Ctrl+.`). */
+  companion: boolean;
+  /** Promises ticked off in the companion, by key (`src/promises.ts`). */
+  promisesDone: string[];
   /** A soft wing beat when mail leaves the outbox. */
   wingBeat: boolean;
   /** Quiet hours, "HH:MM" local time; no notifications from one to the other. Empty: none (read by the engine). */
@@ -112,6 +116,8 @@ export const DEFAULTS: Settings = {
   background: true,
   notify: true,
   wingBeat: false,
+  companion: false,
+  promisesDone: [],
   notifyOther: false,
   quietFrom: "",
   quietTo: "",

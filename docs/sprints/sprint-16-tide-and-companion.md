@@ -36,11 +36,11 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
   Other".
 
 ### F. The companion column
-- [ ] A right column beside the conversation (`Ctrl+.`), docked in a wide window: Ask, Person, Promises, Files.
-- [ ] Ask: chat about the open conversation with context chips, answers that cite messages, chats kept per
+- [x] A right column beside the conversation (`Ctrl+.`), docked in a wide window: Ask, Person, Promises, Files.
+- [x] Ask: chat about the open conversation with context chips, answers that cite messages, chats kept per
   conversation, and a "what was sent" receipt. Behind the AI switch.
-- [ ] Person, Files: from the store only, no AI.
-- [ ] Promises: what you owe and what is owed to you, found locally by phrases; tick when done.
+- [x] Person, Files: from the store only, no AI.
+- [x] Promises: what you owe and what is owed to you, found locally by phrases; tick when done.
 
 ### G. Writing with AI
 - [ ] Bullets to a draft: `Ctrl+J` turns bullets into a draft in the style note, shown as ghost text; Tab keeps it,
@@ -51,6 +51,10 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
 
 - The Linux title bar change (frameless, no window buttons) went first, on `sprint/16-linux-titlebar`; this
   package's branches stack on it until it is merged.
+
+- Ask goes through the summaries switch (`Feature::Summaries`): asking about a conversation is reading it, and a
+  separate switch would need a settings change for little gain. Chats are kept in memory per conversation while
+  Tern runs, not in the store; keeping them across restarts can follow if the owner wants it (a table, a migration).
 
 ## Log
 
@@ -68,3 +72,6 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
 - 2026-10-29: Slice E done: the catch-up line and tucked older lines (`src/catchup.ts`, tested; the fake mailbox's
   `#long` has nine-message conversations to try them on) and Settings → Who writes most (`senders` in the store,
   tested; List-Unsubscribe parsing moved to `src/unsubscribe.ts`). Tried with the fake mailbox in headless Chromium.
+- 2026-10-29: Slice F done: the companion with Ask (`ai::ask_about` and `prompts/ask.md`, tested against the
+  scripted model incl. AI off), Person, Promises (`src/promises.ts`, tested) and Files. Tried with the fake mailbox
+  in headless Chromium at 1440 and 1100 px; not against a real model.

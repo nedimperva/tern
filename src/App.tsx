@@ -16,7 +16,7 @@ import { PerfOverlay } from "./components/PerfOverlay";
 import { DayDeck } from "./components/DayDeck";
 import { DayScreen } from "./components/DayScreen";
 import { timeKey } from "./perf";
-import { loadSettings, settings } from "./settings";
+import { loadSettings, setSetting, settings } from "./settings";
 import { closeScreen, deck, screen, start, startDay } from "./day";
 import { keyHandler } from "./keys";
 import { hitWords } from "./hits";
@@ -99,6 +99,8 @@ import { clock, held, late, scheduled, watchStatus } from "./app/status";
 import { showToast } from "./app/toast";
 // Settings open seldom: their page is a chunk of its own.
 const SettingsPage = lazy(() => import("./components/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+// The companion loads the first time it opens: most windows never show it.
+const Companion = lazy(() => import("./components/Companion").then((m) => ({ default: m.Companion })));
 
 /** With the "auto" open mode, from this width an open conversation sits beside the list; narrower, it covers it. */
 const SPLIT_WIDTH = 1200;
@@ -233,7 +235,10 @@ function Main() {
   const split = () => openRow() !== null && roomForSplit();
 
   return (
-    <div class="app" classList={{ split: split(), full: openRow() !== null && !roomForSplit() }}>
+    <div
+      class="app"
+      classList={{ split: split(), full: openRow() !== null && !roomForSplit(), "with-companion": openRow() !== null && settings.companion }}
+    >
       <ListPane split={split()} hits={hits()} needsYou={needsYou()} />
 
       <Show when={openRow()}>
@@ -272,6 +277,21 @@ function Main() {
         </section>
       </Show>
 
+      <Show when={openRow() && settings.companion}>
+        <Suspense>
+          <Companion
+            messages={messages}
+            mine={(addr) => accounts().some((a) => a.email.toLowerCase() === addr.toLowerCase())}
+            onJump={(id) => {
+              const i = messages.findIndex((m) => m.id === id);
+              if (i >= 0 && i < messages.length - 1 && !expanded().has(id)) toggleMessage(i);
+              requestAnimationFrame(() => document.querySelector(`[data-message="${id}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+            }}
+            onClose={() => setSetting("companion", false)}
+            onOpenAi={() => setSettingsOpen("AI")}
+          />
+        </Suspense>
+      </Show>
       <Show when={rail() && !docked()}>
         <Sidebar docked={false} />
       </Show>

@@ -225,6 +225,7 @@ fn main() {
             commands::ai_cached_summary,
             commands::ai_summarize,
             commands::ai_replies,
+            commands::ai_ask,
             commands::ai_write,
             commands::ai_clear_cache,
             commands::ai_stats,
