@@ -21,6 +21,7 @@ import { until } from "./ConversationRow";
 import { SnoozePicker } from "./SnoozePicker";
 import type { SnippetSource } from "./Editor";
 import { Icon } from "./Icon";
+import { wordDiff } from "../wordDiff";
 import { HtmlFrame } from "./HtmlFrame";
 // The editor is a chunk of its own (ProseMirror is most of its weight); App loads it once the list is up.
 const Editor = lazy(() => import("./Editor").then((m) => ({ default: m.Editor })));
@@ -398,7 +399,8 @@ export function Compose(props: {
   const aiAllowed = () => aiOn("writing", from());
   const newMail = () => !props.init.inReplyTo && !props.init.forwardOf;
   /** `request` is what went to the model; `said` what the bubble shows (a chip's own name). */
-  type Version = { request: string; said: string; written: AiWritten | null; streamed: string; error?: string };
+  /** `base`: the text a tone ask reworked, to show what it changed. */
+  type Version = { request: string; said: string; written: AiWritten | null; streamed: string; error?: string; base?: string };
   const [aiOpen, setAiOpen] = createSignal(false);
   const [versions, setVersions] = createSignal<Version[]>([]);
   // The version on show; the newest unless the person stepped back.
@@ -467,7 +469,9 @@ export function Compose(props: {
       : "";
     const run = ++aiRun;
     const asked = request || (versions().length ? "Again, differently." : "Write this out as a full email.");
-    setVersions([...earlier, { request: asked, said: chip?.label ?? asked, written: null, streamed: "" }]);
+    // A tone ask reworks the version on show, or the person's own words: that is what its change is shown against.
+    const base = chip && TONES.has(chip.label) ? (earlier[earlier.length - 1]?.written?.body ?? own.text) || undefined : undefined;
+    setVersions([...earlier, { request: asked, said: chip?.label ?? asked, written: null, streamed: "", base }]);
     setShown(earlier.length);
     setAiAsk("");
     setAiBusy(true);
@@ -546,14 +550,50 @@ export function Compose(props: {
   const AI_CHIPS = [
     ["Write it out", "Write this out as a full email."],
     ["Shorter", "Make it shorter."],
+    ["Warmer", "Make it warmer and friendlier, still in my voice."],
+    ["Firmer", "Make it firmer and more direct, still polite."],
     ["More formal", "Make it more formal."],
-    ["Friendlier", "Make it friendlier."],
     ["Fix grammar", "Fix spelling and grammar only. Change nothing else."],
   ] as const;
+  /** Quick asks that rework words already there: their version shows what it changed. */
+  const TONES = new Set(["Shorter", "Warmer", "Firmer", "More formal", "Fix grammar"]);
   const nothingYet = () => !versions().length && ownEmpty();
-  const chipLabel = (label: string) => (label === "Write it out" && nothingYet() ? (props.init.inReplyTo ? "Write a reply" : "Write it out") : label);
+  // A draft that is a few points ("- totals confirmed") is written out from them, keeping each: a list of two or more,
+  // and no paragraph of the person's own beside it (the signature and a reply's "wrote:" line aside).
+  const points = () => {
+    body();
+    if (versions().length || !view) return false;
+    const flat = (t: string) => t.replace(/\s+/g, " ").trim();
+    const sig = flat(props.signatures.find((s) => s.id === sigId())?.body ?? "");
+    let items = 0;
+    let prose = 0;
+    view.state.doc.forEach((n) => {
+      if (n.type.name === "blockquote") return;
+      if (n.type.name === "bullet_list" || n.type.name === "ordered_list") items += n.childCount;
+      else {
+        const t = flat(n.textBetween(0, n.content.size, "\n", "\n"));
+        if (t && !/^--(\s|$)/.test(t) && !sig.includes(t) && !/wrote:$/.test(t)) prose++;
+      }
+    });
+    return items >= 2 && prose === 0;
+  };
+  const chipLabel = (label: string) =>
+    label !== "Write it out" ? label : points() ? "Write out these points" : nothingYet() ? (props.init.inReplyTo ? "Write a reply" : "Write it out") : label;
   const chipRequest = (label: string, request: string) =>
-    label === "Write it out" && nothingYet() && props.init.inReplyTo ? "Write a reply to the newest message." : request;
+    label !== "Write it out"
+      ? request
+      : points()
+        ? "Write these points out as a full email. Keep every point, in this order, and add nothing they don't say."
+        : nothingYet() && props.init.inReplyTo
+          ? "Write a reply to the newest message."
+          : request;
+  /** The tone row in the footer: opens Write with AI and asks at once. */
+  const tone = (label: string) => {
+    const chip = AI_CHIPS.find(([l]) => l === label);
+    if (!chip) return;
+    openAi();
+    void askAi({ label, request: chip[1] });
+  };
   /** Space at the start of an empty draft (its first line, nothing written yet) asks AI instead. */
   const spaceAsks = (e: KeyboardEvent) => {
     if (e.key !== " " || e.ctrlKey || e.metaKey || e.altKey || aiOpen() || !aiAllowed() || !view || !view.hasFocus()) return false;
@@ -872,7 +912,18 @@ export function Compose(props: {
                 );
               }}
             </Show>
-            <div class="ai-preview">{current()!.written?.body ?? bodyOf(current()!.streamed)}</div>
+            <Show
+              when={current()!.written && current()!.base ? wordDiff(current()!.base!, current()!.written!.body) : null}
+              fallback={<div class="ai-preview">{current()!.written?.body ?? bodyOf(current()!.streamed)}</div>}
+            >
+              {(pieces) => (
+                <div class="ai-preview diff">
+                  <For each={pieces()}>
+                    {(p) => (p.kind === "same" ? p.text : p.kind === "added" ? <ins>{p.text}</ins> : <del>{p.text}</del>)}
+                  </For>
+                </div>
+              )}
+            </Show>
           </Show>
           <fieldset class="ai-chips plain" aria-label="Quick asks">
             <For each={AI_CHIPS}>
@@ -1032,6 +1083,17 @@ export function Compose(props: {
             <button type="button" class="icon-button ai-button" title="Write with AI (Ctrl+J)" aria-label="Write with AI" onClick={openAi}>
               <kbd class="ai-mark">AI</kbd>
             </button>
+            <Show when={!aiOpen() && !ownEmpty()}>
+              <fieldset class="tone-row plain" aria-label="Tone">
+                <For each={["Shorter", "Warmer", "Firmer"]}>
+                  {(label) => (
+                    <button type="button" class="chip" onClick={() => tone(label)} title={`Ask AI to make it ${label.toLowerCase()}`}>
+                      {label}
+                    </button>
+                  )}
+                </For>
+              </fieldset>
+            </Show>
           </Show>
           <Show when={accountSignatures().length}>
             <label class="signature-pick" title="Signature (Ctrl+Shift+S)">

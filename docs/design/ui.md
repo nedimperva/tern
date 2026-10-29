@@ -229,6 +229,12 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   back what was there), `↑`/`↓` step through versions, `Esc` drops them all. One quiet line says what it reads
   ("Reads this conversation and your style."). It writes from the whole conversation; the draft may be empty.
   Send waits while versions are open ("Keep a version (Tab) or drop them (Esc) before you send.").
+  Since 2026-10-29 (owner's picks): the quick asks are Write it out, Shorter, Warmer, Firmer, More formal and Fix
+  grammar. A draft that is only a list of points (two or more, nothing else of the person's own) reads "Write out
+  these points" and keeps each point in order. A tone ask's version shows what it changed against what it reworked
+  (`src/wordDiff.ts`): new words on `--accent-soft`, dropped ones struck through in `--fg-2`. With words in the draft
+  and the panel closed, a tone row (Shorter, Warmer, Firmer: outlined pills) sits beside the `AI` key in the footer
+  and asks at once.
   New mail: the same, and the answer also names who it goes to and a subject: To, Cc and Subject show above the
   text, each person matched in the contacts on this computer (the contacts never go to the AI): a found one on
   `--accent-soft` with the address, "also …" to pick another with the same name, "No one called “Zed” in your

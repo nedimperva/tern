@@ -5999,6 +5999,37 @@ button.link.danger {
   background: var(--bg-3);
   color: var(--fg-0);
 }
+/* A tone ask's version shows what it changed: new words lit, dropped ones struck through. */
+.ai-preview.diff ins {
+  border-radius: 2px;
+  background: var(--accent-soft);
+  color: var(--fg-0);
+  text-decoration: none;
+}
+.ai-preview.diff del {
+  color: var(--fg-2);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--fg-2) 60%, transparent);
+}
+/* The tone row beside the AI key in compose's footer: one click asks. */
+.tone-row {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: var(--s-1);
+}
+.tone-row .chip {
+  padding: 2px var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.tone-row .chip:hover {
+  background: var(--soft-hover);
+  color: var(--fg-0);
+}
 
 /* The reader (§4.2c): a newsletter in reading view. Who sent it and how long it reads, then its tools; the title
    under it in the reading face. */
