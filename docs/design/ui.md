@@ -361,8 +361,15 @@ Settings → Reading → Start of the day: the screen and the line, only the lin
 - Full-screen page over the list with a 232 px left list of sections in three groups, each under a `--t-xs`
   label: General (Appearance · Reading · Notifications · Desktop · AI · About), Writing (Compose · Snippets · Signatures) and
   Accounts (one entry per account, with its colour dot). A search field at the top of the list narrows it to the
-  sections whose settings match. Content sits in a 640 px column. Controls are plain: toggles, selects, text
+  sections whose settings match. Content sits in a 680 px column, centred. Controls are plain: toggles, selects, text
   fields. Every setting has one line of explanation under it.
+- Redrawn 2026-10-29: the section list is the sidebar's (30 px rows, a 15 px icon or an account's dot, group labels
+  in `--t-sm` 500 `--fg-2`, Close settings at the foot). Settings next to each other share a card (`--card`, a
+  `--line` edge, `--r-lg`, a rule between rows): the name (`--t-md` 500) and its line (`--t-sm` `--fg-2`) on the
+  left, the control on the right, centred against both. Fields and selects are 32 px on `--bg-0` (a `--chevron` on
+  selects); buttons are `--bg-0` with a `--line` edge and `--raise`; checkboxes take `accent-color`. Segmented
+  controls are a `--bg-2` track with the picked part on `--card`. The AI page's provider list, feature table, cards
+  and the snippet and signature panels are cards the same way.
 - Built (2026-10-19), Snippets and Signatures use a wider (1040 px) list-and-detail layout. On the left, a list
   of rows (name, `;shortcut` or "New mail · Replies" in `--fg-2`); the picked row is `--bg-3`, nothing more, and a
   pressed filter pill is `--bg-3` too. Colour is for accounts: a per-account tab is underlined in that account's colour.

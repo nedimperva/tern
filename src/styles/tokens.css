@@ -11,6 +11,10 @@
   /* Meta text stays at AA (4.5:1) on every row background, focused included. */
   --fg-2: #66625a;
   --line: #e9e5dd;
+  /* A card of settings: a shade lifted from --bg-0. */
+  --card: #ffffff;
+  /* A select's chevron, in --fg-2. */
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2366625a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   /* A border that has to show: a raised control's edge under the pointer. */
   --line-strong: #d8d3c9;
   /* The one raised control in the sidebar (New mail). */
@@ -112,6 +116,8 @@
   /* AA (4.5:1) on every row background. */
   --fg-2: #a29d93;
   --line: #302e2a;
+  --card: #252422;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a29d93' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   --line-strong: #403d38;
   --raise: 0 1px 2px rgba(0, 0, 0, 0.3);
   --accent: #7b97de;
@@ -144,6 +150,8 @@
     --fg-1: #b5b0a6;
     --fg-2: #a29d93;
     --line: #302e2a;
+    --card: #252422;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a29d93' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     --line-strong: #403d38;
     --raise: 0 1px 2px rgba(0, 0, 0, 0.3);
     --accent: #7b97de;

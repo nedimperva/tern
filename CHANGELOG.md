@@ -25,6 +25,10 @@ every release needs one here before it is tagged.
   heading, and terns in the logo's navy.
 - Moving with the keyboard shows a soft ring in the accent colour, and only where it helps: no more black outline
   around the list, the editor or fields. In the sidebar, focus is a tone, as under the pointer.
+- Settings look like the rest of Tern: the sections list matches the sidebar, with icons; settings sit in cards,
+  each control lined up beside its name and the line under it; dropdowns, fields and buttons are quieter, and
+  checkboxes and switches take the accent. The AI page's providers, table and cards, and the snippet and signature
+  editors, follow the same look.
 
 ### Fixed
 

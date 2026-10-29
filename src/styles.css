@@ -2983,24 +2983,36 @@ button.fold {
   grid-template-columns: var(--side-w) 1fr;
   background: var(--bg-0);
 }
-/* In the sidebar's place, on its tone, so it reads as the sidebar showing settings. */
+/* In the sidebar's place, on its tone and with its rows, so it reads as the sidebar showing settings. */
 .settings-page nav {
   background: var(--bg-1);
-  padding: var(--s-3) var(--s-2) var(--s-4);
+  padding: var(--s-3) var(--s-2) var(--s-2);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.settings-page nav:hover {
+  scrollbar-color: var(--line-strong) transparent;
 }
 .settings-page .nav-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 var(--s-2) var(--s-3);
+  height: 34px;
+  margin: 0 var(--s-1) var(--s-2) 10px;
 }
 .settings-page nav h2 {
   font-size: var(--t-lg);
+  font-weight: 600;
   margin: 0;
+}
+.settings-page .nav-head kbd {
+  border: 0;
+  background: none;
+  color: var(--fg-2);
 }
 .settings-page .find {
   width: 100%;
@@ -3008,19 +3020,31 @@ button.fold {
   font-size: var(--t-md);
 }
 .settings-page nav .find {
-  margin-bottom: var(--s-3);
+  height: 32px;
+  flex: none;
+  margin-bottom: var(--s-2);
+  padding: 0 10px;
+  background: var(--bg-0);
 }
 .settings-page .nav-group {
-  padding: var(--s-3) 10px var(--s-1);
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.settings-page nav button:not(.link) {
   display: flex;
   align-items: center;
-  gap: var(--s-2);
+  height: 26px;
+  flex: none;
+  margin-top: var(--s-3);
+  padding: 0 10px;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.settings-page nav button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
-  padding: 7px 10px;
+  height: 30px;
+  flex: none;
+  padding: 0 var(--s-2) 0 10px;
   border: 0;
   border-radius: var(--r-md);
   background: none;
@@ -3029,13 +3053,33 @@ button.fold {
   text-align: left;
   cursor: default;
 }
-.settings-page nav button:not(.link):hover {
+.settings-page nav button .slot {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  flex: none;
+  color: var(--fg-2);
+}
+.settings-page nav button .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-page nav button:hover,
+.settings-page nav button:focus-visible {
+  outline: none;
   background: var(--bg-2);
+  color: var(--fg-0);
 }
 .settings-page nav button.active {
   background: var(--bg-3);
   color: var(--fg-0);
   font-weight: 500;
+}
+.settings-page nav button.active .slot {
+  color: var(--fg-0);
 }
 .settings-page .nav-none {
   margin: var(--s-2) 10px;
@@ -3044,10 +3088,11 @@ button.fold {
 }
 .settings-page nav .close {
   margin-top: auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--s-2) 10px;
+}
+.settings-page nav .close kbd {
+  border: 0;
+  background: none;
+  color: var(--fg-2);
 }
 .settings-page .dot {
   width: 8px;
@@ -3060,33 +3105,72 @@ button.fold {
 .settings-body {
   min-width: 0;
   overflow-y: auto;
-  padding: var(--s-5) var(--s-6) var(--s-6);
+  padding: var(--s-6) var(--s-6) 64px;
 }
 .settings-content {
-  max-width: 640px;
+  max-width: 680px;
+  margin: 0 auto;
 }
 .settings-content.wide {
   max-width: 1280px;
 }
 .settings-body h1 {
   font-size: var(--t-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   margin: 0 0 var(--s-5);
 }
+
+/* A setting: its name and a line on it at the left, its control at the right, centred against both. Settings next
+   to each other share one card (--card, a --line edge, --r-lg corners), a rule between them. */
 .setting {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: var(--s-1) var(--s-4);
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--s-5);
+  row-gap: 2px;
   align-items: center;
-  padding: var(--s-3) 0;
-  border-bottom: 1px solid var(--line);
+  padding: 14px var(--s-4);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-bottom: 0;
 }
-.setting .title {
-  font-size: var(--t-rd);
+.setting > .title {
+  grid-column: 1;
+  font-size: var(--t-md);
+  font-weight: 500;
+  color: var(--fg-0);
 }
-.setting .help {
-  grid-column: 1 / -1;
+/* The control: whatever follows the name, unless it is the line on it; centred against the name and its line. */
+.setting > .title + :not(.help) {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  max-width: 340px;
+}
+.setting:has(> .help) > .title + :not(.help) {
+  grid-row: 1 / span 2;
+}
+.setting > .help {
+  grid-column: 1;
   font-size: var(--t-sm);
+  line-height: 1.5;
   color: var(--fg-2);
+}
+/* What needs the row's width: a form that opens in it, details, a list of accounts. */
+.setting > :is(.ai-key, .about-details, .backup-accounts, .backup-passphrase) {
+  grid-column: 1 / -1;
+  margin-top: var(--s-2);
+}
+.settings-content > :not(.setting) + .setting,
+.settings-content > .setting:first-child {
+  border-top-left-radius: var(--r-lg);
+  border-top-right-radius: var(--r-lg);
+}
+.settings-content > .setting:not(:has(+ .setting)) {
+  border-bottom: 1px solid var(--line);
+  border-bottom-left-radius: var(--r-lg);
+  border-bottom-right-radius: var(--r-lg);
+  margin-bottom: var(--s-5);
 }
 .setting .mono {
   font: var(--t-sm) / 1.4 var(--mono);
@@ -3097,6 +3181,88 @@ button.fold {
   color: var(--fg-2);
   line-height: 1.6;
 }
+
+/* Controls in settings: quiet fields, 32 px tall, a chevron drawn in --fg-2 on selects, and buttons on the card's
+   tone with a --line edge. */
+.settings-page :is(select, input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"])) {
+  height: 32px;
+  box-sizing: border-box;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: var(--t-md);
+  background-color: var(--bg-0);
+  border-color: var(--line);
+}
+.settings-page select {
+  appearance: none;
+  padding-right: 30px;
+  background-image: var(--chevron);
+  background-position: calc(100% - 10px) 50%;
+  background-size: 12px 12px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+.settings-page :is(select, input):hover:not(:focus, :disabled) {
+  border-color: var(--line-strong);
+}
+.settings-page :is(select, input):focus {
+  border-color: var(--accent);
+}
+.setting button:not(.link, .primary, [role="radio"]) {
+  height: 32px;
+  padding: 0 var(--s-3);
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  font-size: var(--t-md);
+  white-space: nowrap;
+  box-shadow: var(--raise);
+}
+.setting button:not(.link, .primary, [role="radio"]):hover:not(:disabled) {
+  background: var(--bg-2);
+  border-color: var(--line-strong);
+}
+.setting button.primary {
+  height: 32px;
+  padding: 0 var(--s-3);
+  font-size: var(--t-md);
+  font-weight: 500;
+}
+.setting .value-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--fg-1);
+  font-size: var(--t-md);
+}
+.setting .ai-key {
+  display: flex;
+  gap: var(--s-2);
+}
+.setting .ai-key input {
+  flex: 1;
+}
+.settings-page input[type="checkbox"],
+.settings-page input[type="radio"] {
+  accent-color: var(--accent);
+}
+.settings-content
+  :is(.ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions)
+  button:not(.link, .primary, .danger, [role="radio"]) {
+  height: 32px;
+  padding: 0 var(--s-3);
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font-size: var(--t-md);
+  white-space: nowrap;
+  box-shadow: var(--raise);
+}
+.settings-content
+  :is(.ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions)
+  button:not(.link, .primary, .danger, [role="radio"]):hover:not(:disabled) {
+  background: var(--bg-2);
+  border-color: var(--line-strong);
+}
 .settings-body h1 + .snippets-settings,
 .settings-body h1 + .signatures-settings {
   margin-top: calc(-1 * var(--s-4));
@@ -3105,7 +3271,7 @@ button.fold {
 .panel {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--bg-0);
+  background: var(--card);
 }
 .master.panel {
   padding: var(--s-3);
@@ -3661,6 +3827,7 @@ button.place.muted {
 .segmented {
   display: inline-flex;
   align-self: flex-start;
+  gap: 2px;
   padding: 2px;
   border-radius: var(--r-md);
   background: var(--bg-2);
@@ -3670,18 +3837,22 @@ button.place.muted {
   align-items: center;
   height: 28px;
   padding: 0 var(--s-3);
-  border-radius: var(--r-md);
+  border-radius: 6px;
   color: var(--fg-1);
+  font-size: var(--t-md);
   cursor: pointer;
 }
+.segmented label:hover {
+  color: var(--fg-0);
+}
 .segmented label.on {
-  background: var(--bg-0);
+  background: var(--card);
   color: var(--fg-0);
   font-weight: 500;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--raise);
 }
-.segmented label:focus-within {
-  outline: 2px solid var(--accent);
+.segmented label:has(:focus-visible) {
+  outline: 2px solid var(--focus-ring);
 }
 .segmented input {
   position: absolute;
@@ -4523,8 +4694,7 @@ fieldset.plain {
 .ai-step {
   display: flex;
   gap: var(--s-3);
-  padding: var(--s-4) 0;
-  border-bottom: 1px solid var(--line);
+  padding: var(--s-3) 0 var(--s-5);
 }
 .ai-step-mark {
   flex: none;
@@ -4554,7 +4724,7 @@ fieldset.plain {
   gap: var(--s-2);
 }
 .ai-step-body h2 {
-  margin: 3px 0 0;
+  margin: 3px 0 var(--s-1);
   font-size: var(--t-rd);
   font-weight: 600;
 }
@@ -4603,28 +4773,28 @@ fieldset.plain {
   color: var(--fg-1);
 }
 .ai-ledger {
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--soft);
+  background: var(--card);
   overflow: hidden;
 }
 .ai-ledger .row {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr) 170px 32px;
   gap: var(--s-3);
-  align-items: start;
+  align-items: center;
   padding: var(--s-3) var(--s-4);
-  background: var(--bg-0);
-  border-top: 1px solid var(--bg-2);
+  border-top: 1px solid var(--line);
 }
 .ai-ledger .row.head {
-  background: transparent;
+  background: var(--bg-1);
   border-top: none;
   padding-block: var(--s-2);
   font-size: var(--t-xs);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--fg-1);
+  color: var(--fg-2);
 }
 .ai-ledger .name {
   font-size: var(--t-md);
@@ -4642,13 +4812,15 @@ fieldset.plain {
   color: var(--fg-1);
 }
 .ai-ledger input {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   margin: 0;
 }
 .ai-ledger .foot {
   margin: 0;
-  padding: var(--s-2) var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--line);
+  background: var(--bg-1);
   font-size: var(--t-sm);
   line-height: 1.5;
   color: var(--fg-1);
@@ -4659,8 +4831,9 @@ fieldset.plain {
   gap: var(--s-3);
   margin: var(--s-4) 0;
   padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--soft);
+  background: var(--card);
   font-size: var(--t-md);
   color: var(--fg-1);
 }
@@ -4680,6 +4853,7 @@ fieldset.plain {
   padding: var(--s-3) var(--s-4);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
+  background: var(--card);
   font-size: var(--t-md);
 }
 .ai-card .kicker,
@@ -4866,26 +5040,25 @@ fieldset.plain {
   color: var(--fg-2);
   font: inherit;
 }
-.segmented {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--r-md);
-  background: var(--bg-0);
-}
 .segmented button {
   flex: 1;
-  padding: var(--s-1);
+  height: 28px;
+  padding: 0 var(--s-3);
   border: none;
-  border-radius: var(--r-sm);
+  border-radius: 6px;
   background: transparent;
   color: var(--fg-1);
   font: inherit;
-  font-size: var(--t-sm);
+  font-size: var(--t-md);
+}
+.segmented button:hover {
+  color: var(--fg-0);
 }
 .segmented button.on {
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--card);
+  color: var(--fg-0);
+  font-weight: 500;
+  box-shadow: var(--raise);
 }
 button.link.danger {
   color: var(--danger);
@@ -5054,8 +5227,9 @@ button.link.danger {
 .ai-provider-list {
   display: flex;
   flex-direction: column;
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--soft);
+  background: var(--card);
   overflow: hidden;
 }
 .ai-provider {
@@ -5063,9 +5237,10 @@ button.link.danger {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border-top: 1px solid var(--bg-2);
-  background: var(--bg-0);
+  min-height: 52px;
+  box-sizing: border-box;
+  padding: var(--s-2) var(--s-3) var(--s-2) var(--s-4);
+  border-top: 1px solid var(--line);
 }
 .ai-provider:first-child {
   border-top: none;
