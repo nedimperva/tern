@@ -3,7 +3,7 @@
 import { createResource, createSignal, onMount, Show } from "solid-js";
 import { api } from "../../api";
 import { omarchyAvailable, setSetting, settings } from "../../settings";
-import { NIGHT_SHIFT, SCENES } from "../../zero";
+import { NIGHT_SHIFT, SCENES, TIDE_REPORT } from "../../zero";
 import { Select } from "./shared";
 
 export function AppearanceSettings() {
@@ -50,7 +50,7 @@ export function AppearanceSettings() {
         help="What an empty inbox shows. Flock, Streak and Your migration count what you clear in Tern on this computer."
         choices={[
           { label: "A different tern each day", value: "rotate" },
-          ...[...SCENES, NIGHT_SHIFT].map((s) => ({ label: s.name, value: s.id as string })),
+          ...[...SCENES, NIGHT_SHIFT, TIDE_REPORT].map((s) => ({ label: s.name, value: s.id as string })),
         ]}
       />
     </>
@@ -286,6 +286,15 @@ export function NotificationSettings() {
         choices={[
           { label: "Important mail", value: false },
           { label: "Important and Other", value: true },
+        ]}
+      />
+      <Select
+        name="wingBeat"
+        title="Sound when mail leaves"
+        help="A soft wing beat as a message goes out of the outbox. Quiet hours keep it quiet too."
+        choices={[
+          { label: "Off", value: false },
+          { label: "Wing beat", value: true },
         ]}
       />
       <div class="setting">

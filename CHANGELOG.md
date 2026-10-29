@@ -15,6 +15,12 @@ every release needs one here before it is tagged.
 - A little motion that says where things went: a conversation you mark done slides right, one you delete slides
   left, a snoozed one lifts away, and the rows below close up instead of jumping. A star pops when you put it on.
   None of it with reduced motion.
+- A sky that changes: Inbox Zero's Horizon follows the hour, from first light to dusk, shows the moon in its real
+  phase at night, and snows a little in winter.
+- The tide report: on Sundays Inbox Zero shows your week in mail — how much came in, how much you cleared, the days
+  you reached zero and the quietest day. It's counted on this computer.
+- Wing beat: a soft sound when a message leaves the outbox. Off by default; Settings → Notifications → Sound when
+  mail leaves. Quiet hours keep it quiet.
 
 ### Changed
 

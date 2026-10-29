@@ -342,6 +342,16 @@ panel icon or the column's own × hides it, for every conversation until shown a
   cleared this year), The dive (the only animation; still with reduced motion) and Seasons (the coast by month).
   From 22:00 to 05:00 Night shift: a sleeping colony, "Go to sleep." The facts in the lines are the Arctic tern's
   commonly given figures (about 70,000 km a year, 2.4 million km a life, the most daylight of any animal).
+- A sky that changes (owner, 2026-10-29): Horizon follows the part of the day (`src/sky.ts`: dawn 06–08 and dusk
+  17–19 with a low warm sun and a faint wash of its colour, day with the sun high, night with stars), draws the
+  real phase of the moon (from a known new moon; lit side right while waxing) and, December to February, drifting
+  snow (still with reduced motion). Its line says which: "First light on the water", "A full moon over a quiet
+  sea", "No moon tonight, all stars", "Snow falling on a quiet sea". After dark it takes `.zero-night`, so the words
+  stay light in Dawn too.
+- The tide report (owner, 2026-10-29) takes Sundays instead of the rotation (and can be picked): "N messages came in
+  this week" from `arrivals` (mail from others by arrival, wherever it went, a Gmail message once), "You cleared M.
+  Inbox zero on K of 7 days. The quietest was Tuesday, with 12." A bar a day on the right: `--z-line`, the days that
+  reached zero `--t2`, the quietest (today aside) `--t5` with a tern over it. Local only; never a streak to lose.
 - Layout: "side" scenes put the words left (kicker in `--z-kicker`, the time or a count at 56 px, one line) and the
   picture right; "center" ones put the words at the bottom over a full picture. Under 760 px wide the picture steps
   back to 35 % behind centred words. Colours are `--z-*` and `--t1…8` tokens on `.zero`, light and dark: since

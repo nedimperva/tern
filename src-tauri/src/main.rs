@@ -276,6 +276,7 @@ fn main() {
             commands::about,
             commands::open_logs,
             omarchy::omarchy_theme,
+            commands::arrivals,
             commands::send_now,
             commands::update_ready,
             commands::restart_to_update,

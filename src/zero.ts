@@ -14,7 +14,8 @@ export type SceneId =
   | "migration"
   | "dive"
   | "seasons"
-  | "night";
+  | "night"
+  | "report";
 
 /** The rotation, in order; one a day. Night shift takes over late in the evening instead of having a day. */
 export const SCENES: { id: SceneId; name: string }[] = [
@@ -30,6 +31,8 @@ export const SCENES: { id: SceneId; name: string }[] = [
   { id: "seasons", name: "Seasons" },
 ];
 export const NIGHT_SHIFT = { id: "night" as const, name: "Night shift" };
+/** The week in mail; it takes Sundays instead of the rotation. */
+export const TIDE_REPORT = { id: "report" as const, name: "The tide report" };
 
 /** Days since 1 January 1970 in local time: the same scene all day, the next one tomorrow. */
 export function localDay(now: Date) {
@@ -46,8 +49,9 @@ export const lateNight = (now: Date) => now.getHours() >= 22 || now.getHours() <
 /** Today's scene. A rotation through ten never shows one two days running. */
 export function sceneFor(now: Date): SceneId {
   const pick = settings.zeroScene;
-  if (pick === NIGHT_SHIFT.id || SCENES.some((s) => s.id === pick)) return pick as SceneId;
+  if (pick === NIGHT_SHIFT.id || pick === TIDE_REPORT.id || SCENES.some((s) => s.id === pick)) return pick as SceneId;
   if (lateNight(now)) return "night";
+  if (now.getDay() === 0) return "report";
   return SCENES[localDay(now) % SCENES.length].id;
 }
 
@@ -105,3 +109,4 @@ export function thisWeek(now: Date) {
     return { name: d.toLocaleDateString(undefined, { weekday: "short" }), done, future, isToday };
   });
 }
+

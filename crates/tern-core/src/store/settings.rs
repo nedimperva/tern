@@ -124,6 +124,21 @@ impl Store {
         })
     }
 
+    /// When each message from someone else arrived since `since` (Unix seconds), wherever it is now: the tide
+    /// report counts the week's mail, archived or not. A message in two folders (Gmail labels) counts once.
+    pub fn arrivals(&self, since: i64) -> Result<Vec<i64>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(
+            "SELECT min(m.date) FROM messages m
+             JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id
+             WHERE m.date > ?1 AND f.role NOT IN ('sent', 'drafts', 'junk')
+               AND lower(m.from_addr) <> lower(a.email)
+             GROUP BY m.account_id, coalesce(m.message_id, m.id)",
+        )?;
+        let dates = stmt.query_map([since], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+        Ok(dates)
+    }
+
     // MARK: AI
 
     /// A kept AI answer for exactly this request (see `ai::key_hash`).

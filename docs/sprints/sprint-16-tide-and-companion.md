@@ -26,9 +26,9 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
   line. Built from the store on this computer; no AI.
 
 ### D. Delight
-- [ ] A sky that changes: Inbox Zero follows the hour and the season, with the real phase of the moon.
-- [ ] Wing beat: a soft sound when mail leaves the outbox. Off by default.
-- [ ] The tide report: on Sunday, how much came in, how fast it was cleared, the quietest day. Local, no streaks.
+- [x] A sky that changes: Inbox Zero follows the hour and the season, with the real phase of the moon.
+- [x] Wing beat: a soft sound when mail leaves the outbox. Off by default.
+- [x] The tide report: on Sunday, how much came in, how fast it was cleared, the quietest day. Local, no streaks.
 
 ### E. Reading
 - [ ] Only what's new: in a long conversation each reply shows its new text; quoted history folds into a line.
@@ -62,3 +62,6 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
 - 2026-10-29: Slice C done: the tide replaces the day screen; `day_start` gains `to_read` (shelf, then lists since,
   with minutes). Tried with `npm run dev` in headless Chromium: Dawn after dark, Dusk, Night Sea and 760 px wide.
   Source Serif 4 600 is bundled (21 kB woff2) for its headings.
+- 2026-10-29: Slice D done: Horizon by hour, moon phase and winter snow (`src/sky.ts`, tested); the tide report on
+  Sundays (`arrivals` in the store, tested; `src/tide.ts`, tested); the wing beat (Web Audio, off by default). Sky
+  and report tried with the fake mailbox in headless Chromium at fixed times; the sound was not heard (headless).

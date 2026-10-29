@@ -2,8 +2,11 @@
 // in SVG (nothing to licence, light and dark from the theme's colours), with the time and one line.
 
 import { createSignal, For, type JSX, onCleanup, Show } from "solid-js";
-import type { Account } from "../api";
+import { api, type Account } from "../api";
 import { colourOf } from "../colours";
+import { settings } from "../settings";
+import { weekReport, weekStart } from "../tide";
+import { moonPath, moonPhase, skyAt, winter } from "../sky";
 import {
   clearedThisYear,
   clearedToday,
@@ -76,6 +79,8 @@ type Scene = {
   /** "side": words on the left, the picture on the right; "center": words at the bottom over a full picture. */
   layout: "side" | "center";
   art: () => JSX.Element;
+  /** Drawn after dark whatever the mood, so the words take the night's light colours. */
+  dark?: boolean;
   kicker?: string;
   /** The big line: the time, or a count. */
   big: string;
@@ -92,6 +97,9 @@ export function InboxZero(props: { accounts: Account[] }) {
   const timer = window.setInterval(() => setNow(new Date()), 30_000);
   onCleanup(() => clearInterval(timer));
   const time = () => now().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  // The week's mail, for the tide report; read once, and only for that scene.
+  const [arrived, setArrived] = createSignal<number[]>([]);
+  if (sceneFor(now()) === "report") void api.arrivals(weekStart(now())).then(setArrived, () => {});
 
   const scenes: Record<SceneId, () => Scene> = {
     pole: () => {
@@ -217,17 +225,43 @@ export function InboxZero(props: { accounts: Account[] }) {
     },
 
     horizon: () => {
-      const hour = now().getHours();
-      const night = hour >= 19 || hour < 6;
-      // The sun's colour changes with the day, so the scene stays a small reward.
-      const hue = 12 + ((dayOfYear(now()) * 7) % 40);
+      // The sky follows the hour (dawn, day, dusk, night), the season (snow in winter) and the real moon.
+      const sky = skyAt(now());
+      const night = sky === "night";
+      const phase = moonPhase(now());
+      const full = Math.abs(phase - 0.5) < 0.035;
+      const dark = phase < 0.035 || phase > 0.965;
+      const snow = winter(now());
+      // The sun's colour changes with the day, so the scene stays a small reward; low suns are warmer.
+      const hue = sky === "day" ? 12 + ((dayOfYear(now()) * 7) % 40) : sky === "dawn" ? 30 : 14;
+      const sun = `hsl(${hue} 72% 64%)`;
+      const sunY = sky === "day" ? 210 : 372;
+      const line = night
+        ? full
+          ? "Inbox zero. A full moon over a quiet sea."
+          : dark
+            ? "Inbox zero. No moon tonight, all stars."
+            : snow
+              ? "Inbox zero. Snow falling on a quiet sea."
+              : "Inbox zero. Quiet sea tonight."
+        : sky === "dawn"
+          ? "Inbox zero. First light on the water."
+          : sky === "dusk"
+            ? "Inbox zero. The sun goes down easy."
+            : snow
+              ? "Inbox zero. Cold, clear and empty."
+              : "Inbox zero. Clear skies all the way out.";
       return {
         layout: "center",
+        dark: night,
         big: time(),
-        line: night ? "Inbox zero. Quiet sea tonight." : "Inbox zero. Clear skies all the way out.",
+        line,
         art: () => (
           <g classList={{ "after-dark": night }}>
             <rect class="sky" width={W} height={H} />
+            <Show when={sky === "dawn" || sky === "dusk"}>
+              <rect class="low-sun" width={W} height="388" style={{ fill: sun }} />
+            </Show>
             <Show when={night}>
               <g class="stars">
                 <For each={[[96, 70], [210, 140], [330, 54], [470, 110], [560, 40], [660, 150], [900, 64], [1010, 128], [150, 250], [980, 260], [430, 220], [1050, 40]]}>
@@ -235,10 +269,25 @@ export function InboxZero(props: { accounts: Account[] }) {
                 </For>
               </g>
             </Show>
-            <circle cx="790" cy={night ? 300 : 388} r={night ? 40 : 64} style={{ fill: night ? "var(--z-moon)" : `hsl(${hue} 72% 64%)` }} />
+            <Show
+              when={night}
+              fallback={<circle cx="790" cy={sunY} r="64" style={{ fill: sun }} />}
+            >
+              <circle class="moon-dark" cx="790" cy="300" r="40" />
+              <path d={moonPath(phase, 790, 300, 40)} style={{ fill: "var(--z-moon)" }} />
+            </Show>
             <rect class="sea" y="388" width={W} height={H - 388} />
             <path class="shoreline" d={`M0 388 h${W}`} />
-            <path class="glint" style={{ stroke: night ? "var(--z-moon)" : `hsl(${hue} 72% 64%)` }} d="M720 420 h140 M752 440 h76 M776 458 h28" />
+            <Show when={!(night && dark)}>
+              <path class="glint" style={{ stroke: night ? "var(--z-moon)" : sun }} d="M720 420 h140 M752 440 h76 M776 458 h28" />
+            </Show>
+            <Show when={snow}>
+              <g class="snow">
+                <For each={[[80, 40], [190, 120], [300, 20], [420, 160], [520, 80], [640, 30], [700, 190], [860, 110], [950, 30], [1060, 150], [1130, 70], [250, 250], [600, 280], [1000, 300]]}>
+                  {([x, y], i) => <circle cx={x} cy={y} r={i() % 3 ? 1.6 : 2.4} style={{ "animation-delay": `${-(i() * 0.9)}s` }} />}
+                </For>
+              </g>
+            </Show>
             <path class="wave" d="M120 440 h60 M260 470 h90 M520 452 h40 M940 476 h70" />
             <Tern at="translate(300 150) scale(1.35)" />
           </g>
@@ -375,6 +424,41 @@ export function InboxZero(props: { accounts: Account[] }) {
       };
     },
 
+    report: () => {
+      const r = weekReport(arrived(), settings.zeroLog, now());
+      const most = Math.max(1, ...r.days.map((d) => d.came));
+      const parts = [`You cleared ${r.cleared}.`];
+      if (r.zeroDays) parts.push(`Inbox zero on ${r.zeroDays} of 7 days.`);
+      if (r.came) parts.push(`The quietest was ${r.quietest.name}, with ${r.quietest.came}.`);
+      return {
+        layout: "side",
+        kicker: "The tide report",
+        big: r.came.toLocaleString(),
+        unit: r.came === 1 ? "message came in this week" : "messages came in this week",
+        line: parts.join(" "),
+        art: () => (
+          <>
+            <path class="shoreline" d="M640 470 h444" />
+            <For each={r.days}>
+              {(d, i) => {
+                const x = 648 + i() * 62;
+                const h = Math.max(6, (d.came / most) * 300);
+                return (
+                  <g>
+                    <rect class="tide-bar" classList={{ quiet: d === r.quietest, zero: d.zero }} x={x} y={470 - h} width="40" height={h} rx="9" />
+                    <text class="tide-day" x={x + 20} y="500" text-anchor="middle">
+                      {d.name.slice(0, 2)}
+                    </text>
+                  </g>
+                );
+              }}
+            </For>
+            <Tern at={`translate(${648 + r.days.indexOf(r.quietest) * 62 - 40} ${470 - Math.max(6, (r.quietest.came / most) * 300) - 110}) scale(0.5)`} />
+          </>
+        ),
+      };
+    },
+
     night: () => ({
       layout: "center",
       big: time(),
@@ -403,7 +487,7 @@ export function InboxZero(props: { accounts: Account[] }) {
   return (
     <Show when={scene()}>
       {(s) => (
-        <div class={`zero zero-${s().layout} zero-${s().id}`}>
+        <div class={`zero zero-${s().layout} zero-${s().id}`} classList={{ "zero-night": !!s().dark }}>
           <svg
             class="zero-art"
             viewBox={`0 0 ${W} ${H}`}
