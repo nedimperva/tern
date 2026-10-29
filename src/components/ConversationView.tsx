@@ -1108,13 +1108,15 @@ export function ConversationView(props: {
             </div>
           )}
         </Show>
-        {/* Every earlier message as one line: a click opens one in place. A long conversation's older read lines wait
-            behind "Earlier in this conversation". */}
+        {/* The thread, oldest first: every message one line that opens in place, and the newest open at the end, the
+            same size as the rest (owner, 2026-10-29). A long conversation's older read lines wait behind "Earlier in
+            this conversation". A conversation of one message takes the stage below instead. */}
         <Show when={!stage()}>
           <div class="history">
-            <For each={props.messages.slice(0, -1)}>
+            <For each={props.messages}>
               {(m, i) => {
-                const open = () => props.expanded(m.id);
+                const newest = () => i() === props.messages.length - 1;
+                const open = () => props.expanded(m.id) || newest();
                 const firstTucked = () => tucked(i()) && (i() === 0 || !tucked(i() - 1));
                 return (
                   <Show
@@ -1136,7 +1138,7 @@ export function ConversationView(props: {
                       classList={{ focused: i() === props.focused, open: open(), unread: !m.seen, mine: props.mine(m.fromAddr) }}
                     >
                       {/* biome-ignore lint/a11y/noStaticElementInteractions: O expands or collapses the focused message */}
-                      <header onClick={() => props.onToggle(i())}>
+                      <header onClick={() => !newest() && props.onToggle(i())}>
                         <Avatar addr={m.fromAddr} name={m.fromName} />
                         <span class="line">
                           {sender(m)}
@@ -1179,10 +1181,9 @@ export function ConversationView(props: {
               }}
             </For>
           </div>
-          <Show when={gap(props.messages.length - 1)}>{(g) => <div class="gap">{g()}</div>}</Show>
         </Show>
-        {/* The newest message, or the only one, on stage: a byline and the body a size up. */}
-        <Show when={last()}>
+        {/* The only message on stage: a byline and the body a size up. */}
+        <Show when={stage() && last()}>
           {(m) => (
             <article class="card stage-msg" data-message={m().id} classList={{ unread: !m().seen, mine: props.mine(m().fromAddr) }}>
               <div class="byline" classList={{ gone: reader() }}>

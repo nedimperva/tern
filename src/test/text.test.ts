@@ -67,6 +67,14 @@ describe("markQuotes", () => {
     expect(d.querySelector("p")?.classList.contains("tern-quote")).toBe(false);
   });
 
+  it("folds what follows an Outlook From/Sent header, at every level", () => {
+    const d = doc(
+      `<div class="WordSection1"><p>Evo troškova.</p><div><p><b>From:</b> Amar Ćosić [mailto:a@x]<br><b>Sent:</b> Wednesday<br><b>Subject:</b> BINGO</p></div><p>Earlier words</p></div><p>Older still</p>`,
+    );
+    markQuotes(d);
+    expect(marked(d)).toEqual(["From: Amar Ć", "Earlier word", "Older still"]);
+  });
+
   it("folds a company's legal notice, in either language", () => {
     const d = doc(
       `<p>Plaćeno.</p><p><strong>&nbsp;We retain our right to contractual penalty due to delay in delivery.</strong></p><p>NAPOMENA: Informacije sadržane u ovoj poruci su povjerljive ili zaštićene zakonom.</p><p>Pozdrav</p>`,

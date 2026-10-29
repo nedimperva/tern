@@ -29,6 +29,8 @@ every release needs one here before it is tagged.
 - Writing with AI: type a few bullet points and Write with AI offers "Write out these points", keeping each one. A
   tone row (Shorter, Warmer, Firmer) sits in compose's footer, and a reworked version shows exactly what it changed
   before you keep it.
+- A conversation reads as a thread: every message one line, oldest first, and the newest open at the end, the same
+  size as the others. Earlier messages open when you click them.
 - Wing beat: a soft sound when a message leaves the outbox. Off by default; Settings → Notifications → Sound when
   mail leaves. Quiet hours keep it quiet.
 

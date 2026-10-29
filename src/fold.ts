@@ -1,5 +1,8 @@
 // What a message repeats or signs off with, folded away behind "···" (docs/design/ui.md §4.2).
 
+/** The header Outlook writes over the mail it quotes, in English and Bosnian/Croatian/Serbian, German, French. */
+const OUTLOOK_HEADER = /^(From|Od|Von|De|Šalje):\s.{3,300}?\b(Sent|Poslano|Poslato|Gesendet|Envoyé|Date|Datum):\s/is;
+
 /** A legal notice a company's mail server puts under every message ("NOTICE: … intended recipient …"), in English
  * and Bosnian/Croatian/Serbian. Replies carry each earlier copy, so they pile up. */
 const NOTICE =
@@ -47,6 +50,18 @@ export function markQuotes(doc: Document) {
       q.classList.add("tern-quote");
       before.classList.add("tern-quote");
     }
+  }
+  // Outlook marks nothing: its quote starts with a "From: … Sent: …" block, and everything after that block in the
+  // message (its siblings, and theirs on each level up) is the earlier mail.
+  for (const el of doc.querySelectorAll("p, div")) {
+    if (el.closest(".tern-quote") || el.querySelector("p, div")) continue;
+    const text = (el.textContent ?? "").replace(/\u00a0/g, " ").trim();
+    if (!OUTLOOK_HEADER.test(text) || !el.previousElementSibling && el.parentElement === doc.body) continue;
+    for (let at: Element | null = el; at && at !== doc.body; at = at.parentElement) {
+      if (at === el) at.classList.add("tern-quote");
+      for (let next = at.nextElementSibling; next; next = next.nextElementSibling) next.classList.add("tern-quote");
+    }
+    break;
   }
   // Legal notices, wherever they are: the smallest block that holds one, never the whole message.
   for (const el of doc.querySelectorAll("p, div, td")) {
