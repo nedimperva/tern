@@ -772,6 +772,57 @@ fn removing_an_account_takes_its_mail_and_search_with_it() {
 }
 
 #[test]
+fn a_new_mail_with_a_subject_used_before_is_a_new_conversation() {
+    let (store, account, inbox, _) = setup();
+    let day = 86_400;
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[
+                mail(1, "Narudzba", day, "me@example.com", "elman@x.com"),
+                // The next order, two days later, to the same supplier: not a reply.
+                mail(2, "Narudzba", 3 * day, "me@example.com", "elman@x.com"),
+                // A reply to it from a client that sends no References: joined by subject.
+                mail(3, "Odg: Narudzba", 3 * day + 600, "elman@x.com", "me@example.com"),
+            ],
+        )
+        .unwrap();
+    let rows = store.list(&ListTarget::Folder(inbox), None, 10).unwrap();
+    let thread = |uid: i64| rows.iter().find(|r| r.id == uid).unwrap().thread_id.clone();
+    assert_ne!(thread(1), thread(2));
+    assert_eq!(thread(2), thread(3));
+}
+
+#[test]
+fn migration_29_gives_subject_joined_mail_its_own_conversation_back() {
+    let (store, account, inbox, _) = setup();
+    let mut reply = mail(3, "RE: Narudzba", 300, "elman@x.com", "me@example.com");
+    reply.references = vec!["2@example.com".into()];
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[
+                mail(1, "Narudzba", 100, "me@example.com", "elman@x.com"),
+                mail(2, "Narudzba", 200, "me@example.com", "elman@x.com"),
+            ],
+        )
+        .unwrap();
+    store.insert_messages(account, inbox, &[reply]).unwrap();
+    let conn = store.conn.into_inner().unwrap();
+    // As the old rule left them: all three in the first order's conversation.
+    conn.execute("UPDATE messages SET thread_id = '1@example.com'", []).unwrap();
+    wind_back(&conn, 28);
+    let store = Store::init(conn).unwrap();
+    let rows = store.list(&ListTarget::Folder(inbox), None, 10).unwrap();
+    let thread = |uid: i64| rows.iter().find(|r| r.id == uid).unwrap().thread_id.clone();
+    assert_eq!(thread(1), "1@example.com");
+    assert_eq!(thread(2), "2@example.com", "the second order is its own again");
+    assert_eq!(thread(3), "2@example.com", "and its reply goes with it");
+}
+
+#[test]
 fn list_mail_with_one_subject_stays_apart() {
     let (store, account, inbox, _) = setup();
     let day = 86_400;
@@ -1396,6 +1447,7 @@ fn renumbering_keeps_messages_queued_work_is_about_to_change() {
 fn wind_back(conn: &Connection, version: i64) {
     for from in (version..SCHEMA_VERSION).rev() {
         let undo = match from {
+            28 => "",
             27 => "DROP TABLE read_later;",
             26 => "DROP TABLE marks;",
             25 => "DROP TABLE ai_styles;",

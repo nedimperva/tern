@@ -22,7 +22,7 @@ mod settings;
 mod syncing;
 mod writing;
 
-const SCHEMA_VERSION: i64 = 28;
+const SCHEMA_VERSION: i64 = 29;
 
 /// What a mark is kept by: the message's Message-ID, or its row for mail without one.
 const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
@@ -198,7 +198,8 @@ fn note_people(conn: &Connection, me: &str, m: &NewMessage) -> Result<()> {
 /// A subject as conversations compare it: lowercase, without reply and forward prefixes ("Re:", "Fwd:", "AW:",
 /// "Re[2]:") or leading list tags ("[team]"). None when nothing is left, so empty subjects never join up.
 pub fn subject_norm(subject: &str) -> Option<String> {
-    const PREFIXES: &[&str] = &["re", "fw", "fwd", "aw", "wg", "sv", "vs", "antw", "tr", "rv", "ref", "odp"];
+    const PREFIXES: &[&str] =
+        &["re", "fw", "fwd", "aw", "wg", "sv", "vs", "antw", "tr", "rv", "ref", "odp", "odg"];
     let mut s = subject.trim().to_lowercase();
     loop {
         let before = s.len();
@@ -632,14 +633,26 @@ fn thread_for(conn: &Connection, account_id: i64, folder_id: i64, m: &NewMessage
             return Ok(id.clone());
         }
     }
-    // Lists and bulk senders repeat one subject on purpose (a weekly report, an alert): those stay apart.
+    // Only a reply ("Re: …") that lost its headers is joined by subject: a new mail with a subject used before (a
+    // second "Order", the next invoice, another build alert) is a new conversation. Lists and bulk senders repeat
+    // one subject on purpose too: those stay apart.
     let bulk = m.list_id.is_some() || m.precedence_bulk;
-    if !bulk {
+    if !bulk && is_reply_subject(&m.subject) {
         if let Some(thread) = thread_by_subject(conn, account_id, m)? {
             return Ok(thread);
         }
     }
     Ok(m.message_id.clone().unwrap_or_else(|| format!("uid:{folder_id}:{}", m.uid)))
+}
+
+/// Whether a subject starts like a reply or a forward ("Re:", "AW:", "Fwd[2]:", "Odg:").
+pub(crate) fn is_reply_subject(subject: &str) -> bool {
+    const PREFIXES: &[&str] =
+        &["re", "fw", "fwd", "aw", "wg", "sv", "vs", "antw", "tr", "rv", "ref", "odp", "odg"];
+    let s = subject.trim_start();
+    let Some((head, _)) = s.split_once(':') else { return false };
+    let word = head.split('[').next().unwrap_or(head).trim().to_lowercase();
+    PREFIXES.contains(&word.as_str())
 }
 
 /// The conversation of a message with the same normalised subject, within SUBJECT_WINDOW, that shares someone

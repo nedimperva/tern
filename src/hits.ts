@@ -1,6 +1,8 @@
 // The words searched for, lit up in a conversation opened from the results, so the reason it was found is in view.
 // Drawn with the CSS Custom Highlight API like marks (marks.ts): the message's own markup is never touched.
 
+import { docOf, windowOf } from "./frames";
+
 /** The words a search looks for: filters (`from:ada`), left-out words (`-paid`) and OR dropped; a quoted phrase
  * stays whole. */
 export function hitWords(query: string): string[] {
@@ -45,14 +47,19 @@ export function drawHits(words: string[]) {
   const byWindow = new Map<Window, Range[]>();
   const roots: Node[] = [];
   for (const card of document.querySelectorAll<HTMLElement>(".card[data-message]")) {
-    const frame = card.querySelector<HTMLIFrameElement>("iframe");
-    const root = frame ? frame.contentDocument?.body : card.querySelector(".body");
-    if (root) roots.push(root);
-    if (frame?.contentWindow) byWindow.set(frame.contentWindow, []);
+    // WebKit throws, rather than answering null, for a frame it no longer lets us into (one on its way out).
+    try {
+      const frame = card.querySelector<HTMLIFrameElement>("iframe");
+      const root = frame ? docOf(frame)?.body : card.querySelector(".body");
+      if (root) roots.push(root);
+      const w = windowOf(frame);
+      if (w) byWindow.set(w, []);
+    } catch {}
   }
   byWindow.set(window, []);
   const pattern = matcher(words);
   for (const root of pattern ? roots : []) {
+    try {
     const doc = root.ownerDocument!;
     const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
@@ -65,12 +72,17 @@ export function drawHits(words: string[]) {
         byWindow.get(doc.defaultView!)?.push(range);
       }
     }
+    } catch {}
   }
   for (const [w, ranges] of byWindow) {
-    const api = w as unknown as { CSS?: { highlights?: Highlights }; Highlight?: new (...r: Range[]) => unknown };
-    const reg = api.CSS?.highlights;
-    if (!reg || !api.Highlight) continue;
-    if (ranges.length) reg.set("tern-hit", new api.Highlight(...ranges));
-    else reg.delete("tern-hit");
+    // A mail's frame on its way out (the conversation closing) refuses access and throws; thrown here, in the
+    // middle of an update, it stopped the window drawing the next conversation. It needs no clearing anyway.
+    try {
+      const api = w as unknown as { CSS?: { highlights?: Highlights }; Highlight?: new (...r: Range[]) => unknown };
+      const reg = api.CSS?.highlights;
+      if (!reg || !api.Highlight) continue;
+      if (ranges.length) reg.set("tern-hit", new api.Highlight(...ranges));
+      else reg.delete("tern-hit");
+    } catch {}
   }
 }

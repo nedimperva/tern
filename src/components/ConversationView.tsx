@@ -3,8 +3,10 @@ import { api, type Mailto, type Mark, type ThreadMessage } from "../api";
 import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { catchUp } from "../catchup";
+import { filesOf } from "../files";
+import { docOf, windowOf } from "../frames";
 import { unsubscribeTarget } from "../unsubscribe";
-import { foldAt, HTML_FOLD_SELECTOR } from "../fold";
+import { foldAt, HTML_FOLD_SELECTOR, markQuotes } from "../fold";
 import { linkify } from "../linkify";
 import { drawHits } from "../hits";
 import { hostOf, misleading } from "../links";
@@ -147,56 +149,16 @@ function HtmlBody(props: {
   // Same-origin without scripts: the frame cannot run anything, but we can measure it and catch link clicks.
   const onLoad = (e: Event) => {
     frame = e.currentTarget as HTMLIFrameElement;
-    const doc = frame.contentDocument;
-    if (!doc) return;
-    if (darkened()) darken(doc);
-    setReady(true);
-    setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
-    doc.documentElement.classList.toggle("tern-fold", !unfolded());
-    const size = () => fitFrame(frame!, doc);
-    size();
-    // On the next frame, not in the callback: sizing the frame there could resize the body in the same frame (mail
-    // laid out in vh, a scroll bar coming and going), and the observer reported a loop thousands of times.
-    let queued = false;
-    new ResizeObserver(() => {
-      if (queued) return;
-      queued = true;
-      requestAnimationFrame(() => {
-        queued = false;
-        size();
-      });
-    }).observe(doc.body);
-    quietMenu(doc);
-    const marks = doc.createElement("style");
-    marks.textContent = FRAME_MARK_STYLE;
-    doc.head?.append(marks);
-    window.dispatchEvent(new Event(FRAME_LOADED));
-    // A selection in the message offers Quote, Mark, Note and Copy; the frame's own coordinates are moved into the
-    // window's, where the bar is drawn.
-    doc.addEventListener("mouseup", () =>
-      setTimeout(() => {
-        const box = frame!.getBoundingClientRect();
-        props.onPick?.(picked(doc, props.messageId, box));
-      }),
-    );
-    doc.addEventListener("mousedown", () => props.onPick?.(null));
-    // Keys typed while the message has focus (after selecting text in it) still reach Tern's shortcuts.
-    doc.addEventListener("keydown", (ev) => {
-      // A form field in the mail keeps its typing.
-      const t = ev.target as HTMLElement;
-      if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-      const copy = new KeyboardEvent("keydown", {
-        key: ev.key,
-        code: ev.code,
-        ctrlKey: ev.ctrlKey,
-        shiftKey: ev.shiftKey,
-        altKey: ev.altKey,
-        metaKey: ev.metaKey,
-        cancelable: true,
-      });
-      window.dispatchEvent(copy);
-      if (copy.defaultPrevented) ev.preventDefault();
-    });
+    const doc = docOf(frame);
+    // The frame left the message for a web page (a link no handler caught), which shuts us out of it: the message
+    // comes back rather than a dark, empty frame.
+    if (!doc) {
+      const html = srcdoc();
+      frame.srcdoc = "";
+      frame.srcdoc = html;
+      return;
+    }
+    // Links first: whatever the steps after them run into, a click on a link goes to the browser, never the frame.
     const menuAt = (ev: MouseEvent, a: HTMLAnchorElement) => {
       const box = frame!.getBoundingClientRect();
       // Kept inside the window near its right and bottom edges.
@@ -223,6 +185,60 @@ function HtmlBody(props: {
     doc.addEventListener("mouseover", (ev) => hover((ev.target as Element).closest?.("a") ?? null, frame));
     doc.addEventListener("mouseleave", () => setHovered(null));
     doc.addEventListener("mousedown", (ev) => ev.button === 0 && setLinkMenu(null));
+    // The rest only dresses the message: a step that fails (a mail no rule expected) is skipped, not fatal.
+    setReady(true);
+    try {
+      if (darkened()) darken(doc);
+      markQuotes(doc);
+      setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
+      doc.documentElement.classList.toggle("tern-fold", !unfolded());
+      const size = () => fitFrame(frame!, doc);
+      size();
+      // On the next frame, not in the callback: sizing the frame there could resize the body in the same frame (mail
+      // laid out in vh, a scroll bar coming and going), and the observer reported a loop thousands of times.
+      let queued = false;
+      new ResizeObserver(() => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => {
+          queued = false;
+          size();
+        });
+      }).observe(doc.body);
+      quietMenu(doc);
+      const marks = doc.createElement("style");
+      marks.textContent = FRAME_MARK_STYLE;
+      doc.head?.append(marks);
+      window.dispatchEvent(new Event(FRAME_LOADED));
+      // A selection in the message offers Quote, Mark, Note and Copy; the frame's own coordinates are moved into the
+      // window's, where the bar is drawn.
+      doc.addEventListener("mouseup", () =>
+        setTimeout(() => {
+          const box = frame!.getBoundingClientRect();
+          props.onPick?.(picked(doc, props.messageId, box));
+        }),
+      );
+      doc.addEventListener("mousedown", () => props.onPick?.(null));
+      // Keys typed while the message has focus (after selecting text in it) still reach Tern's shortcuts.
+      doc.addEventListener("keydown", (ev) => {
+        // A form field in the mail keeps its typing.
+        const t = ev.target as HTMLElement;
+        if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+        const copy = new KeyboardEvent("keydown", {
+          key: ev.key,
+          code: ev.code,
+          ctrlKey: ev.ctrlKey,
+          shiftKey: ev.shiftKey,
+          altKey: ev.altKey,
+          metaKey: ev.metaKey,
+          cancelable: true,
+        });
+        window.dispatchEvent(copy);
+        if (copy.defaultPrevented) ev.preventDefault();
+      });
+    } catch (err) {
+      console.warn("message frame:", err);
+    }
   };
 
   const body = (
@@ -280,7 +296,7 @@ function HtmlBody(props: {
           aria-expanded={unfolded()}
           onClick={() => {
             setUnfolded(!unfolded());
-            frame?.contentDocument?.documentElement.classList.toggle("tern-fold", !unfolded());
+            docOf(frame)?.documentElement.classList.toggle("tern-fold", !unfolded());
           }}
         >
           ···
@@ -411,14 +427,14 @@ function Attachments(props: { message: ThreadMessage; onView: (index: number) =>
   return (
     <>
       <section class="attachments" aria-label="Attachments">
-        <For each={props.message.attachments}>
-          {(_, i) => (
+        <For each={filesOf(props.message)}>
+          {({ index }) => (
             <FileCard
               message={props.message}
-              index={i()}
-              busy={busy() === i()}
-              onOpen={() => props.onView(i())}
-              onSave={() => void run(i(), () => api.saveAttachment(props.message.id, i()))}
+              index={index}
+              busy={busy() === index}
+              onOpen={() => props.onView(index)}
+              onSave={() => void run(index, () => api.saveAttachment(props.message.id, index))}
             />
           )}
         </For>
@@ -444,7 +460,7 @@ export function takeQuote(): { id: number; text: string } | null {
   }
   // In mail HTML the selection lives in the message's frame.
   for (const frame of document.querySelectorAll<HTMLIFrameElement>(".card[data-message] iframe")) {
-    const inner = frame.contentWindow?.getSelection();
+    const inner = windowOf(frame)?.getSelection();
     const text = inner && !inner.isCollapsed ? inner.toString().trim() : "";
     if (text) {
       inner!.removeAllRanges();
@@ -561,7 +577,7 @@ function MessageBody(props: {
           )}
         </Show>
       </Show>
-      <Show when={props.m.attachments.length}>
+      <Show when={filesOf(props.m).length}>
         <Attachments message={props.m} onView={props.onView} />
       </Show>
     </>
@@ -746,6 +762,7 @@ export function ConversationView(props: {
     const web = webs().get(m.id);
     if (!web) return null;
     const doc = new DOMParser().parseFromString(web.html, "text/html");
+    markQuotes(doc);
     doc.querySelectorAll(HTML_FOLD_SELECTOR).forEach((n) => n.remove());
     return doc.body.innerHTML;
   };
@@ -757,6 +774,7 @@ export function ConversationView(props: {
     }
     if (!m.bodyHtml) return "";
     const doc = new DOMParser().parseFromString(m.bodyHtml, "text/html");
+    markQuotes(doc);
     doc.querySelectorAll(`style, script, ${HTML_FOLD_SELECTOR}`).forEach((n) => n.remove());
     doc.querySelectorAll("br, p, div, li, tr, h1, h2, h3").forEach((n) => n.append("\n"));
     return doc.body.textContent ?? "";
@@ -784,7 +802,7 @@ export function ConversationView(props: {
   });
   const toPart = (i: number) => {
     const frame = document.querySelector<HTMLIFrameElement>(`.card[data-message="${last().id}"] iframe`);
-    const heading = frame?.contentDocument?.querySelectorAll("h2")[i];
+    const heading = docOf(frame)?.querySelectorAll("h2")[i];
     if (!heading) return;
     const range = heading.ownerDocument.createRange();
     range.selectNode(heading);
@@ -860,7 +878,7 @@ export function ConversationView(props: {
   const [markProblem, setMarkProblem] = createSignal("");
   const unselect = () => {
     document.getSelection()?.removeAllRanges();
-    for (const f of document.querySelectorAll<HTMLIFrameElement>(".card iframe")) f.contentWindow?.getSelection()?.removeAllRanges();
+    for (const f of document.querySelectorAll<HTMLIFrameElement>(".card iframe")) windowOf(f)?.getSelection()?.removeAllRanges();
   };
   const markIt = async (withNote: boolean) => {
     const p = pick();
@@ -1104,13 +1122,15 @@ export function ConversationView(props: {
             </div>
           )}
         </Show>
-        {/* Every earlier message as one line: a click opens one in place. A long conversation's older read lines wait
-            behind "Earlier in this conversation". */}
+        {/* The thread, oldest first: every message one line that opens in place, and the newest open at the end, the
+            same size as the rest (owner, 2026-10-29). A long conversation's older read lines wait behind "Earlier in
+            this conversation". A conversation of one message takes the stage below instead. */}
         <Show when={!stage()}>
           <div class="history">
-            <For each={props.messages.slice(0, -1)}>
+            <For each={props.messages}>
               {(m, i) => {
-                const open = () => props.expanded(m.id);
+                const newest = () => i() === props.messages.length - 1;
+                const open = () => props.expanded(m.id) || newest();
                 const firstTucked = () => tucked(i()) && (i() === 0 || !tucked(i() - 1));
                 return (
                   <Show
@@ -1132,7 +1152,7 @@ export function ConversationView(props: {
                       classList={{ focused: i() === props.focused, open: open(), unread: !m.seen, mine: props.mine(m.fromAddr) }}
                     >
                       {/* biome-ignore lint/a11y/noStaticElementInteractions: O expands or collapses the focused message */}
-                      <header onClick={() => props.onToggle(i())}>
+                      <header onClick={() => !newest() && props.onToggle(i())}>
                         <Avatar addr={m.fromAddr} name={m.fromName} />
                         <span class="line">
                           {sender(m)}
@@ -1145,13 +1165,13 @@ export function ConversationView(props: {
                             </span>
                           </Show>
                         </span>
-                        <Show when={m.attachments.length || m.hasAttachments}>
+                        <Show when={filesOf(m).length || (m.hasAttachments && !m.attachments.length)}>
                           <span
                             class="clip"
-                            title={m.attachments.length === 1 ? "1 attachment" : m.attachments.length ? `${m.attachments.length} attachments` : "Attachments"}
+                            title={filesOf(m).length === 1 ? "1 attachment" : filesOf(m).length ? `${filesOf(m).length} attachments` : "Attachments"}
                           >
                             <Icon name="paperclip" size={13} />
-                            <Show when={m.attachments.length > 1}>{m.attachments.length}</Show>
+                            <Show when={filesOf(m).length > 1}>{filesOf(m).length}</Show>
                           </span>
                         </Show>
                         <time title={full(m.date)}>{when(m.date)}</time>
@@ -1175,10 +1195,9 @@ export function ConversationView(props: {
               }}
             </For>
           </div>
-          <Show when={gap(props.messages.length - 1)}>{(g) => <div class="gap">{g()}</div>}</Show>
         </Show>
-        {/* The newest message, or the only one, on stage: a byline and the body a size up. */}
-        <Show when={last()}>
+        {/* The only message on stage: a byline and the body a size up. */}
+        <Show when={stage() && last()}>
           {(m) => (
             <article class="card stage-msg" data-message={m().id} classList={{ unread: !m().seen, mine: props.mine(m().fromAddr) }}>
               <div class="byline" classList={{ gone: reader() }}>

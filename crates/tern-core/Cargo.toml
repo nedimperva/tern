@@ -1,6 +1,6 @@
 [package]
 name = "tern-core"
-version = "1.5.0"
+version = "1.6.0"
 edition = "2021"
 license = "MIT"
 description = "Local-first mail engine: SQLite store, IMAP sync, SMTP send, outbox with undo."

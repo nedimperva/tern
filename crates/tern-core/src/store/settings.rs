@@ -145,9 +145,8 @@ impl Store {
         let mut stmt = conn.prepare_cached(
             "SELECT m.account_id, lower(m.from_addr), max(m.from_name), count(DISTINCT coalesce(m.message_id, m.id)),
                     max(m.id),
-                    (SELECT x.list_unsubscribe FROM messages x
-                      WHERE x.account_id = m.account_id AND lower(x.from_addr) = lower(m.from_addr)
-                        AND x.list_unsubscribe IS NOT NULL ORDER BY x.date DESC LIMIT 1),
+                    -- From their mail in the window: a lookup across all their mail took a second per page.
+                    max(m.list_unsubscribe),
                     COALESCE((SELECT s.other FROM sender_splits s
                                WHERE s.account_id = m.account_id AND s.addr = lower(m.from_addr)), max(m.bulk))
              FROM messages m JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id

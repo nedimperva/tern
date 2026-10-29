@@ -314,6 +314,9 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
                                           thread_id TEXT NOT NULL, added INTEGER NOT NULL,
                                           PRIMARY KEY (account_id, thread_id));"
             }
+            // Data only: mail joined into a conversation by its subject alone, though it was no reply, gets its own
+            // again (see `split_subject_threads`).
+            28 => "",
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -331,7 +334,51 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
         if from == 15 {
             fill_bulk(conn)?;
         }
+        if from == 28 {
+            split_subject_threads(conn)?;
+        }
         conn.execute_batch(&format!("PRAGMA user_version = {}; COMMIT;", from + 1))?;
+    }
+    Ok(())
+}
+
+/// Undoes the subject joins `thread_for` no longer makes: a message with no References and no "Re:" in its subject
+/// that sits in a conversation not its own gets its own back, and then, oldest first, each message that names others
+/// goes with the first of them it can find, as `thread_for` does. Nothing else changes; no row goes away.
+pub(super) fn split_subject_threads(conn: &Connection) -> Result<()> {
+    let roots: Vec<(i64, String)> = conn
+        .prepare(
+            "SELECT id, coalesce(message_id, 'id:' || id), subject FROM messages
+             WHERE refs = '' AND thread_id <> coalesce(message_id, '')",
+        )?
+        .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?
+        .filter_map(|r| r.ok())
+        .filter(|(_, _, subject)| !super::is_reply_subject(subject))
+        .map(|(id, own, _)| (id, own))
+        .collect();
+    if roots.is_empty() {
+        return Ok(());
+    }
+    let mut own = conn.prepare("UPDATE messages SET thread_id = ?2 WHERE id = ?1")?;
+    for (id, thread) in &roots {
+        own.execute(params![id, thread])?;
+    }
+    // Replies follow what they name, oldest first, so a reply to a reply lands with its conversation.
+    let replies: Vec<(i64, i64, String)> = conn
+        .prepare("SELECT id, account_id, refs FROM messages WHERE refs <> '' ORDER BY date, id")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut find =
+        conn.prepare("SELECT thread_id FROM messages WHERE account_id = ?1 AND message_id = ?2 LIMIT 1")?;
+    for (id, account, refs) in replies {
+        for named in refs.split_whitespace() {
+            if let Some(thread) =
+                find.query_row(params![account, named], |r| r.get::<_, String>(0)).optional()?
+            {
+                own.execute(params![id, thread])?;
+                break;
+            }
+        }
     }
     Ok(())
 }

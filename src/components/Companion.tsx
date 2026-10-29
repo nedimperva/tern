@@ -2,8 +2,9 @@
 // conversation with AI, on request and behind the AI switch; Person, Promises and Files come from the store on this
 // computer and need no AI.
 
-import { createMemo, createResource, createSignal, For, Show } from "solid-js";
-import { api, type AiAnswer, type ThreadMessage } from "../api";
+import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { api, type AiAnswer, type ContactCard, type ThreadMessage } from "../api";
+import { filesOf } from "../files";
 import { promisesIn } from "../promises";
 import { aiOn, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
@@ -218,7 +219,17 @@ function Ask(props: {
 function Person(props: { messages: ThreadMessage[]; mine: (addr: string) => boolean }) {
   /** The person the conversation is with: the newest message's sender who isn't you. */
   const who = createMemo(() => [...props.messages].reverse().find((m) => !props.mine(m.fromAddr)));
-  const [card] = createResource(() => who()?.fromAddr, (email) => api.contactCard(email));
+  // A signal, not a resource: a resource read inside the column's Suspense blanked the whole column until it came.
+  const [card, setCard] = createSignal<ContactCard | null>(null);
+  createEffect(
+    on(
+      () => who()?.fromAddr,
+      (email) => {
+        setCard(null);
+        if (email) void api.contactCard(email).then((c) => who()?.fromAddr === email && setCard(c), () => {});
+      },
+    ),
+  );
   const usualReply = createMemo(() => {
     // How long you took to answer them in this conversation, as a rough sense of pace.
     const gaps: number[] = [];
@@ -321,7 +332,7 @@ function Promises(props: { messages: ThreadMessage[]; mine: (addr: string) => bo
 
 function Files(props: { messages: ThreadMessage[]; sender: (m: ThreadMessage) => string }) {
   const files = createMemo(() =>
-    props.messages.flatMap((m) => m.attachments.map((a, index) => ({ m, a, index }))).reverse(),
+    props.messages.flatMap((m) => filesOf(m).map(({ file: a, index }) => ({ m, a, index }))).reverse(),
   );
   const kb = (n: number) => (n > 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1000))} kB`);
   return (

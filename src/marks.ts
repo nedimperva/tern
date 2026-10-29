@@ -3,6 +3,7 @@
 // and wrapping its text would break its layout). Kept by text, so a mark survives the message being shown again.
 
 import type { Mark } from "./api";
+import { docOf, windowOf } from "./frames";
 
 /** Words only, one space between them: a selection and the text it came from differ in their spaces. */
 const squash = (s: string) => s.replace(/\s+/g, " ").trim();
@@ -44,7 +45,7 @@ function rootOf(messageId: number): Node | null {
   const card = document.querySelector<HTMLElement>(`.card[data-message="${messageId}"]`);
   if (!card) return null;
   const frame = card.querySelector<HTMLIFrameElement>("iframe");
-  return frame ? (frame.contentDocument?.body ?? null) : card.querySelector(".body");
+  return frame ? (docOf(frame)?.body ?? null) : card.querySelector(".body");
 }
 
 type Highlights = { set(name: string, h: unknown): void; delete(name: string): void };
@@ -57,7 +58,10 @@ export function drawMarks(marks: Mark[], on: number | null): Map<number, Range |
   const found = new Map<number, Range | null>();
   const byWindow = new Map<Window, { all: Range[]; current: Range[] }>();
   for (const mark of marks) {
-    const root = rootOf(mark.message);
+    let root: Node | null = null;
+    try {
+      root = rootOf(mark.message);
+    } catch {}
     const range = root ? rangeOf(root, mark.text) : null;
     found.set(mark.id, range);
     const w = range?.startContainer.ownerDocument?.defaultView;
@@ -67,16 +71,23 @@ export function drawMarks(marks: Mark[], on: number | null): Map<number, Range |
     byWindow.set(w, entry);
   }
   // Clear every window that showed marks before, then draw the ones that have some now.
-  const windows = new Set<Window>([window, ...[...document.querySelectorAll<HTMLIFrameElement>(".card iframe")].map((f) => f.contentWindow!).filter(Boolean)]);
+  const windows = new Set<Window>([window]);
+  for (const f of document.querySelectorAll<HTMLIFrameElement>(".card iframe")) {
+    const w = windowOf(f);
+    if (w) windows.add(w);
+  }
   for (const w of windows) {
-    const reg = registry(w);
-    const Highlight = HighlightOf(w);
-    if (!reg || !Highlight) continue;
-    const entry = byWindow.get(w);
-    if (entry?.all.length) reg.set("tern-mark", new Highlight(...entry.all));
-    else reg.delete("tern-mark");
-    if (entry?.current.length) reg.set("tern-mark-on", new Highlight(...entry.current));
-    else reg.delete("tern-mark-on");
+    // A mail's frame on its way out refuses access and throws, which would stop the window's update (hits.ts).
+    try {
+      const reg = registry(w);
+      const Highlight = HighlightOf(w);
+      if (!reg || !Highlight) continue;
+      const entry = byWindow.get(w);
+      if (entry?.all.length) reg.set("tern-mark", new Highlight(...entry.all));
+      else reg.delete("tern-mark");
+      if (entry?.current.length) reg.set("tern-mark-on", new Highlight(...entry.current));
+      else reg.delete("tern-mark-on");
+    } catch {}
   }
   return found;
 }

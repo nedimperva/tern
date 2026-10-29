@@ -176,7 +176,7 @@ pub struct SenderVolume {
     pub count: i64,
     /// Their newest message, for moving them to Other or Important (`set_split`).
     pub newest: i64,
-    /// Their newest List-Unsubscribe header, raw, if any of their mail had one.
+    /// A List-Unsubscribe header of theirs from the time asked, raw, if their mail there had one.
     pub list_unsubscribe: Option<String>,
     /// Their mail goes to Other now.
     pub other: bool,

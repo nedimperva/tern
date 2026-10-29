@@ -181,7 +181,10 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   `…` and close. "Always load images from this sender" is in `…` while images are blocked.
   The header scrolls away with the messages; once the subject is out of view a 48 px bar (subject, Done) fades in
   over the top of the pane. The bar takes no space, so nothing moves as it comes and goes.
-- The newest message, or the only one, takes the stage: a byline (40 px avatar, name, "to you · 2 hours ago") and
+- A thread (owner, 2026-10-29): every message is one line, oldest first, and only the newest starts open, as the last
+  card, the same size as the rest; the others open as the person goes (unread ones keep their dot). Quotes,
+  signatures, Outlook's "From: … Sent:" block with what follows it, and company legal notices fold behind `···`.
+- The only message of a conversation takes the stage: a byline (40 px avatar, name, "to you · 2 hours ago") and
   the body a size up (16 px / 1.7). Unread is a 6 px `--accent` dot after the name; your own messages have an
   `--accent` ring on the avatar.
 - Above it, every earlier message is one line on a `--soft` panel (24 px avatar, name, snippet, date), all of them

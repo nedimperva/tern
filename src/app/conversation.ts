@@ -44,8 +44,9 @@ export async function open(row: ThreadRow | undefined, matched = searching()) {
       : found.findIndex((m) => m.date === row.date && m.fromAddr === row.fromAddr && m.subject === row.subject);
   batch(() => {
     setMessages(found);
-    // The newest message and anything unread start open, as they are what there is to read.
-    const open = new Set(found.filter((m, i) => !m.seen || i === found.length - 1).map((m) => m.id));
+    // Only the newest message starts open (owner, 2026-10-29): the rest are one line each, opened as the person
+    // goes. Unread ones keep their dot, and "Since you last read" jumps to the first.
+    const open = new Set(found.length ? [found[found.length - 1].id] : []);
     if (at >= 0) open.add(found[at].id);
     setExpanded(open);
     setMessageFocus(at >= 0 ? at : Math.max(0, found.length - 1));
