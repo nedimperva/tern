@@ -362,11 +362,16 @@ Settings → Reading → Start of the day: the screen and the line, only the lin
   from snooze*, *no answer yet*, *the rest*, each with its count and key `1`–`4`. 1–3 start the run through that
   group; 4 opens Other. × puts it away until tomorrow. Conversations that need you carry a 6 px `--accent` dot in
   their row's mark column.
-- **The morning screen (A3)**, on the first open of a day when something waits: over the whole window on Inbox
-  Zero's sky (`.zero` colours, light and dark) with a quiet landscape and two terns. A kicker (day · time), one
-  headline ("Five conversations wait on you. The first since Tuesday."), a sentence on the rest, then "Start with
-  Marko: Contract …" (`Enter`, primary) and "Done all N updates" (`Shift E`, the Other mail that came in, undoable),
-  with chips of who waits along the bottom. `Esc` goes to the inbox.
+- **The tide** (replaced A3, owner 2026-10-29, design board "Tern design ideas"), on the first open of a day when
+  something waits, over the whole window. A 220 px band of Inbox Zero's sky (`.zero` colours, so it follows the
+  mood; after 19:00 the night sky, with light text) with a sun or moon, the sea and two terns; a kicker (weekday,
+  date · time) and a Source Serif 4 heading: "Good morning, Ada. A calm tide today." (calm ≤ 2 need you, steady
+  ≤ 6, busy past that). Under it three columns (one under 900 px) of cards on `--card`: **Needs you** (up to five,
+  the date in `--warn` past two days), **Waiting on others** (follow-ups with no answer) with **Came back today**
+  (snoozes) under it, and **To read, when there's time** (the Read later shelf, then lists that wrote since; serif
+  titles, sender · minutes at 230 words a minute, the total in the heading). A card opens its conversation. A
+  sticky foot: "N came in since you were here · M went to Other", "Made on this computer from your mail.", Done
+  all N updates (`Shift E`) and Start with Marko (`Enter`, primary). `Esc` goes to the inbox. No AI.
 - **One at a time (A5)**: the conversations as a stack of cards on `--bg-2`: a header with "Your morning", "1 of
   5" and progress bars, a card (`--bg-0`, 14 px radius, `--shadow`, one card behind it) with the sender and how long
   it has waited, the subject, the newest message's words, its files, suggested replies when AI is on (`Q`, `1`–`3`),

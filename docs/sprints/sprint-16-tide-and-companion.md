@@ -22,7 +22,7 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
   none with reduced motion).
 
 ### C. The tide (replaces the day screen)
-- [ ] A morning brief: Needs you, Waiting on others, Came back today, To read with reading times, an overnight
+- [x] A morning brief: Needs you, Waiting on others, Came back today, To read with reading times, an overnight
   line. Built from the store on this computer; no AI.
 
 ### D. Delight
@@ -59,3 +59,6 @@ https://claude.ai/artifact/4f1kAYtsNMVtvtZjCaSnt6). Each slice is its own branch
   (Omarchy) and Night Sea. A live theme switch was not tried: it would change the owner's desktop.
 - 2026-10-29: Slice B done: motion on actions, tried with `npm run dev` (fake mailbox) in headless Chromium, frames
   caught mid-archive and after a star. Not on the real dev store: archiving there reaches the owner's server.
+- 2026-10-29: Slice C done: the tide replaces the day screen; `day_start` gains `to_read` (shelf, then lists since,
+  with minutes). Tried with `npm run dev` in headless Chromium: Dawn after dark, Dusk, Night Sea and 760 px wide.
+  Source Serif 4 600 is bundled (21 kB woff2) for its headings.

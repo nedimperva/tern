@@ -12,6 +12,8 @@ export type DayStart = {
   back: ThreadRow[];
   waiting: ThreadRow[];
   rest: number;
+  /** The Read later shelf, then lists that wrote since; minutes is null while only the headers are here. */
+  toRead: (ThreadRow & { minutes: number | null })[];
 };
 /** An AI summary of a conversation (package 10): one line, then the points under it. */
 export type AiSummary = { line: string; facts: AiFact[]; points: string[]; cached: boolean };
@@ -1285,6 +1287,10 @@ function fake(): Api {
         back: people.slice(5, 7),
         waiting: people.slice(7, 8),
         rest: rows.filter((r) => r.date > since && /github|stripe/i.test(r.fromName)).length,
+        toRead: rows
+          .filter((r) => /github|stripe/i.test(r.fromName))
+          .slice(0, 5)
+          .map((r, i) => ({ ...r, minutes: [6, 9, 3, null, 12][i] })),
       };
     },
     aiHasKey: async (provider) => localStorage.getItem(`tern.fake.aiKey.${provider}`) != null,

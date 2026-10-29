@@ -17,12 +17,12 @@ import { DayDeck } from "./components/DayDeck";
 import { DayScreen } from "./components/DayScreen";
 import { timeKey } from "./perf";
 import { loadSettings, settings } from "./settings";
-import { deck, screen, start, startDay } from "./day";
+import { closeScreen, deck, screen, start, startDay } from "./day";
 import { keyHandler } from "./keys";
 import { hitWords } from "./hits";
 import { act, label, labelsOf, onShelf, shelve, snoozeThen, snoozeUntil, targets } from "./app/actions";
 import { bindings as allBindings, commands as allCommands, menu } from "./app/bindings";
-import { close, toggleMessage, watchConversation } from "./app/conversation";
+import { close, open as openConversation, toggleMessage, watchConversation } from "./app/conversation";
 import {
   composeClosed,
   composeDiscarded,
@@ -312,6 +312,10 @@ function Main() {
           name={firstName()}
           onStart={() => runDeck("all")}
           onDoneUpdates={() => void doneUpdates()}
+          onOpen={(row) => {
+            closeScreen();
+            void openConversation(row);
+          }}
           paused={() => compose() !== null || snoozing() !== null || palette()}
         />
       </Show>

@@ -16,6 +16,12 @@ every release needs one here before it is tagged.
   left, a snoozed one lifts away, and the rows below close up instead of jumping. A star pops when you put it on.
   None of it with reduced motion.
 
+### Changed
+
+- The morning screen is now the tide: a band of sky that follows the hour and your mood, a greeting, and three
+  columns — who needs you, who you're waiting on (and what came back from snooze), and what there is to read with
+  reading times. Click any card to open it; Enter still starts with the first, Shift E still clears the updates.
+
 ### Fixed
 
 - On Linux the window is frameless again, as before 1.5.0: Tern's title bar and its minimize, maximize and close

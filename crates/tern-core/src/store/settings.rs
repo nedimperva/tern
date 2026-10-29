@@ -32,6 +32,8 @@ impl Store {
     /// snoozed ones that came back since then, follow-ups still without an answer, and how many of the new are in
     /// Other. All from this computer.
     pub fn day_start(&self, since: i64) -> Result<DayStart> {
+        /// The tide's To read column shows this many at most.
+        const TO_READ: usize = 6;
         let conn = self.reader();
         let (important, imp_value) = target_filter(&ListTarget::Role(IMPORTANT.into()), 1);
         let need: Vec<MessageRow> = conn
@@ -77,6 +79,40 @@ impl Store {
         };
         let new_since = count("inbox")?;
         let rest = count(OTHER)?;
+        let newest = |filter: &str, extra: &str| -> String {
+            format!(
+                "SELECT {ROW} FROM messages m WHERE {filter} {extra}
+                   AND m.id = (SELECT x.id FROM messages x WHERE x.account_id = m.account_id
+                                 AND x.thread_id = m.thread_id ORDER BY x.date DESC, x.id DESC LIMIT 1)
+                 ORDER BY m.date DESC, m.id DESC LIMIT {TO_READ}"
+            )
+        };
+        let (later, later_value) = target_filter(&ListTarget::Role(LATER.into()), 1);
+        let mut reading: Vec<MessageRow> = conn
+            .prepare(&newest(&later, ""))?
+            .query_map([later_value], row)?
+            .collect::<rusqlite::Result<_>>()?;
+        let (inbox, inbox_value) = target_filter(&ListTarget::Role("inbox".into()), 1);
+        let lists: Vec<MessageRow> = conn
+            .prepare(&newest(
+                &inbox,
+                "AND m.date > ?2 AND (m.list_id IS NOT NULL OR m.list_unsubscribe IS NOT NULL)",
+            ))?
+            .query_map(params![inbox_value, since], row)?
+            .collect::<rusqlite::Result<_>>()?;
+        reading.extend(lists);
+        reading.truncate(TO_READ);
+        let mut minutes = conn.prepare_cached("SELECT length(text) FROM bodies WHERE message_id = ?1")?;
+        let to_read = conversations(&conn, reading)?
+            .into_iter()
+            .map(|thread| {
+                let chars: Option<i64> =
+                    minutes.query_row([thread.latest.id], |r| r.get(0)).optional()?.flatten();
+                // About 6 characters a word with its space, 230 words a minute; never "0 min".
+                let minutes = chars.filter(|&c| c > 0).map(|c| (c / (6 * 230)).max(1));
+                Ok(ToRead { thread, minutes })
+            })
+            .collect::<Result<_>>()?;
         Ok(DayStart {
             since,
             new_since,
@@ -84,6 +120,7 @@ impl Store {
             back: conversations(&conn, back)?,
             waiting: conversations(&conn, waiting)?,
             rest,
+            to_read,
         })
     }
 
