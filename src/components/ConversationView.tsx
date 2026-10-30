@@ -7,7 +7,7 @@ import { catchUp } from "../catchup";
 import { filesOf } from "../files";
 import { docOf, windowOf } from "../frames";
 import { unsubscribeTarget } from "../unsubscribe";
-import { foldAt, HTML_FOLD_SELECTOR, markQuotes } from "../fold";
+import { foldAt, HTML_FOLD_SELECTOR, markQuotes, signatureLine } from "../fold";
 import { linkify } from "../linkify";
 import { drawHits } from "../hits";
 import { hostOf, misleading } from "../links";
@@ -146,6 +146,8 @@ function HtmlBody(props: {
   // Quoted replies and signatures start folded; the pill below the frame opens them.
   const [foldable, setFoldable] = createSignal(false);
   const [unfolded, setUnfolded] = createSignal(false);
+  // When the fold starts with a signature, the pill says whose it is.
+  const [sigLine, setSigLine] = createSignal<string | null>(null);
   let frame: HTMLIFrameElement | undefined;
 
   // Same-origin without scripts: the frame cannot run anything, but we can measure it and catch link clicks.
@@ -193,6 +195,7 @@ function HtmlBody(props: {
       if (darkened()) darken(doc);
       markQuotes(doc);
       setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
+      setSigLine(htmlSignature(doc));
       doc.documentElement.classList.toggle("tern-fold", !unfolded());
       const size = () => fitFrame(frame!, doc);
       size();
@@ -292,19 +295,47 @@ function HtmlBody(props: {
         )}
       </Show>
       <Show when={foldable()}>
-        <button
-          class="fold"
-          title={unfolded() ? "Hide quoted text" : "Show quoted text"}
-          aria-expanded={unfolded()}
+        <FoldPill
+          signature={sigLine()}
+          open={unfolded()}
           onClick={() => {
             setUnfolded(!unfolded());
             docOf(frame)?.documentElement.classList.toggle("tern-fold", !unfolded());
           }}
-        >
-          ···
-        </button>
+        />
       </Show>
     </>
+  );
+}
+
+/** The signature at the head of a message's fold, said in a line: a "--" paragraph with what follows it, or Gmail's
+ * signature block. Read before the fold hides it, as hidden text has no line breaks. */
+function htmlSignature(doc: Document): string | null {
+  const first = doc.querySelector(HTML_FOLD_SELECTOR);
+  const sig = doc.querySelector(".tern-sig, .gmail_signature");
+  if (!first || !sig || !(first === sig || first.contains(sig))) return null;
+  // biome-ignore lint/performance/useDomNodeTextContent: innerText keeps the line breaks between the signature's blocks, textContent runs them together
+  const text = (el: Element) => (el as HTMLElement).innerText ?? el.textContent ?? "";
+  if (!sig.classList.contains("tern-sig")) return signatureLine(`--\n${text(sig)}`);
+  const lines: string[] = [];
+  for (let at: Element | null = sig; at; at = at.nextElementSibling) lines.push(text(at));
+  return signatureLine(lines.join("\n"));
+}
+
+/** The pill under a message that unfolds what it folded: "···" for a quote, or whose signature it is. */
+function FoldPill(props: { signature: string | null; open: boolean; onClick: () => void }) {
+  const what = () => (props.signature ? "the signature" : "quoted text");
+  return (
+    <button class="fold" classList={{ sig: !!props.signature }} title={`${props.open ? "Hide" : "Show"} ${what()}`} aria-expanded={props.open} onClick={props.onClick}>
+      <Show when={props.signature} fallback="···">
+        {(s) => (
+          <>
+            <span>{s()}</span>
+            <Icon name={props.open ? "chevron-up" : "chevron-down"} size={12} />
+          </>
+        )}
+      </Show>
+    </button>
   );
 }
 
@@ -324,14 +355,7 @@ function PlainBody(props: { text: string }) {
         </pre>
       </Show>
       <Show when={at() >= 0}>
-        <button
-          class="fold"
-          title={unfolded() ? "Hide quoted text" : "Show quoted text"}
-          aria-expanded={unfolded()}
-          onClick={() => setUnfolded(!unfolded())}
-        >
-          ···
-        </button>
+        <FoldPill signature={signatureLine(props.text.slice(at()))} open={unfolded()} onClick={() => setUnfolded(!unfolded())} />
       </Show>
     </>
   );
@@ -502,14 +526,25 @@ const DAY = 86_400_000;
 const startOfDay = (seconds: number) => new Date(seconds * 1000).setHours(0, 0, 0, 0);
 
 /** "3 days later" between messages far apart; nothing for ones a day or less apart. */
-function later(from: number, to: number): string | null {
-  const days = Math.round((startOfDay(to) - startOfDay(from)) / DAY);
-  if (days < 2) return null;
-  if (days < 14) return `${days} days later`;
-  if (days < 60) return `${Math.round(days / 7)} weeks later`;
-  if (days < 365) return `${Math.round(days / 30)} months later`;
-  const years = Math.round(days / 365);
-  return years === 1 ? "A year later" : `${years} years later`;
+const dayName = new Intl.DateTimeFormat(undefined, { weekday: "long", day: "numeric", month: "short" });
+const dayNameYear = new Intl.DateTimeFormat(undefined, { weekday: "long", day: "numeric", month: "short", year: "numeric" });
+const shortDay = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
+const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+
+/** The heading over a day's messages: "Today", "Yesterday", "Monday 26 Oct". */
+function dayHeading(seconds: number): string {
+  const days = Math.round((startOfDay(Date.now() / 1000) - startOfDay(seconds)) / DAY);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  const d = new Date(seconds * 1000);
+  return (d.getFullYear() === new Date().getFullYear() ? dayName : dayNameYear).format(d);
+}
+
+/** "Mon 26 Oct – Tue 27 Oct", or the one day. */
+function span(from: number, to: number): string {
+  const a = shortDay.format(new Date(from * 1000));
+  const b = shortDay.format(new Date(to * 1000));
+  return a === b ? a : `${a} – ${b}`;
 }
 
 const fullDate = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
@@ -934,8 +969,9 @@ export function ConversationView(props: {
       )}
     </Show>
   );
-  /** "3 days later" above the message at `i`, when the one before it is days older. */
-  const gap = (i: number) => (i > 0 ? later(props.messages[i - 1].date, props.messages[i].date) : null);
+  /** The day's heading above the message at `i`, when it is the first of its day. */
+  const dayOf = (i: number) =>
+    i === 0 || startOfDay(props.messages[i - 1].date) !== startOfDay(props.messages[i].date) ? dayHeading(props.messages[i].date) : null;
 
   // The full header scrolls away with the messages; once the subject is out of view a compact bar fades in over
   // the pane. The bar takes no space, so nothing moves as it comes and goes, and nothing can flicker.
@@ -968,7 +1004,7 @@ export function ConversationView(props: {
   const replyRow = () => (
     <Show when={!props.replying && last()}>
       {(m) => (
-        <div class="reply-end">
+        <div class="reply-end" classList={{ stage: stage() }}>
           <Show when={aiOn("replies", m().accountId) && !props.mine(m().fromAddr)}>
             <AiReplies id={m().id} onPick={(text) => props.onReply(m(), "reply", text)} />
           </Show>
@@ -1086,13 +1122,16 @@ export function ConversationView(props: {
                 </For>
               </div>
             </Show>
-            <Show when={!stage()}>
+            <Show when={!stage() && props.messages.length > 0}>
               <div class="people">
-                <span class="stack">
-                  <For each={senders()}>{(m) => <Avatar addr={m.fromAddr} name={m.fromName} />}</For>
-                </span>
+                <Show when={!settings.companion}>
+                  <span class="stack">
+                    <For each={senders()}>{(m) => <Avatar addr={m.fromAddr} name={m.fromName} />}</For>
+                  </span>
+                </Show>
                 <span>
-                  {people()} · {props.messages.length} messages
+                  {settings.companion ? "" : `${people()} · `}
+                  {props.messages.length} messages · {span(props.messages[0].date, last().date)}
                 </span>
               </div>
             </Show>
@@ -1138,15 +1177,25 @@ export function ConversationView(props: {
                       </Show>
                     }
                   >
-                    <Show when={gap(i())}>{(g) => <div class="gap">{g()}</div>}</Show>
+                    <Show when={dayOf(i())}>
+                      {(d) => (
+                        <h2 class="day">
+                          <span>{d()}</span>
+                        </h2>
+                      )}
+                    </Show>
                     <article
                       class="card row"
                       data-message={m.id}
-                      classList={{ focused: i() === props.focused, open: open(), unread: !m.seen, mine: props.mine(m.fromAddr) }}
+                      classList={{ focused: i() === props.focused, open: open(), newest: newest(), unread: !m.seen, mine: props.mine(m.fromAddr) }}
                     >
                       {/* biome-ignore lint/a11y/noStaticElementInteractions: O expands or collapses the focused message */}
                       <header onClick={() => !newest() && props.onToggle(i())}>
-                        <Avatar addr={m.fromAddr} name={m.fromName} />
+                        <Show when={!open() && props.mine(m.fromAddr)} fallback={<Avatar addr={m.fromAddr} name={m.fromName} />}>
+                          <span class="own" aria-hidden="true">
+                            ↳
+                          </span>
+                        </Show>
                         <span class="line">
                           {sender(m)}
                           <Show when={m.draftId != null}>
@@ -1167,7 +1216,7 @@ export function ConversationView(props: {
                             <Show when={filesOf(m).length > 1}>{filesOf(m).length}</Show>
                           </span>
                         </Show>
-                        <time title={full(m.date)}>{when(m.date)}</time>
+                        <time title={full(m.date)}>{clock.format(new Date(m.date * 1000))}</time>
                       </header>
                       <Show when={open()}>
                         <div class="body">

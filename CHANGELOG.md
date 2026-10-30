@@ -18,6 +18,12 @@ every release needs one here before it is tagged.
   is listed once, under You owe, for the whole conversation.
 - Thin scrollbars without arrows, the same on Windows and Linux. The list, the conversation and the companion show
   theirs only under the pointer.
+- A conversation reads more calmly: a heading for each day instead of "3 days later", times on the lines, your own
+  lines quieter than theirs, and an open message as a card. Under the newest one sits the answer panel: suggested
+  replies when AI is on, then Reply, Reply all and Forward. With the companion open, the people line under the subject
+  gives way to the message count and the days.
+- A signature folds to one line that says whose it is ("Renato Šuster · Gama Trade d.o.o"), and is now found after a
+  bare "--" or a sign-off like "Srdačan pozdrav" or "S poštovanjem", not only after "-- ".
 
 ### Removed
 

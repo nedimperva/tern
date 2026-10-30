@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { mentionsAttachment, outside } from "../attachmentWords";
 import { findAsks, findCodes, findWhere } from "../facts";
-import { foldAt, markQuotes } from "../fold";
+import { foldAt, markQuotes, signatureLine } from "../fold";
 import { keyLabel } from "../keys";
 
 describe("foldAt", () => {
@@ -16,6 +16,17 @@ describe("foldAt", () => {
   });
   it("finds nothing in a plain message", () => {
     expect(foldAt("Just a note.\nNothing quoted.")).toBe(-1);
+  });
+  it("folds a bare '--' or a sign-off when a short signature follows, and says whose it is", () => {
+    const dashes = "Ok, poslaću sutra brzom poštom.\n\n--\n\nSrdačan pozdrav\n\nRenato Šuster\n\nGama Trade d.o.o\nŽabljak bb,\n74230 Usora\nTel: +387 32 000 000";
+    expect(dashes.slice(0, foldAt(dashes))).toBe("Ok, poslaću sutra brzom poštom.");
+    expect(signatureLine(dashes.slice(foldAt(dashes)))).toBe("Renato Šuster · Gama Trade d.o.o · Žabljak bb");
+    const signOff = "Hvala na ponudi.\n\nS poštovanjem,\nNedim Perva\nReferent\n\nOn Tue, Ana wrote:\n> Evo ponude.";
+    expect(signOff.slice(0, foldAt(signOff))).toBe("Hvala na ponudi.");
+    expect(signatureLine(signOff.slice(foldAt(signOff)))).toBe("Nedim Perva · Referent");
+    // A greeting is not a sign-off, and a quote's fold says nothing about a signature.
+    expect(foldAt("Pozdrav,\nimate li pištolj na stanju?")).toBe(-1);
+    expect(signatureLine("On Tue, Ana wrote:\n> Evo.")).toBeNull();
   });
 });
 

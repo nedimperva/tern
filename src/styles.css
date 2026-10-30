@@ -1870,16 +1870,31 @@ span.tool {
   height: 1px;
   background: var(--line-strong);
 }
+/* The thread on the page itself, a heading over each day (canvas "Tern thread directions", A, 2026-10-30). */
 .history {
-  margin-bottom: var(--s-5);
-  padding: var(--s-1);
-  border-radius: 14px;
-  background: var(--soft);
+  display: flex;
+  flex-direction: column;
 }
-.history .card.mine .avatar {
-  box-shadow:
-    0 0 0 2px var(--soft),
-    0 0 0 3.5px var(--accent);
+.history .day {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: var(--s-4) 0 var(--s-1);
+  padding: 0 10px;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.history .day:first-child {
+  margin-top: var(--s-1);
+}
+.history .day::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
 }
 .card.row > header {
   display: flex;
@@ -1903,58 +1918,70 @@ span.tool {
 .card.row.focused:not(.open) > header {
   background: var(--soft-hover);
 }
-.card.row:not(.unread):not(.open) .line strong {
-  font-weight: 500;
+/* Their lines speak up; yours step back, with "↳" in place of your own avatar. */
+.card.row:not(.open) .snippet {
   color: var(--fg-1);
 }
-/* A line opened in place lifts onto the page's own background. */
+.card.row.mine:not(.open) .line strong,
+.card.row.mine:not(.open) .snippet {
+  font-weight: 400;
+  color: var(--fg-2);
+}
+.card.row > header .own {
+  width: 24px;
+  flex: none;
+  text-align: center;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
+/* A message open in place, and the newest, is a card on the page. */
 .card.row.open {
-  margin: var(--s-1) 0;
-  border-radius: 10px;
-  background: var(--bg-0);
+  margin: var(--s-2) 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.card.row.open > header {
+  padding: var(--s-3) var(--s-4) var(--s-2);
+}
+.card.row.open > header:hover {
+  background: none;
+}
+.card.row.open > header .avatar {
+  width: 32px;
+  height: 32px;
+  font-size: var(--t-xs);
 }
 .card.row.open .avatar {
   box-shadow: none;
 }
 .card.row.mine.open .avatar {
   box-shadow:
-    0 0 0 2px var(--bg-0),
+    0 0 0 2px var(--card),
     0 0 0 3.5px var(--accent);
 }
 .card.row .body {
-  padding: 2px var(--s-4) var(--s-4) 44px;
-}
-/* "3 days later": a small label above the message it leads to. */
-.gap {
-  padding: var(--s-2) 10px 2px;
-  color: var(--fg-2);
-  font-size: calc(var(--t-xs) - 1px);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.history + .gap {
-  margin: calc(-1 * var(--s-3)) 0 var(--s-3);
-  padding: 0;
+  padding: 2px var(--s-5) var(--s-4) 58px;
 }
 
-/* Reply, Reply all and Forward after the last message, on one soft row. Keys show on hover: the status strip
-   already lists R. */
+/* Answering, right under the newest message (canvas "Tern thread directions", C's panel): suggested replies when
+   AI is on, then a field-like Reply, with Reply all and Forward beside it. Their keys show on hover; R always. */
 .reply-end {
-  margin-top: var(--s-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-top: var(--s-1);
+  padding: var(--s-3);
+  border-radius: var(--r-lg);
+  background: var(--soft);
+}
+.reply-end.stage {
+  margin-top: var(--s-5);
 }
 .reply-end .end {
   display: flex;
   align-items: center;
   gap: var(--s-1);
-  min-height: 44px;
-  padding: 0 6px 0 var(--s-1);
-  border-radius: 22px;
-  background: var(--soft);
-  transition: background var(--d-fast) var(--ease);
-}
-.reply-end .end:hover {
-  background: var(--soft-hover);
 }
 .reply-end .start {
   flex: 1;
@@ -1962,13 +1989,23 @@ span.tool {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 0;
-  background: transparent;
+  height: 40px;
+  padding: 0 var(--s-2) 0 var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--card);
   color: var(--fg-2);
   font-size: var(--t-md);
   text-align: left;
   cursor: text;
+  transition: border-color var(--d-fast) var(--ease);
+}
+.reply-end .start:hover {
+  border-color: var(--fg-2);
+}
+.reply-end .start kbd {
+  display: inline-grid;
+  margin-left: auto;
 }
 .reply-end .start span {
   overflow: hidden;
@@ -2054,7 +2091,30 @@ span.tool {
   /* Designed mail draws its own background; this only shows while it loads. */
   background: var(--bg-0);
 }
-/* The "···" pill that unfolds a quoted reply or signature. */
+/* The "···" pill that unfolds a quoted reply, or, for a signature, whose it is in one line. */
+button.fold.sig {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  line-height: 18px;
+  letter-spacing: 0;
+}
+button.fold.sig span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+button.fold.sig:hover {
+  background: var(--soft-hover);
+}
 button.fold {
   display: block;
   margin-top: var(--s-2);

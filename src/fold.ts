@@ -12,6 +12,42 @@ const NOTICE =
 /** A paragraph that is such a notice: long enough to be one, and saying what they say. */
 export const isNotice = (text: string) => text.trim().length >= 60 && NOTICE.test(text);
 
+/** The words people sign off with, alone on a line, in the languages above. */
+const SIGN_OFF =
+  /^(s poštovanjem|s postovanjem|srdačan pozdrav|srdacan pozdrav|srdačno|srdacno|lijep pozdrav|lep pozdrav|pozdrav|pozdravi|lp|best regards|kind regards|warm regards|regards|best|cheers|thanks|many thanks|mit freundlichen grüßen|viele grüße|cordialement)[,.!]?$/i;
+
+/** A signature's worth of lines from `from` on: one to twelve short ones, up to a quote. */
+/** A line where the quote under a signature starts. */
+const quoteStart = (l: string) => l.startsWith(">") || /^(On|Am|Le|Op) .{4,200}$/.test(l) || /^-{2,}\s*(Original|Forwarded)/i.test(l) || /^(From|Od|Von|De):\s/.test(l);
+
+function shortTail(lines: string[], from: number): boolean {
+  let n = 0;
+  for (let j = from; j < lines.length; j++) {
+    const l = lines[j].trim();
+    if (quoteStart(l)) break;
+    if (!l) continue;
+    if (l.length > 90 || ++n > 12) return false;
+  }
+  return n > 0;
+}
+
+/** A folded signature said in one line ("Renato Šuster · Gama Trade d.o.o · Usora"), for the pill that opens it;
+ * null when the fold starts with a quote instead. Phone numbers, addresses and links are left for the unfolded view. */
+export function signatureLine(folded: string): string | null {
+  const lines = folded
+    .split("\n")
+    .map((l) => l.replace(/ /g, " ").trim())
+    .filter(Boolean);
+  if (!lines.length || !(lines[0] === "--" || SIGN_OFF.test(lines[0]))) return null;
+  const end = lines.findIndex((l, i) => i > 0 && quoteStart(l));
+  const said = lines
+    .slice(1, end < 0 ? undefined : end)
+    .filter((l) => l !== "--" && !SIGN_OFF.test(l) && !/@|https?:|www\.|\d{4,}|^\+?[\d\s()/.-]{7,}$/.test(l) && l.length <= 48)
+    .slice(0, 3)
+    .map((l) => l.replace(/[,;]$/, ""));
+  return said.length ? said.join(" · ") : null;
+}
+
 /** Where in a plain-text body the quoted reply or the signature starts, so it can be folded; -1 if nowhere. */
 export function foldAt(text: string): number {
   const lines = text.split("\n");
@@ -25,7 +61,8 @@ export function foldAt(text: string): number {
     const original = /^-{2,}\s*(Original Message|Forwarded message|Ursprüngliche Nachricht)\s*-{2,}$/i.test(line);
     const outlook = /^(From|Von|De):\s.+/.test(line) && /^(Sent|Gesendet|Envoyé|Date):\s/.test(next);
     const quoted = line.startsWith(">") && lines.slice(i).filter((l) => l.trim()).every((l) => l.startsWith(">"));
-    const signature = line === "--" && lines[i] === "-- ";
+    // "-- " by the book; a bare "--", or a sign-off ("Srdačan pozdrav"), when only a few short lines follow it.
+    const signature = (line === "--" && (lines[i] === "-- " || shortTail(lines, i + 1))) || (offset > 0 && SIGN_OFF.test(line) && shortTail(lines, i + 1));
     const sentFrom = /^Sent from my \w+/i.test(line) && i >= lines.length - 3;
     // A notice starts a fold too, unless it is all the message says.
     const notice = offset > 0 && isNotice(line);
@@ -80,6 +117,7 @@ export function markQuotes(doc: Document) {
     if (p.closest("blockquote") || (p.textContent ?? "").replace(/\u00a0/g, " ").trim() !== "--") continue;
     // Only a signature under words of the message's own, not one that is all there is.
     if (!p.previousElementSibling) continue;
+    p.classList.add("tern-sig");
     for (let at: Element | null = p; at; at = at.nextElementSibling) at.classList.add("tern-quote");
     break;
   }

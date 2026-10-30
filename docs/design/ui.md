@@ -173,25 +173,30 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   not pop it.
 - The pane draws no outlines. Separation comes from space and tones of the background: `--soft` for files, the
   reply row, an inline reply and a conversation's history.
-- Header: the subject in `--t-head` (24 px). For two or more messages a line under it: up to four sender avatars,
-  the people ("you" last) and the message count. On the right, icons that show only when they apply, each saying
+- Header: the subject in `--t-head` (24 px). For two or more messages a line under it: the message count and the
+  days it spans ("7 messages · Mon 26 Oct – Tue 27 Oct"); while the companion is closed, up to four sender avatars and
+  the people ("you" last) before it (the companion's header says who otherwise). On the right, icons that show only when they apply, each saying
   more in a tooltip: a green shield with the tracker count (what Tern blocked; a click loads the images), a clock
   (reading time from 2 minutes), a book (reading view for designed mail), a leave icon (List-Unsubscribe: a web
   link opens in the browser, a `mailto:` one opens compose; it turns into a check). Then Done (its key on hover),
   `…` and close. "Always load images from this sender" is in `…` while images are blocked.
   The header scrolls away with the messages; once the subject is out of view a 48 px bar (subject, Done) fades in
   over the top of the pane. The bar takes no space, so nothing moves as it comes and goes.
-- A thread (owner, 2026-10-29): every message is one line, oldest first, and only the newest starts open, as the last
-  card, the same size as the rest; the others open as the person goes (unread ones keep their dot). Quotes,
-  signatures, Outlook's "From: … Sent:" block with what follows it, and company legal notices fold behind `···`.
+- A thread (owner, 2026-10-29; laid out as canvas "Tern thread directions" A, 2026-10-30): every message is one
+  line, oldest first, on the page itself, under a heading for its day ("Today", "Yesterday", "Monday 26 Oct", `--t-xs`
+  uppercase with a `--line` rule); a line shows the time, as the day is above it. Their lines carry a 24 px avatar
+  and their snippet in `--fg-1`; your own closed lines step back: "↳" in place of the avatar, "You" and the snippet in
+  `--fg-2`. Only the newest starts open; the others open as the person goes (unread ones keep their dot). An open
+  message is a card on `--card` with a `--line` edge, `--r-lg`, a 32 px avatar. Quotes, signatures, Outlook's
+  "From: … Sent:" block with what follows it, and company legal notices fold behind `···`.
 - The only message of a conversation takes the stage: a byline (40 px avatar, name, "to you · 2 hours ago") and
   the body a size up (16 px / 1.7). Unread is a 6 px `--accent` dot after the name; your own messages have an
   `--accent` ring on the avatar.
-- Above it, every earlier message is one line on a `--soft` panel (24 px avatar, name, snippet, date), all of them
-  there, none folded away. A click (or `o`) opens a line in place on `--bg-0`, with "to you, Tom Berg · Tue 14 Oct,
-  14:02"; unread ones start open. A closed line the keys act on, and a hovered one, get `--soft-hover`; there is no
-  accent bar. Messages two or more days apart get a small "3 days later" label above them.
-- Reply, Reply all and Forward sit on one `--soft` row after the last message; their keys show on hover, as the status strip already lists them. An inline reply takes its place.
+- A click (or `o`) opens a line in place as a card, with "to you, Tom Berg · Tue 14 Oct, 14:02"; unread ones start
+  open. A closed line the keys act on, and a hovered one, get `--soft-hover`; there is no accent bar.
+- Answering (canvas C's panel): right under the newest message a `--soft` panel, `--r-lg`: suggested replies when AI
+  is on (§ AI below), then a field-like Reply ("Reply to Mirela…" on `--card`, `--line-strong` edge, 40 px, its `R`
+  always shown), with Reply all and Forward beside it (their keys on hover). An inline reply takes its place.
 - Focus mode (`Shift+F`): the conversation over the whole window with the list hidden, until `Shift+F` again.
 - Sender logos (Settings → Reading, off by default): a company's logo on white in place of initials, from its own
   website's declared icon, cached for 30 days; shared mail providers (Gmail, Outlook…) keep initials.
@@ -202,7 +207,11 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   look, up to 680 px wide with rounded corners and no well around it; in dark mode it is darkened (backgrounds dark, text light, pictures kept)
   unless Settings → Reading says to keep its colours. Reading view (the book icon) shows a designed mail's words and pictures in
   Tern's colours with a book face. `src/mailview.ts` decides and draws all three.
-- Quoted text and signatures collapse behind a `···` pill.
+- Quoted text and signatures collapse behind a `···` pill. A fold that starts with a signature says whose it is
+  instead, on a `--soft` pill with a chevron: "Renato Šuster · Gama Trade d.o.o · Žabljak bb" (`signatureLine` in
+  `src/fold.ts`: up to three short lines, no phone numbers, addresses or links). Plain text folds a signature from
+  "-- ", or from a bare "--" or a sign-off line ("Srdačan pozdrav", "S poštovanjem", "Best regards"…) when only a
+  few short lines follow; HTML from a "--" paragraph or Gmail's signature block.
 - Only what's new (owner, 2026-10-29): coming back to a conversation that had unread mail as it opened, and was read
   before, a line on `--accent-soft` says "Since you last read: 3 new · a question for you" (a question: a `?` in a
   new message's own words, quote and links aside; `src/catchup.ts`) with Jump to it. Past five earlier messages,
