@@ -28,8 +28,8 @@ decisions that aren't visible from the code.
   manual summaries and Write with AI, off by default (`crates/tern-core/src/ai/`). No local model yet (owner).
   Then OpenAI and Gemini, suggested replies (Q) and a per-account style note (schema v26), all on request.
   `store_bench` exits non-zero on a missed target and runs in CI with `TERN_BENCH_SLACK=3`.
-  Reading (2026-10-27, branch `sprint/05-morning`, ui.md §4.2a–c): the column beside a conversation with what the
-  newest message holds (`src/facts.ts`, local only), marks and notes (schema v27, CSS Custom Highlight API in
+  Reading (2026-10-27, branch `sprint/05-morning`, ui.md §4.2a–c): what the newest message holds (`src/facts.ts`,
+  local only; since 2026-10-30 the companion's Details tab, `i`, not a column of its own), marks and notes (schema v27, CSS Custom Highlight API in
   `src/marks.ts`), newsletters in reading view by default. The fake's newest conversation and its newsletter carry
   facts and parts to try them on.
   Look (2026-10-28, canvas "Tern warm directions", A): warm tokens, Tern's own title bar (`decorations: false`,

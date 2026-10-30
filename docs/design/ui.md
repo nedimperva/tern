@@ -243,29 +243,26 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   `--accent-soft` with the address, "also …" to pick another with the same name, "No one called “Zed” in your
   contacts" on `--warn-soft`. Tab fills the fields (Subject only when empty).
 
-### 4.2a Beside the messages: what the newest message holds
+### 4.2a Details: what the newest message holds
 
-Picked from the canvas "Tern reading ideas" (R2, R5, R6), 2026-10-27. A column 260 px wide beside the messages when
-the pane is 880 px or wider, sticky as the messages scroll (its own scroll bar shows only on hover); in a narrower
-pane the same sections sit in a row above the messages. The messages keep their place: they stay centred as they
-would be without the column, which sits against the pane's right edge; a narrower pane gives up the left space
-first.
-An inline reply lines up with the messages. It shows only what it found. Beside the messages it stays when it found nothing, saying so with how marks are made, so it does not come and go between conversations; above them (a narrow pane) it shows only when it has something. `i`, the header's
-panel icon or the column's own × hides it, for every conversation until shown again (`readingColumn`).
+Picked from the canvas "Tern reading ideas" (R2, R5, R6), 2026-10-27, as a 260 px column inside the reading pane.
+Since 2026-10-30 (owner: one column, not two) it is the companion's first tab, **Details** (§4.2b): the open
+conversation draws it there (`src/components/Details.tsx`, portalled from ConversationView, which owns the facts,
+contents and marks). `i` opens the companion on Details, or closes it when Details is showing. It shows what it
+found, then Your marks (with how marks are made when there are none).
 
 - **In this message** (Settings → Reading → In this message, on by default), from the newest message's own words
   (no quote, no signature), found on this computer by `src/facts.ts`, in English and Bosnian/Croatian/Serbian:
   When (a day named in the text, with the times beside it; "Snooze until then" brings the mail back an hour before,
   or at 08:00 on a day with no time), Where (a street address; "Open the map" opens OpenStreetMap in the browser),
-  Asked of you (up to three questions put to the person, and their "please"s, on `--accent-soft`; not for your
-  own mail or a list's), and codes to copy (booking, order, tracking, confirmation numbers). Cards on `--soft`,
+  and codes to copy (booking, order, tracking, confirmation numbers). Cards on `--bg-0` with a `--line` edge,
   `--r-lg`, a small label over the value.
 - **Links** (up to 6, 12 in a newsletter; five shown, then "N more"): links that say what they are, each its words
   and its host; a click opens it in the browser. Left out: the quote and signature's links (seen before in a long
   thread), the footer's (unsubscribe, privacy, social), actions ("Read more", "Add article to Reader"), words used
   for links to different places, and pictures with no words. One per address (tracking parameters aside) and one
   per title.
-- A quiet line closes the column: "Found on this computer, from the words of the mail."
+- A quiet line closes Details when it found something: "Found on this computer, from the words of the mail."
 
 ### 4.2b Marks and notes
 
@@ -274,9 +271,9 @@ panel icon or the column's own × hides it, for every conversation until shown a
 - A mark is drawn in the message with the CSS Custom Highlight API (`--mark-soft`; the current one in the accent),
   so the mail's own markup is never touched. Marks are kept by the message's Message-ID (schema v27, `marks`), so
   Gmail's copies in two folders show the same marks; only on this computer.
-- "Your marks · N" in the column lists them in the order they were made (`--mark-soft` cards), each with a note
+- "Your marks · N" in Details lists them in the order they were made (`--mark-soft` cards), each with a note
   field ("Add a note"; Enter or Esc saves) and a remove button on hover. A click, `]` or `[` goes to a mark,
-  opening its message when it is folded. A narrow pane shows only the count and the keys.
+  opening its message when it is folded. Note in the selection bar opens Details with the new note's field focused.
 - **Marks** (`g m`, the rail): every conversation with a mark, in any folder but the bin, newest first. Its row
   reads as what was marked and the notes ("quote" note · …) instead of the message's start. Search finds the words
   of marks and notes too, and `is:marked` keeps to marked mail.
@@ -287,12 +284,12 @@ panel icon or the column's own × hides it, for every conversation until shown a
   Newsletters, on by default); the book icon still switches to the original.
 - Reading view leaves out the list's footer (a short block with an unsubscribe or preferences link): the header's
   leave icon already offers it.
-- The column shows **In this issue**, the issue's headings (a click scrolls to one), and **Links in this issue**.
+- Details shows **In this issue**, the issue's headings (a click scrolls to one), and **Links in this issue**.
   Headings are the mail's own, or lines it sets as titles without a heading tag: 18 px type or bold all through,
   short and not a sentence (a digest's linked article names). One-word lines (the sender's name) and the subject itself are
   left out of the list.
 - The reader bar (canvas board R6) takes the header's place: the sender, then "8 min read · 4 parts" in `--fg-1`,
-  "Original look" (`Shift B`, on `--soft`), and the conversation's tools (shield, column, leave, Done, `…`,
+  "Original look" (`Shift B`, on `--soft`), and the conversation's tools (shield, companion, leave, Done, `…`,
   close). Under it the subject in the reading face, 34 px bold, with its labels; the byline and the mail's own copy
   of the subject as a heading are left out. `Shift B` switches reading view in any designed mail.
 - **Read later** (`Shift L`, the reader bar's button, the `…` menu): the conversation goes on the shelf, out of the
@@ -406,7 +403,11 @@ Settings → Reading → Start of the day: the screen and the line, only the lin
 
 Built 2026-10-29 from the design board "Tern design ideas" (owner's pick). A 340 px column on `--bg-1` right of
 the open conversation (a third grid column; under 1180 px it slides over the conversation with `--shadow`), open
-until closed (`companion` setting). A 48 px header with four tabs (selected on `--bg-2`) and ×.
+until closed (`companion` setting). A 48 px header with five tabs (selected on `--bg-2`; the one in use is kept,
+`companionTab`) and ×. Promises and Files carry a count pill (what you still owe, how many files). It opens and
+closes with `Ctrl+.`, the header's panel icon, or `i` (on Details).
+
+- **Details**: §4.2a–c, what the newest message holds, links, a newsletter's parts and the person's marks.
 
 - **Ask**: a chat about the conversation, through `ai::ask_about` behind the summaries switch (on request; the
   transcript, the chat so far and the question, redacted like a summary; never kept). A chip says what it reads
@@ -416,7 +417,7 @@ until closed (`companion` setting). A 48 px header with four tabs (selected on `
   Settings → AI; nothing is sent.
 - **Person**: the newest sender who isn't you: name, address, how many messages each way (`contact_card`), how long
   you usually take to answer them in this conversation, and your recent conversations. No AI.
-- **Promises**: You owe (what you were asked: `findAsks`; what you said you'd do: "I'll…") and Owed to you (the
+- **Promises** (the only place asks are listed): You owe (what you were asked: `findAsks`; what you said you'd do: "I'll…") and Owed to you (the
   reverse), each with who, a due day when the sentence names one, a jump to its message and a tick
   (`promisesDone`). From the words, on this computer (`src/promises.ts`).
 - **Files**: every attachment in the conversation, newest first, with who and when; a click opens it.

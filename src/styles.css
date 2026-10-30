@@ -1467,43 +1467,6 @@ button.primary kbd {
   padding-bottom: var(--s-4);
 }
 /* The conversation and, when the pane has room, the column beside it (§4.2a). */
-/* Three columns: the messages in the middle, the column in the space on their right. A wide pane (focus mode)
-   keeps the messages centred, as without the column; a narrower one gives the left space up first. Widths come
-   from the room there is, never from content: the message frames size themselves to their width. */
-.conversation-pane {
-  --margin-w: 260px;
-  --reading-cols: minmax(0, 1fr) minmax(0, 860px) minmax(var(--margin-w), 1fr);
-}
-.reading.has-margin {
-  display: grid;
-  grid-template-columns: var(--reading-cols);
-  column-gap: var(--s-5);
-  align-items: start;
-}
-.reading.has-margin > .conversation {
-  grid-column: 2;
-  width: 100%;
-  min-width: 0;
-  margin: 0;
-}
-.reading.has-margin > .reading-margin {
-  grid-column: 3;
-  justify-self: end;
-  width: var(--margin-w);
-}
-/* An inline reply lines up with the messages, not with the column. */
-.conversation-pane:has(.reading.has-margin) .inline-reply {
-  display: grid;
-  grid-template-columns: var(--reading-cols);
-  column-gap: var(--s-5);
-  max-width: none;
-  padding: 0;
-}
-.conversation-pane:has(.reading.has-margin) .inline-reply > * {
-  grid-column: 2;
-  justify-self: center;
-  width: calc(100% - 2 * var(--s-6));
-}
 .conversation-head {
   display: flex;
   align-items: flex-start;
@@ -6081,61 +6044,28 @@ button.link.danger {
   letter-spacing: -0.01em;
 }
 
-/* MARK: Beside the messages (§4.2a–c): what the newest message holds, a newsletter's parts, the person's marks. */
+/* MARK: Details (§4.2a–c), the companion's first tab: what the newest message holds, a newsletter's parts, the
+   person's marks. */
 
-.reading-margin {
-  position: sticky;
-  top: 0;
-  /* The pane's height, less the window's title bar and status strip; scrolls on its own, its bar shown on hover. */
-  max-height: calc(100vh - 72px - var(--titlebar-h));
-  overflow-x: hidden;
-  overflow-y: auto;
-  overflow-wrap: anywhere;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  box-sizing: border-box;
-  padding: var(--s-6) var(--s-5) var(--s-6) 0;
+.details {
   display: flex;
   flex-direction: column;
   gap: var(--s-5);
+  overflow-wrap: anywhere;
   user-select: none;
 }
-.reading-margin:hover {
-  scrollbar-color: var(--line) transparent;
-}
-.reading-margin .contents button {
+.details .contents button {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.reading-margin .hide {
-  position: absolute;
-  top: var(--s-5);
-  right: var(--s-5);
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--fg-2);
-}
-.reading-margin .hide:hover {
-  background: var(--bg-2);
-  color: var(--fg-0);
-}
-.reading-margin.narrow .hide {
-  top: 0;
-  right: 0;
-}
-.reading-margin section {
+.details section {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
 }
-.reading-margin h2 {
+.details h2 {
   display: flex;
   align-items: center;
   gap: var(--s-2);
@@ -6146,60 +6076,61 @@ button.link.danger {
   text-transform: uppercase;
   color: var(--fg-2);
 }
-.reading-margin h2 .keys {
+.details h2 .keys {
   margin-left: auto;
   display: inline-flex;
   gap: 2px;
   text-transform: none;
 }
-.reading-margin .facts {
+.details .facts {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
 }
-.reading-margin .fact {
+.details .fact {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
   padding: var(--s-3);
   border-radius: var(--r-lg);
-  background: var(--soft);
+  border: 1px solid var(--line);
+  background: var(--bg-0);
   font-size: var(--t-md);
   line-height: 1.45;
 }
-.reading-margin .fact.ask {
+.details .fact.ask {
   background: var(--accent-soft);
 }
-.reading-margin .fact .kind {
+.details .fact .kind {
   font-size: var(--t-sm);
   color: var(--fg-1);
 }
-.reading-margin .fact strong {
+.details .fact strong {
   font-weight: 600;
 }
-.reading-margin .fact .code {
+.details .fact .code {
   font: 500 var(--t-md) / 1.4 "JetBrains Mono", ui-monospace, monospace;
   user-select: all;
 }
-.reading-margin .fact button {
+.details .fact button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   margin-top: 2px;
   border: none;
-  background: var(--bg-0);
+  background: var(--soft);
   font-size: var(--t-sm);
   padding: 3px var(--s-2);
 }
-.reading-margin .fact button:hover {
+.details .fact button:hover {
   background: var(--bg-2);
 }
-.reading-margin .contents {
+.details .contents {
   display: flex;
   flex-direction: column;
 }
-.reading-margin .contents button {
+.details .contents button {
   border: none;
   background: none;
   text-align: left;
@@ -6207,16 +6138,16 @@ button.link.danger {
   font-size: var(--t-md);
   color: var(--fg-1);
 }
-.reading-margin .contents button:hover {
+.details .contents button:hover {
   background: var(--bg-2);
   color: var(--fg-0);
 }
-.reading-margin .links {
+.details .links {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.reading-margin .link-card {
+.details .link-card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -6227,10 +6158,10 @@ button.link.danger {
   padding: 6px var(--s-2);
   border-radius: var(--r-md);
 }
-.reading-margin .link-card:hover {
+.details .link-card:hover {
   background: var(--soft);
 }
-.reading-margin .links .more {
+.details .links .more {
   align-self: flex-start;
   border: none;
   background: none;
@@ -6238,7 +6169,7 @@ button.link.danger {
   font-size: var(--t-sm);
   color: var(--accent);
 }
-.reading-margin .link-card .text {
+.details .link-card .text {
   font-size: var(--t-md);
   color: var(--fg-0);
   display: -webkit-box;
@@ -6246,16 +6177,16 @@ button.link.danger {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.reading-margin .link-card .host {
+.details .link-card .host {
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
-.reading-margin .marks {
+.details .marks {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
 }
-.reading-margin .mark {
+.details .mark {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -6264,10 +6195,10 @@ button.link.danger {
   border-radius: var(--r-lg);
   background: var(--mark-soft);
 }
-.reading-margin .mark.on {
+.details .mark.on {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
-.reading-margin .mark .passage {
+.details .mark .passage {
   border: none;
   background: none;
   padding: 0 var(--s-4) 0 0;
@@ -6280,7 +6211,7 @@ button.link.danger {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.reading-margin .mark textarea {
+.details .mark textarea {
   font: inherit;
   font-size: var(--t-sm);
   line-height: 1.45;
@@ -6293,13 +6224,13 @@ button.link.danger {
   field-sizing: content;
   min-height: 0;
 }
-.reading-margin .mark textarea:focus {
+.details .mark textarea:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   background: var(--bg-0);
   color: var(--fg-0);
 }
-.reading-margin .mark .remove {
+.details .mark .remove {
   position: absolute;
   top: 6px;
   right: 6px;
@@ -6313,51 +6244,20 @@ button.link.danger {
   color: var(--fg-2);
   opacity: 0;
 }
-.reading-margin .mark:hover .remove,
-.reading-margin .mark .remove:focus-visible {
+.details .mark:hover .remove,
+.details .mark .remove:focus-visible {
   opacity: 1;
 }
-.reading-margin .nothing {
+.details .nothing {
   margin: 0;
   font-size: var(--t-md);
   line-height: 1.45;
   color: var(--fg-2);
 }
-.reading-margin .found-here {
+.details .found-here {
   margin: 0;
   font-size: var(--t-sm);
   color: var(--fg-2);
-}
-/* A narrow pane: the column is a row above the messages, and marks show only as their count. */
-.reading-margin.narrow {
-  position: relative;
-  max-height: none;
-  overflow: visible;
-  padding: 0 0 var(--s-4);
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: flex-start;
-}
-.reading-margin.narrow {
-  gap: var(--s-3);
-}
-.reading-margin.narrow section {
-  flex: 1 1 100%;
-}
-.reading-margin.narrow .facts,
-.reading-margin.narrow .links,
-.reading-margin.narrow .contents {
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-.reading-margin.narrow .fact {
-  flex: 1 1 180px;
-  max-width: 320px;
-}
-.reading-margin.narrow .link-card {
-  flex: 0 1 auto;
-  max-width: 260px;
-  background: var(--soft);
 }
 
 /* Over text selected in a message. */
@@ -6517,13 +6417,27 @@ button.link.danger {
   gap: 2px;
 }
 .companion-tabs button {
-  padding: 6px 10px;
+  padding: 6px 7px;
+  white-space: nowrap;
   border: none;
   border-radius: var(--r-md);
   background: none;
   color: var(--fg-2);
   font: inherit;
   font-size: var(--t-sm);
+}
+.companion-tabs button .count {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+.companion-tabs button.on .count {
+  background: var(--accent-soft);
+  color: var(--fg-0);
 }
 .companion-tabs button.on {
   background: var(--bg-2);

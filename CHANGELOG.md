@@ -7,6 +7,15 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Changed
+
+- One column beside a conversation instead of two. What the old column showed (the day, place and codes in the
+  newest message, its links, a newsletter's parts and your marks) is now the companion's first tab, Details. `i`
+  opens the companion on Details and closes it again; `Ctrl+.` and the header's panel button show or hide it on the
+  tab you used last. Making a note on a passage opens Details with the note field ready.
+- The companion's tabs say what waits behind them: how many things you owe under Promises, how many files under
+  Files. What was asked of you is listed only under Promises now, for the whole conversation.
+
 ## [1.6.0] - 2026-10-29
 
 ### Added

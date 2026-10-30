@@ -4,6 +4,9 @@ import { createEffect, createRoot, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { api, type AiProvider } from "./api";
 
+/** The companion's tabs (`src/components/Companion.tsx`). */
+export type CompanionTab = "details" | "ask" | "person" | "promises" | "files";
+
 export type Settings = {
   /** The mood: "system" picks Dawn or Dusk from the desktop's light or dark; "light" is Dawn, "dark" Dusk, "sea"
    * Night Sea, and "omarchy" follows the Omarchy theme (Linux), or the system without one. */
@@ -29,8 +32,10 @@ export type Settings = {
   notify: boolean;
   /** Notify for the inbox's Other split as well as Important (read by the engine). */
   notifyOther: boolean;
-  /** The companion column is open beside a conversation (`Ctrl+.`). */
+  /** The companion column is open beside a conversation (`Ctrl+.`, `i` for its Details). */
   companion: boolean;
+  /** The companion's tab, kept between conversations and runs. */
+  companionTab: CompanionTab;
   /** Promises ticked off in the companion, by key (`src/promises.ts`). */
   promisesDone: string[];
   /** A soft wing beat when mail leaves the outbox. */
@@ -40,9 +45,7 @@ export type Settings = {
   quietTo: string;
   /** The inbox in two splits, Important and Other, rather than one list. */
   splitInbox: boolean;
-  /** The column beside a conversation is shown (`i` hides it until shown again). */
-  readingColumn: boolean;
-  /** The column beside a conversation: when, where, what is asked, codes and links found in the newest message. */
+  /** Details in the companion: when, where, codes and links found in the newest message. */
   readingFacts: boolean;
   /** Newsletters (designed mail from a list) open in reading view. */
   newsletterReading: boolean;
@@ -117,13 +120,13 @@ export const DEFAULTS: Settings = {
   notify: true,
   wingBeat: false,
   companion: false,
+  companionTab: "details",
   promisesDone: [],
   notifyOther: false,
   quietFrom: "",
   quietTo: "",
   splitInbox: true,
   darkMail: "darken",
-  readingColumn: true,
   readingFacts: true,
   newsletterReading: true,
   senderLogos: false,

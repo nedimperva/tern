@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import { api, type Mailto, type Mark, type ThreadMessage } from "../api";
 import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
@@ -23,7 +24,7 @@ import {
   textFrame,
   withoutTrackers,
 } from "../mailview";
-import { anyFact, factsOf } from "../facts";
+import { factsOf } from "../facts";
 import { drawMarks, FRAME_MARK_STYLE, setJumper, showRange } from "../marks";
 import { aiOn, isDark, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
@@ -33,7 +34,8 @@ import { AiSummary } from "./AiSummary";
 import { Icon } from "./Icon";
 import { Original } from "./Original";
 import { PersonCard, type PersonActions } from "./PersonCard";
-import { ReadingMargin } from "./ReadingMargin";
+import { detailsSlot, showCompanion } from "../app/state";
+import { Details } from "./Details";
 import { logoFor } from "../logos";
 
 /** Images the HTML shows from the message's own parts. */
@@ -718,7 +720,6 @@ export function ConversationView(props: {
       setLeft("Unsubscribe mail started.");
     }
   };
-  const anyTool = () => !!(privacy().trackers || privacy().blocked || minutes() >= 2 || listMail() || designed().size || wide() || hasColumn());
   // Loading images for good is a choice about a sender, so it sits in the menu, beside the conversation's actions.
   const [original, setOriginal] = createSignal<ThreadMessage | null>(null);
   const menu = () => {
@@ -889,7 +890,10 @@ export function ConversationView(props: {
       const mark = await api.addMark(p.messageId, p.text, "");
       await refetchMarks();
       setCurrentMark(mark.id);
-      if (withNote) setNoting(mark.id);
+      if (withNote) {
+        setNoting(mark.id);
+        showCompanion("details");
+      }
     } catch (e) {
       setMarkProblem(String(e));
     }
@@ -908,28 +912,27 @@ export function ConversationView(props: {
     window.removeEventListener("resize", dropPick);
   });
 
-  // Beside the messages when the pane has room for both, else above them.
-  const [wide, setWide] = createSignal(true);
-  const hasColumn = () => contents().length > 1 || !!(facts() && anyFact(facts()!)) || marks().length > 0;
-  // Beside the messages it stays, found something or not, so it does not come and go between conversations; in a
-  // narrow pane, where it sits above them, only when it has something to show.
-  const hasMargin = () => settings.readingColumn && (hasColumn() || wide());
-  const margin = () => (
-    <ReadingMargin
-      narrow={!wide()}
-      facts={facts()}
-      contents={contents()}
-      onContents={toPart}
-      issue={newsletter()}
-      onSnooze={props.onSnoozeUntil}
-      marks={marks()}
-      current={currentMark()}
-      hidden={(id) => !placed().get(id)}
-      onShowMark={showMark}
-      onChanged={() => void refetchMarks()}
-      noting={noting()}
-      onHide={() => setSetting("readingColumn", false)}
-    />
+  // Details in the companion: drawn from here, as the facts, contents and marks belong to this conversation.
+  const details = () => (
+    <Show when={detailsSlot()}>
+      {(slot) => (
+        <Portal mount={slot()}>
+          <Details
+            facts={facts()}
+            contents={contents()}
+            onContents={toPart}
+            issue={newsletter()}
+            onSnooze={props.onSnoozeUntil}
+            marks={marks()}
+            current={currentMark()}
+            hidden={(id) => !placed().get(id)}
+            onShowMark={showMark}
+            onChanged={() => void refetchMarks()}
+            noting={noting()}
+          />
+        </Portal>
+      )}
+    </Show>
   );
   /** "3 days later" above the message at `i`, when the one before it is days older. */
   const gap = (i: number) => (i > 0 ? later(props.messages[i - 1].date, props.messages[i].date) : null);
@@ -942,15 +945,10 @@ export function ConversationView(props: {
     const pane = title.closest(".conversation-pane");
     const watch = new IntersectionObserver(([e]) => setCompact(!e.isIntersecting), { root: pane });
     watch.observe(title);
-    // Room for the messages (560 px at least) and the column beside them.
-    // Moving the column resizes the message frames, which have observers of their own: wait for the next frame.
-    const room = new ResizeObserver(([e]) => requestAnimationFrame(() => setWide(e.contentRect.width >= 880)));
-    if (pane) room.observe(pane);
     const scrolled = () => (setPick(null), setHovered(null));
     pane?.addEventListener("scroll", scrolled, { passive: true });
     onCleanup(() => {
       watch.disconnect();
-      room.disconnect();
       pane?.removeEventListener("scroll", scrolled);
     });
   });
@@ -1018,26 +1016,22 @@ export function ConversationView(props: {
           <Icon name="book-open" size={15} />
         </button>
       </Show>
-      <Show when={wide() || hasColumn()}>
-        <button
-          class="tool"
-          classList={{ on: settings.readingColumn }}
-          aria-pressed={settings.readingColumn}
-          data-tip={settings.readingColumn ? "Hide the column (I)" : "Show what's in it, links and marks (I)"}
-          aria-label="The column beside the messages"
-          onClick={() => setSetting("readingColumn", !settings.readingColumn)}
-        >
-          <Icon name="panel-right" size={15} />
-        </button>
-      </Show>
+      <button
+        class="tool"
+        classList={{ on: settings.companion }}
+        aria-pressed={settings.companion}
+        data-tip={settings.companion ? "Hide the companion (Ctrl+.)" : "Details, Ask, the person, promises and files (Ctrl+.)"}
+        aria-label="The companion"
+        onClick={() => setSetting("companion", !settings.companion)}
+      >
+        <Icon name="panel-right" size={15} />
+      </button>
       <Show when={listMail()}>
         <button class="tool" data-tip={left() || "Unsubscribe from this list"} aria-label={left() || "Unsubscribe"} onClick={unsubscribe}>
           <Icon name={left() ? "check" : "mail-x"} size={15} />
         </button>
       </Show>
-      <Show when={anyTool()}>
-        <span class="vsep" />
-      </Show>
+      <span class="vsep" />
       <button class="primary" onClick={props.onDone}>
         Done <kbd>E</kbd>
       </button>
@@ -1049,7 +1043,7 @@ export function ConversationView(props: {
   );
 
   return (
-    <div class="reading" classList={{ "has-margin": hasMargin() && wide() }}>
+    <div class="reading">
       {/* biome-ignore lint/a11y/noStaticElementInteractions: offers the mark bar after a selection made with the mouse */}
       <div
         class="conversation"
@@ -1106,7 +1100,6 @@ export function ConversationView(props: {
           </div>
           <Show when={!reader()}>{tools()}</Show>
         </header>
-        <Show when={hasMargin() && !wide()}>{margin()}</Show>
         <Show when={back()}>
           {(b) => (
             <div class="catch-up">
@@ -1232,7 +1225,7 @@ export function ConversationView(props: {
         </Show>
         {replyRow()}
       </div>
-      <Show when={hasMargin() && wide()}>{margin()}</Show>
+      {details()}
       <Show when={pick()}>
         {(p) => (
           <div

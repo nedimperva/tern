@@ -18,7 +18,7 @@ import type {
 import type { ComposeInit } from "../components/Compose";
 import type { Context } from "../keys";
 import { deck, screen } from "../day";
-import { setSetting, settings } from "../settings";
+import { type CompanionTab, setSetting, settings } from "../settings";
 
 export const [accounts, setAccounts] = createSignal<Account[]>([]);
 // Every account's signatures, for compose; read again when settings close.
@@ -95,6 +95,17 @@ export const docked = () => settings.sidebar && width() >= SIDEBAR_WIDTH && !foc
  * narrow one they slide the rail over the list. */
 export const toggleSidebar = () =>
   width() >= SIDEBAR_WIDTH && !focusMode() ? (setRail(false), setSetting("sidebar", !settings.sidebar)) : setRail(!rail());
+
+/** The companion on `tab`: `i` opens it on Details and closes it from there, a tab's own key would do the same. */
+export const toggleCompanion = (tab: CompanionTab) =>
+  settings.companion && settings.companionTab === tab ? setSetting("companion", false) : showCompanion(tab);
+export const showCompanion = (tab: CompanionTab) => {
+  if (settings.companionTab !== tab) setSetting("companionTab", tab);
+  if (!settings.companion) setSetting("companion", true);
+};
+/** Where the companion's Details tab is drawn: the open conversation fills it, as the facts, contents and marks are
+ * its own (ConversationView portals them in). */
+export const [detailsSlot, setDetailsSlot] = createSignal<HTMLElement | null>(null);
 
 /** The search box, for `/`. */
 export const searchBox: { input?: HTMLInputElement } = {};

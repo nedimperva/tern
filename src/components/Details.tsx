@@ -1,6 +1,6 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
 import { api, type Mark } from "../api";
-import { anyFact, type Facts, type Link } from "../facts";
+import type { Facts, Link } from "../facts";
 import { Icon } from "./Icon";
 
 const day = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
@@ -27,11 +27,9 @@ function copy(text: string) {
   void navigator.clipboard.writeText(text).catch(() => {});
 }
 
-/** The column beside a conversation (docs/design/ui.md §4.2a): a newsletter's parts in reading view, what the newest
- * message holds, its links, and the person's marks. Beside the messages in a wide pane; above them, in a row, in a
- * narrow one, where the marks show only as a count. */
-export function ReadingMargin(props: {
-  narrow: boolean;
+/** The companion's Details tab (docs/design/ui.md §4.2a–c): a newsletter's parts in reading view, what the newest
+ * message holds, its links, and the person's marks. The open conversation draws it, as all of it is its own. */
+export function Details(props: {
   facts: Facts | null;
   /** The headings of a newsletter in reading view. */
   contents: string[];
@@ -48,7 +46,6 @@ export function ReadingMargin(props: {
   onChanged: () => void;
   /** A mark just made with "Note": its field takes the keys. */
   noting: number | null;
-  onHide: () => void;
 }) {
   const facts = () => props.facts;
   const links = (): Link[] => facts()?.links ?? [];
@@ -59,11 +56,10 @@ export function ReadingMargin(props: {
     const w = facts()?.when;
     return w && snoozeFor(w) > Date.now() / 1000 ? w : null;
   };
+  // What was asked of the person is under Promises, for the whole conversation, so it is not repeated here.
+  const found = () => !!facts() && !!(facts()!.when || facts()!.where || facts()!.codes.length);
   return (
-    <aside class="reading-margin" classList={{ narrow: props.narrow }} aria-label="In this conversation">
-      <button class="hide" onClick={props.onHide} title="Hide the column (I)" aria-label="Hide the column">
-        <Icon name="x" size={13} />
-      </button>
+    <div class="details">
       <Show when={props.contents.length > 1}>
         <section>
           <h2>In this issue</h2>
@@ -72,7 +68,7 @@ export function ReadingMargin(props: {
           </nav>
         </section>
       </Show>
-      <Show when={facts() && (facts()!.when || facts()!.where || facts()!.asks.length || facts()!.codes.length)}>
+      <Show when={found()}>
         <section>
           <h2>In this message</h2>
           <div class="facts">
@@ -102,14 +98,6 @@ export function ReadingMargin(props: {
                 </div>
               )}
             </Show>
-            <For each={facts()!.asks}>
-              {(ask) => (
-                <div class="fact ask">
-                  <span class="kind">Asked of you</span>
-                  <span>{ask}</span>
-                </div>
-              )}
-            </For>
             <For each={facts()!.codes}>
               {(code) => (
                 <div class="fact">
@@ -144,35 +132,32 @@ export function ReadingMargin(props: {
           </div>
         </section>
       </Show>
-      <Show when={props.marks.length}>
-        <section>
-          <h2>
-            Your marks · {props.marks.length}
+      <Show when={props.contents.length < 2 && !found() && !links().length}>
+        <p class="nothing">No day, place, code or link to pick out in the newest message.</p>
+      </Show>
+      <section>
+        <h2>
+          Your marks
+          <Show when={props.marks.length}>
+            {" "}· {props.marks.length}
             <span class="keys">
               <kbd>[</kbd>
               <kbd>]</kbd>
             </span>
-          </h2>
-          <Show when={!props.narrow}>
-            <div class="marks">
-              <For each={props.marks}>
-                {(m) => <MarkCard mark={m} on={props.current === m.id} hidden={props.hidden(m.id)} noting={props.noting === m.id} onShow={() => props.onShowMark(m.id)} onChanged={props.onChanged} />}
-              </For>
-            </div>
           </Show>
-        </section>
-      </Show>
-      <Show when={props.contents.length < 2 && !(facts() && anyFact(facts()!)) && !props.marks.length}>
-        <section>
-          <h2>In this message</h2>
-          <p class="nothing">No day, place, question, code or link to pick out.</p>
-          <p class="nothing">Select text in a message to quote it in a reply, mark it or add a note.</p>
-        </section>
-      </Show>
-      <Show when={facts() && anyFact(facts()!) && !props.narrow}>
+        </h2>
+        <Show when={props.marks.length} fallback={<p class="nothing">Select text in a message to mark it or add a note.</p>}>
+          <div class="marks">
+            <For each={props.marks}>
+              {(m) => <MarkCard mark={m} on={props.current === m.id} hidden={props.hidden(m.id)} noting={props.noting === m.id} onShow={() => props.onShowMark(m.id)} onChanged={props.onChanged} />}
+            </For>
+          </div>
+        </Show>
+      </section>
+      <Show when={found() || links().length}>
         <p class="found-here">Found on this computer, from the words of the mail.</p>
       </Show>
-    </aside>
+    </div>
   );
 }
 

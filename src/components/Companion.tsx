@@ -1,17 +1,18 @@
-// The companion (docs/design/ui.md §4.2b, `Ctrl+.`): a column beside the open conversation. Ask talks about the
-// conversation with AI, on request and behind the AI switch; Person, Promises and Files come from the store on this
-// computer and need no AI.
+// The companion (docs/design/ui.md §4.2b, `Ctrl+.`): a column beside the open conversation. Details holds what the
+// newest message says, its links and the person's marks (`i`); Ask talks about the conversation with AI, on request
+// and behind the AI switch; Person, Promises and Files come from the store on this computer and need no AI.
 
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { api, type AiAnswer, type ContactCard, type ThreadMessage } from "../api";
 import { filesOf } from "../files";
 import { promisesIn } from "../promises";
-import { aiOn, setSetting, settings } from "../settings";
+import { setDetailsSlot, showCompanion } from "../app/state";
+import { aiOn, type CompanionTab, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
 import { Icon } from "./Icon";
 
-type Tab = "ask" | "person" | "promises" | "files";
-const TABS: [Tab, string][] = [
+const TABS: [CompanionTab, string][] = [
+  ["details", "Details"],
   ["ask", "Ask"],
   ["person", "Person"],
   ["promises", "Promises"],
@@ -32,11 +33,15 @@ export function Companion(props: {
   onClose: () => void;
   onOpenAi: () => void;
 }) {
-  const [tab, setTab] = createSignal<Tab>("ask");
+  const tab = () => (TABS.some(([id]) => id === settings.companionTab) ? settings.companionTab : "details");
   const first = () => props.messages[0];
   const key = () => (first() ? `${first().accountId}:${first().threadId}` : "");
   const newest = () => props.messages[props.messages.length - 1];
   const sender = (m: ThreadMessage) => (props.mine(m.fromAddr) ? "You" : (m.fromName || m.fromAddr).split(/[\s@]/)[0]);
+  // What waits behind a tab, so a glance at the header says whether it is worth opening.
+  const owed = createMemo(() => promisesIn(props.messages, props.mine).filter((p) => p.yours && !settings.promisesDone.includes(p.key)).length);
+  const files = createMemo(() => props.messages.reduce((n, m) => n + filesOf(m).length, 0));
+  const count = (id: CompanionTab) => (id === "promises" ? owed() : id === "files" ? files() : 0);
 
   return (
     <aside class="companion" aria-label="Companion">
@@ -44,8 +49,11 @@ export function Companion(props: {
         <div class="companion-tabs" role="tablist" aria-label="Companion">
           <For each={TABS}>
             {([id, name]) => (
-              <button type="button" role="tab" aria-selected={tab() === id} classList={{ on: tab() === id }} onClick={() => setTab(id)}>
+              <button type="button" role="tab" aria-selected={tab() === id} classList={{ on: tab() === id }} onClick={() => showCompanion(id)}>
                 {name}
+                <Show when={count(id)}>
+                  <span class="count">{count(id)}</span>
+                </Show>
               </button>
             )}
           </For>
@@ -55,6 +63,9 @@ export function Companion(props: {
           <Icon name="x" size={15} />
         </button>
       </header>
+      <Show when={tab() === "details"}>
+        <DetailsSlot />
+      </Show>
       <Show when={tab() === "ask"}>
         <Ask
           messages={props.messages}
@@ -76,6 +87,12 @@ export function Companion(props: {
       </Show>
     </aside>
   );
+}
+
+/** The open conversation draws Details here (`Details.tsx`, portalled from ConversationView). */
+function DetailsSlot() {
+  onCleanup(() => setDetailsSlot(null));
+  return <div class="companion-body" ref={setDetailsSlot} />;
 }
 
 function Ask(props: {

@@ -111,7 +111,7 @@ export function ReadingSettings() {
       <Select
         name="readingFacts"
         title="In this message"
-        help="Beside a conversation: the day and time it names, an address, what it asks of you, codes to copy and its links. Found on this computer."
+        help="In the companion's Details (i): the day and time the newest message names, an address, codes to copy and its links. Found on this computer."
         choices={[
           { label: "Show them", value: true },
           { label: "Don't show them", value: false },

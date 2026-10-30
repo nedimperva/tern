@@ -61,6 +61,7 @@ import {
   setSheet,
   setSnoozing,
   searching,
+  toggleCompanion,
   toggleSidebar,
   update,
 } from "./state";
@@ -105,7 +106,7 @@ export const bindings = (): Binding[] => [
   { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
   { keys: "]", name: "Next mark", context: "conversation", run: () => jumpMark(1), repeat: true },
   { keys: "B", name: "Reading view or the original look", context: "conversation", run: switchReading },
-  { keys: "i", name: "Show or hide the column beside the messages", context: "conversation", run: () => setSetting("readingColumn", !settings.readingColumn) },
+  { keys: "i", name: "Details in the companion: what's in the mail, links and marks", context: "conversation", run: () => toggleCompanion("details") },
   { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1), repeat: true },
   { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },
   { keys: "f", name: "Forward", context: "conversation", run: () => respond(messages[messageFocus()], "forward") },
