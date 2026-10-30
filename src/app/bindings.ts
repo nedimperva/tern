@@ -7,7 +7,7 @@ import type { MenuItem } from "../components/ActionMenu";
 import type { Command } from "../components/CommandBar";
 import { switchReading } from "../components/ConversationView";
 import { ROLE_NAMES, targetOf } from "../components/Rail";
-import { start } from "../day";
+import { openScreen } from "../day";
 import { keyLabel, type Binding } from "../keys";
 import { jumpMark } from "../marks";
 import { aiOn, omarchyAvailable, setSetting, settings, type Settings } from "../settings";
@@ -29,7 +29,6 @@ import {
 } from "./actions";
 import { moveMessage, open, toggleMessage, unmute, viewFiles } from "./conversation";
 import { newMessage, reply, respond } from "./composing";
-import { lineHere, runDeck } from "./deck";
 import { escape, extend, go, isSaved, move, nextSplit, runSearch, toggleSaved, toggleSelected } from "./list";
 import { keyOf } from "./rows";
 import {
@@ -80,14 +79,6 @@ export const bindings = (): Binding[] => [
   { keys: "Enter", name: "Open conversation", context: "list", run: () => open(current()) },
   { keys: "o", name: "Open conversation", context: "list", run: () => open(current()), hidden: true },
   { keys: "Escape", name: "Back", run: escape },
-  ...(lineHere()
-    ? [
-        { keys: "1", name: "Go through what needs you", context: "list" as const, run: () => start()?.needYou.length && runDeck("need") },
-        { keys: "2", name: "Go through what came back from snooze", context: "list" as const, run: () => start()?.back.length && runDeck("back") },
-        { keys: "3", name: "Go through what has no answer yet", context: "list" as const, run: () => start()?.waiting.length && runDeck("waiting") },
-        { keys: "4", name: "Updates and lists (Other)", context: "list" as const, run: () => go({ role: "bulk" }) },
-      ]
-    : []),
   { keys: "e", name: "Done (archive)", run: () => act("archive") },
   { keys: "E", name: "Not done (back to Inbox)", run: () => act("inbox") },
   { keys: "!", name: "Mark as spam", run: () => act("junk") },
@@ -106,7 +97,7 @@ export const bindings = (): Binding[] => [
   { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
   { keys: "]", name: "Next mark", context: "conversation", run: () => jumpMark(1), repeat: true },
   { keys: "B", name: "Reading view or the original look", context: "conversation", run: switchReading },
-  { keys: "i", name: "Details in the companion: what's in the mail, links and marks", context: "conversation", run: () => toggleCompanion("details") },
+  { keys: "i", name: "The companion: the person, what's in the mail, promises and files", context: "conversation", run: toggleCompanion },
   { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1), repeat: true },
   { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },
   { keys: "f", name: "Forward", context: "conversation", run: () => respond(messages[messageFocus()], "forward") },
@@ -137,6 +128,7 @@ export const bindings = (): Binding[] => [
   { keys: "Tab", name: "Next split", context: "list", run: () => nextSplit(1) },
   { keys: "Shift+Tab", name: "Previous split", context: "list", run: () => nextSplit(-1) },
   { keys: "g i", name: "Go to Inbox", run: () => go(home()) },
+  { keys: "g o", name: "Start of the day: what waits on you", run: () => void openScreen() },
   { keys: "g h", name: "Go to Snoozed", run: () => go({ role: "snoozed" }) },
   { keys: "g r", name: "Go to Read later", run: () => go({ role: "later" }) },
   { keys: "g m", name: "Go to Marks (what you marked and noted)", run: () => go({ role: "marked" }) },
@@ -161,7 +153,7 @@ export const bindings = (): Binding[] => [
   ...(update() ? [{ keys: "", name: `Restart to update to ${update()}`, run: restartToUpdate }] : []),
   { keys: "Ctrl+P", name: "Performance overlay", run: () => setPerf(!perf()) },
   { keys: "Ctrl+\\", name: "Show or hide the sidebar", run: toggleSidebar },
-  { keys: "Ctrl+.", name: "Show or hide the companion", run: () => setSetting("companion", !settings.companion) },
+  { keys: "Ctrl+.", name: "Show or hide the companion", run: toggleCompanion },
   { keys: "Ctrl+k", name: "Command palette", run: () => setPalette(!palette()), hidden: true },
 ];
 

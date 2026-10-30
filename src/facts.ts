@@ -116,7 +116,8 @@ export function findWhere(text: string): string | null {
   return STREET.exec(text)?.[0].replace(/\s+/g, " ").trim() ?? null;
 }
 
-const ASKING = /\b(you|your|can|could|would|will|please|li|možeš|možete|mozes|mozete|molim|trebate|trebaš|da li)\b/i;
+// Whole words by Unicode letters, as `\b` finds no edge after the š of "možeš".
+const ASKING = /(?<![\p{L}\p{N}])(you|your|can|could|would|will|please|li|možeš|možete|mozes|mozete|molim|trebate|trebaš|da li)(?![\p{L}\p{N}])/iu;
 
 /** Questions put to the person, and their "please"s: at most three, in order. */
 export function findAsks(text: string): string[] {

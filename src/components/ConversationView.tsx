@@ -487,7 +487,7 @@ function initialsOf(name: string, addr: string): string {
 }
 
 /** Someone's initials on their colour, or their company's logo when logos are on and one was found. */
-function Avatar(props: { addr: string; name: string }) {
+export function Avatar(props: { addr: string; name: string }) {
   const logo = () => logoFor(props.addr);
   return (
     <span class="avatar" classList={{ logo: !!logo() }} style={{ background: logo() ? undefined : colour(props.addr) }}>
@@ -892,7 +892,7 @@ export function ConversationView(props: {
       setCurrentMark(mark.id);
       if (withNote) {
         setNoting(mark.id);
-        showCompanion("details");
+        showCompanion();
       }
     } catch (e) {
       setMarkProblem(String(e));
@@ -1020,7 +1020,7 @@ export function ConversationView(props: {
         class="tool"
         classList={{ on: settings.companion }}
         aria-pressed={settings.companion}
-        data-tip={settings.companion ? "Hide the companion (Ctrl+.)" : "Details, Ask, the person, promises and files (Ctrl+.)"}
+        data-tip={settings.companion ? "Hide the companion (Ctrl+.)" : "The person, details, promises, files and Ask (Ctrl+.)"}
         aria-label="The companion"
         onClick={() => setSetting("companion", !settings.companion)}
       >

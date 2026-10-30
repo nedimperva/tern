@@ -7,7 +7,7 @@ import type { Account, Signature, Snippet } from "./api";
 import { DEFAULTS, type Settings } from "./settings";
 
 /** What only means something on this computer: when the person was last here, what showed today, the streak. */
-const LOCAL: (keyof Settings)[] = ["lastSeen", "dayShown", "lineHidden", "zeroLog"];
+const LOCAL: (keyof Settings)[] = ["lastSeen", "dayShown", "zeroLog"];
 
 export type Backup = {
   tern: "settings";

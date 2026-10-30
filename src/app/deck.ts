@@ -1,12 +1,12 @@
-// The start of the day as the list sees it (src/day.ts holds the counts): the line above the inbox and the
-// one-at-a-time run through what needs the person.
+// The start of the day as the list sees it (src/day.ts holds the counts): the one-at-a-time run through what
+// needs the person.
 
 import { api } from "../api";
-import { closeScreen, deck, lineShown, refreshStart, setDeck, start } from "../day";
+import { closeScreen, deck, refreshStart, setDeck, start } from "../day";
 import { act } from "./actions";
 import { load } from "./list";
 import { keyOf } from "./rows";
-import { accounts, role, searching } from "./state";
+import { accounts } from "./state";
 
 /** The first name of the person, from the first account's name, for "Morning, Ada". */
 export const firstName = () => (accounts()[0]?.displayName ?? "").trim().split(/\s+/)[0] ?? "";
@@ -41,5 +41,3 @@ export async function doneUpdates() {
   void refreshStart();
 }
 
-/** The line above the inbox shows on the inbox and its Important split, not while searching. */
-export const lineHere = () => lineShown() && !searching() && ["inbox", "important"].includes(role());

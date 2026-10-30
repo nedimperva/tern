@@ -9,12 +9,27 @@ every release needs one here before it is tagged.
 
 ### Changed
 
-- One column beside a conversation instead of two. What the old column showed (the day, place and codes in the
-  newest message, its links, a newsletter's parts and your marks) is now the companion's first tab, Details. `i`
-  opens the companion on Details and closes it again; `Ctrl+.` and the header's panel button show or hide it on the
-  tab you used last. Making a note on a passage opens Details with the note field ready.
-- The companion's tabs say what waits behind them: how many things you owe under Promises, how many files under
-  Files. What was asked of you is listed only under Promises now, for the whole conversation.
+- One column beside a conversation instead of two, and no tabs in it. The companion shows the person at the top
+  (how much you write each other and how fast you answer), then what the newest message holds (day, place, codes,
+  links, a newsletter's parts and your marks), what you owe and are owed, the files and recent mail with them.
+  Ask about the conversation sits at the foot. `i`, `Ctrl+.` and the header's panel button show or hide it. Making a
+  note on a passage opens it with the note field ready.
+- The day, place and codes sit together in one card with a tile each; files show their kind. What was asked of you
+  is listed once, under You owe, for the whole conversation.
+- Thin scrollbars without arrows, the same on Windows and Linux. The list, the conversation and the companion show
+  theirs only under the pointer.
+
+### Removed
+
+- The line above the inbox ("Morning, … 3 need you") and its keys `1`–`4`: the morning screen does its job. `g o`
+  opens the morning screen at any time; Settings → Reading → Start of the day is now the screen or off.
+
+### Fixed
+
+- Bosnian, Croatian and Serbian words are read whole: a sentence ending "…na Ostrošcu." is no longer taken for a
+  promise, "u četvrtak" now gives a due day, and "Možeš li…?" counts as a question for you.
+- Promises: "u prilogu šaljem sliku" (what goes with the mail itself) is no longer something you owe, and the
+  joined future ("poslaću", "poslacu sutra") counts as a promise.
 
 ## [1.6.0] - 2026-10-29
 

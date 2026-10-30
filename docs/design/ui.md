@@ -246,19 +246,21 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 ### 4.2a Details: what the newest message holds
 
 Picked from the canvas "Tern reading ideas" (R2, R5, R6), 2026-10-27, as a 260 px column inside the reading pane.
-Since 2026-10-30 (owner: one column, not two) it is the companion's first tab, **Details** (§4.2b): the open
-conversation draws it there (`src/components/Details.tsx`, portalled from ConversationView, which owns the facts,
-contents and marks). `i` opens the companion on Details, or closes it when Details is showing. It shows what it
-found, then Your marks (with how marks are made when there are none).
+Since 2026-10-30 (owner: one column, not two) it is the top of the companion (§4.2b): the open conversation draws
+it there (`src/components/Details.tsx`, portalled from ConversationView, which owns the facts, contents and marks).
+`i` shows or hides the companion. It shows what it found, then Your marks (with how marks are made when there are
+none).
 
 - **In this message** (Settings → Reading → In this message, on by default), from the newest message's own words
   (no quote, no signature), found on this computer by `src/facts.ts`, in English and Bosnian/Croatian/Serbian:
   When (a day named in the text, with the times beside it; "Snooze until then" brings the mail back an hour before,
   or at 08:00 on a day with no time), Where (a street address; "Open the map" opens OpenStreetMap in the browser),
-  and codes to copy (booking, order, tracking, confirmation numbers). Cards on `--bg-0` with a `--line` edge,
-  `--r-lg`, a small label over the value.
-- **Links** (up to 6, 12 in a newsletter; five shown, then "N more"): links that say what they are, each its words
-  and its host; a click opens it in the browser. Left out: the quote and signature's links (seen before in a long
+  and codes to copy (booking, order, tracking, confirmation numbers). One card on `--bg-0` with a `--line` edge,
+  `--r-lg`, a row per fact split by `--line`: a 40 px tile on the left (the day as month over date on
+  `--accent-soft`, a map pin, a `#` for codes, on `--bg-2`), the value, and its action under it (a code's Copy on
+  the right).
+- **Links** (up to 6, 12 in a newsletter; five shown, then "N more"): links that say what they are, one row each,
+  its words in `--accent` and its host on the right; a click opens it in the browser. Left out: the quote and signature's links (seen before in a long
   thread), the footer's (unsubscribe, privacy, social), actions ("Read more", "Add article to Reader"), words used
   for links to different places, and pictures with no words. One per address (tracking parameters aside) and one
   per title.
@@ -376,13 +378,10 @@ found, then Your marks (with how marks are made when there are none).
 
 Built (2026-10-26, from the canvas "Tern home screen ideas", the owner's picks A2, A3 and A5). Counted on this
 computer from the store (`day_start`), since the person was last here (`lastSeen`: when the window last went away).
-Settings → Reading → Start of the day: the screen and the line, only the line, or neither.
+Settings → Reading → Start of the day: the morning screen, or off. `g o` opens the screen at any time.
 
-- **The line (A2)**, above the inbox and its Important split, not while searching: on `--soft`, 44 px, "Morning,
-  Ada." and "23 new since 18:40 yesterday:", then pills for what there is: *need you* (`--accent-soft`), *back
-  from snooze*, *no answer yet*, *the rest*, each with its count and key `1`–`4`. 1–3 start the run through that
-  group; 4 opens Other. × puts it away until tomorrow. Conversations that need you carry a 6 px `--accent` dot in
-  their row's mark column.
+- **Needs you in the list**: conversations that need you carry a 6 px `--accent` dot in their row's mark column.
+  (The line above the inbox, A2, went on 2026-10-30, owner: the tide says it better.)
 - **The tide** (replaced A3, owner 2026-10-29, design board "Tern design ideas"), on the first open of a day when
   something waits, over the whole window. A 220 px band of Inbox Zero's sky (`.zero` colours, so it follows the
   mood; after 19:00 the night sky, with light text) with a sun or moon, the sea and two terns; a kicker (weekday,
@@ -399,28 +398,31 @@ Settings → Reading → Start of the day: the screen and the line, only the lin
   then Reply `R` (compose over the run), Snooze `H`, Done `E`, Later `J` (`K` back). It ends with "That's everything
   that needed you." and the inbox.
 
-### 4.2b The companion (`Ctrl+.`)
+### 4.2b The companion (`Ctrl+.`, `i`)
 
-Built 2026-10-29 from the design board "Tern design ideas" (owner's pick). A 340 px column on `--bg-1` right of
-the open conversation (a third grid column; under 1180 px it slides over the conversation with `--shadow`), open
-until closed (`companion` setting). A 48 px header with five tabs (selected on `--bg-2`; the one in use is kept,
-`companionTab`) and ×. Promises and Files carry a count pill (what you still owe, how many files). It opens and
-closes with `Ctrl+.`, the header's panel icon, or `i` (on Details).
+Built 2026-10-29 from the design board "Tern design ideas" (owner's pick); one column without tabs since 2026-10-30
+(canvas "Companion sidebar variations", B + A: most conversations hold little, so it all fits in one scroll). A
+340 px column on `--bg-1` right of the open conversation (a third grid column; under 1180 px it slides over the
+conversation with `--shadow`), open until closed (`companion` setting). It opens and closes with `Ctrl+.`, `i` or
+the header's panel icon; a Note from the selection bar opens it with the note's field focused.
 
+- **Header**: the newest sender who isn't you, as a 40 px avatar, their name, and one line from `contact_card` and
+  this conversation: "12 from them · 9 from you · you answer in ~3 h". Then ×.
 - **Details**: §4.2a–c, what the newest message holds, links, a newsletter's parts and the person's marks.
-
-- **Ask**: a chat about the conversation, through `ai::ask_about` behind the summaries switch (on request; the
-  transcript, the chat so far and the question, redacted like a summary; never kept). A chip says what it reads
-  ("This conversation · 7"), three suggested questions start it, answers stream in and each `[n]` becomes a chip
-  ("Ana · Tue") that shows that message. Under each answer a receipt: provider, messages and characters sent,
-  "nothing kept". Chats stay per conversation while Tern runs. With AI off it says what Ask does and links to
-  Settings → AI; nothing is sent.
-- **Person**: the newest sender who isn't you: name, address, how many messages each way (`contact_card`), how long
-  you usually take to answer them in this conversation, and your recent conversations. No AI.
-- **Promises** (the only place asks are listed): You owe (what you were asked: `findAsks`; what you said you'd do: "I'll…") and Owed to you (the
-  reverse), each with who, a due day when the sentence names one, a jump to its message and a tick
-  (`promisesDone`). From the words, on this computer (`src/promises.ts`).
-- **Files**: every attachment in the conversation, newest first, with who and when; a click opens it.
+- **You owe / Owed to you** (the only place asks are listed), each shown only when it has something: what you were
+  asked (`findAsks`) and what you said you'd do ("I'll…"), and the reverse. A card with a row each: a tick
+  (`promisesDone`), the sentence (a click shows its message), who said it, and the due day as a `--warn` tag when the
+  sentence names one. From the words, on this computer (`src/promises.ts`).
+- **Files**: every attachment in the conversation, newest first, in a card: a tile with its kind (PDF on
+  `--danger`, sheets on `--ok`, documents and pictures on `--accent-soft`), its name, who, when and its size; a click
+  opens it.
+- **Recent with them**: four of your latest conversations with the person. No AI in any of the above.
+- **Ask**, docked at the foot under a `--line`: two suggested questions until the first is asked, then a box
+  (Enter asks). It goes through `ai::ask_about` behind the summaries switch (on request; the transcript, the chat
+  so far and the question, redacted like a summary; never kept). The chat is drawn at the end of the column, which
+  scrolls to it: answers stream in, each `[n]` becomes a chip ("Ana · Tue") that shows that message, and under each
+  a receipt: provider, messages and characters sent, "nothing kept". Chats stay per conversation while Tern runs.
+  With AI off the foot says what Ask needs and links to Settings → AI; nothing is sent.
 
 ### 4.8 Settings (`Ctrl+,`)
 

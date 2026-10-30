@@ -6,6 +6,7 @@ import { Icon } from "./Icon";
 const day = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
 const dayYear = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+const month = new Intl.DateTimeFormat(undefined, { month: "short" });
 
 /** "Thu 6 Nov · 10:00–16:00". */
 function whenSaid(w: NonNullable<Facts["when"]>): string {
@@ -27,8 +28,8 @@ function copy(text: string) {
   void navigator.clipboard.writeText(text).catch(() => {});
 }
 
-/** The companion's Details tab (docs/design/ui.md §4.2a–c): a newsletter's parts in reading view, what the newest
- * message holds, its links, and the person's marks. The open conversation draws it, as all of it is its own. */
+/** Details, at the top of the companion (docs/design/ui.md §4.2a–c): a newsletter's parts in reading view, what the
+ * newest message holds, its links, and the person's marks. The open conversation draws it, as all of it is its own. */
 export function Details(props: {
   facts: Facts | null;
   /** The headings of a newsletter in reading view. */
@@ -75,35 +76,51 @@ export function Details(props: {
             <Show when={facts()!.when}>
               {(w) => (
                 <div class="fact">
-                  <span class="kind">When</span>
-                  <strong>{whenSaid(w())}</strong>
-                  <Show when={future()}>
-                    {(f) => (
-                      <button onClick={() => props.onSnooze(snoozeFor(f()))} title="Snooze it until then; it comes back unread">
-                        <Icon name="clock" size={13} /> Snooze until then
-                      </button>
-                    )}
-                  </Show>
+                  <span class="tile day" aria-hidden="true">
+                    <span>{month.format(new Date(w().at * 1000))}</span>
+                    <strong>{new Date(w().at * 1000).getDate()}</strong>
+                  </span>
+                  <span class="what">
+                    <strong>{whenSaid(w())}</strong>
+                    <Show when={future()}>
+                      {(f) => (
+                        <button class="link" onClick={() => props.onSnooze(snoozeFor(f()))} title="Snooze it until then; it comes back unread">
+                          Snooze until then
+                        </button>
+                      )}
+                    </Show>
+                  </span>
                 </div>
               )}
             </Show>
             <Show when={facts()!.where}>
               {(where) => (
                 <div class="fact">
-                  <span class="kind">Where</span>
-                  <strong>{where()}</strong>
-                  <button onClick={() => api.openUrl(`https://www.openstreetmap.org/search?query=${encodeURIComponent(where())}`)}>
-                    Open the map
-                  </button>
+                  <span class="tile" aria-hidden="true">
+                    <Icon name="map-pin" size={18} />
+                  </span>
+                  <span class="what">
+                    <strong>{where()}</strong>
+                    <button class="link" onClick={() => api.openUrl(`https://www.openstreetmap.org/search?query=${encodeURIComponent(where())}`)}>
+                      Open the map
+                    </button>
+                  </span>
                 </div>
               )}
             </Show>
             <For each={facts()!.codes}>
               {(code) => (
                 <div class="fact">
-                  <span class="kind">{code.label}</span>
-                  <span class="code">{code.value}</span>
-                  <button onClick={() => copy(code.value)}>Copy</button>
+                  <span class="tile" aria-hidden="true">
+                    <Icon name="hash" size={18} />
+                  </span>
+                  <span class="what">
+                    <span class="kind">{code.label}</span>
+                    <span class="code">{code.value}</span>
+                  </span>
+                  <button class="copy" onClick={() => copy(code.value)} aria-label={`Copy ${code.label}`}>
+                    Copy
+                  </button>
                 </div>
               )}
             </For>
@@ -154,9 +171,6 @@ export function Details(props: {
           </div>
         </Show>
       </section>
-      <Show when={found() || links().length}>
-        <p class="found-here">Found on this computer, from the words of the mail.</p>
-      </Show>
     </div>
   );
 }

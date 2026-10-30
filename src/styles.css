@@ -21,6 +21,56 @@ body {
   user-select: none;
 }
 
+/* Scrollbars: thin, no arrows, a quiet thumb on no track, the same on Windows (WebView2 reads scrollbar-color)
+   and Linux (WebKitGTK reads only the -webkit pseudo-elements). The panes side by side show theirs under the
+   pointer, so a list, a conversation and the companion don't draw three bars in a row. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--line-strong) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--fg-2);
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+.vlist,
+.conversation-pane,
+.companion-body {
+  scrollbar-color: transparent transparent;
+}
+.vlist:hover,
+.vlist:focus-within,
+.conversation-pane:hover,
+.conversation-pane:focus-within,
+.companion-body:hover,
+.companion-body:focus-within {
+  scrollbar-color: var(--line-strong) transparent;
+}
+.vlist::-webkit-scrollbar-thumb,
+.conversation-pane::-webkit-scrollbar-thumb,
+.companion-body::-webkit-scrollbar-thumb {
+  background-color: transparent;
+}
+.vlist:hover::-webkit-scrollbar-thumb,
+.conversation-pane:hover::-webkit-scrollbar-thumb,
+.companion-body:hover::-webkit-scrollbar-thumb {
+  background-color: var(--line-strong);
+}
+
 button {
   font: inherit;
   color: inherit;
@@ -1413,6 +1463,15 @@ button.primary kbd {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+  vertical-align: middle;
+}
+/* A conversation that waits on the person (docs/design/ui.md §4.7a). */
+.crow .mark .needs {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
   vertical-align: middle;
 }
 .swatches {
@@ -5462,68 +5521,6 @@ button.link.danger {
   align-items: center;
 }
 
-/* The start of the day (docs/design/ui.md §4.7a). */
-.crow .mark .needs {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  vertical-align: middle;
-}
-.day-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2);
-  min-height: 44px;
-  box-sizing: border-box;
-  padding: var(--s-1) var(--s-3);
-  background: var(--soft);
-  font-size: var(--t-md);
-}
-.day-line strong {
-  font-weight: 600;
-}
-.day-line .since {
-  color: var(--fg-1);
-}
-.day-line .pill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-  padding: 3px var(--s-2);
-  border: none;
-  border-radius: 999px;
-  background: var(--bg-0);
-  color: var(--fg-0);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.day-line .pill.strong {
-  background: var(--accent-soft);
-}
-.day-line .pill:hover {
-  background: var(--bg-3);
-}
-.day-line .pill b {
-  font-weight: 600;
-}
-.day-line .pill kbd {
-  border: none;
-  background: transparent;
-  color: var(--fg-2);
-}
-.day-line .spacer {
-  flex: 1;
-}
-.day-line .close {
-  border: none;
-  background: none;
-  padding: var(--s-1);
-  color: var(--fg-2);
-}
-
 .tide,
 .day-deck {
   position: fixed;
@@ -6044,7 +6041,7 @@ button.link.danger {
   letter-spacing: -0.01em;
 }
 
-/* MARK: Details (§4.2a–c), the companion's first tab: what the newest message holds, a newsletter's parts, the
+/* MARK: Details (§4.2a–c), at the top of the companion: what the newest message holds, a newsletter's parts, the
    person's marks. */
 
 .details {
@@ -6060,71 +6057,43 @@ button.link.danger {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.details section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-.details h2 {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  margin: 0;
-  font-size: var(--t-xs);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--fg-2);
-}
 .details h2 .keys {
   margin-left: auto;
   display: inline-flex;
   gap: 2px;
   text-transform: none;
 }
-.details .facts {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
 .details .fact {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  align-items: center;
+  gap: var(--s-3);
   padding: var(--s-3);
-  border-radius: var(--r-lg);
-  border: 1px solid var(--line);
-  background: var(--bg-0);
   font-size: var(--t-md);
-  line-height: 1.45;
-}
-.details .fact.ask {
-  background: var(--accent-soft);
-}
-.details .fact .kind {
-  font-size: var(--t-sm);
-  color: var(--fg-1);
+  line-height: 1.4;
 }
 .details .fact strong {
-  font-weight: 600;
+  font-weight: 500;
+}
+.details .fact .kind {
+  font-size: var(--t-xs);
+  color: var(--fg-2);
 }
 .details .fact .code {
   font: 500 var(--t-md) / 1.4 "JetBrains Mono", ui-monospace, monospace;
   user-select: all;
 }
-.details .fact button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 2px;
-  border: none;
-  background: var(--soft);
+.details .fact .copy {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-1);
   font-size: var(--t-sm);
-  padding: 3px var(--s-2);
 }
-.details .fact button:hover {
-  background: var(--bg-2);
+.details .fact .copy:hover {
+  border-color: var(--line-strong);
+  color: var(--fg-0);
 }
 .details .contents {
   display: flex;
@@ -6149,13 +6118,14 @@ button.link.danger {
 }
 .details .link-card {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
   border: none;
   background: none;
   text-align: left;
   padding: 6px var(--s-2);
+  margin: 0 calc(-1 * var(--s-2));
   border-radius: var(--r-md);
 }
 .details .link-card:hover {
@@ -6165,19 +6135,24 @@ button.link.danger {
   align-self: flex-start;
   border: none;
   background: none;
-  padding: 4px var(--s-2);
+  padding: 4px 0;
   font-size: var(--t-sm);
   color: var(--accent);
 }
 .details .link-card .text {
+  min-width: 0;
   font-size: var(--t-md);
-  color: var(--fg-0);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  color: var(--accent);
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .details .link-card .host {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
@@ -6252,11 +6227,6 @@ button.link.danger {
   margin: 0;
   font-size: var(--t-md);
   line-height: 1.45;
-  color: var(--fg-2);
-}
-.details .found-here {
-  margin: 0;
-  font-size: var(--t-sm);
   color: var(--fg-2);
 }
 
@@ -6392,7 +6362,7 @@ button.link.danger {
   }
 }
 
-/* MARK: Companion (§4.2b) */
+/* MARK: Companion (§4.2b): one column, the person on top, Ask at the foot. */
 
 .companion {
   display: flex;
@@ -6406,46 +6376,41 @@ button.link.danger {
 .companion > header {
   display: flex;
   align-items: center;
-  gap: var(--s-1);
-  height: 48px;
-  padding: 0 var(--s-2);
-  border-bottom: 1px solid var(--line);
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-3) var(--s-3) var(--s-4);
   flex: none;
 }
-.companion-tabs {
-  display: flex;
-  gap: 2px;
+.companion > header .icon-button {
+  align-self: flex-start;
 }
-.companion-tabs button {
-  padding: 6px 7px;
-  white-space: nowrap;
-  border: none;
-  border-radius: var(--r-md);
-  background: none;
-  color: var(--fg-2);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.companion-tabs button .count {
-  margin-left: 4px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: var(--bg-2);
-  color: var(--fg-1);
-  font-size: var(--t-xs);
-  font-variant-numeric: tabular-nums;
-}
-.companion-tabs button.on .count {
-  background: var(--accent-soft);
-  color: var(--fg-0);
-}
-.companion-tabs button.on {
-  background: var(--bg-2);
-  color: var(--fg-0);
+.companion .avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--accent-fg);
+  display: grid;
+  place-items: center;
+  font-size: var(--t-md);
   font-weight: 600;
+  flex: none;
 }
-.companion .spacer {
+.companion .who {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.companion .who strong {
+  font-size: var(--t-rd);
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.companion .who span {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
 }
 .companion-body {
   flex: 1;
@@ -6453,62 +6418,212 @@ button.link.danger {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--s-3);
-  padding: var(--s-4);
+  gap: var(--s-5);
+  padding: var(--s-1) var(--s-4) var(--s-4);
+}
+.companion section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.companion h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.companion h2 .count {
+  margin-left: auto;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 .companion .quiet {
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
-.companion h3 {
-  margin: var(--s-2) 0 0;
-  font-size: var(--t-xs);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+.companion .found-here {
+  margin: 0;
+  font-size: var(--t-sm);
   color: var(--fg-2);
 }
-.companion-empty {
+/* A card holding rows: the facts, what is owed, the files. */
+.companion .rows,
+.details .facts {
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
-  color: var(--fg-1);
-  line-height: 1.5;
-}
-.companion-empty p {
-  margin: 0;
-}
-.companion-empty button,
-.companion .suggest button {
-  align-self: flex-start;
-  padding: var(--s-1) var(--s-3);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-lg);
   background: var(--bg-0);
+}
+.companion .rows > * + *,
+.details .facts > * + * {
+  border-top: 1px solid var(--line);
+}
+.companion .tile {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
   color: var(--fg-1);
-  font: inherit;
-  font-size: var(--t-sm);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
-.companion .suggest {
+.companion .tile.day {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
-}
-.companion .chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-1);
-}
-.companion .chip {
-  padding: 3px 10px;
-  border-radius: 999px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   background: var(--accent-soft);
-  font-size: var(--t-sm);
+  color: var(--accent);
+  text-transform: uppercase;
 }
-.companion .turns {
+.companion .tile.day strong {
+  font-size: 18px;
+  line-height: 20px;
+}
+.companion .what {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.companion .what button.link {
+  padding: 0;
+  font-size: var(--t-sm);
+  color: var(--accent);
+}
+.companion .what button.link:hover {
+  text-decoration: underline;
+}
+.companion .recent {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.companion .recent li {
+  display: flex;
+  gap: var(--s-2);
+  padding: var(--s-1) 0;
+}
+.companion .recent .subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.companion .pledge {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3);
+}
+.companion .pledge input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+.companion .pledge > div {
   flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.companion .pledge .text {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg-0);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  line-height: 1.45;
+}
+.companion .pledge .text:hover {
+  text-decoration: underline;
+}
+.companion .pledge.done .text {
+  color: var(--fg-2);
+  font-weight: 400;
+  text-decoration: line-through;
+}
+.companion .pledge .due {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  color: var(--warn-fg);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+.companion .pledge.done .due {
+  display: none;
+}
+.companion .file {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--fg-0);
+  font: inherit;
+  text-align: left;
+}
+.companion .file:first-child {
+  border-top-left-radius: var(--r-lg);
+  border-top-right-radius: var(--r-lg);
+}
+.companion .file:last-child {
+  border-bottom-left-radius: var(--r-lg);
+  border-bottom-right-radius: var(--r-lg);
+}
+.companion .file:hover {
+  background: var(--soft);
+}
+.companion .file .tile {
+  width: 32px;
+  height: 32px;
+}
+.companion .tile.pdf {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+.companion .tile.sheet {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  color: var(--ok);
+}
+.companion .tile.doc,
+.companion .tile.image {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.companion .file .name {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Ask: the chat sits at the end of the column, the box at its foot. */
+.companion .turns {
   gap: var(--s-4);
 }
 .companion .turn {
@@ -6546,134 +6661,80 @@ button.link.danger {
   font-size: var(--t-xs);
   color: var(--fg-2);
 }
-.companion .ask-box {
+.ask-dock {
+  flex: none;
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
   gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg);
-  background: var(--bg-0);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  border-top: 1px solid var(--line);
 }
-.companion .ask-box textarea {
+.ask-dock.off {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  line-height: 1.45;
+}
+.ask-dock.off button.link {
+  align-self: flex-start;
+  padding: 0;
+  color: var(--accent);
+}
+.ask-dock .suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ask-dock .suggest button {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.ask-dock .suggest button:hover {
+  border-color: var(--line-strong);
+  color: var(--fg-0);
+}
+.ask-dock .ask-box {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 36px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-2);
+}
+.ask-dock .ask-box:focus-within {
+  border-color: var(--accent);
+}
+.ask-dock textarea {
   flex: 1;
+  min-width: 0;
+  padding: 8px 0;
   border: none;
   background: none;
   color: var(--fg-0);
   font: inherit;
   resize: none;
   outline: none;
+  field-sizing: content;
+  max-height: 120px;
 }
-.companion .ask-box .send {
+.ask-dock .send {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
+  flex: none;
   border: none;
   border-radius: var(--r-md);
   background: var(--accent);
   color: var(--accent-fg);
 }
-.companion .ask-box .send:disabled {
+.ask-dock .send:disabled {
   opacity: 0.45;
-}
-.companion .person-head {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.companion .person-head strong {
-  font-size: var(--t-lg);
-}
-.companion .stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--s-2);
-}
-.companion .stats div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
-}
-.companion .stats strong {
-  font-size: var(--t-lg);
-}
-.companion .stats span {
-  font-size: var(--t-xs);
-  color: var(--fg-2);
-}
-.companion .recent {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.companion .recent li {
-  display: flex;
-  gap: var(--s-2);
-  padding: var(--s-1) 0;
-}
-.companion .recent .subject {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.companion .foot {
-  margin-top: auto;
-}
-.companion .pledge {
-  display: flex;
-  gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
-}
-.companion .pledge > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.companion .pledge .text {
-  padding: 0;
-  color: var(--fg-0);
-  text-align: left;
-  line-height: 1.45;
-}
-.companion .pledge.done .text {
-  color: var(--fg-2);
-  text-decoration: line-through;
-}
-.companion .pledge .due {
-  color: var(--warn-fg);
-}
-.companion .file {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  column-gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
-  color: var(--fg-0);
-  font: inherit;
-  text-align: left;
-}
-.companion .file svg {
-  grid-row: span 2;
-  color: var(--fg-2);
-}
-.companion .file .name {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }

@@ -4,8 +4,6 @@ import { createEffect, createRoot, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { api, type AiProvider } from "./api";
 
-/** The companion's tabs (`src/components/Companion.tsx`). */
-export type CompanionTab = "details" | "ask" | "person" | "promises" | "files";
 
 export type Settings = {
   /** The mood: "system" picks Dawn or Dusk from the desktop's light or dark; "light" is Dawn, "dark" Dusk, "sea"
@@ -32,10 +30,8 @@ export type Settings = {
   notify: boolean;
   /** Notify for the inbox's Other split as well as Important (read by the engine). */
   notifyOther: boolean;
-  /** The companion column is open beside a conversation (`Ctrl+.`, `i` for its Details). */
+  /** The companion column is open beside a conversation (`Ctrl+.`, `i`). */
   companion: boolean;
-  /** The companion's tab, kept between conversations and runs. */
-  companionTab: CompanionTab;
   /** Promises ticked off in the companion, by key (`src/promises.ts`). */
   promisesDone: string[];
   /** A soft wing beat when mail leaves the outbox. */
@@ -63,13 +59,12 @@ export type Settings = {
   zeroLog: Record<string, { cleared: number; zero: boolean }>;
   /** The start of the day: the morning screen on a day's first open and the line above the inbox, only the
    * line, or neither. */
-  dayStart: "screen" | "line" | "off";
+  dayStart: "screen" | "off";
   /** When the person was last here (Unix seconds): the start of the day counts from it. */
   lastSeen: number;
   /** The local day the morning screen last showed ("2026-10-26"), so it shows once a day. */
   dayShown: string;
   /** The local day the line above the inbox was put away. */
-  lineHidden: string;
   /** Searches kept in the rail and the command palette, as typed. */
   savedSearches: string[];
   /** Colours picked for accounts, by address (lowercase), in place of the palette's (src/colours.ts). */
@@ -120,7 +115,6 @@ export const DEFAULTS: Settings = {
   notify: true,
   wingBeat: false,
   companion: false,
-  companionTab: "details",
   promisesDone: [],
   notifyOther: false,
   quietFrom: "",
@@ -137,7 +131,6 @@ export const DEFAULTS: Settings = {
   dayStart: "screen",
   lastSeen: 0,
   dayShown: "",
-  lineHidden: "",
   savedSearches: [],
   accountColours: {},
   notifyAccounts: {},
