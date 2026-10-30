@@ -7,6 +7,8 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-30
+
 ### Changed
 
 - One column beside a conversation instead of two, and no tabs in it. The companion shows the person at the top

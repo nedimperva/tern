@@ -37,6 +37,10 @@ decisions that aren't visible from the code.
   1.6.0 (2026-10-29, package 16): moods incl. Follow Omarchy, motion, the tide, the companion (`Ctrl+.`), and
   folding of quotes, Outlook headers and legal notices. Schema 29 re-sorted subject-joined threads. Links in mail
   open through a navigation plugin (`src-tauri/src/links.rs`): WebKitGTK runs no listeners in script-less frames.
+  1.7.0 (2026-10-30, canvases "Companion sidebar variations" and "Tern thread directions"): the companion is one
+  column without tabs; a thread has day headings, quiet own lines and an answer panel; signatures fold to one line.
+  The line above the inbox is gone (`g o` opens the morning screen). Word patterns in `src/facts.ts` and
+  `src/promises.ts` use Unicode-aware edges: `\b` takes č/š/ž for gaps between words.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items. Gmail still goes through IMAP, signed in with Google (XOAUTH2), with labels
