@@ -37,7 +37,6 @@ export async function refreshStart() {
 }
 
 /** Something waits on the person: worth a line, or a screen. */
-export const anything = (s: DayStart | null) => !!s && (s.needYou.length + s.back.length + s.waiting.length > 0 || s.rest > 0);
 
 /** A visit starts: on opening Tern, and when its window comes back after the day changed. */
 async function begin() {
@@ -51,12 +50,14 @@ async function begin() {
   }
 }
 
-/** The morning screen goes; the inbox, with its line, stays. */
+/** The morning screen goes; the inbox stays. */
 export const closeScreen = () => setScreen(false);
 
-/** The line above the inbox is put away until tomorrow. */
-export const hideLineToday = () => setSetting("lineHidden", today());
-export const lineShown = () => settings.dayStart !== "off" && settings.lineHidden !== today() && anything(start());
+/** The morning screen on asking (`g o`), counted afresh. */
+export async function openScreen() {
+  await refreshStart();
+  setScreen(true);
+}
 
 /** Call once settings are loaded. Keeps "last here" up to date while the window shows, so the next visit counts
  * from when the person left. */

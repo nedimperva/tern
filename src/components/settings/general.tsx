@@ -63,11 +63,10 @@ export function ReadingSettings() {
       <Select
         name="dayStart"
         title="Start of the day"
-        help="On the first open of a day, a screen with what waits on you, then a line above the inbox. Counted on this computer."
+        help="On the first open of a day, a screen with what waits on you (any time with G then O). Counted on this computer."
         choices={[
-          { label: "Morning screen and the line", value: "screen" },
-          { label: "Only the line above the inbox", value: "line" },
-          { label: "Neither", value: "off" },
+          { label: "Morning screen", value: "screen" },
+          { label: "Off", value: "off" },
         ]}
       />
       <Select
@@ -111,7 +110,7 @@ export function ReadingSettings() {
       <Select
         name="readingFacts"
         title="In this message"
-        help="Beside a conversation: the day and time it names, an address, what it asks of you, codes to copy and its links. Found on this computer."
+        help="In the companion (i): the day and time the newest message names, an address, codes to copy and its links. Found on this computer."
         choices={[
           { label: "Show them", value: true },
           { label: "Don't show them", value: false },

@@ -1,5 +1,4 @@
 import { createMemo, For, Show } from "solid-js";
-import { firstName, lineHere, runDeck } from "../app/deck";
 import { go, isSaved, loadMore, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
 import { open } from "../app/conversation";
 import { keyOf } from "../app/rows";
@@ -27,7 +26,6 @@ import { ROW_HEIGHTS, settings, SPLIT_ROW_EXTRA } from "../settings";
 import { colourOf } from "../colours";
 import type { ThreadRow } from "../api";
 import { ConversationRow, participants } from "./ConversationRow";
-import { DayLine } from "./DayLine";
 import { Icon } from "./Icon";
 import { InboxZero } from "./InboxZero";
 import { rowId } from "../motion";
@@ -123,9 +121,6 @@ export function ListPane(props: {
       </header>
       <Show when={searching() && partial()}>
         <div class="search-note">{coverage()}</div>
-      </Show>
-      <Show when={lineHere()}>
-        <DayLine name={firstName()} onRun={runDeck} onRest={() => go({ role: "bulk" })} />
       </Show>
       <Show
         when={rows().length}

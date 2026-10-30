@@ -4,6 +4,7 @@ import { createEffect, createRoot, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { api, type AiProvider } from "./api";
 
+
 export type Settings = {
   /** The mood: "system" picks Dawn or Dusk from the desktop's light or dark; "light" is Dawn, "dark" Dusk, "sea"
    * Night Sea, and "omarchy" follows the Omarchy theme (Linux), or the system without one. */
@@ -29,7 +30,7 @@ export type Settings = {
   notify: boolean;
   /** Notify for the inbox's Other split as well as Important (read by the engine). */
   notifyOther: boolean;
-  /** The companion column is open beside a conversation (`Ctrl+.`). */
+  /** The companion column is open beside a conversation (`Ctrl+.`, `i`). */
   companion: boolean;
   /** Promises ticked off in the companion, by key (`src/promises.ts`). */
   promisesDone: string[];
@@ -40,9 +41,7 @@ export type Settings = {
   quietTo: string;
   /** The inbox in two splits, Important and Other, rather than one list. */
   splitInbox: boolean;
-  /** The column beside a conversation is shown (`i` hides it until shown again). */
-  readingColumn: boolean;
-  /** The column beside a conversation: when, where, what is asked, codes and links found in the newest message. */
+  /** Details in the companion: when, where, codes and links found in the newest message. */
   readingFacts: boolean;
   /** Newsletters (designed mail from a list) open in reading view. */
   newsletterReading: boolean;
@@ -60,13 +59,12 @@ export type Settings = {
   zeroLog: Record<string, { cleared: number; zero: boolean }>;
   /** The start of the day: the morning screen on a day's first open and the line above the inbox, only the
    * line, or neither. */
-  dayStart: "screen" | "line" | "off";
+  dayStart: "screen" | "off";
   /** When the person was last here (Unix seconds): the start of the day counts from it. */
   lastSeen: number;
   /** The local day the morning screen last showed ("2026-10-26"), so it shows once a day. */
   dayShown: string;
   /** The local day the line above the inbox was put away. */
-  lineHidden: string;
   /** Searches kept in the rail and the command palette, as typed. */
   savedSearches: string[];
   /** Colours picked for accounts, by address (lowercase), in place of the palette's (src/colours.ts). */
@@ -123,7 +121,6 @@ export const DEFAULTS: Settings = {
   quietTo: "",
   splitInbox: true,
   darkMail: "darken",
-  readingColumn: true,
   readingFacts: true,
   newsletterReading: true,
   senderLogos: false,
@@ -134,7 +131,6 @@ export const DEFAULTS: Settings = {
   dayStart: "screen",
   lastSeen: 0,
   dayShown: "",
-  lineHidden: "",
   savedSearches: [],
   accountColours: {},
   notifyAccounts: {},

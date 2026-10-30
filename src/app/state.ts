@@ -96,6 +96,15 @@ export const docked = () => settings.sidebar && width() >= SIDEBAR_WIDTH && !foc
 export const toggleSidebar = () =>
   width() >= SIDEBAR_WIDTH && !focusMode() ? (setRail(false), setSetting("sidebar", !settings.sidebar)) : setRail(!rail());
 
+/** The companion beside the open conversation (`i`, `Ctrl+.`). */
+export const toggleCompanion = () => setSetting("companion", !settings.companion);
+export const showCompanion = () => {
+  if (!settings.companion) setSetting("companion", true);
+};
+/** Where the companion's Details are drawn: the open conversation fills it, as the facts, contents and marks are
+ * its own (ConversationView portals them in). */
+export const [detailsSlot, setDetailsSlot] = createSignal<HTMLElement | null>(null);
+
 /** The search box, for `/`. */
 export const searchBox: { input?: HTMLInputElement } = {};
 

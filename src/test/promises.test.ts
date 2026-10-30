@@ -30,4 +30,35 @@ describe("promises in a conversation", () => {
     expect(found).toHaveLength(3);
     expect(new Set(found.map((p) => p.key)).size).toBe(3);
   });
+
+  it("reads Bosnian words whole", () => {
+    const bs = promisesIn(
+      [
+        m(3, "me@x.com", "Me", "Ovo je za pištolj, za pumpu koju ćemo koristiti za farbanje mosta na Ostrošcu."),
+        m(4, "jasna@x.com", "Jasna", "Možeš li poslati konačan broj u četvrtak?\n\nPoslat ću ponudu sutra."),
+      ],
+      mine,
+    );
+    expect(bs.map((p) => [p.who, p.yours, p.text])).toEqual([
+      ["Jasna", true, "Možeš li poslati konačan broj u četvrtak?"],
+      ["Jasna", false, "Poslat ću ponudu sutra."],
+    ]);
+    // Sent on Monday 26 October: "u četvrtak" is the 29th.
+    expect(new Date(bs[0].due! * 1000).getDate()).toBe(29);
+  });
+
+  it("leaves out what goes with the mail itself, and reads the joined future", () => {
+    const bs = promisesIn(
+      [
+        m(5, "me@x.com", "Me", "Sve što trenutno mogu pročitati na njemu je Graco MAX WPR 4050, a u prilogu šaljem i sliku.\n\nUplatu šaljem odmah."),
+        m(6, "gama@x.com", "GamaTrade", "Ok, poslacu sutra brzom postom.\n\nPozdrav iz ulice Titove, za jedinicu u Konjicu."),
+      ],
+      mine,
+    );
+    expect(bs.map((p) => [p.who, p.yours, p.text])).toEqual([
+      ["You", true, "Uplatu šaljem odmah."],
+      ["GamaTrade", false, "Ok, poslacu sutra brzom postom."],
+    ]);
+    expect(new Date(bs[1].due! * 1000).getDate()).toBe(27);
+  });
 });

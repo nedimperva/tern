@@ -21,6 +21,56 @@ body {
   user-select: none;
 }
 
+/* Scrollbars: thin, no arrows, a quiet thumb on no track, the same on Windows (WebView2 reads scrollbar-color)
+   and Linux (WebKitGTK reads only the -webkit pseudo-elements). The panes side by side show theirs under the
+   pointer, so a list, a conversation and the companion don't draw three bars in a row. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--line-strong) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--fg-2);
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+.vlist,
+.conversation-pane,
+.companion-body {
+  scrollbar-color: transparent transparent;
+}
+.vlist:hover,
+.vlist:focus-within,
+.conversation-pane:hover,
+.conversation-pane:focus-within,
+.companion-body:hover,
+.companion-body:focus-within {
+  scrollbar-color: var(--line-strong) transparent;
+}
+.vlist::-webkit-scrollbar-thumb,
+.conversation-pane::-webkit-scrollbar-thumb,
+.companion-body::-webkit-scrollbar-thumb {
+  background-color: transparent;
+}
+.vlist:hover::-webkit-scrollbar-thumb,
+.conversation-pane:hover::-webkit-scrollbar-thumb,
+.companion-body:hover::-webkit-scrollbar-thumb {
+  background-color: var(--line-strong);
+}
+
 button {
   font: inherit;
   color: inherit;
@@ -1415,6 +1465,15 @@ button.primary kbd {
   border-radius: 50%;
   vertical-align: middle;
 }
+/* A conversation that waits on the person (docs/design/ui.md §4.7a). */
+.crow .mark .needs {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
 .swatches {
   display: flex;
   align-items: center;
@@ -1467,43 +1526,6 @@ button.primary kbd {
   padding-bottom: var(--s-4);
 }
 /* The conversation and, when the pane has room, the column beside it (§4.2a). */
-/* Three columns: the messages in the middle, the column in the space on their right. A wide pane (focus mode)
-   keeps the messages centred, as without the column; a narrower one gives the left space up first. Widths come
-   from the room there is, never from content: the message frames size themselves to their width. */
-.conversation-pane {
-  --margin-w: 260px;
-  --reading-cols: minmax(0, 1fr) minmax(0, 860px) minmax(var(--margin-w), 1fr);
-}
-.reading.has-margin {
-  display: grid;
-  grid-template-columns: var(--reading-cols);
-  column-gap: var(--s-5);
-  align-items: start;
-}
-.reading.has-margin > .conversation {
-  grid-column: 2;
-  width: 100%;
-  min-width: 0;
-  margin: 0;
-}
-.reading.has-margin > .reading-margin {
-  grid-column: 3;
-  justify-self: end;
-  width: var(--margin-w);
-}
-/* An inline reply lines up with the messages, not with the column. */
-.conversation-pane:has(.reading.has-margin) .inline-reply {
-  display: grid;
-  grid-template-columns: var(--reading-cols);
-  column-gap: var(--s-5);
-  max-width: none;
-  padding: 0;
-}
-.conversation-pane:has(.reading.has-margin) .inline-reply > * {
-  grid-column: 2;
-  justify-self: center;
-  width: calc(100% - 2 * var(--s-6));
-}
 .conversation-head {
   display: flex;
   align-items: flex-start;
@@ -1848,16 +1870,31 @@ span.tool {
   height: 1px;
   background: var(--line-strong);
 }
+/* The thread on the page itself, a heading over each day (canvas "Tern thread directions", A, 2026-10-30). */
 .history {
-  margin-bottom: var(--s-5);
-  padding: var(--s-1);
-  border-radius: 14px;
-  background: var(--soft);
+  display: flex;
+  flex-direction: column;
 }
-.history .card.mine .avatar {
-  box-shadow:
-    0 0 0 2px var(--soft),
-    0 0 0 3.5px var(--accent);
+.history .day {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: var(--s-4) 0 var(--s-1);
+  padding: 0 10px;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.history .day:first-child {
+  margin-top: var(--s-1);
+}
+.history .day::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
 }
 .card.row > header {
   display: flex;
@@ -1881,58 +1918,70 @@ span.tool {
 .card.row.focused:not(.open) > header {
   background: var(--soft-hover);
 }
-.card.row:not(.unread):not(.open) .line strong {
-  font-weight: 500;
+/* Their lines speak up; yours step back, with "↳" in place of your own avatar. */
+.card.row:not(.open) .snippet {
   color: var(--fg-1);
 }
-/* A line opened in place lifts onto the page's own background. */
+.card.row.mine:not(.open) .line strong,
+.card.row.mine:not(.open) .snippet {
+  font-weight: 400;
+  color: var(--fg-2);
+}
+.card.row > header .own {
+  width: 24px;
+  flex: none;
+  text-align: center;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
+/* A message open in place, and the newest, is a card on the page. */
 .card.row.open {
-  margin: var(--s-1) 0;
-  border-radius: 10px;
-  background: var(--bg-0);
+  margin: var(--s-2) 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.card.row.open > header {
+  padding: var(--s-3) var(--s-4) var(--s-2);
+}
+.card.row.open > header:hover {
+  background: none;
+}
+.card.row.open > header .avatar {
+  width: 32px;
+  height: 32px;
+  font-size: var(--t-xs);
 }
 .card.row.open .avatar {
   box-shadow: none;
 }
 .card.row.mine.open .avatar {
   box-shadow:
-    0 0 0 2px var(--bg-0),
+    0 0 0 2px var(--card),
     0 0 0 3.5px var(--accent);
 }
 .card.row .body {
-  padding: 2px var(--s-4) var(--s-4) 44px;
-}
-/* "3 days later": a small label above the message it leads to. */
-.gap {
-  padding: var(--s-2) 10px 2px;
-  color: var(--fg-2);
-  font-size: calc(var(--t-xs) - 1px);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.history + .gap {
-  margin: calc(-1 * var(--s-3)) 0 var(--s-3);
-  padding: 0;
+  padding: 2px var(--s-5) var(--s-4) 58px;
 }
 
-/* Reply, Reply all and Forward after the last message, on one soft row. Keys show on hover: the status strip
-   already lists R. */
+/* Answering, right under the newest message (canvas "Tern thread directions", C's panel): suggested replies when
+   AI is on, then a field-like Reply, with Reply all and Forward beside it. Their keys show on hover; R always. */
 .reply-end {
-  margin-top: var(--s-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-top: var(--s-1);
+  padding: var(--s-3);
+  border-radius: var(--r-lg);
+  background: var(--soft);
+}
+.reply-end.stage {
+  margin-top: var(--s-5);
 }
 .reply-end .end {
   display: flex;
   align-items: center;
   gap: var(--s-1);
-  min-height: 44px;
-  padding: 0 6px 0 var(--s-1);
-  border-radius: 22px;
-  background: var(--soft);
-  transition: background var(--d-fast) var(--ease);
-}
-.reply-end .end:hover {
-  background: var(--soft-hover);
 }
 .reply-end .start {
   flex: 1;
@@ -1940,13 +1989,23 @@ span.tool {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 0;
-  background: transparent;
+  height: 40px;
+  padding: 0 var(--s-2) 0 var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--card);
   color: var(--fg-2);
   font-size: var(--t-md);
   text-align: left;
   cursor: text;
+  transition: border-color var(--d-fast) var(--ease);
+}
+.reply-end .start:hover {
+  border-color: var(--fg-2);
+}
+.reply-end .start kbd {
+  display: inline-grid;
+  margin-left: auto;
 }
 .reply-end .start span {
   overflow: hidden;
@@ -2032,7 +2091,30 @@ span.tool {
   /* Designed mail draws its own background; this only shows while it loads. */
   background: var(--bg-0);
 }
-/* The "···" pill that unfolds a quoted reply or signature. */
+/* The "···" pill that unfolds a quoted reply, or, for a signature, whose it is in one line. */
+button.fold.sig {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  line-height: 18px;
+  letter-spacing: 0;
+}
+button.fold.sig span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+button.fold.sig:hover {
+  background: var(--soft-hover);
+}
 button.fold {
   display: block;
   margin-top: var(--s-2);
@@ -5499,68 +5581,6 @@ button.link.danger {
   align-items: center;
 }
 
-/* The start of the day (docs/design/ui.md §4.7a). */
-.crow .mark .needs {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  vertical-align: middle;
-}
-.day-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2);
-  min-height: 44px;
-  box-sizing: border-box;
-  padding: var(--s-1) var(--s-3);
-  background: var(--soft);
-  font-size: var(--t-md);
-}
-.day-line strong {
-  font-weight: 600;
-}
-.day-line .since {
-  color: var(--fg-1);
-}
-.day-line .pill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-  padding: 3px var(--s-2);
-  border: none;
-  border-radius: 999px;
-  background: var(--bg-0);
-  color: var(--fg-0);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.day-line .pill.strong {
-  background: var(--accent-soft);
-}
-.day-line .pill:hover {
-  background: var(--bg-3);
-}
-.day-line .pill b {
-  font-weight: 600;
-}
-.day-line .pill kbd {
-  border: none;
-  background: transparent;
-  color: var(--fg-2);
-}
-.day-line .spacer {
-  flex: 1;
-}
-.day-line .close {
-  border: none;
-  background: none;
-  padding: var(--s-1);
-  color: var(--fg-2);
-}
-
 .tide,
 .day-deck {
   position: fixed;
@@ -6081,125 +6101,65 @@ button.link.danger {
   letter-spacing: -0.01em;
 }
 
-/* MARK: Beside the messages (§4.2a–c): what the newest message holds, a newsletter's parts, the person's marks. */
+/* MARK: Details (§4.2a–c), at the top of the companion: what the newest message holds, a newsletter's parts, the
+   person's marks. */
 
-.reading-margin {
-  position: sticky;
-  top: 0;
-  /* The pane's height, less the window's title bar and status strip; scrolls on its own, its bar shown on hover. */
-  max-height: calc(100vh - 72px - var(--titlebar-h));
-  overflow-x: hidden;
-  overflow-y: auto;
-  overflow-wrap: anywhere;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  box-sizing: border-box;
-  padding: var(--s-6) var(--s-5) var(--s-6) 0;
+.details {
   display: flex;
   flex-direction: column;
   gap: var(--s-5);
+  overflow-wrap: anywhere;
   user-select: none;
 }
-.reading-margin:hover {
-  scrollbar-color: var(--line) transparent;
-}
-.reading-margin .contents button {
+.details .contents button {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.reading-margin .hide {
-  position: absolute;
-  top: var(--s-5);
-  right: var(--s-5);
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--fg-2);
-}
-.reading-margin .hide:hover {
-  background: var(--bg-2);
-  color: var(--fg-0);
-}
-.reading-margin.narrow .hide {
-  top: 0;
-  right: 0;
-}
-.reading-margin section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-.reading-margin h2 {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  margin: 0;
-  font-size: var(--t-xs);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--fg-2);
-}
-.reading-margin h2 .keys {
+.details h2 .keys {
   margin-left: auto;
   display: inline-flex;
   gap: 2px;
   text-transform: none;
 }
-.reading-margin .facts {
+.details .fact {
   display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-.reading-margin .fact {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  align-items: center;
+  gap: var(--s-3);
   padding: var(--s-3);
-  border-radius: var(--r-lg);
-  background: var(--soft);
   font-size: var(--t-md);
-  line-height: 1.45;
+  line-height: 1.4;
 }
-.reading-margin .fact.ask {
-  background: var(--accent-soft);
+.details .fact strong {
+  font-weight: 500;
 }
-.reading-margin .fact .kind {
-  font-size: var(--t-sm);
-  color: var(--fg-1);
+.details .fact .kind {
+  font-size: var(--t-xs);
+  color: var(--fg-2);
 }
-.reading-margin .fact strong {
-  font-weight: 600;
-}
-.reading-margin .fact .code {
+.details .fact .code {
   font: 500 var(--t-md) / 1.4 "JetBrains Mono", ui-monospace, monospace;
   user-select: all;
 }
-.reading-margin .fact button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 2px;
-  border: none;
+.details .fact .copy {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   background: var(--bg-0);
+  color: var(--fg-1);
   font-size: var(--t-sm);
-  padding: 3px var(--s-2);
 }
-.reading-margin .fact button:hover {
-  background: var(--bg-2);
+.details .fact .copy:hover {
+  border-color: var(--line-strong);
+  color: var(--fg-0);
 }
-.reading-margin .contents {
+.details .contents {
   display: flex;
   flex-direction: column;
 }
-.reading-margin .contents button {
+.details .contents button {
   border: none;
   background: none;
   text-align: left;
@@ -6207,55 +6167,61 @@ button.link.danger {
   font-size: var(--t-md);
   color: var(--fg-1);
 }
-.reading-margin .contents button:hover {
+.details .contents button:hover {
   background: var(--bg-2);
   color: var(--fg-0);
 }
-.reading-margin .links {
+.details .links {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.reading-margin .link-card {
+.details .link-card {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
   border: none;
   background: none;
   text-align: left;
   padding: 6px var(--s-2);
+  margin: 0 calc(-1 * var(--s-2));
   border-radius: var(--r-md);
 }
-.reading-margin .link-card:hover {
+.details .link-card:hover {
   background: var(--soft);
 }
-.reading-margin .links .more {
+.details .links .more {
   align-self: flex-start;
   border: none;
   background: none;
-  padding: 4px var(--s-2);
+  padding: 4px 0;
   font-size: var(--t-sm);
   color: var(--accent);
 }
-.reading-margin .link-card .text {
+.details .link-card .text {
+  min-width: 0;
   font-size: var(--t-md);
-  color: var(--fg-0);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  color: var(--accent);
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
-.reading-margin .link-card .host {
+.details .link-card .host {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
-.reading-margin .marks {
+.details .marks {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
 }
-.reading-margin .mark {
+.details .mark {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -6264,10 +6230,10 @@ button.link.danger {
   border-radius: var(--r-lg);
   background: var(--mark-soft);
 }
-.reading-margin .mark.on {
+.details .mark.on {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
-.reading-margin .mark .passage {
+.details .mark .passage {
   border: none;
   background: none;
   padding: 0 var(--s-4) 0 0;
@@ -6280,7 +6246,7 @@ button.link.danger {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.reading-margin .mark textarea {
+.details .mark textarea {
   font: inherit;
   font-size: var(--t-sm);
   line-height: 1.45;
@@ -6293,13 +6259,13 @@ button.link.danger {
   field-sizing: content;
   min-height: 0;
 }
-.reading-margin .mark textarea:focus {
+.details .mark textarea:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   background: var(--bg-0);
   color: var(--fg-0);
 }
-.reading-margin .mark .remove {
+.details .mark .remove {
   position: absolute;
   top: 6px;
   right: 6px;
@@ -6313,51 +6279,15 @@ button.link.danger {
   color: var(--fg-2);
   opacity: 0;
 }
-.reading-margin .mark:hover .remove,
-.reading-margin .mark .remove:focus-visible {
+.details .mark:hover .remove,
+.details .mark .remove:focus-visible {
   opacity: 1;
 }
-.reading-margin .nothing {
+.details .nothing {
   margin: 0;
   font-size: var(--t-md);
   line-height: 1.45;
   color: var(--fg-2);
-}
-.reading-margin .found-here {
-  margin: 0;
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-/* A narrow pane: the column is a row above the messages, and marks show only as their count. */
-.reading-margin.narrow {
-  position: relative;
-  max-height: none;
-  overflow: visible;
-  padding: 0 0 var(--s-4);
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: flex-start;
-}
-.reading-margin.narrow {
-  gap: var(--s-3);
-}
-.reading-margin.narrow section {
-  flex: 1 1 100%;
-}
-.reading-margin.narrow .facts,
-.reading-margin.narrow .links,
-.reading-margin.narrow .contents {
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-.reading-margin.narrow .fact {
-  flex: 1 1 180px;
-  max-width: 320px;
-}
-.reading-margin.narrow .link-card {
-  flex: 0 1 auto;
-  max-width: 260px;
-  background: var(--soft);
 }
 
 /* Over text selected in a message. */
@@ -6492,7 +6422,7 @@ button.link.danger {
   }
 }
 
-/* MARK: Companion (§4.2b) */
+/* MARK: Companion (§4.2b): one column, the person on top, Ask at the foot. */
 
 .companion {
   display: flex;
@@ -6506,32 +6436,41 @@ button.link.danger {
 .companion > header {
   display: flex;
   align-items: center;
-  gap: var(--s-1);
-  height: 48px;
-  padding: 0 var(--s-2);
-  border-bottom: 1px solid var(--line);
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-3) var(--s-3) var(--s-4);
   flex: none;
 }
-.companion-tabs {
-  display: flex;
-  gap: 2px;
+.companion > header .icon-button {
+  align-self: flex-start;
 }
-.companion-tabs button {
-  padding: 6px 10px;
-  border: none;
-  border-radius: var(--r-md);
-  background: none;
-  color: var(--fg-2);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.companion-tabs button.on {
-  background: var(--bg-2);
-  color: var(--fg-0);
+.companion .avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--accent-fg);
+  display: grid;
+  place-items: center;
+  font-size: var(--t-md);
   font-weight: 600;
+  flex: none;
 }
-.companion .spacer {
+.companion .who {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.companion .who strong {
+  font-size: var(--t-rd);
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.companion .who span {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
 }
 .companion-body {
   flex: 1;
@@ -6539,62 +6478,212 @@ button.link.danger {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--s-3);
-  padding: var(--s-4);
+  gap: var(--s-5);
+  padding: var(--s-1) var(--s-4) var(--s-4);
+}
+.companion section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.companion h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.companion h2 .count {
+  margin-left: auto;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 .companion .quiet {
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
-.companion h3 {
-  margin: var(--s-2) 0 0;
-  font-size: var(--t-xs);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+.companion .found-here {
+  margin: 0;
+  font-size: var(--t-sm);
   color: var(--fg-2);
 }
-.companion-empty {
+/* A card holding rows: the facts, what is owed, the files. */
+.companion .rows,
+.details .facts {
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
-  color: var(--fg-1);
-  line-height: 1.5;
-}
-.companion-empty p {
-  margin: 0;
-}
-.companion-empty button,
-.companion .suggest button {
-  align-self: flex-start;
-  padding: var(--s-1) var(--s-3);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-lg);
   background: var(--bg-0);
+}
+.companion .rows > * + *,
+.details .facts > * + * {
+  border-top: 1px solid var(--line);
+}
+.companion .tile {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
   color: var(--fg-1);
-  font: inherit;
-  font-size: var(--t-sm);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
-.companion .suggest {
+.companion .tile.day {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
-}
-.companion .chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-1);
-}
-.companion .chip {
-  padding: 3px 10px;
-  border-radius: 999px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   background: var(--accent-soft);
-  font-size: var(--t-sm);
+  color: var(--accent);
+  text-transform: uppercase;
 }
-.companion .turns {
+.companion .tile.day strong {
+  font-size: 18px;
+  line-height: 20px;
+}
+.companion .what {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.companion .what button.link {
+  padding: 0;
+  font-size: var(--t-sm);
+  color: var(--accent);
+}
+.companion .what button.link:hover {
+  text-decoration: underline;
+}
+.companion .recent {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.companion .recent li {
+  display: flex;
+  gap: var(--s-2);
+  padding: var(--s-1) 0;
+}
+.companion .recent .subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.companion .pledge {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3);
+}
+.companion .pledge input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+.companion .pledge > div {
   flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.companion .pledge .text {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg-0);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  line-height: 1.45;
+}
+.companion .pledge .text:hover {
+  text-decoration: underline;
+}
+.companion .pledge.done .text {
+  color: var(--fg-2);
+  font-weight: 400;
+  text-decoration: line-through;
+}
+.companion .pledge .due {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  color: var(--warn-fg);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+.companion .pledge.done .due {
+  display: none;
+}
+.companion .file {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--fg-0);
+  font: inherit;
+  text-align: left;
+}
+.companion .file:first-child {
+  border-top-left-radius: var(--r-lg);
+  border-top-right-radius: var(--r-lg);
+}
+.companion .file:last-child {
+  border-bottom-left-radius: var(--r-lg);
+  border-bottom-right-radius: var(--r-lg);
+}
+.companion .file:hover {
+  background: var(--soft);
+}
+.companion .file .tile {
+  width: 32px;
+  height: 32px;
+}
+.companion .tile.pdf {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+.companion .tile.sheet {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  color: var(--ok);
+}
+.companion .tile.doc,
+.companion .tile.image {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.companion .file .name {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Ask: the chat sits at the end of the column, the box at its foot. */
+.companion .turns {
   gap: var(--s-4);
 }
 .companion .turn {
@@ -6632,134 +6721,80 @@ button.link.danger {
   font-size: var(--t-xs);
   color: var(--fg-2);
 }
-.companion .ask-box {
+.ask-dock {
+  flex: none;
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
   gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg);
-  background: var(--bg-0);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  border-top: 1px solid var(--line);
 }
-.companion .ask-box textarea {
+.ask-dock.off {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  line-height: 1.45;
+}
+.ask-dock.off button.link {
+  align-self: flex-start;
+  padding: 0;
+  color: var(--accent);
+}
+.ask-dock .suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ask-dock .suggest button {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.ask-dock .suggest button:hover {
+  border-color: var(--line-strong);
+  color: var(--fg-0);
+}
+.ask-dock .ask-box {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 36px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-2);
+}
+.ask-dock .ask-box:focus-within {
+  border-color: var(--accent);
+}
+.ask-dock textarea {
   flex: 1;
+  min-width: 0;
+  padding: 8px 0;
   border: none;
   background: none;
   color: var(--fg-0);
   font: inherit;
   resize: none;
   outline: none;
+  field-sizing: content;
+  max-height: 120px;
 }
-.companion .ask-box .send {
+.ask-dock .send {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
+  flex: none;
   border: none;
   border-radius: var(--r-md);
   background: var(--accent);
   color: var(--accent-fg);
 }
-.companion .ask-box .send:disabled {
+.ask-dock .send:disabled {
   opacity: 0.45;
-}
-.companion .person-head {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.companion .person-head strong {
-  font-size: var(--t-lg);
-}
-.companion .stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--s-2);
-}
-.companion .stats div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
-}
-.companion .stats strong {
-  font-size: var(--t-lg);
-}
-.companion .stats span {
-  font-size: var(--t-xs);
-  color: var(--fg-2);
-}
-.companion .recent {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.companion .recent li {
-  display: flex;
-  gap: var(--s-2);
-  padding: var(--s-1) 0;
-}
-.companion .recent .subject {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.companion .foot {
-  margin-top: auto;
-}
-.companion .pledge {
-  display: flex;
-  gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
-}
-.companion .pledge > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.companion .pledge .text {
-  padding: 0;
-  color: var(--fg-0);
-  text-align: left;
-  line-height: 1.45;
-}
-.companion .pledge.done .text {
-  color: var(--fg-2);
-  text-decoration: line-through;
-}
-.companion .pledge .due {
-  color: var(--warn-fg);
-}
-.companion .file {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  column-gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
-  color: var(--fg-0);
-  font: inherit;
-  text-align: left;
-}
-.companion .file svg {
-  grid-row: span 2;
-  color: var(--fg-2);
-}
-.companion .file .name {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
