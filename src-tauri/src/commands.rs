@@ -6,9 +6,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tern_core::ai::{self, providers, Provider};
 use tern_core::presets::{self, Preset};
 use tern_core::{
-    logo, mime, secrets, sync, Account, AccountConfig, Action, AiStyle, Applied, Auth, Contact, ContactCard,
-    Cursor, Draft, DraftRecord, Folder, ListTarget, Mark, MessageRow, OutboxProblem, OutboxWaiting,
-    OutgoingAttachment, ReplyInit, ReplyKind, SearchResult, ThreadMessage, ThreadRow,
+    logo, mime, secrets, sync, Account, AccountConfig, Action, AiStyle, Alias, Applied, Auth, Contact,
+    ContactCard, Cursor, Draft, DraftRecord, Folder, ListTarget, Mark, MessageRow, OutboxProblem,
+    OutboxWaiting, OutgoingAttachment, ReplyInit, ReplyKind, SearchResult, ThreadMessage, ThreadRow,
 };
 
 use std::collections::{HashMap, HashSet};
@@ -34,6 +34,17 @@ pub async fn accounts(state: State<'_, AppState>) -> Reply<Vec<Account>> {
 #[tauri::command]
 pub async fn set_account_name(state: State<'_, AppState>, id: i64, name: String) -> Reply<()> {
     state.store.set_display_name(id, &name).map_err(text)
+}
+
+/// The account's other From addresses; returns what was kept (trimmed, each once). The worker reads them at
+/// its next pass, as it does the name.
+#[tauri::command]
+pub async fn set_account_aliases(
+    state: State<'_, AppState>,
+    id: i64,
+    aliases: Vec<Alias>,
+) -> Reply<Vec<Alias>> {
+    state.store.set_aliases(id, &aliases).map_err(text)
 }
 
 #[tauri::command]
@@ -165,6 +176,7 @@ pub async fn google_sign_in(
             smtp_port: preset.smtp_port,
             smtp_security: preset.smtp_security,
             auth: Auth::Google,
+            aliases: Vec::new(),
         },
     };
     let token = secrets::Credential::Token(tokens.access_token.clone());

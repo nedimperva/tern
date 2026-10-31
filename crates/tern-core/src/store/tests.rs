@@ -13,6 +13,7 @@ fn config() -> AccountConfig {
         smtp_port: 465,
         smtp_security: Security::Tls,
         auth: Default::default(),
+        aliases: Vec::new(),
     }
 }
 
@@ -1068,8 +1069,92 @@ fn replies_go_to_the_right_people() {
     assert_eq!(fwd.subject, "Fwd: Plan");
 }
 
+#[test]
+fn aliases_are_kept_tidy_and_answered_from() {
+    let (store, account, inbox, _) = setup();
+    let alias = |email: &str, name: &str| Alias { email: email.into(), name: name.into() };
+    let kept = store
+        .set_aliases(
+            account,
+            &[
+                alias(" Hi@Custom.example ", " Ada "),
+                alias("hi@custom.example", ""),
+                alias("ME@example.com", ""),
+                alias("", ""),
+            ],
+        )
+        .unwrap();
+    assert_eq!(kept, [alias("Hi@Custom.example", "Ada")], "trimmed, once each, never the account's own");
+    assert!(store.set_aliases(account, &[alias("not an address", "")]).is_err());
+    let config = store.account(account).unwrap().unwrap().config;
+    assert_eq!(config.aliases, kept, "a refused list changes nothing");
+    assert!(config.owns("HI@custom.example") && config.owns("me@example.com") && !config.owns("ada@x.com"));
+
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[
+                mail_to_me(1, "ada@x.com", "hi@custom.example, bob@x.com", "me@example.com"),
+                mail_to_me(2, "hi@custom.example", "ada@x.com", ""),
+                mail_to_me(3, "ada@x.com", "me@example.com", ""),
+            ],
+        )
+        .unwrap();
+    let r = |uid: i64, kind| store.reply_init(uid, kind).unwrap();
+    let all = r(1, ReplyKind::ReplyAll);
+    assert_eq!(all.from.as_deref(), Some("Hi@Custom.example"), "from the address it went to");
+    assert_eq!(
+        (all.to, all.cc),
+        (vec!["ada@x.com".to_string()], vec!["bob@x.com".to_string()]),
+        "never an own address"
+    );
+    let mine = r(2, ReplyKind::Reply);
+    assert_eq!(
+        (mine.from.as_deref(), mine.to),
+        (Some("Hi@Custom.example"), vec!["ada@x.com".to_string()]),
+        "sent from it"
+    );
+    assert_eq!(r(3, ReplyKind::Reply).from, None, "the account's own address needs no alias");
+    assert_eq!(r(1, ReplyKind::Forward).from.as_deref(), Some("Hi@Custom.example"));
+
+    // Mail sent from the alias is the person's: no notification, and its recipients rank as people they write to.
+    let (_, news) = store.new_mail(0, 0, true).unwrap();
+    assert_eq!(news.iter().map(|n| n.id).collect::<Vec<_>>(), [1, 3]);
+    assert_eq!(store.contacts("ada", 5).unwrap()[0].email, "ada@x.com");
+
+    // A draft from the alias shows it in Drafts; a send from one it no longer has goes out as the account.
+    let drafts = store.upsert_folder(account, "Drafts", "drafts").unwrap();
+    let draft = Draft {
+        from: Some("hi@custom.example".into()),
+        message_id: Some("<d@x>".into()),
+        ..draft_to("Hello")
+    };
+    store.save_draft(None, account, draft, false).unwrap();
+    let row = store.list(&ListTarget::Folder(drafts), None, 9).unwrap().remove(0);
+    assert_eq!((row.from_addr.as_str(), row.from_name.as_str()), ("Hi@Custom.example", "Ada"));
+
+    store.set_aliases(account, &[]).unwrap();
+    assert_eq!(r(1, ReplyKind::Reply).from, None);
+    store.remove_account(account).unwrap();
+    let left: i64 = store.conn().query_row("SELECT count(*) FROM account_aliases", [], |r| r.get(0)).unwrap();
+    assert_eq!(left, 0, "removing the account takes its aliases");
+}
+
+#[test]
+fn migration_30_adds_aliases() {
+    let (store, account, _, _) = setup();
+    let conn = store.conn.into_inner().unwrap();
+    wind_back(&conn, 29);
+    let store = Store::init(conn).unwrap();
+    assert!(store.account(account).unwrap().unwrap().config.aliases.is_empty());
+    store.set_aliases(account, &[Alias { email: "hi@custom.example".into(), name: String::new() }]).unwrap();
+    assert_eq!(store.account(account).unwrap().unwrap().config.aliases.len(), 1);
+}
+
 fn draft_to(subject: &str) -> Draft {
     Draft {
+        from: None,
         html: None,
         to: vec!["b@x".into()],
         cc: vec![],
@@ -1356,6 +1441,7 @@ fn snippets_fill_in_before_bodies() {
 
 fn draft() -> Draft {
     Draft {
+        from: None,
         html: None,
         to: vec!["b@x".into()],
         cc: vec![],
@@ -1447,6 +1533,7 @@ fn renumbering_keeps_messages_queued_work_is_about_to_change() {
 fn wind_back(conn: &Connection, version: i64) {
     for from in (version..SCHEMA_VERSION).rev() {
         let undo = match from {
+            29 => "DROP TABLE account_aliases;",
             28 => "",
             27 => "DROP TABLE read_later;",
             26 => "DROP TABLE marks;",

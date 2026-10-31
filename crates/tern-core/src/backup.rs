@@ -148,6 +148,7 @@ mod tests {
                     smtp_port: 587,
                     smtp_security: Security::Starttls,
                     auth: Auth::Password,
+                    aliases: Vec::new(),
                 },
                 password: Some("hunter2 and more".into()),
                 tokens: None,

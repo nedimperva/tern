@@ -164,7 +164,7 @@ impl Store {
             "SELECT m.id, m.account_id, m.thread_id, m.from_name, m.from_addr, m.subject, m.snippet, {IS_OTHER}
              FROM messages m JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id
              WHERE m.id > ?1 AND m.id <= ?3 AND m.date >= ?2 AND f.role = 'inbox' AND NOT m.seen
-               AND lower(m.from_addr) <> lower(a.email)
+               AND NOT {MINE_M}
                AND NOT EXISTS (SELECT 1 FROM muted u WHERE u.account_id = m.account_id AND u.thread_id = m.thread_id)
                AND (?4 OR NOT {IS_OTHER}) AND NOT {IS_SNOOZED} AND NOT {IS_LATER}
              ORDER BY m.id"
@@ -258,12 +258,12 @@ impl Store {
         let tx = conn.transaction()?;
         tx.execute("DELETE FROM reminders WHERE kind = 'woke' AND due < ?1", [now - 2 * 86_400])?;
         let due: Vec<(i64, String)> = tx
-            .prepare(
+            .prepare(&format!(
                 "SELECT r.account_id, r.thread_id FROM reminders r JOIN accounts a ON a.id = r.account_id
                  WHERE r.kind = 'snooze' AND (r.due <= ?1 OR EXISTS (
                      SELECT 1 FROM messages m WHERE m.account_id = r.account_id AND m.thread_id = r.thread_id
-                       AND m.date > r.created AND lower(m.from_addr) <> lower(a.email)))",
-            )?
+                       AND m.date > r.created AND NOT {MINE_M}))"
+            ))?
             .query_map([now], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<rusqlite::Result<_>>()?;
         let mut out = Vec::new();
