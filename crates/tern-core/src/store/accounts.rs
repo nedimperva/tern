@@ -24,7 +24,46 @@ impl Store {
                 c.auth.as_str()
             ],
         )?;
-        Ok(Account { id: conn.last_insert_rowid(), config: c.clone() })
+        let id = conn.last_insert_rowid();
+        drop(conn);
+        // A backup brings its aliases along; a new account has none.
+        let aliases = self.set_aliases(id, &c.aliases)?;
+        Ok(Account { id, config: AccountConfig { aliases, ..c.clone() } })
+    }
+
+    /// Replaces the account's other From addresses. Addresses are trimmed and kept once each (the account's own
+    /// address is never one of them); a malformed one is refused. Returns what was kept, in order.
+    pub fn set_aliases(&self, id: i64, aliases: &[Alias]) -> Result<Vec<Alias>> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let own: String =
+            tx.query_row("SELECT lower(email) FROM accounts WHERE id = ?1", [id], |r| r.get(0))?;
+        let mut kept: Vec<Alias> = Vec::new();
+        for a in aliases {
+            let email = a.email.trim();
+            if email.is_empty() {
+                continue;
+            }
+            if email.parse::<lettre::Address>().is_err() {
+                bail!("“{email}” is not an email address.");
+            }
+            let lower = email.to_lowercase();
+            if lower == own || kept.iter().any(|k| k.email.to_lowercase() == lower) {
+                continue;
+            }
+            kept.push(Alias { email: email.to_string(), name: a.name.trim().to_string() });
+        }
+        tx.execute("DELETE FROM account_aliases WHERE account_id = ?1", [id])?;
+        // `email` is lowercase, for matching mail to the account (`mine`); `spelled` is how the person wrote it,
+        // for the From line.
+        for (i, a) in kept.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO account_aliases (account_id, email, name, spelled, position) VALUES (?1, lower(?2), ?3, ?2, ?4)",
+                params![id, a.email, a.name, i as i64],
+            )?;
+        }
+        tx.commit()?;
+        Ok(kept)
     }
 
     /// The name put on mail sent from the account (the From line's "Ada Lovelace <ada@…>"). Empty sends the
@@ -72,10 +111,22 @@ impl Store {
                         smtp_port: r.get(8)?,
                         smtp_security: security(r, 9)?,
                         auth: if r.get::<_, String>(10)? == "google" { Auth::Google } else { Auth::Password },
+                        aliases: Vec::new(),
                     },
                 })
             })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+            .collect::<rusqlite::Result<Vec<Account>>>()?;
+        let mut stmt = conn.prepare_cached(
+            "SELECT account_id, spelled, name FROM account_aliases ORDER BY account_id, position",
+        )?;
+        let mut rows = stmt.query([])?;
+        let mut accounts = accounts;
+        while let Some(r) = rows.next()? {
+            let id: i64 = r.get(0)?;
+            if let Some(a) = accounts.iter_mut().find(|a| a.id == id) {
+                a.config.aliases.push(Alias { email: r.get(1)?, name: r.get(2)? });
+            }
+        }
         Ok(accounts)
     }
 

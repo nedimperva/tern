@@ -42,7 +42,7 @@ impl Store {
                  WHERE {important}
                    AND m.id = (SELECT x.id FROM messages x WHERE x.account_id = m.account_id
                                  AND x.thread_id = m.thread_id ORDER BY x.date DESC, x.id DESC LIMIT 1)
-                   AND lower(m.from_addr) <> lower(a.email)
+                   AND NOT {MINE_M}
                  ORDER BY m.date, m.id LIMIT 200"
             ))?
             .query_map([imp_value], row)?
@@ -128,13 +128,13 @@ impl Store {
     /// report counts the week's mail, archived or not. A message in two folders (Gmail labels) counts once.
     pub fn arrivals(&self, since: i64) -> Result<Vec<i64>> {
         let conn = self.reader();
-        let mut stmt = conn.prepare_cached(
+        let mut stmt = conn.prepare_cached(&format!(
             "SELECT min(m.date) FROM messages m
              JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id
              WHERE m.date > ?1 AND f.role NOT IN ('sent', 'drafts', 'junk')
-               AND lower(m.from_addr) <> lower(a.email)
-             GROUP BY m.account_id, coalesce(m.message_id, m.id)",
-        )?;
+               AND NOT {MINE_M}
+             GROUP BY m.account_id, coalesce(m.message_id, m.id)"
+        ))?;
         let dates = stmt.query_map([since], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
         Ok(dates)
     }
@@ -142,7 +142,7 @@ impl Store {
     /// The senders who wrote most since `since`, most first: who fills the inbox.
     pub fn senders(&self, since: i64, limit: i64) -> Result<Vec<SenderVolume>> {
         let conn = self.reader();
-        let mut stmt = conn.prepare_cached(
+        let mut stmt = conn.prepare_cached(&format!(
             "SELECT m.account_id, lower(m.from_addr), max(m.from_name), count(DISTINCT coalesce(m.message_id, m.id)),
                     max(m.id),
                     -- From their mail in the window: a lookup across all their mail took a second per page.
@@ -151,10 +151,10 @@ impl Store {
                                WHERE s.account_id = m.account_id AND s.addr = lower(m.from_addr)), max(m.bulk))
              FROM messages m JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id
              WHERE m.date > ?1 AND f.role NOT IN ('sent', 'drafts', 'junk') AND m.from_addr <> ''
-               AND lower(m.from_addr) <> lower(a.email)
+               AND NOT {MINE_M}
              GROUP BY m.account_id, lower(m.from_addr)
-             ORDER BY 4 DESC, 2 LIMIT ?2",
-        )?;
+             ORDER BY 4 DESC, 2 LIMIT ?2"
+        ))?;
         let rows = stmt.query_map(params![since, limit], |r| {
             Ok(SenderVolume {
                 account_id: r.get(0)?,

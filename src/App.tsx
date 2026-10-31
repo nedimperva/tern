@@ -20,7 +20,7 @@ import { loadSettings, setSetting, settings } from "./settings";
 import { closeScreen, deck, screen, start, startDay } from "./day";
 import { keyHandler } from "./keys";
 import { hitWords } from "./hits";
-import { act, label, labelsOf, onShelf, shelve, snoozeThen, snoozeUntil, targets } from "./app/actions";
+import { act, isMine, label, labelsOf, onShelf, shelve, snoozeThen, snoozeUntil, targets } from "./app/actions";
 import { bindings as allBindings, commands as allCommands, menu } from "./app/bindings";
 import { close, open as openConversation, toggleMessage, watchConversation } from "./app/conversation";
 import {
@@ -249,7 +249,7 @@ function Main() {
             labels={rows().find((r) => keyOf(r) === keyOf(openRow()!))?.labels ?? openRow()?.labels ?? []}
             focused={messageFocus()}
             expanded={(id) => expanded().has(id)}
-            mine={(addr) => accounts().some((a) => a.email.toLowerCase() === addr.toLowerCase())}
+            mine={isMine}
             replying={!!compose()?.inline}
             onToggle={toggleMessage}
             onReply={(m, kind, text) => respond(m, kind, undefined, text)}
@@ -281,7 +281,7 @@ function Main() {
         <Suspense>
           <Companion
             messages={messages}
-            mine={(addr) => accounts().some((a) => a.email.toLowerCase() === addr.toLowerCase())}
+            mine={isMine}
             onJump={(id) => {
               const i = messages.findIndex((m) => m.id === id);
               if (i >= 0 && i < messages.length - 1 && !expanded().has(id)) toggleMessage(i);

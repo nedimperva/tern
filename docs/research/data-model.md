@@ -240,6 +240,18 @@ CREATE TABLE read_later (account_id INTEGER NOT NULL REFERENCES accounts(id) ON 
                          thread_id TEXT NOT NULL, added INTEGER NOT NULL, PRIMARY KEY (account_id, thread_id));
 ```
 
+## v30 — send as another address (implemented 2026-10-31)
+An account's other From addresses: a custom domain attached to iCloud, an alias. They go out through the account's
+own SMTP sign-in. `email` is lowercase, so queries can tell the person's own mail from anyone else's (`MINE_M` in
+`store/mod.rs`); `spelled` is the address as the person wrote it, for the From line. A draft names the one it goes
+out as in its `from`.
+```sql
+CREATE TABLE account_aliases (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                              email TEXT NOT NULL, spelled TEXT NOT NULL,
+                              name TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0,
+                              PRIMARY KEY (account_id, email));
+```
+
 ## Next (planned for package 01: sync v2, threads; version number allocated when implemented)
 ```sql
 ALTER TABLE accounts ADD COLUMN caps TEXT NOT NULL DEFAULT '{}';               -- JSON: condstore, qresync, move, idle, gmail_ext

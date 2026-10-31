@@ -7,6 +7,16 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Send from more than one address in an account. Settings → an account → Also send as takes other addresses the
+  server lets you send from, such as a custom domain set up in iCloud, each with its own name if you like. Compose's
+  From picker lists them under the account, and a reply or forward starts from the address the mail was sent to.
+  Mail you sent from one of them counts as yours: no notification, it never lands among the people you reply to,
+  and it does not cancel a snooze or a follow-up.
+- The iCloud preset says how to set up a custom domain: sign in with the iCloud address and add the domain's address
+  under Also send as.
+
 ## [1.7.0] - 2026-10-30
 
 ### Changed

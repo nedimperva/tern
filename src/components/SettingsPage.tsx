@@ -105,7 +105,7 @@ export function SettingsPage(props: {
         id: `account:${a.id}`,
         name: accountName(a),
         group: "Accounts",
-        words: `${a.email} server imap smtp account`,
+        words: `${a.email} ${(a.aliases ?? []).map((x) => x.email).join(" ")} server imap smtp account alias send as from domain`,
         dot: colourOf(props.accounts, a.id),
         body: () => (
           <AccountPage

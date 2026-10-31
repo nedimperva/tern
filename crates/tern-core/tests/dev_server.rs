@@ -92,6 +92,7 @@ fn account(smtp_port: u16, smtp_security: Security) -> AccountConfig {
         smtp_port,
         smtp_security,
         auth: Default::default(),
+        aliases: Vec::new(),
     }
 }
 
@@ -99,6 +100,7 @@ fn account(smtp_port: u16, smtp_security: Security) -> AccountConfig {
 async fn send_and_find(config: &AccountConfig) {
     let subject = format!("smtp check {} {:?}", std::process::id(), config.smtp_security);
     let draft = Draft {
+        from: None,
         html: None,
         to: vec!["test@localhost".into()],
         cc: vec![],
@@ -153,6 +155,7 @@ async fn sends_over_smtp_starttls() {
 #[ignore = "needs scripts/dev-mail-server.sh start"]
 async fn unknown_recipient_is_a_permanent_failure() {
     let draft = Draft {
+        from: None,
         html: None,
         to: vec!["nobody-here@localhost".into()],
         cc: vec![],
@@ -189,6 +192,7 @@ async fn idle_wakes_on_new_mail() {
     let deliver = tokio::spawn(async {
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         let draft = Draft {
+            from: None,
             html: None,
             to: vec!["test@localhost".into()],
             cc: vec![],

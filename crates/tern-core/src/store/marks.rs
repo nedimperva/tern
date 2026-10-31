@@ -62,13 +62,15 @@ impl Store {
         Ok(())
     }
 
-    /// The text of the newest messages the person sent from the account (by its address, so Gmail's sent mail,
+    /// The text of the newest messages the person sent from the account (by its address or an alias, so Gmail's sent mail,
     /// which lives in All Mail, counts too), each once. Only messages whose text is here.
     pub fn own_texts(&self, account_id: i64, address: &str, limit: usize) -> Result<Vec<String>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT b.text FROM messages m JOIN bodies b ON b.message_id = m.id
-             WHERE m.account_id = ?1 AND m.from_addr = ?2 COLLATE NOCASE AND COALESCE(b.text, '') != ''
+             WHERE m.account_id = ?1 AND COALESCE(b.text, '') != ''
+               AND (m.from_addr = ?2 COLLATE NOCASE
+                    OR lower(m.from_addr) IN (SELECT email FROM account_aliases WHERE account_id = ?1))
                AND NOT EXISTS (SELECT 1 FROM drafts d WHERE d.account_id = m.account_id
                                  AND d.message_id = m.message_id AND d.sent_at IS NULL)
              GROUP BY COALESCE(m.message_id, m.id)
