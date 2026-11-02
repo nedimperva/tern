@@ -5,6 +5,7 @@ import { api, type Account, type Alias } from "../../api";
 import { ACCOUNT_COLOURS, COLOUR_NAMES } from "../../colours";
 import { radioKeys } from "../../a11y";
 import { type NotifyMode, setSetting, settings } from "../../settings";
+import { Dropdown } from "../Dropdown";
 
 /** One account: its name on sent mail, what else Tern knows of it, and a way to its signatures. */
 export function AccountPage(props: { account: Account; onSignatures: () => void; onRenamed: () => void; onRemoved: () => void }) {
@@ -183,16 +184,21 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
         </span>
         <span class="help">Its dot in mixed lists, its badge in the rail (Ctrl+\) and in the From picker.</span>
       </div>
-      <label class="setting">
+      <div class="setting">
         <span class="title">Notifications</span>
-        <select value={notifies()} onChange={(e) => setNotifies(e.currentTarget.value as NotifyMode | "")}>
-          <option value="">As in Notifications ({general()})</option>
-          <option value="important">Important mail</option>
-          <option value="all">Important and Other</option>
-          <option value="off">None</option>
-        </select>
+        <Dropdown
+          label="Notifications"
+          value={notifies()}
+          choices={[
+            { value: "", label: `As in Notifications (${general()})` },
+            { value: "important", label: "Important mail" },
+            { value: "all", label: "Important and Other" },
+            { value: "off", label: "None" },
+          ]}
+          onChange={(v) => setNotifies(v as NotifyMode | "")}
+        />
         <span class="help">New mail in this account's inbox. Quiet hours apply to every account.</span>
-      </label>
+      </div>
       <div class="setting">
         <span class="title">Sign-in</span>
         <span class="value-action">

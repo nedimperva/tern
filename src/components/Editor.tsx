@@ -4,11 +4,12 @@ import { history, redo, undo } from "prosemirror-history";
 import { inputRules, wrappingInputRule, InputRule } from "prosemirror-inputrules";
 import { keymap } from "prosemirror-keymap";
 import { liftListItem, sinkListItem, splitListItem, wrapInList } from "prosemirror-schema-list";
-import { EditorState, Plugin, TextSelection, type Command } from "prosemirror-state";
-import { Slice } from "prosemirror-model";
+import { EditorState, Plugin, PluginKey, TextSelection, type Command } from "prosemirror-state";
+import { Slice, type Node as ProseNode } from "prosemirror-model";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import { fromHtml, fromText, insertPictures, schema, toHtml, toText, type Picture } from "../editor/schema";
 import type { Snippet } from "../api";
+import { signatureRange } from "../editor/outline";
 
 /** Where compose's snippets come from: the ones offered here, their text with the places filled in, and what using
  * one does besides (its use counted, its subject and Cc filled in). */
@@ -71,6 +72,115 @@ const currentBlock = new Plugin({
   },
 });
 
+/** What the signature line offers: the account's signatures and which is in the text, to switch between them. */
+export type SignaturePicker = {
+  options: () => { id: number; name: string }[];
+  current: () => number | null;
+  pick: (id: number | null) => void;
+};
+
+type SigFold = { open: boolean; text: string };
+const sigKey = new PluginKey<SigFold>("signatureFold");
+const sigText = (doc: ProseNode, r: { from: number; to: number }) => doc.textBetween(r.from, r.to, "\n", "\n");
+
+/** The signature behind its own line: folded ("▸ Name · signature") until opened or the caret goes into it; open
+ * ("▾ Signature", the picker, Fold) it sits indented under that line. Leaving it unchanged folds it again. The
+ * text stays in the document either way, so it always goes out whole. */
+function signatureFold(picker?: SignaturePicker) {
+  return new Plugin<SigFold>({
+    key: sigKey,
+    state: {
+      init: () => ({ open: false, text: "" }),
+      apply(tr, was, _old, state) {
+        const asked = tr.getMeta(sigKey) as boolean | undefined;
+        const range = signatureRange(state.doc);
+        if (asked !== undefined) return { open: asked, text: asked && range ? sigText(state.doc, range) : "" };
+        // Compose swapped in another signature: the line stays as open or folded as it was, about the new one.
+        if (tr.getMeta("signatureSwap")) return { open: was.open && !!range, text: was.open && range ? sigText(state.doc, range) : "" };
+        if (!range || !tr.selectionSet) return was;
+        const { from, to } = state.selection;
+        const inside = to > range.from && from < range.to;
+        if (!was.open && inside) return { open: true, text: sigText(state.doc, range) };
+        if (was.open && !inside && sigText(state.doc, range) === was.text) return { open: false, text: "" };
+        return was;
+      },
+    },
+    props: {
+      // A click in the empty space under the text lands at the end of the document, inside the folded signature;
+      // it means "write here", so the caret goes to the end of the text above it instead.
+      handleClick(view, pos) {
+        if (sigKey.getState(view.state)?.open) return false;
+        const range = signatureRange(view.state.doc);
+        if (!range || range.from === 0 || pos < range.from || pos > range.to) return false;
+        view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(range.from - 1), -1)));
+        view.focus();
+        return true;
+      },
+      decorations(state) {
+        const range = signatureRange(state.doc);
+        if (!range) return null;
+        const open = !!sigKey.getState(state)?.open;
+        const marks: Decoration[] = [];
+        state.doc.forEach((node, pos) => {
+          if (pos >= range.from && pos < range.to)
+            marks.push(Decoration.node(pos, pos + node.nodeSize, { class: open ? "sig-open" : "sig-hidden" }));
+        });
+        const options = picker?.options() ?? [];
+        const current = picker?.current() ?? null;
+        const key = `${open}|${range.name}|${current}|${options.map((o) => `${o.id}:${o.name}`).join(",")}`;
+        const line = (view: EditorView) => {
+          const el = document.createElement("div");
+          el.className = open ? "sig-line open" : "sig-line";
+          el.contentEditable = "false";
+          const toggle = document.createElement("button");
+          toggle.type = "button";
+          toggle.className = "sig-toggle";
+          toggle.textContent = open ? "▾ Signature" : `▸ ${range.name || "Your signature"} · signature`;
+          toggle.title = open ? "Fold the signature" : "Show the signature";
+          toggle.onmousedown = (e) => (e.preventDefault(), view.dispatch(view.state.tr.setMeta(sigKey, !open)));
+          el.append(toggle);
+          if (open && options.length) {
+            // The account's signatures as words to click, the one in the text marked: one or two names read
+            // faster than a list, and switching is one click.
+            const chips = document.createElement("span");
+            chips.className = "sig-choices";
+            chips.setAttribute("role", "group");
+            chips.setAttribute("aria-label", "Signature");
+            for (const o of [...options, { id: 0, name: "None" }]) {
+              const chip = document.createElement("button");
+              chip.type = "button";
+              chip.textContent = o.name;
+              const on = o.id === (current ?? 0);
+              chip.setAttribute("aria-pressed", String(on));
+              if (on) chip.className = "on";
+              chip.onmousedown = (e) => {
+                e.preventDefault();
+                if (!on) picker?.pick(o.id || null);
+              };
+              chips.append(chip);
+            }
+            el.append(chips);
+          }
+          const rule = document.createElement("span");
+          rule.className = "rule";
+          el.append(rule);
+          if (open) {
+            const fold = document.createElement("button");
+            fold.type = "button";
+            fold.className = "sig-fold-button";
+            fold.textContent = "Fold";
+            fold.onmousedown = (e) => (e.preventDefault(), view.dispatch(view.state.tr.setMeta(sigKey, false)));
+            el.append(fold);
+          }
+          return el;
+        };
+        marks.push(Decoration.widget(range.from, line, { side: -1, key, ignoreSelection: true, stopEvent: () => true }));
+        return DecorationSet.create(state.doc, marks);
+      },
+    },
+  });
+}
+
 /** Compose's body: rich text that writes plain text and HTML (docs/design/ui.md §4.4). */
 export function Editor(props: {
   /** Saved HTML if any, else plain text. */
@@ -88,6 +198,9 @@ export function Editor(props: {
   toolbar?: boolean;
   /** Enter starts a new line rather than a paragraph: a signature's lines sit together. */
   lineBreaks?: boolean;
+  /** The signature folds to one line until opened, and switches from that line (compose). */
+  foldSignature?: boolean;
+  signatures?: SignaturePicker;
   /** Pictures pasted or dropped into the text: kept by compose, which says what they go out as. Without it, a
    * pasted picture is left out. */
   onPictures?: (files: File[]) => Promise<Picture[]>;
@@ -216,6 +329,7 @@ export function Editor(props: {
           history(),
           rules,
           currentBlock,
+          ...(props.foldSignature ? [signatureFold(props.signatures)] : []),
           keymap({
             "Mod-z": undo,
             "Mod-Shift-z": redo,

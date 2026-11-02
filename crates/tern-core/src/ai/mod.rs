@@ -534,6 +534,8 @@ pub struct WriteInput {
     pub turns: Vec<Turn>,
     /// New mail: the answer says who it goes to and its subject as well.
     pub new_mail: bool,
+    /// "In your style" unticked in compose's AI sidebar: this answer goes without the style note.
+    pub plain: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -598,7 +600,7 @@ pub fn write(
         let quoted = if s.redact { redact(&quoted) } else { quoted };
         user.push_str(&format!("<replying_to>\n{}\n</replying_to>\n\n", fence(&quoted)));
     }
-    if let Some(note) = voice(store, &s, input.account_id)? {
+    if let Some(note) = voice(store, &s, input.account_id)?.filter(|_| !input.plain) {
         user.push_str(&format!("<style>\n{}\n</style>\n\n", fence(&note)));
     }
     if !draft.is_empty() {
@@ -1328,6 +1330,11 @@ Me
         let last = model.asked.borrow().last().unwrap().user.clone();
         assert!(last.contains("<style>\nOpens with: Hej"), "{last}");
         assert!(!last.contains("Picked up"), "the preview is not part of the note");
+        write(&store, &model, &WriteInput { plain: true, ..input.clone() }, &mut |_| {}).unwrap();
+        assert!(
+            !model.asked.borrow().last().unwrap().user.contains("<style>"),
+            "unticked in compose: no note"
+        );
         let s = AiSettings { enabled: true, voice: false, accounts: vec![account], ..Default::default() };
         store.set_setting("ai", &serde_json::to_value(s).unwrap()).unwrap();
         write(&store, &model, &input, &mut |_| {}).unwrap();

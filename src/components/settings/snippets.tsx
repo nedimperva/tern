@@ -5,6 +5,7 @@ import { api, type Account, type Snippet } from "../../api";
 import { fillSnippet, PLACES } from "../../snippets";
 import { Icon } from "../Icon";
 import { accountName, Group, MailPreview, lastDay } from "./shared";
+import { Dropdown } from "../Dropdown";
 
 /** Snippets: text typed after `;` in compose. A list on the left, the one picked on the right; changes save as they
  * are typed. */
@@ -270,35 +271,36 @@ export function SnippetSettings(props: { accounts: Account[] }) {
                 <Group title="When it's used">
                 <div class="pair">
                   <Show when={props.accounts.length > 1}>
-                    <label class="field">
+                    <div class="field">
                       <span class="title">Available in</span>
-                      <select
+                      <Dropdown
+                        label="Available in"
                         value={String(s().accountId ?? "")}
-                        onChange={(e) => edit({ accountId: e.currentTarget.value ? Number(e.currentTarget.value) : null })}
-                      >
-                        <option value="">All accounts</option>
-                        <For each={props.accounts}>{(a) => <option value={String(a.id)}>{accountName(a)} only</option>}</For>
-                      </select>
+                        choices={[{ value: "", label: "All accounts" }, ...props.accounts.map((a) => ({ value: String(a.id), label: `${accountName(a)} only` }))]}
+                        onChange={(v) => edit({ accountId: v ? Number(v) : null })}
+                      />
                       <span class="help">Keep a snippet to the account it is written for.</span>
-                    </label>
+                    </div>
                   </Show>
-                  <label class="field">
+                  <div class="field">
                     <span class="title">Also fill in</span>
-                    <select
+                    <Dropdown
+                      label="Also fill in"
                       value={String(extras())}
-                      onChange={(e) => {
-                        const n = Number(e.currentTarget.value) as 0 | 1 | 2;
+                      choices={[
+                        { value: "0", label: "Text only" },
+                        { value: "1", label: "Text and subject" },
+                        { value: "2", label: "Text, subject and Cc" },
+                      ]}
+                      onChange={(v) => {
+                        const n = Number(v) as 0 | 1 | 2;
                         setExtras(n);
                         if (n === 0) edit({ subject: null, cc: [] });
                         else if (n === 1) edit({ cc: [] });
                       }}
-                    >
-                      <option value="0">Text only</option>
-                      <option value="1">Text and subject</option>
-                      <option value="2">Text, subject and Cc</option>
-                    </select>
+                    />
                     <span class="help">A snippet can set the subject or add people, too.</span>
-                  </label>
+                  </div>
                 </div>
                 <Show when={extras() > 0}>
                   <div class="pair">

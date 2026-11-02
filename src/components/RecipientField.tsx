@@ -69,6 +69,8 @@ export function RecipientField(props: {
   outside?: (address: string) => boolean;
   /** At the end of the row (To's Cc and Bcc buttons). */
   after?: JSX.Element;
+  /** Shown while there is nobody yet. */
+  placeholder?: string;
 }) {
   const [text, setText] = createSignal("");
   // Suggestions for what is being typed, and which one ↑/↓ points at.
@@ -153,6 +155,7 @@ export function RecipientField(props: {
         onPaste={onPaste}
         onBlur={() => (setPeople([]), commit())}
         role="combobox"
+        placeholder={props.value.length ? undefined : props.placeholder}
         aria-label={props.label}
         aria-autocomplete="list"
         aria-expanded={people().length > 0}

@@ -1,5 +1,7 @@
-import { createEffect, createResource, createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
 import type { EditorView } from "prosemirror-view";
+import { TextSelection } from "prosemirror-state";
+import { type Part, partsOf, signatureRange } from "../editor/outline";
 import {
   api,
   type Account,
@@ -11,8 +13,11 @@ import {
   type Snippet,
   type AiRecipient,
   type AiWritten,
+  type AiSuggestion,
   type Contact,
 } from "../api";
+import { Portal } from "solid-js/web";
+import { aiSlot, setAiSide, setAiSlot, setReplyDraft } from "../app/state";
 import { fillSnippet } from "../snippets";
 import { attachmentWords, domainOf, mentionsAttachment, outside } from "../attachmentWords";
 import { colourOf } from "../colours";
@@ -21,6 +26,7 @@ import { until } from "./ConversationRow";
 import { SnoozePicker } from "./SnoozePicker";
 import type { SnippetSource } from "./Editor";
 import { Icon } from "./Icon";
+import { Dropdown } from "./Dropdown";
 import { wordDiff } from "../wordDiff";
 import { HtmlFrame } from "./HtmlFrame";
 // The editor is a chunk of its own (ProseMirror is most of its weight); App loads it once the list is up.
@@ -48,6 +54,8 @@ export type ComposeInit = {
   unsaved?: boolean;
   /** Shown at the bottom of the open conversation rather than as a dialog. */
   inline?: boolean;
+  /** A reply: the message answered, for the AI sidebar's Starts (suggested replies). */
+  aiReplyTo?: number;
   /** Continues this saved draft. */
   draftId?: number | null;
   attachments?: OutgoingAttachment[];
@@ -63,7 +71,7 @@ export type ComposeInit = {
 };
 
 /** A From picker line: "From Ada · ada@example.com". */
-const fromLabel = (name: string, email: string) => (name ? `From ${name} · ${email}` : `From ${email}`);
+// It follows the word "from" in the sheet's top lines.
 
 /** The signature of `accountId` for new mail or for replies, if it has one. */
 export function defaultSignature(all: Signature[], accountId: number | undefined, kind: "new" | "reply") {
@@ -76,6 +84,10 @@ const schemaTools = () => import("../editor/schema");
 
 /** Above this a message may bounce: many servers take 25 MB at most. */
 const LARGE_BYTES = 25_000_000;
+/** From here on a mail counts as long: compose widens and shows its outline. */
+const LONG_WORDS = 150;
+const LONG_BLOCKS = 16;
+
 
 function size(bytes: number): string {
   if (bytes < 1000) return `${bytes} B`;
@@ -134,6 +146,8 @@ export function Compose(props: {
     const s = props.signatures.find((x) => x.id === sigId());
     return s?.custom && s.html ? s : null;
   };
+  // An HTML signature folds to one line like a text one (Editor's signatureFold).
+  const [htmlSigOpen, setHtmlSigOpen] = createSignal(false);
   const sigBelow = () => props.init.signature?.below ?? (settings.signatureBelow && !!props.init.inReplyTo);
   let tools: Awaited<ReturnType<typeof signatureTools>> | undefined;
   void signatureTools().then((t) => (tools = t));
@@ -141,8 +155,11 @@ export function Compose(props: {
   const accountSignatures = () => props.signatures.filter((s) => s.accountId === from());
   let view: EditorView | undefined;
   let formEl: HTMLFormElement | undefined;
+  // The view arrives after the first render; what reads it (ownText) runs again then.
+  const [ready, setReady] = createSignal(false);
   const editorReady = (v: EditorView) => {
     view = v;
+    setReady(true);
     // An inline reply opens below the whole conversation; the editor takes the focus without scrolling (ProseMirror
     // focuses that way), so bring the reply into view, the end of the message above it still showing.
     if (props.init.inline) {
@@ -164,12 +181,13 @@ export function Compose(props: {
     const current = props.signatures.find((s) => s.id === sigId());
     const at = current ? findSignature(state.doc, current) : null;
     const blocks = next && !next.custom ? signatureDoc(next).content : null;
-    if (at) view.dispatch(blocks ? state.tr.replaceWith(at.from, at.to, blocks) : state.tr.delete(at.from, at.to));
+    // Which one is in use changes first: the signature line reads it as the swap redraws it.
+    setSigId(next?.id ?? null);
+    if (at) view.dispatch((blocks ? state.tr.replaceWith(at.from, at.to, blocks) : state.tr.delete(at.from, at.to)).setMeta("signatureSwap", true));
     else if (blocks) {
       const below = props.init.signature?.below ?? false;
-      view.dispatch(state.tr.insert(signaturePlace(state.doc, below), blocks));
+      view.dispatch(state.tr.insert(signaturePlace(state.doc, below), blocks).setMeta("signatureSwap", true));
     }
-    setSigId(next?.id ?? null);
     // The text did not change, but what goes out did.
     if (current?.custom || next?.custom) changed();
   };
@@ -271,6 +289,12 @@ export function Compose(props: {
   const [outsideDismissed, setOutsideDismissed] = createSignal(false);
   // The draft this compose saves to, once there is one, and whether anything changed since it opened.
   let draftId: number | null = props.init.draftId ?? null;
+  // Read once: `init` is gone by the time compose is cleaned up.
+  const inline = !!props.init.inline;
+  // An inline reply's draft is written here, so the conversation above leaves its copy out meanwhile.
+  let gone = false;
+  if (inline) setReplyDraft(draftId);
+  onCleanup(() => ((gone = true), inline && setReplyDraft(null)));
   // Reopened after undo-send, what is here may never have been saved.
   let dirty = props.init.unsaved ?? false;
   let saveTimer: number | undefined;
@@ -302,6 +326,8 @@ export function Compose(props: {
     setSaveState("saving");
     try {
       draftId = await api.saveDraft(draftId, from()!, draft(), uploadNow);
+      // A save still on its way when compose closed must not hide the draft again.
+      if (inline && !gone) setReplyDraft(draftId);
       setSaveState("saved");
     } catch {
       setSaveState(null);
@@ -372,13 +398,19 @@ export function Compose(props: {
   };
   /** What the person wrote themselves: not the quoted message, not the signature. */
   const ownText = () => {
+    ready();
     let text = body();
     if (view) {
       const parts: string[] = [];
       // Line breaks as text too, or the signature's lines run together and are not found below.
-      view.state.doc.forEach(
-        (node) => void (node.type.name !== "blockquote" && parts.push(node.textBetween(0, node.content.size, "\n", "\n"))),
-      );
+      const doc = view.state.doc;
+      const sig = signatureRange(doc);
+      doc.forEach((node, pos, i) => {
+        if (sig && pos >= sig.from && pos < sig.to) return;
+        // Not the quote, nor the "On …, Ada wrote:" line just above it.
+        const attribution = doc.maybeChild(i + 1)?.type.name === "blockquote" && /:\s*$/.test(node.textContent);
+        if (node.type.name !== "blockquote" && !attribution) parts.push(node.textBetween(0, node.content.size, "\n", "\n"));
+      });
       text = parts.join("\n");
     }
     // Compared with spaces collapsed: the editor and the saved signature break lines differently.
@@ -388,8 +420,8 @@ export function Compose(props: {
   };
 
   const send = (done: boolean, at: number | null = null) => {
-    // A version waiting to be kept or dropped is not what the person means to send yet.
-    if (aiOpen() && (pending() || aiBusy())) return setAiHold(true);
+    // A try waiting to be kept or dropped is not what the person means to send yet.
+    if (pending() || aiBusy()) return setAiHold(true);
     // Whatever is still typed in a field counts as entered.
     const all = (list: string[], input?: HTMLInputElement) => [...list, ...splitAddresses(input?.value ?? "")];
     const recipients = { to: all(to(), toInput), cc: all(cc(), ccInput), bcc: all(bcc(), bccInput) };
@@ -409,45 +441,72 @@ export function Compose(props: {
     props.onSend(from()!, { ...draft(), ...recipients }, done, draftId, { at, followUp: followUp() });
   };
 
-  // Write with AI (package 10), talked through: the person says what to write (Space in an empty draft, Ctrl+J or
-  // the AI keycap), the AI writes it from the conversation, their draft and the talk so far; each answer is a
-  // version they can go back to, and nothing goes into the email until they keep one (Tab). In new mail the answer
-  // also names who it goes to and a subject; names are matched in the contacts on this computer.
+  // Writing help (package 10): a sidebar beside the text, opened with Ctrl+J, the AI keycap or Space in an empty
+  // draft. It is not a chat. The Brief is one note the person edits and writes from again; Reshape reworks their
+  // words (or the selection); in a reply, Starts offers the suggested replies. Each answer is a try, shown in the
+  // text's place but not in the email, until the person keeps it (Tab) or drops it (Esc). In new mail the answer also
+  // names people, matched in the contacts on this computer, and the person adds each one. Nothing here sends.
   const aiAllowed = () => aiOn("writing", from());
   const newMail = () => !props.init.inReplyTo && !props.init.forwardOf;
-  /** `request` is what went to the model; `said` what the bubble shows (a chip's own name). */
+  /** `request` is what went to the model; `said` what it is called (a chip's own name). */
   /** `base`: the text a tone ask reworked, to show what it changed. */
   type Version = { request: string; said: string; written: AiWritten | null; streamed: string; error?: string; base?: string };
   const [aiOpen, setAiOpen] = createSignal(false);
   const [versions, setVersions] = createSignal<Version[]>([]);
-  // The version on show; the newest unless the person stepped back.
+  // The try on show; the newest unless the person stepped back.
   const [shown, setShown] = createSignal(0);
+  /** The Brief: what the email should say. It stays after writing, to edit and write again. */
   const [aiAsk, setAiAsk] = createSignal("");
   const [aiBusy, setAiBusy] = createSignal(false);
-  // Send was pressed while a version waited to be kept or dropped.
+  // Send was pressed while a try waited to be kept or dropped.
   const [aiHold, setAiHold] = createSignal(false);
   const [hasStyle, setHasStyle] = createSignal(false);
-  let aiInput: HTMLInputElement | undefined;
+  /** "In your style", for this compose only. */
+  const [inStyle, setInStyle] = createSignal(true);
+  /** New mail: the people the latest answer named. They stay after a keep, to add one by one. */
+  const [found, setFound] = createSignal<{ to: AiRecipient[]; cc: AiRecipient[] } | null>(null);
+  /** Suggested replies, for Starts: none asked yet, being asked, the list, or what went wrong. */
+  const [starts, setStarts] = createSignal<AiSuggestion[] | "busy" | { error: string } | null>(null);
+  let aiInput: HTMLTextAreaElement | undefined;
+  let asideEl: HTMLElement | undefined;
   let aiRun = 0;
   const current = () => versions()[shown()];
   const pending = () => versions().some((v) => v.written);
+  /** The try in the text's place, while it streams or once written. */
+  const tryShown = () => {
+    const v = current();
+    return v && !v.error && (v.written || bodyOf(v.streamed)) ? v : null;
+  };
+  const inSide = (e: Event) => !!asideEl && e.target instanceof Node && asideEl.contains(e.target);
   const openAi = () => {
     if (!aiAllowed()) return;
     setAiOpen(true);
     void api.aiStyle(from()!).then((s) => setHasStyle(!!s && settings.ai.voice), () => setHasStyle(false));
     queueMicrotask(() => aiInput?.focus());
   };
-  /** Esc: drops every version; the email is as it was. */
-  const closeAi = () => {
+  /** Esc with a try on show: every try goes; the email is as it was. */
+  const dropTries = () => {
     aiRun++;
-    setAiOpen(false);
     setVersions([]);
     setShown(0);
-    setAiAsk("");
     setAiBusy(false);
     setAiHold(false);
+  };
+  /** Esc with nothing on show, or the sidebar's ×. */
+  const closeAi = () => {
+    dropTries();
+    setAiOpen(false);
+    setAiAsk("");
+    setFound(null);
     view?.focus();
   };
+  // An inline reply's sidebar takes the companion's place for as long as it is open.
+  createEffect(() => {
+    if (!inline) return;
+    setAiSide(aiOpen());
+    if (!aiOpen()) setAiSlot(null);
+  });
+  onCleanup(() => inline && (setAiSide(false), setAiSlot(null)));
   /** Where the person's own words end: before the signature or the quote, whichever comes first. */
   const ownPart = async () => {
     if (!view) return null;
@@ -465,17 +524,25 @@ export function Compose(props: {
     const at = streamed.indexOf("\n===");
     return at < 0 ? "" : streamed.slice(at + 4).replace(/^=*\s*/, "");
   };
-  /** Asks for a version: what the person typed, or what a chip asks. */
+  /** What is selected of the person's own words, for a Reshape that should change only that. */
+  const selected = (end: number) => {
+    if (!view || versions().length) return "";
+    const { from: a, to: b } = view.state.selection;
+    return b > a && a < end ? view.state.doc.textBetween(a, Math.min(b, end), "\n\n", "\n").trim() : "";
+  };
+  /** Asks for a try: what the Brief says, or what a chip asks. */
   const askAi = async (chip?: { label: string; request: string }) => {
     if (aiBusy()) return;
-    const request = chip?.request ?? aiAsk().trim();
+    let request = chip?.request ?? aiAsk().trim();
     const own = await ownPart();
     if (!own || !view) return;
     if (!request && !own.text && !versions().length) {
       aiInput?.focus();
       return;
     }
-    // Asking again after stepping back starts from that version: the later ones give way.
+    const part = chip ? selected(own.end) : "";
+    if (part) request += ` Change only this part and keep the rest word for word: "${part}"`;
+    // Asking again after stepping back starts from that try: the later ones give way.
     const earlier = versions().slice(0, shown() + 1).filter((v) => v.written);
     const { toText } = await schemaTools();
     const quoted = props.init.inReplyTo
@@ -486,11 +553,10 @@ export function Compose(props: {
       : "";
     const run = ++aiRun;
     const asked = request || (versions().length ? "Again, differently." : "Write this out as a full email.");
-    // A tone ask reworks the version on show, or the person's own words: that is what its change is shown against.
+    // A tone ask reworks the try on show, or the person's own words: that is what its change is shown against.
     const base = chip && TONES.has(chip.label) ? (earlier[earlier.length - 1]?.written?.body ?? own.text) || undefined : undefined;
     setVersions([...earlier, { request: asked, said: chip?.label ?? asked, written: null, streamed: "", base }]);
     setShown(earlier.length);
-    setAiAsk("");
     setAiBusy(true);
     setAiHold(false);
     const update = (patch: Partial<Version>) =>
@@ -505,10 +571,12 @@ export function Compose(props: {
           replyingTo: quoted || null,
           turns: earlier.map((v) => ({ request: v.request, wrote: v.written!.body })),
           newMail: newMail(),
+          plain: !inStyle(),
         },
         (t) => update({ streamed: (versions()[versions().length - 1]?.streamed ?? "") + t }),
       );
       update({ written });
+      if (run === aiRun && newMail() && (written.to.length || written.cc.length)) setFound({ to: written.to, cc: written.cc });
     } catch (e) {
       update({ error: String(e) });
     } finally {
@@ -518,42 +586,63 @@ export function Compose(props: {
       }
     }
   };
-  /** Tab: the version on show goes into the email as ordinary text (Ctrl+Z in the editor brings back what was there);
-   * in new mail its people and subject too. */
+  /** The Brief's Write: from what it says, or, left empty, as the button's name says. */
+  const writeFromBrief = () =>
+    aiAsk().trim() ? void askAi() : void askAi({ label: chipLabel("Write it out"), request: chipRequest("Write it out", AI_CHIPS[0][1]) });
+  /** Starts: the suggested replies to the message answered, on request. */
+  const askStarts = async () => {
+    const id = props.init.aiReplyTo;
+    if (id == null || starts() === "busy") return;
+    setStarts("busy");
+    try {
+      setStarts(await api.aiReplies(id, false, () => {}));
+    } catch (e) {
+      setStarts({ error: String(e) });
+    }
+  };
+  /** A start becomes a try like any other, to keep or drop. */
+  const pickStart = (s: AiSuggestion) => {
+    aiRun++;
+    setAiBusy(false);
+    setVersions([{ request: `Start with: ${s.label}`, said: s.label, written: { body: s.text, subject: null, to: [], cc: [] }, streamed: "" }]);
+    setShown(0);
+    queueMicrotask(() => aiInput?.focus());
+  };
+  /** Tab: the try on show goes into the email as ordinary text (Ctrl+Z in the editor brings back what was there);
+   * in new mail its subject too, when there is none. People are added one by one from the sidebar. */
   const keepAi = async () => {
     const w = current()?.written;
     const own = await ownPart();
     if (!w || !own || !view) return;
     const { fromText } = await schemaTools();
     view.dispatch(view.state.tr.replaceWith(0, own.end, fromText(w.body).content));
-    if (newMail()) {
-      const add = (list: string[], people: AiRecipient[]) => [
-        ...list,
-        // A stranger stays out: an address only the AI came up with may have been planted in what it read.
-        ...people.flatMap((r) => (r.address && !r.stranger && !list.some((a) => a.toLowerCase() === r.address!.toLowerCase()) ? [r.address] : [])),
-      ];
-      setTo(add(to(), w.to));
-      const cc2 = add(cc(), w.cc);
-      setCc(cc2);
-      if (cc2.length) setShowCc(true);
-      if (w.subject && !subject().trim()) setSubject(w.subject);
-      changed();
-    }
-    closeAi();
+    if (newMail() && w.subject && !subject().trim()) setSubject(w.subject);
+    changed();
+    dropTries();
+    view.focus();
   };
+  /** Adds someone the AI named. A stranger never gets here: an address only the AI came up with may have been planted
+   * in what it read. */
+  const addPerson = (field: "to" | "cc", r: AiRecipient) => {
+    if (!r.address || r.stranger) return;
+    const list = field === "to" ? to() : cc();
+    if (list.some((a) => a.toLowerCase() === r.address!.toLowerCase())) return;
+    if (field === "to") setTo([...list, r.address]);
+    else (setCc([...list, r.address]), setShowCc(true));
+    changed();
+  };
+  const added = (r: AiRecipient) => !!r.address && [...to(), ...cc()].some((a) => a.toLowerCase() === r.address!.toLowerCase());
   /** "2 people called Ana": another of them in place of the one picked. */
   const pickPerson = (field: "to" | "cc", index: number, person: Contact) =>
-    setVersions((list) =>
-      list.map((v, i) => {
-        if (i !== shown() || !v.written) return v;
-        const people = v.written[field].map((r, k) =>
-          k === index && r.address
-            ? { ...r, address: person.email, name: person.name, others: [{ email: r.address, name: r.name }, ...r.others.filter((o) => o.email !== person.email)] }
-            : r,
-        );
-        return { ...v, written: { ...v.written, [field]: people } };
-      }),
-    );
+    setFound((f) => {
+      if (!f) return f;
+      const people = f[field].map((r, k) =>
+        k === index && r.address
+          ? { ...r, address: person.email, name: person.name, others: [{ email: r.address, name: r.name }, ...r.others.filter((o) => o.email !== person.email)] }
+          : r,
+      );
+      return { ...f, [field]: people };
+    });
   /** No words of the person's own yet: only the signature and what is quoted or forwarded, if anything. */
   const ownEmpty = () =>
     !ownText()
@@ -562,8 +651,8 @@ export function Compose(props: {
       // The "-- " line a signature starts with.
       .replace(/(^|\s)--(?=\s|$)/g, " ")
       .trim();
-  /** Quick asks, above the field. On a version they rework it; before one, "Write it out" writes from the draft,
-   * or in an empty reply from the conversation. */
+  /** "Write it out" is the Brief's button: from the draft, or in an empty reply from the conversation. The rest are
+   * Reshape: on a try they rework it, else the person's own words. */
   const AI_CHIPS = [
     ["Write it out", "Write this out as a full email."],
     ["Shorter", "Make it shorter."],
@@ -572,7 +661,7 @@ export function Compose(props: {
     ["More formal", "Make it more formal."],
     ["Fix grammar", "Fix spelling and grammar only. Change nothing else."],
   ] as const;
-  /** Quick asks that rework words already there: their version shows what it changed. */
+  /** Quick asks that rework words already there: their try shows what it changed. */
   const TONES = new Set(["Shorter", "Warmer", "Firmer", "More formal", "Fix grammar"]);
   const nothingYet = () => !versions().length && ownEmpty();
   // A draft that is a few points ("- totals confirmed") is written out from them, keeping each: a list of two or more,
@@ -604,13 +693,8 @@ export function Compose(props: {
         : nothingYet() && props.init.inReplyTo
           ? "Write a reply to the newest message."
           : request;
-  /** The tone row in the footer: opens Write with AI and asks at once. */
-  const tone = (label: string) => {
-    const chip = AI_CHIPS.find(([l]) => l === label);
-    if (!chip) return;
-    openAi();
-    void askAi({ label, request: chip[1] });
-  };
+  /** Languages Reshape can translate into. */
+  const LANGUAGES = ["English", "Bosnian", "Croatian", "Serbian", "German", "French", "Italian", "Spanish"];
   /** Space at the start of an empty draft (its first line, nothing written yet) asks AI instead. */
   const spaceAsks = (e: KeyboardEvent) => {
     if (e.key !== " " || e.ctrlKey || e.metaKey || e.altKey || aiOpen() || !aiAllowed() || !view || !view.hasFocus()) return false;
@@ -620,14 +704,19 @@ export function Compose(props: {
 
   const onKeyDown = (e: KeyboardEvent) => {
     const ctrl = e.ctrlKey || e.metaKey;
-    if (e.key === "Escape" && aiOpen()) closeAi();
-    else if (ctrl && !e.shiftKey && e.key.toLowerCase() === "j" && aiAllowed()) openAi();
+    // Nothing in the sidebar sends, and Enter in a field (Subject, an empty To) never submits the form.
+    if (e.key === "Enter" && ((ctrl && inSide(e)) || (!ctrl && e.target instanceof HTMLInputElement))) return e.preventDefault();
+    if (e.key === "Escape" && aiOpen()) versions().length ? (dropTries(), aiInput?.focus()) : closeAi();
+    else if (ctrl && !e.shiftKey && e.key.toLowerCase() === "j" && aiAllowed()) aiOpen() && inSide(e) ? closeAi() : openAi();
     else if (spaceAsks(e)) openAi();
     else if (e.key === "Escape" && sendMenu()) setSendMenu(false);
     else if (e.key === "Escape" && focusMode()) setFocusMode(false);
     else if (e.key === "Escape") void close();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "f" && !props.init.inline) setFocusMode(!focusMode());
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "m" && !props.init.inline) (setFocusMode(false), props.onMinimize?.(true));
+    else if (ctrl && e.shiftKey && e.key.toLowerCase() === "o" && !props.init.inline)
+      focusMode() ? setOutlinePref(!long()) : (setOutlinePref(true), setFocusMode(true));
+    else if (e.altKey && !ctrl && (e.key === "ArrowUp" || e.key === "ArrowDown") && view?.hasFocus()) stepPart(e.key === "ArrowUp" ? -1 : 1);
     else if (ctrl && e.key === "Enter") send(e.shiftKey);
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "l") setPicking("later");
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "h") setPicking("followUp");
@@ -647,6 +736,179 @@ export function Compose(props: {
   };
 
   const words = () => (ownText().match(/\p{L}[\p{L}\p{N}'’-]*/gu) ?? []).length;
+
+  // While the person types, the tools step back; a pause, the mouse or a Tab into them brings them again.
+  const [typing, setTyping] = createSignal(false);
+  let typingTimer: number | undefined;
+  const typed = () => {
+    setTyping(true);
+    clearTimeout(typingTimer);
+    typingTimer = window.setTimeout(() => setTyping(false), 1200);
+  };
+  onCleanup(() => clearTimeout(typingTimer));
+
+  // A long mail (past LONG_WORDS, or many short lines) gets one quiet offer of focus in the dialog; focus is where
+  // the outline lives. It only counts as short again 30 words lower, so cutting a sentence doesn't flicker it.
+  const [outlinePref, setOutlinePref] = createSignal<boolean | null>(null);
+  const [grown, setGrown] = createSignal(false);
+  // Many short lines make a long mail too, though few words: count the paragraphs as well.
+  const blocks = () => (body(), ready() && view ? view.state.doc.childCount : 0);
+  createEffect(() => {
+    const n = words();
+    const b = blocks();
+    if (n >= LONG_WORDS || b >= LONG_BLOCKS) setGrown(true);
+    else if (n < LONG_WORDS - 30 && b < LONG_BLOCKS - 3) setGrown(false);
+  });
+  // The outline: in focus only, unless hidden there with Ctrl+Shift+O.
+  const long = () => focusMode() && !props.init.inline && outlinePref() !== false;
+  const [focusOffered, setFocusOffered] = createSignal(false);
+  const offerFocus = () => !props.init.inline && !focusMode() && grown() && !focusOffered();
+  // The top-level block the caret is in, for the outline's highlight.
+  const [at, setAt] = createSignal(-1);
+  const caret = () => view && setAt(view.state.selection.$from.index(0));
+  onMount(() => {
+    const moved = () => view?.hasFocus() && caret();
+    document.addEventListener("selectionchange", moved);
+    onCleanup(() => document.removeEventListener("selectionchange", moved));
+  });
+  const parts = createMemo<Part[]>(() => {
+    body();
+    return long() && view ? partsOf(view.state.doc, props.signatures.find((s) => s.id === sigId())?.body ?? "") : [];
+  });
+  const [askSeen, setAskSeen] = createSignal(false);
+  /** The first part that asks something, when it sits below the first part of a mail long enough to skim. */
+  const lateAsk = () => {
+    const all = parts();
+    const rest = all.filter((p) => !p.greeting);
+    const k = rest.findIndex((p) => p.ask);
+    return !askSeen() && rest.length >= 3 && k >= 1 ? { part: rest[k], n: all.indexOf(rest[k]) + 1, of: all.length, top: rest[0] } : null;
+  };
+  /** Moves a top-level block to just before `before` (a position in the current doc), the caret going with it. */
+  const movePart = (pos: number, before: number) => {
+    if (!view || pos === before) return;
+    const node = view.state.doc.nodeAt(pos);
+    if (!node) return;
+    const tr = view.state.tr.delete(pos, pos + node.nodeSize);
+    const to = tr.mapping.map(before);
+    tr.insert(to, node);
+    tr.setSelection(TextSelection.near(tr.doc.resolve(to + 1))).scrollIntoView();
+    view.dispatch(tr);
+    view.focus();
+    caret();
+  };
+  const jump = (p: Part) => {
+    if (!view) return;
+    view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(p.pos + 1))).scrollIntoView());
+    view.focus();
+    caret();
+  };
+  /** Alt+↑/↓: the block the caret is in swaps with the one above or below; the quote at the end stays put. */
+  const stepPart = (dir: -1 | 1) => {
+    if (!view) return;
+    const { doc, selection } = view.state;
+    const i = selection.$from.index(0);
+    const j = i + dir;
+    if (j < 0 || j >= doc.childCount || doc.child(i).type.name === "blockquote" || doc.child(j).type.name === "blockquote") return;
+    const first = Math.min(i, j);
+    let pos = 0;
+    for (let k = 0; k < first; k++) pos += doc.child(k).nodeSize;
+    const a = doc.child(first);
+    const b = doc.child(first + 1);
+    const offset = selection.from - (dir === -1 ? pos + a.nodeSize : pos);
+    const tr = view.state.tr.replaceWith(pos, pos + a.nodeSize + b.nodeSize, [b, a]);
+    const start = dir === -1 ? pos : pos + b.nodeSize;
+    tr.setSelection(TextSelection.near(tr.doc.resolve(start + offset))).scrollIntoView();
+    view.dispatch(tr);
+    caret();
+  };
+  // Reordering in the outline by pointer, not HTML drag and drop: the shell takes drops for files on Windows.
+  const [dragged, setDragged] = createSignal<number | null>(null);
+  const [dragOver, setDragOver] = createSignal<number | null>(null);
+  const grab = (e: PointerEvent, k: number) => {
+    if (e.button !== 0) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let moving = false;
+    const move = (m: PointerEvent) => {
+      if (!moving && Math.abs(m.clientY - y0) + Math.abs(m.clientX - x0) < 5) return;
+      moving = true;
+      setDragged(k);
+      const li = document.elementFromPoint(m.clientX, m.clientY)?.closest<HTMLElement>(".outline li");
+      setDragOver(li ? Number(li.dataset.k) : null);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      const to = dragOver();
+      const list = parts();
+      setDragged(null);
+      setDragOver(null);
+      if (!moving) return jump(list[k]);
+      if (to == null || to === k || !list[to]) return;
+      // Dragged down, it lands after the part it is dropped on; dragged up, before it.
+      movePart(list[k].pos, to > k ? list[to].pos + list[to].size : list[to].pos);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const outline = () => (
+    <aside class="outline" aria-label="Outline">
+      <div class="outline-head">
+        <span>Outline</span>
+        <span class="spacer" />
+        <button type="button" class="link" title="Hide the outline (Ctrl+Shift+O)" onClick={() => (setOutlinePref(false), view?.focus())}>
+          Hide
+        </button>
+      </div>
+      <ol>
+        <For each={parts()}>
+          {(p, k) => (
+            <li
+              data-k={k()}
+              classList={{ current: p.index === at(), heading: p.heading, greeting: p.greeting, dragged: dragged() === k(), over: dragOver() === k() && dragged() !== k() }}
+            >
+              <button
+                type="button"
+                title="Go there; drag to move it. Alt+↑/↓ moves the part you're in."
+                onPointerDown={(e) => grab(e, k())}
+                onClick={(e) => e.detail === 0 && jump(p)}
+              >
+                <span class="num">{k() + 1}</span>
+                <span class="label">{p.label}</span>
+                <Show when={p.ask}>
+                  <span class="tag">asks</span>
+                </Show>
+              </button>
+            </li>
+          )}
+        </For>
+      </ol>
+      <Show when={!parts().length}>
+        <span class="outline-empty">Your parts show here as you write: each paragraph's first words, titles in bold.</span>
+      </Show>
+      <span class="spacer" />
+      <Show when={lateAsk()} keyed>
+        {(l) => (
+          <div class="outline-check">
+            <span>
+              Your question is in part {l.n} of {l.of}. Most people read the first part closely.
+            </span>
+            <span class="row">
+              <button type="button" class="link" onClick={() => (movePart(l.part.pos, l.top.pos), setAskSeen(true))}>
+                Move it up
+              </button>
+              <button type="button" class="link" onClick={() => setAskSeen(true)}>
+                Leave it
+              </button>
+            </span>
+          </div>
+        )}
+      </Show>
+      <Show when={parts().length}>
+        <span class="outline-foot">Click to go there · drag to move · Alt+↑/↓</span>
+      </Show>
+    </aside>
+  );
   const iconButton = (icon: Parameters<typeof Icon>[0]["name"], label: string, run: () => void, cls = "") => (
     <button type="button" class={`icon-button ${cls}`} title={label} aria-label={label} onClick={run}>
       <Icon name={icon} size={16} />
@@ -659,50 +921,214 @@ export function Compose(props: {
     view.dispatch(view.state.tr.insertText(";"));
   };
 
+  /** The AI sidebar: beside the text in the dialog, in the companion's place for an inline reply. */
+  const side = () => (
+    <aside class="ai-side" ref={asideEl} aria-label="Writing help">
+      <header>
+        <kbd class="ai-mark">AI</kbd>
+        <strong>Writing help</strong>
+        <span class="spacer" />
+        <kbd>Ctrl J</kbd>
+        {iconButton("x", "Close (Esc)", closeAi)}
+      </header>
+      <div class="ai-side-body">
+        <Show when={props.init.aiReplyTo != null && aiOn("replies", from())}>
+          <section>
+            <h3>Starts</h3>
+            <Show
+              when={Array.isArray(starts()) ? (starts() as AiSuggestion[]) : null}
+              fallback={
+                <Show
+                  when={starts() === "busy"}
+                  fallback={
+                    <>
+                      <Show when={starts() && typeof starts() === "object" && !Array.isArray(starts()) ? (starts() as { error: string }).error : null}>
+                        {(error) => <p class="ai-error">{error()}</p>}
+                      </Show>
+                      <button type="button" class="ai-side-button" onClick={() => void askStarts()}>
+                        Suggest how to answer
+                      </button>
+                    </>
+                  }
+                >
+                  <p class="hint">Thinking of replies…</p>
+                </Show>
+              }
+            >
+              {(list) => (
+                <For each={list()}>
+                  {(s) => (
+                    <button type="button" class="ai-start" title={s.text} onClick={() => pickStart(s)}>
+                      {s.label}
+                    </button>
+                  )}
+                </For>
+              )}
+            </Show>
+          </section>
+        </Show>
+        <section>
+          <h3>Brief</h3>
+          <label class="ai-brief">
+            <span class="hint">
+              {newMail() ? "Who it goes to and what it should say." : "What should the answer say?"} One note, not a chat: change
+              it and write again.
+            </span>
+            <textarea
+              ref={aiInput}
+              rows={3}
+              value={aiAsk()}
+              placeholder={newMail() ? "ask marko to sign off october freight, cc lejla" : "yes to friday, ask for the file"}
+              onInput={(e) => setAiAsk(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                const ctrl = e.ctrlKey || e.metaKey;
+                if (e.key === "Enter" && !e.shiftKey && !ctrl) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  writeFromBrief();
+                } else if (e.key === "Tab" && !e.shiftKey && current()?.written) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void keepAi();
+                } else if (e.altKey && e.key === "ArrowUp" && shown() > 0) {
+                  e.preventDefault();
+                  setShown(shown() - 1);
+                } else if (e.altKey && e.key === "ArrowDown" && shown() < versions().length - 1) {
+                  e.preventDefault();
+                  setShown(shown() + 1);
+                }
+              }}
+            />
+          </label>
+          <div class="ai-brief-row">
+            <button type="button" class="ai-side-button" disabled={aiBusy()} onClick={writeFromBrief}>
+              {aiAsk().trim() ? (versions().length ? "Write again" : "Write") : chipLabel("Write it out")} <kbd>↵</kbd>
+            </button>
+            <span class="spacer" />
+            <Show when={versions().length > 1}>
+              <span class="ai-tries">
+                <button type="button" class="link" aria-label="Earlier try (Alt+↑)" disabled={shown() === 0} onClick={() => setShown(shown() - 1)}>
+                  ‹
+                </button>
+                Try {shown() + 1} of {versions().length}
+                <button
+                  type="button"
+                  class="link"
+                  aria-label="Later try (Alt+↓)"
+                  disabled={shown() >= versions().length - 1}
+                  onClick={() => setShown(shown() + 1)}
+                >
+                  ›
+                </button>
+              </span>
+            </Show>
+          </div>
+          <Show when={current()?.error}>{(error) => <p class="ai-error">{error()}</p>}</Show>
+        </section>
+        <section>
+          <h3>Reshape</h3>
+          <span class="hint">Works on the try on show, your selection, or all your own words.</span>
+          <div class="ai-chips">
+            <For each={AI_CHIPS.filter(([l]) => TONES.has(l))}>
+              {([label, request]) => (
+                <button type="button" class="chip" disabled={aiBusy() || (ownEmpty() && !versions().length)} onClick={() => void askAi({ label, request })}>
+                  {label}
+                </button>
+              )}
+            </For>
+            <Dropdown
+              class="chip translate"
+              label="Translate into"
+              placeholder="Translate…"
+              value=""
+              disabled={aiBusy() || (ownEmpty() && !versions().length)}
+              choices={LANGUAGES.map((l) => ({ value: l, label: l }))}
+              onChange={(lang) => void askAi({ label: `In ${lang}`, request: `Translate it into ${lang}. Keep the meaning, the tone and the names.` })}
+            />
+          </div>
+        </section>
+        <Show when={newMail() ? found() : null}>
+          {(f) => {
+            const people = (field: "to" | "cc") => (
+              <For each={f()[field]}>
+                {(r, k) => (
+                  <div class="ai-found" classList={{ missing: !r.address || r.stranger }}>
+                    <Show
+                      when={!r.stranger}
+                      fallback={<span>Not offered: {r.address} is not in your contacts or your words. Type it in yourself if it's right.</span>}
+                    >
+                      <Show when={r.address} fallback={<span>No one called “{r.asked}” in your contacts</span>}>
+                        <span class="who">
+                          <strong>{r.name || r.address}</strong>
+                          <Show when={r.name}>
+                            <span class="addr">{r.address}</span>
+                          </Show>
+                          <Show when={r.others.length}>
+                            <span class="others">
+                              also{" "}
+                              <For each={r.others}>
+                                {(o) => (
+                                  <button type="button" class="link" onClick={() => pickPerson(field, k(), o)}>
+                                    {o.name || o.email}
+                                  </button>
+                                )}
+                              </For>
+                            </span>
+                          </Show>
+                        </span>
+                        <Show when={!added(r)} fallback={<span class="hint">Added</span>}>
+                          <button type="button" class="ai-side-button small" onClick={() => addPerson(field, r)}>
+                            {field === "to" ? "Add to To" : "Add to Cc"}
+                          </button>
+                        </Show>
+                      </Show>
+                    </Show>
+                  </div>
+                )}
+              </For>
+            );
+            return (
+              <section>
+                <h3>People it found</h3>
+                {people("to")}
+                {people("cc")}
+                <span class="hint">Only people in your contacts, and only when you add them.</span>
+              </section>
+            );
+          }}
+        </Show>
+      </div>
+      <footer>
+        <Show when={hasStyle()}>
+          <label class="ai-style-pick">
+            <input type="checkbox" checked={inStyle()} onChange={(e) => setInStyle(e.currentTarget.checked)} />
+            In your style
+          </label>
+        </Show>
+        <span>
+          {props.init.inReplyTo ? "Reads this conversation and your draft." : "Reads what you write here."}
+          {newMail() ? " Names are matched in your contacts on this computer." : ""} Nothing here can send the mail.
+        </span>
+      </footer>
+    </aside>
+  );
+
   const form = (
     <form
       ref={formEl}
       class="compose"
-      classList={{ inline: props.init.inline, focus: focusMode() }}
+      classList={{ inline: props.init.inline, focus: focusMode(), "with-ai": aiOpen() && !props.init.inline, "with-outline": long(), typing: typing(), "empty-body": ownEmpty() }}
       onKeyDown={onKeyDown}
-      onSubmit={(e) => (e.preventDefault(), send(false))}
+      onMouseMove={() => typing() && setTyping(false)}
+      // What the empty text says, in its first line: where to start, and Space for writing help when it is on.
+      style={{ "--hint": JSON.stringify(aiAllowed() && !aiOpen() ? "Start writing, or press Space for writing help" : "Start writing") }}
+      // Only Send (the button, Ctrl+Enter) sends: a form submitted any other way does nothing.
+      onSubmit={(e) => e.preventDefault()}
     >
+      <Show when={long()}>{outline()}</Show>
+      <div class="compose-main">
       <div class="compose-head">
-        <Show when={props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length)}>
-          <label class="from-pick" title="Send from">
-            <span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />
-            <select
-              aria-label="From"
-              value={alias() ? `${from()} ${alias()}` : String(from())}
-              onChange={(e) => changeFrom(e.currentTarget.value)}
-            >
-              <For each={props.accounts}>
-                {(a) => (
-                  <>
-                    <option value={String(a.id)}>{fromLabel(a.displayName, a.email)}</option>
-                    <For each={a.aliases ?? []}>
-                      {(x) => <option value={`${a.id} ${x.email}`}>{fromLabel(x.name || a.displayName, x.email)}</option>}
-                    </For>
-                  </>
-                )}
-              </For>
-            </select>
-            <Icon name="chevron-down" size={12} />
-          </label>
-        </Show>
-        <Show when={focusMode()}>
-          <span class="summary">{[to().length ? `To ${to().join(", ")}` : "", subject()].filter(Boolean).join(" · ")}</span>
-        </Show>
         <span class="spacer" />
-        <Show when={focusMode()}>
-          <span class="saved">{words()} words</span>
-        </Show>
-        <span class="saved" aria-live="polite">
-          <Show when={saveState() === "saved"}>
-            <Icon name="check" size={12} /> Saved
-          </Show>
-          <Show when={saveState() === "saving"}>Saving…</Show>
-        </span>
         <Show when={!props.init.inline}>
           <Show
             when={!focusMode()}
@@ -719,8 +1145,19 @@ export function Compose(props: {
         <Show when={!focusMode()}>{iconButton("x", "Close and keep the draft (Esc)", () => void close())}</Show>
       </div>
       <div class="fields">
+        <Show when={!props.init.inline || !props.init.inReplyTo}>
+          <div class="field subject">
+            <input
+              aria-label="Subject"
+              placeholder="Subject"
+              value={subject()}
+              onInput={(e) => (setSubject(e.currentTarget.value), changed())}
+            />
+          </div>
+        </Show>
         <RecipientField
-          label="To"
+          label="to"
+          placeholder="add people"
           value={to()}
           onChange={(v) => (setTo(v), changed())}
           ref={(el) => (toInput = el)}
@@ -741,18 +1178,14 @@ export function Compose(props: {
           }
         />
         <Show when={showCc()}>
-          <RecipientField label="Cc" value={cc()} onChange={(v) => (setCc(v), changed())} ref={(el) => (ccInput = el)} outside={isOutside} />
+          <RecipientField label="cc" value={cc()} onChange={(v) => (setCc(v), changed())} ref={(el) => (ccInput = el)} outside={isOutside} />
         </Show>
         <Show when={showBcc()}>
-          <RecipientField label="Bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} outside={isOutside} />
-        </Show>
-        <Show when={!props.init.inline || !props.init.inReplyTo}>
-          <label class="field subject">
-            <span class="label">Subject</span>
-            <input value={subject()} onInput={(e) => (setSubject(e.currentTarget.value), changed())} />
-          </label>
+          <RecipientField label="bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} outside={isOutside} />
         </Show>
       </div>
+      {/* A try from the AI shows in the text's place; the editor stays as it was underneath until it is kept. */}
+      <div class="editor-wrap" classList={{ covered: !!tryShown() }}>
       <Suspense fallback={<div class="editor-body" />}>
         <Show when={opening()}>
           {(start) => (
@@ -762,18 +1195,101 @@ export function Compose(props: {
               autofocus={bodyFirst ? "start" : false}
               snippets={snippets}
               quoteOpen={props.init.quoteOpen}
+              foldSignature
+              signatures={{
+                options: () => accountSignatures().map((x) => ({ id: x.id, name: x.name || "Untitled" })),
+                current: () => sigId(),
+                pick: (id) => void switchSignature(accountSignatures().find((x) => x.id === id) ?? null),
+              }}
               ref={editorReady}
               onPictures={pictures}
               pictures={shownPictures}
-              onChange={(text, rich) => (setBody(text), setHtml(rich), changed())}
+              onChange={(text, rich) => (setBody(text), setHtml(rich), changed(), typed(), caret())}
             />
           )}
         </Show>
       </Suspense>
+      </div>
+      <Show when={tryShown()} keyed>
+        {(v) => (
+          <div class="ai-try" aria-live="polite">
+            <Show when={newMail() && v.written?.subject && !subject().trim()}>
+              <div class="ai-try-subject">
+                <span class="label">Subject</span>
+                {v.written!.subject}
+              </div>
+            </Show>
+            <Show
+              when={v.written && v.base ? wordDiff(v.base!, v.written!.body) : null}
+              fallback={<div class="ai-preview">{v.written?.body ?? bodyOf(v.streamed)}</div>}
+            >
+              {(pieces) => (
+                <div class="ai-preview diff">
+                  <For each={pieces()}>
+                    {(p) => (p.kind === "same" ? p.text : p.kind === "added" ? <ins>{p.text}</ins> : <del>{p.text}</del>)}
+                  </For>
+                </div>
+              )}
+            </Show>
+            <div class="ai-try-bar">
+              <kbd class="ai-mark">AI</kbd>
+              <span class="text">
+                {v.written
+                  ? `Try ${shown() + 1} of ${versions().length}. It isn't in the email until you keep it.`
+                  : "Writing…"}
+              </span>
+              <Show when={v.written}>
+                <button type="button" class="link" onClick={() => void keepAi()}>
+                  <kbd>Tab</kbd> keep
+                </button>
+              </Show>
+              <button type="button" class="link" onClick={() => (dropTries(), aiInput?.focus())}>
+                <kbd>Esc</kbd> drop
+              </button>
+            </div>
+          </div>
+        )}
+      </Show>
       <Show when={htmlSig()}>
         {(s) => (
-          <div class="html-signature" title="Your signature, as it goes out. Change it in Settings → Signatures.">
-            <HtmlFrame html={s().html!} title="Signature" />
+          <div class="html-sig">
+            <div class="sig-line" classList={{ open: htmlSigOpen() }}>
+              <button
+                type="button"
+                class="sig-toggle"
+                title={htmlSigOpen() ? "Fold the signature" : "Show the signature"}
+                onClick={() => setHtmlSigOpen(!htmlSigOpen())}
+              >
+                {htmlSigOpen() ? "▾ Signature" : `▸ ${s().name ? `“${s().name}”` : "Your"} signature`}
+              </button>
+              <Show when={htmlSigOpen()}>
+                <fieldset class="sig-choices" aria-label="Signature">
+                  <For each={[...accountSignatures().map((x) => ({ id: x.id, name: x.name || "Untitled" })), { id: 0, name: "None" }]}>
+                    {(o) => (
+                      <button
+                        type="button"
+                        aria-pressed={(sigId() ?? 0) === o.id}
+                        classList={{ on: (sigId() ?? 0) === o.id }}
+                        onClick={() => (sigId() ?? 0) !== o.id && void switchSignature(accountSignatures().find((x) => x.id === o.id) ?? null)}
+                      >
+                        {o.name}
+                      </button>
+                    )}
+                  </For>
+                </fieldset>
+              </Show>
+              <span class="rule" />
+              <Show when={htmlSigOpen()}>
+                <button type="button" class="sig-fold-button" onClick={() => setHtmlSigOpen(false)}>
+                  Fold
+                </button>
+              </Show>
+            </div>
+            <Show when={htmlSigOpen()}>
+              <div class="html-signature" title="Your signature, as it goes out. Change it in Settings → Signatures.">
+                <HtmlFrame html={s().html!} title="Signature" />
+              </div>
+            </Show>
           </div>
         )}
       </Show>
@@ -844,179 +1360,8 @@ export function Compose(props: {
       <Show when={problem()}>
         <p class="error">{problem()}</p>
       </Show>
-      <Show
-        when={aiOpen()}
-        fallback={
-          <Show when={aiAllowed() && ownEmpty()}>
-            <button type="button" class="ai-invite" onClick={openAi}>
-              <kbd class="ai-mark">AI</kbd>
-              <span>
-                Write, or press <kbd>Space</kbd> and say {newMail() ? "what to write and to whom" : "what to answer"}
-              </span>
-            </button>
-          </Show>
-        }
-      >
-        <div class="ai-talk" aria-live="polite">
-          <For each={versions()}>
-            {(v, i) => (
-              <>
-                <div class="ai-said">
-                  <span>{v.said}</span>
-                </div>
-                <div class="ai-version-row">
-                  <kbd class="ai-mark">AI</kbd>
-                  <Show
-                    when={!v.error}
-                    fallback={<span class="ai-error">{v.error}</span>}
-                  >
-                    <button
-                      type="button"
-                      class="ai-version"
-                      classList={{ on: shown() === i() }}
-                      disabled={!v.written}
-                      onClick={() => setShown(i())}
-                    >
-                      {!v.written ? "Writing…" : shown() === i() ? `Version ${i() + 1} · below` : `Version ${i() + 1}`}
-                    </button>
-                  </Show>
-                </div>
-              </>
-            )}
-          </For>
-          <Show when={current() && !current()!.error && (current()!.written || bodyOf(current()!.streamed))}>
-            <Show when={newMail() && current()!.written}>
-              {(_) => {
-                const w = () => current()!.written!;
-                const people = (field: "to" | "cc") => (
-                  <For each={w()[field]}>
-                    {(r, k) => (
-                      <span class="ai-person" classList={{ missing: !r.address || r.stranger }}>
-                        <Show when={!r.stranger} fallback={<>Not added: {r.address} is not in your contacts or your words. Type it in yourself if it's right.</>}>
-                        <Show when={r.address} fallback={<>No one called “{r.asked}” in your contacts</>}>
-                          {r.name || r.address}
-                          <Show when={r.name}>
-                            <span class="addr">{r.address}</span>
-                          </Show>
-                          <Show when={r.others.length}>
-                            <span class="others">
-                              · also{" "}
-                              <For each={r.others}>
-                                {(o) => (
-                                  <button type="button" class="link" onClick={() => pickPerson(field, k(), o)}>
-                                    {o.name || o.email}
-                                  </button>
-                                )}
-                              </For>
-                            </span>
-                          </Show>
-                        </Show>
-                        </Show>
-                      </span>
-                    )}
-                  </For>
-                );
-                return (
-                  <div class="ai-head-lines">
-                    <Show when={w().to.length}>
-                      <div>
-                        <span class="label">To</span>
-                        {people("to")}
-                      </div>
-                    </Show>
-                    <Show when={w().cc.length}>
-                      <div>
-                        <span class="label">Cc</span>
-                        {people("cc")}
-                      </div>
-                    </Show>
-                    <Show when={w().subject}>
-                      <div>
-                        <span class="label">Subject</span>
-                        <span>{w().subject}</span>
-                      </div>
-                    </Show>
-                  </div>
-                );
-              }}
-            </Show>
-            <Show
-              when={current()!.written && current()!.base ? wordDiff(current()!.base!, current()!.written!.body) : null}
-              fallback={<div class="ai-preview">{current()!.written?.body ?? bodyOf(current()!.streamed)}</div>}
-            >
-              {(pieces) => (
-                <div class="ai-preview diff">
-                  <For each={pieces()}>
-                    {(p) => (p.kind === "same" ? p.text : p.kind === "added" ? <ins>{p.text}</ins> : <del>{p.text}</del>)}
-                  </For>
-                </div>
-              )}
-            </Show>
-          </Show>
-          <fieldset class="ai-chips plain" aria-label="Quick asks">
-            <For each={AI_CHIPS}>
-              {([label, request]) => (
-                <button type="button" class="chip" disabled={aiBusy()} onClick={() => void askAi({ label: chipLabel(label), request: chipRequest(label, request) })}>
-                  {chipLabel(label)}
-                </button>
-              )}
-            </For>
-          </fieldset>
-          <label class="ai-say">
-            <kbd class="ai-mark">AI</kbd>
-            <input
-              ref={aiInput}
-              value={aiAsk()}
-              placeholder={
-                versions().length
-                  ? "Say more, or Tab to keep it"
-                  : newMail()
-                    ? "Who it goes to and what it should say"
-                    : "What should it answer?"
-              }
-              aria-label="Tell AI what to write"
-              onInput={(e) => setAiAsk(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !(e.ctrlKey || e.metaKey)) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  void askAi();
-                } else if (e.key === "Tab" && !e.shiftKey && current()?.written) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  void keepAi();
-                } else if (e.key === "ArrowUp" && !aiAsk() && shown() > 0) {
-                  e.preventDefault();
-                  setShown(shown() - 1);
-                } else if (e.key === "ArrowDown" && !aiAsk() && shown() < versions().length - 1) {
-                  e.preventDefault();
-                  setShown(shown() + 1);
-                }
-              }}
-            />
-            <kbd>Enter</kbd>
-          </label>
-          <div class="ai-talk-foot">
-            <span>{props.init.inReplyTo ? "Reads this conversation" : "Reads what you tell it"}{hasStyle() ? " and your style." : "."}{newMail() ? " Names are matched in your contacts on this computer." : ""}</span>
-            <span class="spacer" />
-            <Show when={current()?.written}>
-              <button type="button" class="link" onClick={() => void keepAi()}>
-                <kbd>Tab</kbd> keep
-              </button>
-            </Show>
-            <Show when={versions().length > 1}>
-              <span>
-                <kbd>↑</kbd> earlier version
-              </span>
-            </Show>
-            <button type="button" class="link" onClick={closeAi}>
-              <kbd>Esc</kbd> {versions().length ? "drop all" : "close"}
-            </button>
-          </div>
-          <Show when={aiHold()}>
-            <p class="ai-hold">Keep a version (Tab) or drop them (Esc) before you send.</p>
-          </Show>
-        </div>
+      <Show when={aiHold()}>
+        <p class="ai-hold">Keep the try (Tab) or drop it (Esc) before you send.</p>
       </Show>
       <Show when={checks() || (outsiders().length && !outsideDismissed())}>
         <div class="checks">
@@ -1057,35 +1402,50 @@ export function Compose(props: {
           </Show>
         </div>
       </Show>
-      <footer>
-        <div class="send-split" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setSendMenu(false)}>
-          <button type="submit" class="primary">
-            Send <kbd>Ctrl ↵</kbd>
+      <Show when={offerFocus()}>
+        <div class="focus-offer">
+          <span>This is getting long. Focus gives it the whole window and an outline.</span>
+          <span class="spacer" />
+          <button type="button" class="link" onClick={() => (setFocusOffered(true), setFocusMode(true), view?.focus())}>
+            Open in focus <kbd>Ctrl Shift F</kbd>
           </button>
-          <button
-            type="button"
-            class="primary more"
-            aria-label="More ways to send"
-            aria-haspopup="menu"
-            aria-expanded={sendMenu()}
-            onClick={() => setSendMenu(!sendMenu())}
-          >
-            <Icon name="chevron-down" size={14} />
+          <button type="button" class="dismiss" aria-label="Don't offer focus for this mail" onClick={() => setFocusOffered(true)}>
+            <Icon name="x" size={14} />
           </button>
-          <Show when={sendMenu()}>
-            <div class="send-menu" role="menu">
-              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), send(true))}>
-                Send & Done <kbd>Ctrl Shift ↵</kbd>
-              </button>
-              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), setPicking("later"))}>
-                Send later… <kbd>Ctrl Shift L</kbd>
-              </button>
-              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), setPicking("followUp"))}>
-                Remind me if no reply… <kbd>Ctrl Shift H</kbd>
-              </button>
-            </div>
-          </Show>
         </div>
+      </Show>
+      <footer>
+        <Show when={props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length)}>
+          <div class="from-pick">
+            <span class="word">from</span>
+            <Dropdown
+              class="bare"
+              label="From"
+              title="Send from"
+              lead={<span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />}
+              value={alias() ? `${from()} ${alias()}` : String(from())}
+              choices={props.accounts.flatMap((a) => [
+                { value: String(a.id), label: a.email, detail: a.displayName || undefined },
+                ...(a.aliases ?? []).map((x) => ({ value: `${a.id} ${x.email}`, label: x.email, detail: x.name || a.displayName || undefined })),
+              ])}
+              onChange={changeFrom}
+            />
+          </div>
+        </Show>
+        <span class="saved" aria-live="polite">
+          <Show when={saveState() === "saved"}>Saved</Show>
+          <Show when={saveState() === "saving"}>Saving…</Show>
+          <Show when={words()}>
+            {(n) => (
+              <span>
+                {saveState() ? " · " : ""}
+                {n()} {n() === 1 ? "word" : "words"}
+                {focusMode() && n() >= LONG_WORDS ? ` · ${Math.round(n() / 230)} min` : ""}
+              </span>
+            )}
+          </Show>
+        </span>
+        <span class="spacer" />
         <Show when={checks()}>
           <span class="hint">Ctrl ↵ again sends anyway</span>
         </Show>
@@ -1106,44 +1466,84 @@ export function Compose(props: {
         </Show>
         <span class="tools">
           {iconButton("paperclip", "Attach files (Ctrl+Shift+A), or drop them here", () => void pick())}
-          <Show when={snippetList().length}>{iconButton("file-text", "Snippet ( ; )", openSnippets)}</Show>
           <Show when={aiAllowed()}>
-            <button type="button" class="icon-button ai-button" title="Write with AI (Ctrl+J)" aria-label="Write with AI" onClick={openAi}>
+            <button
+              type="button"
+              class="icon-button ai-button"
+              classList={{ on: aiOpen() }}
+              title="Writing help (Ctrl+J)"
+              aria-label="Writing help"
+              aria-pressed={aiOpen()}
+              onClick={() => (aiOpen() ? closeAi() : openAi())}
+            >
               <kbd class="ai-mark">AI</kbd>
             </button>
-            <Show when={!aiOpen() && !ownEmpty()}>
-              <fieldset class="tone-row plain" aria-label="Tone">
-                <For each={["Shorter", "Warmer", "Firmer"]}>
-                  {(label) => (
-                    <button type="button" class="chip" onClick={() => tone(label)} title={`Ask AI to make it ${label.toLowerCase()}`}>
-                      {label}
+          </Show>
+        </span>
+        {/* Everything else that happens to the mail: other ways to send, snippets, the signature, discard. */}
+        <div class="more-wrap" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setSendMenu(false)}>
+          <button
+            type="button"
+            class="icon-button more"
+            title="More"
+            aria-label="More"
+            aria-haspopup="menu"
+            aria-expanded={sendMenu()}
+            onClick={() => setSendMenu(!sendMenu())}
+          >
+            <Icon name="more" size={16} />
+          </button>
+          <Show when={sendMenu()}>
+            <div class="send-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), send(true))}>
+                Send & Done <kbd>Ctrl Shift ↵</kbd>
+              </button>
+              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), setPicking("later"))}>
+                Send later… <kbd>Ctrl Shift L</kbd>
+              </button>
+              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), setPicking("followUp"))}>
+                Remind me if no reply… <kbd>Ctrl Shift H</kbd>
+              </button>
+              <Show when={snippetList().length}>
+                <hr />
+                <button type="button" role="menuitem" onClick={() => (setSendMenu(false), openSnippets())}>
+                  Snippet… <kbd>;</kbd>
+                </button>
+              </Show>
+              <Show when={accountSignatures().length}>
+                <hr />
+                <For each={[...accountSignatures(), null]}>
+                  {(sig) => (
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={(sigId() ?? null) === (sig?.id ?? null)}
+                      onClick={() => (setSendMenu(false), void switchSignature(sig))}
+                    >
+                      {sig ? `Signature: ${sig.name || "Untitled"}` : "No signature"}
+                      <Show when={(sigId() ?? null) === (sig?.id ?? null)}>
+                        <Icon name="check" size={14} />
+                      </Show>
                     </button>
                   )}
                 </For>
-              </fieldset>
-            </Show>
+              </Show>
+              <hr />
+              <button type="button" role="menuitem" class="danger" onClick={() => (setSendMenu(false), discard())}>
+                Discard draft <kbd>Ctrl Shift ,</kbd>
+              </button>
+            </div>
           </Show>
-          <Show when={accountSignatures().length}>
-            <label class="signature-pick" title="Signature (Ctrl+Shift+S)">
-              <Icon name="pen-line" size={14} />
-              <select
-                aria-label="Signature"
-                value={String(sigId() ?? "")}
-                onChange={(e) => {
-                  const id = Number(e.currentTarget.value);
-                  void switchSignature(accountSignatures().find((s) => s.id === id) ?? null);
-                }}
-              >
-                <For each={accountSignatures()}>{(s) => <option value={String(s.id)}>{s.name || "Untitled"}</option>}</For>
-                <option value="">None</option>
-              </select>
-              <Icon name="chevron-down" size={12} />
-            </label>
-          </Show>
-        </span>
-        <span class="spacer" />
-        {iconButton("trash", "Discard (Ctrl+Shift+,)", discard, "discard")}
+        </div>
+        <button type="button" class="primary send" onClick={() => send(false)}>
+          Send <kbd>Ctrl ↵</kbd>
+        </button>
       </footer>
+      </div>
+      <Show when={aiOpen() && !props.init.inline}>{side()}</Show>
+      <Show when={aiOpen() && props.init.inline ? aiSlot() : null} keyed>
+        {(slot) => <Portal mount={slot}>{side()}</Portal>}
+      </Show>
     </form>
   );
 

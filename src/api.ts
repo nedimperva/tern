@@ -47,6 +47,8 @@ export type AiWriteInput = {
   replyingTo: string | null;
   turns: { request: string; wrote: string }[];
   newMail: boolean;
+  /** "In your style" unticked: this answer goes without the style note. */
+  plain?: boolean;
 };
 /** Someone the AI named in new mail, as said ("Tom"), and who that is in the contacts on this computer. */
 /** `stranger`: an address the AI wrote that is neither a contact nor typed by the person; never added by itself. */
@@ -770,6 +772,11 @@ function fake(): Api {
     // Gmail-style labels: a third of the conversations are Work, a quarter Invoices.
     { id: 7, accountId: 1, name: "Work", role: "label", unread: 0 },
     { id: 8, accountId: 1, name: "Invoices", role: "label", unread: 0 },
+    // Nested by name, for the sidebar's tree.
+    { id: 10, accountId: 1, name: "Projects/Alpha", role: "label", unread: 2 },
+    { id: 11, accountId: 1, name: "Projects/Beta", role: "label", unread: 1 },
+    { id: 12, accountId: 1, name: "Clients/Acme", role: "other", unread: 0 },
+    { id: 13, accountId: 1, name: "Clients/Globex", role: "other", unread: 0 },
     ...(location.hash === "#two" ? [{ id: 9, accountId: 2, name: "INBOX", role: "inbox", unread: 0 }] : []),
   ];
   const mutedThreads = new Set<string>();

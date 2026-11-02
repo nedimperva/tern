@@ -5,6 +5,7 @@ import { api, type About } from "../../api";
 import { omarchyAvailable, setSetting, settings } from "../../settings";
 import { NIGHT_SHIFT, SCENES, TIDE_REPORT } from "../../zero";
 import { Select } from "./shared";
+import { Dropdown } from "../Dropdown";
 
 export function AppearanceSettings() {
   return (
@@ -357,23 +358,25 @@ export function DesktopSettings() {
           { label: "Quit Tern", value: false },
         ]}
       />
-      <label class="setting">
+      <div class="setting">
         <span class="title">Start at login</span>
-        <select
+        <Dropdown
+          label="Start at login"
           value={String(login())}
-          onChange={(e) => {
-            const on = e.currentTarget.value === "true";
+          choices={[
+            { value: "true", label: "Start Tern in the tray" },
+            { value: "false", label: "Don't start Tern" },
+          ]}
+          onChange={(v) => {
+            const on = v === "true";
             void attempt(async () => {
               await api.setAutostart(on);
               setLogin(on);
             });
           }}
-        >
-          <option value="true">Start Tern in the tray</option>
-          <option value="false">Don't start Tern</option>
-        </select>
+        />
         <span class="help">Tern starts without a window and fetches mail in the background.</span>
-      </label>
+      </div>
       <div class="setting">
         <span class="title">Email links</span>
         <Show

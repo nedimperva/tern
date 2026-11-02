@@ -105,7 +105,7 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 │ Snoozed  │    GitHub            [tern] CI failed on main  Mon  │   pane    │
 │ account  │    Linear            LIN-233 moved to Done     Mon  │  (opt.)   │
 │ folders  │    …                                                │           │
-│ More · 3 ├────────────────────────────────────────────────────┤           │
+│ More   › ├────────────────────────────────────────────────────┤           │
 │ ⚙ Settin │  ● Synced · 2 changes waiting    ↩ Undo archive  Z │           │
 └──────────┴────────────────────────────────────────────────────┴───────────┘
 ```
@@ -125,9 +125,13 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   Narrower, turned off, or in focus mode, the same column slides over the list with a scrim and closes on `Esc`
   or after going somewhere. New mail at the top (the one raised control: `--bg-0`, a `--line` edge, `--raise`),
   then Inbox (All Inboxes with more than one account), Snoozed, Read later and Marks with icons, saved searches,
-  and each account: Inbox, Drafts, Sent, Archive, the rest under "More · N", then its labels. Accounts, Labels
-  and Searches fold under their headings (the chevron shows on hover or while folded; labels start folded past
-  six); a folded folder that is open still shows. Settings and + (Add account) share the foot. Search lives in the
+  and each account: Inbox, Drafts, Sent, Archive, the person's own Folders, the Labels, and last the server's
+  other special folders (Junk, Trash, All Mail…) under a "More" heading like the others, folded, its count beside
+  it while folded (2026-11-02: a "More · N" / "Less" line read as a folder). Accounts, Folders, Labels and Searches fold under their headings (the chevron
+  shows on hover or while folded; Folders start folded past eight, Labels past six). Folders and labels nest by
+  name ("Projects/Alpha", or "INBOX.Projects" on servers that write them so): each level 14 px in, a chevron
+  before a parent, parents start folded and show the unread of everything under them; a parent the server doesn't
+  list as a folder only folds. A folded folder that is open in the list still shows, its branch open. Settings and + (Add account) share the foot. Search lives in the
   list's header. Rows are 30 px, 8 px rounded, every name in one column (an empty icon slot where there is no
   icon, a label's dot in it); the current row is `--bg-3`. Unread counts show for inboxes, labels and the
   person's own folders, not for Drafts, Sent, Archive, All Mail, Junk or Trash. Beside a docked sidebar an open conversation's narrow list is on `--bg-0` with a
@@ -230,27 +234,30 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
     of a few words (Accept, Another time) and the reply's start; under them the pointed reply in full, then Others
     and Dismiss. A click or the digit starts a reply with it above the signature and quote. One column under 760 px.
     Not offered on your own last message.
-- Write with AI, "talked through" (redesigned 2026-10-26, canvas boards F and G): an empty draft shows a dashed
-  invite under the text ("Write, or press Space and say what to answer"); Space on the empty first line, a click on
-  the invite, `Ctrl J` or the `AI` keycap in the footer opens a `--soft` panel. What the person says shows as
-  bubbles on the right (`--accent-soft`); each answer as a "Version n" pill, the one on show filled `--accent`
-  ("· below"), its text in a `--bg-0` box under them. The field ("Say more, or Tab to keep it", 2 px `--accent`)
-  asks again from the version on show, and quick asks above it (Write it out, which reads "Write a reply" in an empty
-  reply and writes from the conversation, Shorter, More formal, Friendlier, Fix grammar; the bubble shows the chip's
-  name) rework the version on show; `Tab` keeps it as ordinary text (signature and quote stay; `Ctrl Z` brings
-  back what was there), `↑`/`↓` step through versions, `Esc` drops them all. One quiet line says what it reads
-  ("Reads this conversation and your style."). It writes from the whole conversation; the draft may be empty.
-  Send waits while versions are open ("Keep a version (Tab) or drop them (Esc) before you send.").
-  Since 2026-10-29 (owner's picks): the quick asks are Write it out, Shorter, Warmer, Firmer, More formal and Fix
-  grammar. A draft that is only a list of points (two or more, nothing else of the person's own) reads "Write out
-  these points" and keeps each point in order. A tone ask's version shows what it changed against what it reworked
-  (`src/wordDiff.ts`): new words on `--accent-soft`, dropped ones struck through in `--fg-2`. With words in the draft
-  and the panel closed, a tone row (Shorter, Warmer, Firmer: outlined pills) sits beside the `AI` key in the footer
-  and asks at once.
-  New mail: the same, and the answer also names who it goes to and a subject: To, Cc and Subject show above the
-  text, each person matched in the contacts on this computer (the contacts never go to the AI): a found one on
-  `--accent-soft` with the address, "also …" to pick another with the same name, "No one called “Zed” in your
-  contacts" on `--warn-soft`. Tab fills the fields (Subject only when empty).
+- Writing help, an AI sidebar (2026-11-02, owner: "AI as a sidebar in compose, nothing lost, not a chat"; canvas
+  "Tern compose directions", boards S1 and S2). Replaced the talked-through panel of 2026-10-26. An empty draft's
+  first line says "Start writing, or press Space for writing help" in `--fg-2` (no box; board H1, 2026-11-02);
+  Space on that empty line, `Ctrl J` or the `AI` keycap in the footer opens it. In the dialog, compose widens to 1080 px and the sidebar (300 px, `--soft`) sits on the right;
+  for an inline reply it takes the companion's column while open (one panel on the right, §4.2b). From the top:
+  - Starts (replies only): "Suggest how to answer" asks for the suggested replies; each is a button, and a click makes
+    it a try.
+  - Brief: one note the person edits ("yes to friday, ask for the file"), not a conversation. `Enter` writes from it,
+    `Shift Enter` is a new line. Its button reads Write / Write again, or with the Brief empty Write it out, Write a
+    reply (empty reply: from the conversation) or Write out these points (a draft of two or more points, each kept in
+    order). With more than one try: "‹ Try 2 of 3 ›", also `Alt ↑`/`Alt ↓`.
+  - Reshape: Shorter, Warmer, Firmer, More formal, Fix grammar and Translate… (a few languages). They rework the try
+    on show, else the selection (the rest kept word for word), else all the person's own words.
+  - People it found (new mail): who the answer names, matched in the contacts on this computer (they never go to the
+    AI): name, address, "also …" to pick another with the same name, and Add to To / Add to Cc. Nobody is added
+    unless the person adds them; an address only the AI came up with is shown on `--warn-soft` and never offered.
+  - At the foot: "In your style" (for this compose; shown when a style note exists) and what it reads, "Nothing here
+    can send the mail."
+  A try shows in the text's place, in `--fg-2`, the editor kept underneath; a tone change shows what it changed
+  (`src/wordDiff.ts`: new words on `--accent-soft`, dropped ones struck through). Under it, on `--accent-soft`:
+  "Try n of m. It isn't in the email until you keep it." with `Tab` keep and `Esc` drop. `Tab` puts it in as
+  ordinary text (signature and quote stay; `Ctrl Z` brings back what was there), and in new mail the subject when
+  there is none. `Esc` drops the tries, and again closes the sidebar. Send waits while a try is on show ("Keep the
+  try (Tab) or drop it (Esc) before you send."). `Ctrl Enter` in the sidebar does nothing.
 
 ### 4.2a Details: what the newest message holds
 
@@ -322,11 +329,19 @@ none).
 - Top row: the From pill (account colour dot, "From Name · address ▾") when > 1 identity; then, right-aligned,
   "✓ Saved" / "Saving…" in `--fg-2`, and icon buttons Minimize (`Ctrl+Shift+M`), Focus (`Ctrl+Shift+F`) and Close
   (`Esc`, keeps the draft). An inline reply has no Minimize or Focus.
-- Field rows: `To` (with `Cc` `Bcc` toggles at its right end, or `Ctrl+Shift+C/B`), then `Cc` `Bcc` when used,
-  `Subject`. Labels are `--fg-2` on the left (64 px). Recipients are chips (`--bg-2`, `--r-sm`): initials on
-  `--accent-soft`, the contact's name when known (address on hover), remove on `Backspace`. A chip outside the
-  sender's organisation (not for public mail services) is on `--warn-soft` with the domain after the name.
-- Editor body: `--t-rd`, min 160 px, grows with content. Formatting bar appears only on text selection, floating above the selection: B I U S · link · list · quote.
+- Top (T1, 2026-11-02): the subject first, as the sheet's title (24 px 600, "Subject" as placeholder), then the
+  people in small `--t-md` lines under it: `to` (placeholder "add people", `Cc` `Bcc` toggles at its right end, or
+  `Ctrl+Shift+C/B`), then `cc` `bcc` when used. No rules between rows. People are names with a dashed
+  `--line-strong` underline (× on hover), outside people in `--warn-fg` with a `--warn` underline. The sheet is
+  `--bg-0` with a `--line-strong` border, 44 px side padding.
+- Signature (S): behind its own line. Folded: "▸ Name · signature" in `--fg-2` and a dashed rule. Open: "▾ Signature",
+  the account's signatures and None as words on a `--bg-2` track (the one in the text on `--bg-0`, one click
+  switches; 2026-11-02, a drop-down there felt slow), the rule and Fold in `--accent`; the signature sits under it behind a 2 px
+  `--line` rule. It opens on a click, or when the caret goes in; it folds on Fold, or when the caret leaves it
+  unchanged. A click under the text puts the caret above it.
+  The line sits at the foot of the text area (min 220 px) while the mail is short, in the dialog as in focus. An HTML signature folds the same way. It always goes
+  out whole, and the word count never counts it.
+- Editor body: 15 px / 1.65 in the dialog (`--t-rd` inline), min 160 px, grows with content. Formatting bar appears only on text selection, floating above the selection: B I U S · link · list · quote.
 - Attachments: cards 132 px wide (picture thumbnail, else the file kind's icon; name and size; × on hover) and a
   size bar against 25 MB, `--warn` from 70 %, `--danger` over. Files dragged over the window show a dashed
   `--accent` drop zone over compose.
@@ -334,10 +349,28 @@ none).
   attached" (Attach… / Send anyway; words in many languages, src/attachmentWords.ts, plus the person's own) and
   "There's no subject" on `--warn-soft`; "x is outside example.com" on `--bg-2` when outside people are mixed
   with the sender's own, dismissible. Sending again while they show sends anyway.
-- Footer (above a `--line` rule): split `Send  Ctrl↵` button whose menu holds Send & Done, Send later…, Remind me
-  if no reply… with their keys; then attach, snippet and signature as icons; discard as a trash icon at the far end.
-- Signature: a pill in the footer ("✎ Full ▾") when the account has any; picking one, or `Ctrl+Shift+S`
-  to step through them and None, swaps the signature in the text. Changing From brings the new account's.
+- Only Send sends: the button, `Ctrl Enter` or the menu. `Enter` in a field (Subject, an empty To) never does.
+- The sheet starts 6 vh from the top and never runs past the window: it scrolls inside, the footer staying in
+  sight at its bottom.
+- Long mail: the dialog never widens and has no outline; it grows to the window's height, then scrolls with the
+  footer in sight. From 150 words or 16 paragraphs (until 120 and 13), one `--soft` line above the footer offers
+  focus ("Open in focus  Ctrl Shift F", × hides it for this mail).
+- Footer (G, above a `--line` rule): "from ● address ▾" when there is more than one identity, then "Saved · N words"
+  (words once there are some); at the right attach and AI, a ⋯ menu (Send & Done, Send later…, Remind me if no
+  reply…, Snippet…, the signatures, Discard draft) and Send last. While the person types, the tools, ⋯ and the top
+  row's buttons fade out; a 1.2 s pause, the mouse or focus brings them back. Send never fades.
+- Focus (F, `Ctrl+Shift+F`): the whole window on `--bg-2` (the desk), Exit focus at the top right. The page is a
+  white sheet (V1): `--bg-0`, up to 820 px wide with 64 px sides, rounded top corners, a soft shadow. A 640 px column
+  keeps the subject (28 px) and people editable at its top; the text below runs the window's height at 17 px / 1.75,
+  "Start writing" while empty, the paragraph being written in full colour. The outline is a 220 px column on the
+  left, lying on the desk (hidden under 900 px wide, or with `Ctrl+Shift+O`): each paragraph's first words, a short line over a real
+  paragraph bold, "asks" on parts that ask, the one where the caret is on `--bg-0`. Click goes there, drag
+  moves a part, `Alt ↑/↓` moves the part the caret is in. If the first ask is below the first part, one
+  `--warn-soft` note says where it is (Move it up / Leave it). The signature is the same folded line as in the dialog
+  (S1): at the foot of the sheet while the mail is short, right after the text once it is long. The footer is a
+  floating pill at the bottom: Saved · words · minutes, attach, AI, Send.
+- Signature switching: the open signature line's picker, the ⋯ menu, or `Ctrl+Shift+S` to step through them and
+  None. Changing From brings the new account's.
 - Minimized: the dialog hides (its editor kept) and a 320 px card waits bottom right: subject, recipients, the
   start of the text, Saved. Click or `Ctrl+Shift+M` opens it again; the app's keys work meanwhile.
 - Focus mode: compose fills the window, fields hidden behind a one-line summary, the text in a 640 px column at
@@ -449,10 +482,15 @@ the header's panel icon; a Note from the selection bar opens it with the note's 
 - Redrawn 2026-10-29: the section list is the sidebar's (30 px rows, a 15 px icon or an account's dot, group labels
   in `--t-sm` 500 `--fg-2`, Close settings at the foot). Settings next to each other share a card (`--card`, a
   `--line` edge, `--r-lg`, a rule between rows): the name (`--t-md` 500) and its line (`--t-sm` `--fg-2`) on the
-  left, the control on the right, centred against both. Fields and selects are 32 px on `--bg-0` (a `--chevron` on
-  selects); buttons are `--bg-0` with a `--line` edge and `--raise`; checkboxes take `accent-color`. Segmented
+  left, the control on the right, centred against both. Fields and drop-downs are 32 px on `--bg-0`; buttons are `--bg-0` with a `--line` edge and `--raise`; checkboxes take `accent-color`. Segmented
   controls are a `--bg-2` track with the picked part on `--card`. The AI page's provider list, feature table, cards
   and the snippet and signature panels are cards the same way.
+- Drop-downs are Tern's own (`Dropdown.tsx`, 2026-11-02), never a native `<select>`: WebKitGTK and WebView2 draw
+  those lists in the system's look. The button shows the choice and a chevron (`.bare` in a sentence, as compose's
+  From: no box until hovered); the list is a menu on `--bg-1` with `--shadow`, the pointed row on `--bg-3`, a tick
+  in `--accent` on the chosen one, an optional second line in `--fg-2` and group names in small capitals. It opens
+  upward when the room is above, sits over everything (so a dialog never clips it), and takes the arrows, Home,
+  End, Enter, Esc and a first letter.
 - Built (2026-10-19), Snippets and Signatures use a wider (1040 px) list-and-detail layout. On the left, a list
   of rows (name, `;shortcut` or "New mail · Replies" in `--fg-2`); the picked row is `--bg-3`, nothing more, and a
   pressed filter pill is `--bg-3` too. Colour is for accounts: a per-account tab is underlined in that account's colour.

@@ -66,7 +66,9 @@ import {
   rows,
   searching,
   settingsOpen,
+  aiSide,
   setAccounts,
+  setAiSlot,
   setComposeMin,
   setIdle,
   setLabeling,
@@ -237,7 +239,7 @@ function Main() {
   return (
     <div
       class="app"
-      classList={{ split: split(), full: openRow() !== null && !roomForSplit(), "with-companion": openRow() !== null && settings.companion }}
+      classList={{ split: split(), full: openRow() !== null && !roomForSplit(), "with-companion": openRow() !== null && (settings.companion || aiSide()) }}
     >
       <ListPane split={split()} hits={hits()} needsYou={needsYou()} />
 
@@ -267,17 +269,21 @@ function Main() {
             menu={() => menu(bindings())}
             person={person}
           />
-          <Show when={compose()?.inline ? compose() : null}>
+          <Show when={compose()?.inline ? compose() : null} keyed>
             {(init) => (
               <div class="inline-reply">
-                <Compose accounts={accounts()} signatures={signatures()} init={init()} onSend={send} onClose={composeClosed} onDiscard={composeDiscarded} />
+                <Compose accounts={accounts()} signatures={signatures()} init={init} onSend={send} onClose={composeClosed} onDiscard={composeDiscarded} />
               </div>
             )}
           </Show>
         </section>
       </Show>
 
-      <Show when={openRow() && settings.companion}>
+      {/* An inline reply's AI sidebar takes the companion's column while it is open. */}
+      <Show when={openRow() && aiSide()}>
+        <div class="companion ai-side-slot" ref={setAiSlot} />
+      </Show>
+      <Show when={openRow() && settings.companion && !aiSide()}>
         <Suspense>
           <Companion
             messages={messages}

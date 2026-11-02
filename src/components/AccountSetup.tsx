@@ -1,5 +1,6 @@
 import { createSignal, Show } from "solid-js";
 import { api, type Account, type AccountConfig, type Security } from "../api";
+import { Dropdown } from "./Dropdown";
 
 /** The security each standard port implies, so typing a port also picks the right setting. */
 const PORT_SECURITY: Record<number, Security> = { 993: "tls", 143: "starttls", 465: "tls", 587: "starttls" };
@@ -84,13 +85,18 @@ export function AccountSetup(props: { onAdded: (a: Account) => void; onClose?: (
   );
 
   const security = (label: string, key: "imapSecurity" | "smtpSecurity") => (
-    <label>
+    <div class="pick">
       {label}
-      <select value={config()[key]} onChange={(e) => set(key, e.currentTarget.value as Security)}>
-        <option value="tls">TLS</option>
-        <option value="starttls">STARTTLS</option>
-      </select>
-    </label>
+      <Dropdown
+        label={label}
+        value={config()[key]}
+        choices={[
+          { value: "tls", label: "TLS" },
+          { value: "starttls", label: "STARTTLS" },
+        ]}
+        onChange={(v) => set(key, v as Security)}
+      />
+    </div>
   );
 
   return (

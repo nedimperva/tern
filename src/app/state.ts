@@ -50,7 +50,24 @@ export const [openRow, setOpenRow] = createSignal<ThreadRow | null>(null);
 // so their HTML frames are not rebuilt (which flickered, most visibly on Windows).
 const [messagesStore, setMessagesStore] = createStore<ThreadMessage[]>([]);
 export const messages = messagesStore;
-export const setMessages = (t: ThreadMessage[]) => setMessagesStore(reconcile(t, { key: "id" }));
+// The draft open in an inline reply is not shown again as a message above it (owner, 2026-11-02): it is being
+// written right there. It comes back as "Draft · R to continue" once compose closes.
+let thread: ThreadMessage[] = [];
+const [replyDraft, setReplyDraftId] = createSignal<number | null>(null);
+const shown = () => {
+  const id = replyDraft();
+  return id == null ? thread : thread.filter((m) => m.draftId !== id);
+};
+export const setMessages = (t: ThreadMessage[]) => {
+  thread = t;
+  setMessagesStore(reconcile(shown(), { key: "id" }));
+};
+/** The inline reply's saved draft, or null when there is none open. */
+export const setReplyDraft = (id: number | null) => {
+  if (id === replyDraft()) return;
+  setReplyDraftId(id);
+  setMessagesStore(reconcile(shown(), { key: "id" }));
+};
 export const [messageFocus, setMessageFocus] = createSignal(0);
 export const [expanded, setExpanded] = createSignal<ReadonlySet<number>>(new Set());
 // Whether the open conversation is muted, for "Unmute" in the palette.
@@ -105,14 +122,22 @@ export const showCompanion = () => {
  * its own (ConversationView portals them in). */
 export const [detailsSlot, setDetailsSlot] = createSignal<HTMLElement | null>(null);
 
+/** An inline reply's AI sidebar is open: it takes the companion's column while it is (one panel on the right). */
+export const [aiSide, setAiSide] = createSignal(false);
+/** Where that sidebar is drawn; App puts it in the companion's place and Compose portals into it. */
+export const [aiSlot, setAiSlot] = createSignal<HTMLElement | null>(null);
+
 /** The search box, for `/`. */
 export const searchBox: { input?: HTMLInputElement } = {};
 
 export const current = () => rows()[focus()];
 export const context = (): Context => (openRow() ? "conversation" : "list");
+/** The keyboard is somewhere in the reply under the conversation (or its AI sidebar). Only then does the reply take
+ * the keys: clicked away from, the conversation's and the list's keys work again (owner, 2026-11-02). */
+const replyFocused = () => !!document.activeElement?.closest(".inline-reply, .ai-side");
 /** Something is over the list and takes the keys. */
 export const dialog = () =>
-  screen() || deck() !== null || reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin()) || setup() || rail() || snoozing() !== null || labeling() !== null ||
+  screen() || deck() !== null || reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin() && (!compose()!.inline || replyFocused())) || setup() || rail() || snoozing() !== null || labeling() !== null ||
   viewing() !== null;
 export const searching = () => query().trim() !== "";
 /** The role of the list on show ("" for a folder or label). */

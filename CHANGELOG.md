@@ -7,6 +7,38 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Changed
+
+- Writing help in compose is a sidebar now, not a chat. `Ctrl+J`, the AI key or Space in an empty draft opens it
+  beside the text; for a reply it takes the companion's place. It holds everything the old panel did: a Brief you
+  edit and write from again (Write it out, Write a reply, Write out these points), tries to step through, Shorter,
+  Warmer, Firmer, More formal and Fix grammar, and for new mail the people it found. New: suggested replies as
+  Starts, Translate, Reshape on just the selected words, and an "In your style" switch for one mail.
+- A try shows in grey where your text is, and is not in the email until you keep it with Tab. People the AI names
+  are added only when you add them. Nothing in the sidebar can send.
+- Compose is calmer. The subject leads as the mail's title with the people in one small line under it, the text is
+  set a little larger, and the tools fade while you type. The footer holds From (when you have more than one
+  address), Saved and the word count on the left, and attach, AI, a ⋯ menu (other ways to send, snippets,
+  signatures, discard) and Send on the right.
+- The signature folds to one line at the foot of the compose window. Open it to read it, switch to another one with
+  one click right there, and Fold it again; it also folds again on its own when you go back to your text.
+- Drop-downs are Tern's own everywhere (compose's From, Translate, Settings), instead of the system's lists.
+- In the sidebar, an account's Junk, Trash and other special folders sit under a "More" heading at the end, like
+  Folders and Labels.
+- Focus mode (Ctrl+Shift+F) fills the whole window: your mail is a white sheet on the warm background, with
+  larger text, the signature line at the foot of the sheet, and Send and attach in a floating pill.
+- An empty mail says "Start writing, or press Space for writing help" on its first line, instead of a box.
+- Long mails get room in focus mode. The compose window offers focus once a mail is long; focus keeps the subject
+  and people at the top, gives the text the window's height, and shows an outline of your paragraphs on the left:
+  click one to go there, drag to reorder, or Alt+Up/Down to move the one you're in. If your question sits below
+  the first part, it says so once and can move it up. Ctrl+Shift+O hides or shows the outline.
+- Enter in the Subject field, or in an empty To field, sent the mail. Only Send and Ctrl+Enter send now.
+- A reply left open under a conversation showed up a second time above it, as a draft message, once it was saved.
+  It shows only in the reply box now, and comes back as "Draft · R to continue" when you close the reply.
+- With a reply open under a conversation, clicking anywhere outside it left every key dead (Esc, C, G I…). The reply
+  takes the keys only while you're in it; outside it the usual keys work, R goes back to it, and leaving the
+  conversation keeps it as a draft.
+
 ## [1.8.0] - 2026-11-02
 
 ### Added
@@ -18,6 +50,10 @@ every release needs one here before it is tagged.
   and it does not cancel a snooze or a follow-up.
 - The iCloud preset says how to set up a custom domain: sign in with the iCloud address and add the domain's address
   under Also send as.
+
+- The sidebar nests folders and labels by name: "Projects/Alpha" sits under Projects, which starts folded and
+  shows the unread of everything under it. Your own folders get their own Folders heading instead of hiding under
+  More, which now holds only the server's special folders (Junk, Trash, All Mail).
 
 ### Fixed
 

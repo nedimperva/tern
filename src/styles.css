@@ -11,6 +11,15 @@ body,
   height: 100%;
   overflow: hidden;
 }
+/* The shell never scrolls, not even from script: with overflow hidden, a scrollIntoView or a focus could still shift
+   the whole window up and leave a blank band at the bottom (seen on Windows, 2026-11-02). Panes scroll inside. */
+html,
+body,
+#root,
+.window,
+.window-body {
+  overflow: clip;
+}
 
 body {
   background: var(--bg-0);
@@ -1250,7 +1259,6 @@ button.primary kbd {
 .rail .rail-item:focus-visible,
 .rail-head:focus-visible,
 .rail-sub:focus-visible,
-.rail-more:focus-visible,
 .rail-foot button:focus-visible,
 .rail-compose:focus-visible {
   outline: none;
@@ -1341,18 +1349,11 @@ button.primary kbd {
   margin-top: var(--s-1);
   padding-left: 35px;
 }
-/* "More · 4": the account's other folders, folded by default. */
-.rail-more {
-  align-self: flex-start;
-  height: 26px;
-  padding: 0 var(--s-2) 0 35px;
-  border: 0;
-  background: none;
+/* "More": the server's other special folders (Junk, Trash, All Mail…), a heading like Folders and Labels at the end
+   of the account, folded by default, with how many it holds while folded. */
+.rail-sub .rail-sub-count {
+  font-weight: 400;
   color: var(--fg-2);
-  font-size: var(--t-sm);
-}
-.rail-more:hover {
-  color: var(--fg-0);
 }
 /* The places between New mail and the foot scroll on their own, with a thin bar that shows under the pointer. A
    stable gutter keeps the rows from shifting when it does; the negative margin gives that gutter the rail's
@@ -2503,23 +2504,6 @@ button.fold {
   border-radius: 50%;
   pointer-events: none;
 }
-.compose .from-pick svg {
-  position: absolute;
-  right: 8px;
-  pointer-events: none;
-}
-.compose .from-pick select {
-  appearance: none;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  padding: 4px 24px 4px 23px;
-  max-width: 420px;
-  text-overflow: ellipsis;
-  cursor: pointer;
-  field-sizing: content;
-}
 .compose .from-pick:hover {
   color: var(--fg-0);
 }
@@ -2923,7 +2907,7 @@ button.fold {
 
 /* Send (its menu holds Send & Done, Send later and Remind), then the tools as icons, discard at the far end
    (ui.md 4.4). Wrapping is the fallback for a narrow window, not the normal layout. */
-.compose footer {
+.compose-main > footer {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2932,14 +2916,14 @@ button.fold {
   padding-top: var(--s-2);
   border-top: 1px solid var(--line);
 }
-.compose footer button {
+.compose-main > footer button {
   white-space: nowrap;
 }
-.compose footer .hint {
+.compose-main > footer .hint {
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
-.compose footer .tools {
+.compose-main > footer .tools {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -3060,43 +3044,10 @@ button.fold {
 .compose-card .close:hover {
   background: var(--bg-2);
 }
-/* Focus mode: the whole window, one narrow column, the paragraph being written in full colour. */
-.compose-overlay.focused {
-  padding: 0;
-}
-.compose.focus {
-  width: 100vw;
-  height: calc(100vh - var(--titlebar-h));
-  max-height: none;
-  border-radius: 0;
-  box-shadow: none;
-  padding: var(--s-3) var(--s-5);
-}
-.compose.focus .fields {
-  display: none;
-}
-.compose.focus .editor {
-  flex: 1;
-}
-.compose.focus .editor-body {
-  max-width: 640px;
-  margin: 0 auto;
-  padding-top: var(--s-6);
-  font-size: 16px;
-  line-height: 1.7;
-}
+/* Focus mode (the rest is with the compose sheet's rules, ui.md 4.4): the paragraph being written in full colour. */
 .compose.focus .ProseMirror:focus > :not(.current) {
   opacity: 0.45;
   transition: opacity var(--d-base);
-}
-.compose.focus footer {
-  justify-content: center;
-  border-top: 0;
-}
-.compose.focus footer .tools,
-.compose.focus footer .spacer,
-.compose.focus footer .discard {
-  display: none;
 }
 
 .setup {
@@ -3120,7 +3071,7 @@ button.fold {
   margin: 0 0 var(--s-2);
   font-size: var(--t-lg);
 }
-.setup label {
+.setup :is(label, .pick) {
   display: flex;
   flex-direction: column;
   gap: var(--s-1);
@@ -3128,7 +3079,7 @@ button.fold {
   color: var(--fg-1);
 }
 .setup label input,
-.setup label select {
+.setup .pick .dropdown {
   color: var(--fg-0);
   font-size: var(--t-rd);
 }
@@ -4191,46 +4142,6 @@ button.place.muted {
   line-height: 1.55;
   white-space: pre-line;
 }
-/* Compose's footer: which signature the message carries. A text control like Later and Cc beside it, the whole
-   of it the select so a click anywhere opens it; the icons sit over it. */
-.compose .signature-pick {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--r-md);
-  color: var(--fg-1);
-}
-.compose .signature-pick:hover {
-  background: var(--bg-2);
-  color: var(--fg-0);
-}
-.compose .signature-pick svg {
-  position: absolute;
-  pointer-events: none;
-}
-.compose .signature-pick svg:first-child {
-  left: 6px;
-}
-.compose .signature-pick svg:last-child {
-  right: 6px;
-}
-.compose .signature-pick select {
-  appearance: none;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  padding: var(--s-1) 22px var(--s-1) 24px;
-  cursor: pointer;
-  /* As wide as the name picked, not the longest; older engines keep the native width. */
-  field-sizing: content;
-}
-.compose .signature-pick select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-  border-radius: var(--r-md);
-}
-
 /* MARK: Attachment viewer (docs/design/ui.md §4.11): the file over everything, on a dark scrim in either theme. */
 .viewer {
   position: fixed;
@@ -5128,7 +5039,7 @@ fieldset.plain {
   gap: var(--s-2);
   color: var(--fg-1);
 }
-.ai-inline select {
+.ai-inline .dropdown {
   max-width: 60%;
 }
 /* Mail it may read: the accounts and the redaction as rows of one card. */
@@ -5383,152 +5294,22 @@ button.link.danger {
   }
 }
 
-/* Write with AI, talked through: what the person said, each version, the one on show, and where to say more. */
-.ai-invite {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  margin: 0 var(--s-4) var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 1px dashed var(--line);
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--fg-2);
-  font: inherit;
-  font-size: var(--t-md);
-  text-align: left;
-}
-.ai-invite:hover {
-  background: var(--bg-2);
-}
-.ai-invite kbd.ai-mark,
-.ai-talk kbd.ai-mark,
+/* The AI mark wherever writing help shows. */
+.ai-side kbd.ai-mark,
+.ai-try kbd.ai-mark,
 .ai-button kbd.ai-mark {
   color: var(--accent);
   background: var(--accent-soft);
   border-color: transparent;
 }
-.ai-talk {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  margin: 0 var(--s-4) var(--s-3);
-  padding: var(--s-3);
-  border-radius: var(--r-lg);
-  background: var(--soft);
-}
-.ai-said {
-  display: flex;
-  justify-content: flex-end;
-}
-.ai-said span {
-  max-width: 78%;
-  padding: var(--s-1) var(--s-3);
-  border-radius: 10px 10px 2px 10px;
-  background: var(--accent-soft);
-  font-size: var(--t-md);
-  line-height: 1.45;
-  color: var(--fg-0);
-}
-.ai-version-row {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-}
-.ai-version {
-  padding: 2px var(--s-2);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg-0);
-  color: var(--fg-1);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.ai-version.on {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-weight: 600;
-}
-.ai-head-lines {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
-  padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
-  font-size: var(--t-md);
-}
-.ai-head-lines > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--s-1) var(--s-2);
-}
-.ai-head-lines .label {
-  width: 56px;
-  color: var(--fg-2);
-}
-.ai-person {
-  padding: 1px var(--s-2);
-  border-radius: var(--r-sm);
-  background: var(--accent-soft);
-}
-.ai-person .addr,
-.ai-person .others {
-  margin-left: var(--s-1);
-  font-size: var(--t-sm);
-  color: var(--fg-1);
-}
-.ai-person.missing {
-  background: var(--warn-soft);
-  color: var(--warn-fg);
-}
 .ai-preview {
-  max-height: 260px;
-  overflow-y: auto;
-  padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
+  min-height: 160px;
+  padding: var(--s-2) 0;
   font-size: var(--t-rd);
   line-height: 1.55;
-  color: var(--fg-1);
+  color: var(--fg-2);
   white-space: pre-wrap;
   user-select: text;
-}
-.ai-say {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 2px solid var(--accent);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
-}
-.ai-say input {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: transparent;
-  font: inherit;
-  font-size: var(--t-rd);
-  color: var(--fg-0);
-  outline: none;
-}
-.ai-talk-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2) var(--s-3);
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.ai-talk-foot .spacer {
-  flex: 1;
-}
-.ai-talk-foot button.link {
-  font-size: var(--t-sm);
-  color: var(--fg-1);
 }
 .ai-error {
   margin: 0;
@@ -5584,7 +5365,7 @@ button.link.danger {
 .ai-provider .help {
   flex-basis: 100%;
 }
-.ai-ledger select {
+.ai-ledger .dropdown {
   width: 100%;
   min-width: 0;
 }
@@ -6019,25 +5800,6 @@ button.link.danger {
   }
 }
 
-/* Quick asks under the AI field in compose. */
-.ai-talk .ai-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-1);
-}
-.ai-talk .ai-chips .chip {
-  padding: 2px var(--s-2);
-  border: none;
-  border-radius: var(--r-sm);
-  background: var(--bg-0);
-  color: var(--fg-1);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.ai-talk .ai-chips .chip:hover:not(:disabled) {
-  background: var(--bg-3);
-  color: var(--fg-0);
-}
 /* A tone ask's version shows what it changed: new words lit, dropped ones struck through. */
 .ai-preview.diff ins {
   border-radius: 2px;
@@ -6049,25 +5811,6 @@ button.link.danger {
   color: var(--fg-2);
   text-decoration: line-through;
   text-decoration-color: color-mix(in srgb, var(--fg-2) 60%, transparent);
-}
-/* The tone row beside the AI key in compose's footer: one click asks. */
-.tone-row {
-  display: inline-flex;
-  gap: 2px;
-  margin-left: var(--s-1);
-}
-.tone-row .chip {
-  padding: 2px var(--s-2);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: none;
-  color: var(--fg-2);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.tone-row .chip:hover {
-  background: var(--soft-hover);
-  color: var(--fg-0);
 }
 
 /* The reader (§4.2c): a newsletter in reading view. Who sent it and how long it reads, then its tools; the title
@@ -6816,4 +6559,974 @@ button.link.danger {
 }
 .ask-dock .send:disabled {
   opacity: 0.45;
+}
+
+/* Writing help (§4.4): AI as a sidebar beside compose's text. The dialog widens for it; an inline reply's goes in the
+   companion's column. A try shows in grey in the text's place, the editor kept underneath until Tab keeps it. */
+.compose-main {
+  display: contents;
+}
+.compose.with-ai {
+  width: min(1080px, 96vw);
+  flex-direction: row;
+  padding: 0;
+  overflow: hidden;
+}
+.compose.with-ai > .compose-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--s-2) var(--s-4) var(--s-3);
+}
+.editor-wrap.covered {
+  display: none;
+}
+.ai-try {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+.ai-try-subject {
+  display: flex;
+  gap: var(--s-2);
+  font-size: var(--t-md);
+  color: var(--fg-2);
+}
+.ai-try-subject .label {
+  width: 56px;
+}
+.ai-try-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-try-bar .text {
+  flex: 1;
+  min-width: 180px;
+}
+.ai-try-bar button.link {
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-side {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  flex: none;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--soft);
+  font-size: var(--t-md);
+}
+.ai-side-slot > div {
+  display: contents;
+}
+.ai-side-slot .ai-side {
+  width: auto;
+  flex: 1;
+  border-left: none;
+  background: var(--bg-1);
+}
+.ai-side > header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-2) var(--s-2) var(--s-3);
+}
+.ai-side > header .spacer,
+.ai-side .spacer {
+  flex: 1;
+}
+.ai-side-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ai-side section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-top: 1px solid var(--line);
+}
+.ai-side h3 {
+  margin: 0;
+  font-size: var(--t-xs, 11px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.ai-side .hint {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  line-height: 1.4;
+}
+.ai-brief {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.ai-side .ai-brief textarea {
+  min-height: 0;
+  margin: 0;
+  padding: var(--s-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  resize: vertical;
+  overflow: auto;
+  font: var(--t-md) / 1.45 var(--font);
+}
+.ai-side .ai-brief textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.ai-brief-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.ai-side-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  align-self: flex-start;
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: inherit;
+  font-size: var(--t-md);
+}
+.ai-side-button:hover:not(:disabled) {
+  background: var(--soft-hover);
+}
+.ai-side-button.small {
+  padding: 2px var(--s-2);
+  font-size: var(--t-sm);
+}
+.ai-tries {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-tries button.link {
+  padding: 0 var(--s-1);
+  font-size: var(--t-md);
+}
+.ai-start {
+  padding: var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: inherit;
+  font-size: var(--t-md);
+  text-align: left;
+}
+.ai-start:hover {
+  background: var(--soft-hover);
+}
+.ai-side .ai-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+.ai-side .ai-chips .chip {
+  padding: 2px var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.ai-side .ai-chips .chip:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.ai-side .ai-chips .dropdown.translate {
+  height: auto;
+  gap: 4px;
+  padding: 2px 6px 2px var(--s-2);
+  color: var(--fg-1);
+}
+.ai-found {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-md);
+}
+.ai-found .who {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.ai-found .addr,
+.ai-found .others {
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-found.missing {
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+  font-size: var(--t-sm);
+}
+.ai-side > footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  line-height: 1.4;
+}
+.ai-style-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--fg-1);
+}
+.ai-button.on {
+  background: var(--accent-soft);
+}
+@media (max-width: 760px) {
+  .compose.with-ai {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .compose.with-ai > .compose-main {
+    overflow: visible;
+  }
+  .ai-side {
+    width: auto;
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+}
+.compose.with-ai > .compose-main > footer {
+  margin-top: auto;
+}
+.ai-side .ai-chips {
+  align-items: center;
+}
+
+/* Paper (ui.md 4.4): compose is a sheet on the warm ground. Who, from where and about what read as one quiet block
+   of words, not a form; the subject is the sheet's title and the text sits at reading size in a measure. */
+/* The sheet always fits the window: it starts higher than other dialogs and scrolls inside once the mail is long. */
+.compose-overlay:not(.focused) {
+  padding-top: 6vh;
+}
+.compose:not(.inline):not(.focus) {
+  max-height: calc(100vh - var(--titlebar-h) - 12vh);
+}
+.compose:not(.inline) {
+  width: min(760px, 92vw);
+  background: var(--bg-0);
+  border: 1px solid var(--line-strong);
+  padding: var(--s-3) 44px var(--s-3);
+}
+.compose.with-ai:not(.inline) {
+  padding: 0;
+}
+.compose.with-ai > .compose-main {
+  padding: var(--s-3) 44px var(--s-3);
+}
+.compose-head {
+  min-height: 24px;
+  margin-bottom: 0;
+}
+/* T1: the subject first, as the sheet's title; the people in small lines under it ("to …", "cc …"). */
+.compose .fields {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--s-4);
+  font-size: var(--t-md);
+  color: var(--fg-1);
+}
+.compose .field {
+  border-bottom: 0;
+  min-height: 26px;
+  padding: 0;
+  gap: 2px var(--s-2);
+}
+.compose .field .label {
+  width: auto;
+  min-width: 22px;
+  font-size: var(--t-md);
+  color: var(--fg-2);
+}
+.compose .field input {
+  font-size: var(--t-md);
+  padding: 2px 0;
+}
+.compose .field input::placeholder {
+  color: var(--fg-2);
+}
+.compose .suggestions {
+  left: 28px;
+}
+/* People as names, underlined dashed like something to click, not as boxes. */
+.compose .chip {
+  height: 22px;
+  padding: 0;
+  gap: 2px;
+  border-radius: 0;
+  background: none;
+  color: var(--fg-0);
+  font-size: var(--t-md);
+  border-bottom: 1px dashed var(--line-strong);
+}
+.compose .chip .initials {
+  display: none;
+}
+.compose .chip button {
+  opacity: 0;
+  padding: 0 2px;
+}
+.compose .chip:hover button,
+.compose .chip button:focus-visible {
+  opacity: 1;
+}
+.compose .chip.outside {
+  background: none;
+  box-shadow: none;
+  color: var(--warn-fg);
+  border-bottom-color: var(--warn);
+}
+.compose .chip.invalid {
+  border: 0;
+  border-bottom: 1px dashed var(--danger);
+}
+.compose .field.subject {
+  margin: 2px 0 var(--s-1);
+}
+.compose .field.subject input {
+  min-width: 0;
+  padding: 0;
+  font: 600 24px / 1.3 var(--font);
+  color: var(--fg-0);
+}
+.compose .field.subject input::placeholder {
+  color: var(--fg-2);
+  font-weight: 500;
+}
+.compose:not(.inline) .editor-wrap,
+.compose:not(.inline) .ai-try,
+.compose:not(.inline) .html-sig {
+  width: 100%;
+  max-width: 600px;
+}
+.compose:not(.inline) .editor-body .ProseMirror {
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+/* S: the signature behind its own line. Folded, the line is all there is; open, the line holds the picker and
+   Fold, and the signature sits under it behind a thin rule. */
+.editor-body .ProseMirror .sig-hidden {
+  display: none;
+}
+.editor-body .ProseMirror .sig-open {
+  margin-left: 2px;
+  padding-left: var(--s-3);
+  border-left: 2px solid var(--line);
+  color: var(--fg-1);
+}
+.sig-line {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: var(--s-1) 0 var(--s-2);
+  font: var(--t-md) / 1.4 var(--font);
+  color: var(--fg-2);
+  user-select: none;
+  white-space: nowrap;
+}
+.sig-line .sig-toggle,
+.sig-line .sig-fold-button {
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.sig-line .sig-toggle:hover {
+  color: var(--fg-0);
+}
+.sig-line .sig-fold-button {
+  color: var(--accent);
+}
+.sig-line .rule {
+  flex: 1;
+  border-top: 1px dashed var(--line);
+}
+/* The account's signatures as words on the open line; the one in the text is marked. */
+.sig-choices {
+  margin: 0;
+  border: 0;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+}
+.sig-choices button {
+  padding: 1px var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-1);
+  font: var(--t-sm) / 1.5 var(--font);
+  cursor: pointer;
+}
+.sig-choices button:hover {
+  color: var(--fg-0);
+}
+.sig-choices button.on {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  cursor: default;
+}
+.html-sig .html-signature {
+  margin-left: 2px;
+  padding-left: var(--s-3);
+  border-left: 2px solid var(--line);
+}
+
+/* However long the mail, Send stays in sight at the bottom of the sheet. */
+.compose:not(.inline):not(.focus) > .compose-main > footer {
+  position: sticky;
+  bottom: calc(-1 * var(--s-3));
+  z-index: 2;
+  padding-bottom: var(--s-3);
+  margin-bottom: calc(-1 * var(--s-3));
+  background: var(--bg-0);
+}
+/* G's footer: from, Saved and length on the left; attach, AI and ⋯ (everything else) on the right; Send last. */
+.compose-main > footer {
+  border-top: 1px solid var(--line);
+  gap: var(--s-1) var(--s-2);
+}
+.compose-main > footer .from-pick {
+  background: none;
+  border-radius: 0;
+  color: var(--fg-1);
+  font-size: var(--t-md);
+  gap: 6px;
+}
+.compose-main > footer .from-pick .word {
+  color: var(--fg-2);
+}
+.compose-main > footer .from-pick .dot {
+  position: static;
+  flex: none;
+}
+.compose-main > footer .from-pick .dropdown {
+  max-width: 280px;
+  margin-left: -6px;
+}
+.compose-main > footer .saved {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+.compose-main > footer .more-wrap {
+  position: relative;
+}
+.compose-main > footer .send-menu {
+  left: auto;
+  right: 0;
+}
+.send-menu hr {
+  margin: var(--s-1) 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.send-menu button.danger {
+  color: var(--danger);
+}
+.compose-main > footer .send {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* F: focus takes the whole window. No sheet edges; subject and people stay editable at the top of a 640 px column
+   that runs the window's height; the outline is a column on the left; Send floats in a pill. The signature leaves
+   the page (it still goes out) and is picked from the pill. */
+.compose-overlay.focused {
+  padding: 0;
+  background: var(--bg-2);
+}
+.compose.focus:not(.inline) {
+  width: 100vw;
+  height: calc(100vh - var(--titlebar-h));
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  background: var(--bg-2);
+  flex-direction: row;
+  overflow: hidden;
+}
+/* V1: the page is a sheet on the warm desk; the outline lies on the desk beside it. */
+.compose.focus > .compose-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  max-width: 820px;
+  margin: var(--s-5) auto 0;
+  overflow-y: auto;
+  padding: var(--s-3) 64px 0;
+  background: var(--bg-0);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--fg-0) 8%, transparent);
+}
+.compose.focus .outline li.current button {
+  background: var(--bg-0);
+}
+.compose.focus .outline li button:hover {
+  background: color-mix(in srgb, var(--bg-0) 60%, transparent);
+}
+.compose.focus .outline {
+  width: 220px;
+  padding: 72px var(--s-2) var(--s-4) var(--s-4);
+}
+/* A right-hand space as wide as the outline keeps the sheet in the window's middle. */
+.compose.focus.with-outline::after {
+  content: "";
+  flex: none;
+  width: 220px;
+}
+.compose.focus .fields,
+.compose.focus .editor-wrap,
+.compose.focus .ai-try,
+.compose.focus .focus-column {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.compose.focus .field.subject input {
+  font-size: 28px;
+}
+.compose.focus .editor-wrap {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+.compose.focus .editor,
+.compose.focus .editor-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.compose.focus .editor-body {
+  max-width: none;
+  margin: 0;
+  padding-top: var(--s-2);
+}
+.compose.focus .editor-body .ProseMirror {
+  flex: 1;
+  min-height: 50vh;
+  padding-bottom: 96px;
+  font-size: 17px;
+  line-height: 1.75;
+}
+/* An empty mail says where to start in its first line (and Space for writing help), in the placeholder grey. */
+.compose.empty-body .ProseMirror > p:first-child:empty::before,
+.compose.empty-body .ProseMirror > p:first-child:has(> br:only-child)::before {
+  content: var(--hint);
+  position: absolute;
+  color: var(--fg-2);
+  pointer-events: none;
+}
+/* S1: the signature's line sits at the foot of the sheet while the mail is short, right after the text once long,
+   in the dialog as in focus. */
+.compose:not(.inline) .editor-body .ProseMirror {
+  display: flex;
+  flex-direction: column;
+  min-height: 220px;
+}
+.compose:not(.inline) .editor-body .ProseMirror > .sig-line {
+  margin-top: auto;
+  padding-top: var(--s-4);
+}
+.compose.focus .compose-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+.compose.focus .compose-main > footer {
+  position: sticky;
+  bottom: var(--s-4);
+  align-self: center;
+  margin: 0 auto var(--s-4);
+  padding: 6px 6px 6px var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-0);
+  box-shadow: var(--shadow);
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+}
+.compose.focus .compose-main > footer .tools {
+  display: inline-flex;
+}
+.compose.focus .compose-main > footer .send {
+  border-radius: 999px;
+}
+.compose.focus .compose-main > footer .from-pick,
+.compose.focus .compose-main > footer .more-wrap,
+.compose.focus .compose-main > footer .spacer {
+  display: none;
+}
+.outline-empty {
+  padding: 0 var(--s-2);
+  font-size: var(--t-sm);
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+/* The dialog's one offer of focus once a mail is long. */
+.focus-offer {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  padding: 6px var(--s-2) 6px var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--soft);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.focus-offer .link {
+  white-space: nowrap;
+}
+.focus-offer .dismiss {
+  display: inline-flex;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  padding: 2px;
+  cursor: pointer;
+}
+@media (max-width: 900px) {
+  .compose.focus .outline {
+    display: none;
+  }
+}
+
+/* While the person types, the tools fade; a pause, the mouse or focus on them brings them back. */
+.compose-main > footer .tools,
+.compose-main > footer .more-wrap,
+.compose-head .icon-button {
+  transition: opacity var(--d-base);
+}
+.compose.typing .compose-main > footer .tools:not(:focus-within),
+.compose.typing .compose-main > footer .more-wrap:not(:focus-within),
+.compose.typing .compose-head .icon-button:not(:focus-visible) {
+  opacity: 0;
+}
+
+/* The outline: in focus, a quiet column on the left of the text (ui.md 4.4). */
+.outline {
+  width: 230px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-3) var(--s-2);
+  overflow-y: auto;
+}
+.outline .spacer {
+  flex: 1;
+}
+.outline-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-1);
+  padding: 0 var(--s-2) var(--s-1);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.outline-head .faint {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.outline-head .link {
+  font-size: var(--t-xs);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.outline ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.outline li button {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  width: 100%;
+  padding: 5px var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  line-height: 1.35;
+  text-align: left;
+  cursor: grab;
+  touch-action: none;
+}
+.outline li button:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.outline li.current button {
+  background: var(--accent-soft);
+  color: var(--fg-0);
+}
+.outline li.heading .label {
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.outline li.greeting button {
+  color: var(--fg-2);
+}
+.outline li.dragged {
+  opacity: 0.4;
+}
+.outline li.over {
+  box-shadow: 0 -2px 0 var(--accent);
+}
+.outline .num {
+  width: 14px;
+  flex: none;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.outline .label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.outline .tag {
+  margin-left: auto;
+  font-size: var(--t-xs);
+  color: var(--accent);
+}
+.outline-check {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+  font-size: var(--t-sm);
+  line-height: 1.4;
+}
+.outline-check .row {
+  display: flex;
+  gap: var(--s-3);
+}
+.outline-check .link {
+  color: var(--warn-fg);
+  text-decoration: underline;
+}
+.outline-foot {
+  padding: var(--s-1) var(--s-2) 0;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+
+/* Folders and labels nested by name (ui.md 3.x Sidebar): each level 14 px further in, a chevron before a parent. */
+.rail-tree-row {
+  display: flex;
+  align-items: center;
+  padding-left: calc(var(--depth) * 14px);
+}
+.rail-tree-row .tree-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 30px;
+  margin-right: -6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+}
+.rail-tree-row .tree-toggle:hover {
+  color: var(--fg-0);
+}
+.rail-tree-row .rail-item {
+  flex: 1;
+}
+
+/* Tern's own drop-down (Dropdown.tsx): a quiet button with the choice and a chevron; the list is drawn like the
+   other menus, on top of everything, with a tick on the chosen one. */
+.dropdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dropdown:hover:not(:disabled),
+.dropdown.open {
+  border-color: var(--line-strong);
+}
+.dropdown:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.dropdown:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.dropdown.empty .dropdown-value {
+  color: var(--fg-2);
+}
+.dropdown-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dropdown > svg:last-child {
+  flex: none;
+  color: var(--fg-2);
+  transition: transform var(--d-fast) var(--ease);
+}
+.dropdown.open > svg:last-child {
+  transform: rotate(180deg);
+}
+/* In a sentence (compose's footer, the signature line): no box until the pointer is on it. */
+.dropdown.bare {
+  height: 26px;
+  padding: 0 4px 0 6px;
+  border-color: transparent;
+  background: none;
+  color: var(--fg-1);
+}
+.dropdown.bare:hover:not(:disabled),
+.dropdown.bare.open {
+  border-color: transparent;
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.dropdown-list {
+  position: fixed;
+  z-index: 1000;
+  max-width: min(420px, calc(100vw - 32px));
+  max-height: min(320px, 60vh);
+  overflow-y: auto;
+  padding: var(--s-1);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  font: var(--t-md) / 1.35 var(--font);
+  color: var(--fg-0);
+  animation: dropdown-in var(--d-fast) var(--ease);
+}
+@keyframes dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+.dropdown-list.up {
+  animation-name: dropdown-up;
+}
+@keyframes dropdown-up {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+.dropdown-list [role="option"] {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 6px var(--s-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.dropdown-list [role="option"].pointed {
+  background: var(--bg-3);
+}
+.dropdown-list [role="option"] > svg {
+  flex: none;
+  margin-left: auto;
+  color: var(--accent);
+}
+.dropdown-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.dropdown-list .chosen .dropdown-text {
+  font-weight: 500;
+}
+.dropdown-detail {
+  font-size: var(--t-sm);
+  font-weight: 400;
+  color: var(--fg-2);
+}
+.dropdown-group {
+  padding: var(--s-2) var(--s-2) 2px;
+  font-size: var(--t-xs, 11px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dropdown-list {
+    animation: none;
+  }
 }

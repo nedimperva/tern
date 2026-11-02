@@ -12,6 +12,7 @@ import { radioKeys } from "../../a11y";
 import { aiRoute, setSetting, settings, type AiFeatureKey, type AiRoute, type AiSettings } from "../../settings";
 import { Icon } from "../Icon";
 import { accountName, lastDay } from "./shared";
+import { Dropdown } from "../Dropdown";
 
 const PROVIDERS: { id: AiProvider; company: string; family: string; host: string; keys: string; placeholder: string }[] = [
   { id: "anthropic", company: "Anthropic", family: "Claude", host: "api.anthropic.com", keys: "console.anthropic.com", placeholder: "sk-ant-…" },
@@ -141,15 +142,11 @@ export function AiSettingsPage(props: { accounts: Account[]; /** Opens Settings 
   };
   /** A model picked for a feature: at once if its provider may already get mail (or AI is still off), else after
    * the person allows it. */
-  const pick = (feature: AiFeatureKey, el: HTMLSelectElement) => {
-    const [provider, ...rest] = el.value.split(":");
+  const pick = (feature: AiFeatureKey, value: string) => {
+    const [provider, ...rest] = value.split(":");
     const route = { provider: provider as AiProvider, model: rest.join(":") };
-    if (ai().enabled && !agreedTo(route.provider)) {
-      // The list keeps showing the model in use until the person allows the new provider.
-      const now = aiRoute(ai(), feature);
-      el.value = `${now.provider}:${now.model}`;
-      return setAsking({ feature, route });
-    }
+    // The list keeps showing the model in use until the person allows the new provider.
+    if (ai().enabled && !agreedTo(route.provider)) return setAsking({ feature, route });
     set({ uses: { ...ai().uses, [feature]: route } });
   };
   const allowAsked = () => {
@@ -305,35 +302,21 @@ export function AiSettingsPage(props: { accounts: Account[]; /** Opens Settings 
                     {f.sends}
                   </span>
                   <span role="cell">
-                    <select
-                      aria-label={`Model for ${f.name}`}
+                    <Dropdown
+                      label={`Model for ${f.name}`}
                       value={`${aiRoute(ai(), f.key).provider}:${aiRoute(ai(), f.key).model}`}
                       disabled={!ready()}
-                      onChange={(e) => pick(f.key, e.currentTarget)}
-                    >
-                      <Show when={!(models()[aiRoute(ai(), f.key).provider] ?? []).some(([id]) => id === aiRoute(ai(), f.key).model)}>
-                        <option value={`${aiRoute(ai(), f.key).provider}:${aiRoute(ai(), f.key).model}`} selected>
-                          {modelName(aiRoute(ai(), f.key))}
-                        </option>
-                      </Show>
-                      <For each={PROVIDERS.filter((p) => hasKey(p.id))}>
-                        {(p) => (
-                          <optgroup label={p.company}>
-                            <For each={models()[p.id] ?? []}>
-                              {([id, name]) => {
-                                const r = () => aiRoute(ai(), f.key);
-                                // Marked here, not only by the select's value: the list arrives after the select.
-                                return (
-                                  <option value={`${p.id}:${id}`} selected={r().provider === p.id && r().model === id}>
-                                    {name}
-                                  </option>
-                                );
-                              }}
-                            </For>
-                          </optgroup>
-                        )}
-                      </For>
-                    </select>
+                      choices={[
+                        // The model in use stays listed while the providers' lists load, or after it left them.
+                        ...((models()[aiRoute(ai(), f.key).provider] ?? []).some(([id]) => id === aiRoute(ai(), f.key).model)
+                          ? []
+                          : [{ value: `${aiRoute(ai(), f.key).provider}:${aiRoute(ai(), f.key).model}`, label: modelName(aiRoute(ai(), f.key)) }]),
+                        ...PROVIDERS.filter((p) => hasKey(p.id)).flatMap((p) =>
+                          (models()[p.id] ?? []).map(([id, name]) => ({ value: `${p.id}:${id}`, label: name, group: p.company })),
+                        ),
+                      ]}
+                      onChange={(v) => pick(f.key, v)}
+                    />
                   </span>
                   <span role="cell">
                     <input type="checkbox" checked={ai()[f.toggle]} onChange={(e) => set({ [f.toggle]: e.currentTarget.checked })} aria-label={f.name} />
@@ -422,15 +405,20 @@ export function AiSettingsPage(props: { accounts: Account[]; /** Opens Settings 
           </div>
           <div class="ai-card">
             <span class="kicker">Limit</span>
-            <label class="ai-inline">
+            <div class="ai-inline">
               Daily limit
-              <select value={String(ai().dailyTokens)} onChange={(e) => set({ dailyTokens: Number(e.currentTarget.value) })}>
-                <option value="50000">50,000 tokens</option>
-                <option value="200000">200,000 tokens</option>
-                <option value="1000000">1,000,000 tokens</option>
-                <option value="0">No limit</option>
-              </select>
-            </label>
+              <Dropdown
+                label="Daily limit"
+                value={String(ai().dailyTokens)}
+                choices={[
+                  { value: "50000", label: "50,000 tokens" },
+                  { value: "200000", label: "200,000 tokens" },
+                  { value: "1000000", label: "1,000,000 tokens" },
+                  { value: "0", label: "No limit" },
+                ]}
+                onChange={(v) => set({ dailyTokens: Number(v) })}
+              />
+            </div>
             <span class="help">Small models cost a fraction of the big ones: summaries and replies need little.</span>
           </div>
         </div>
