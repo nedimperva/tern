@@ -146,8 +146,9 @@ export function Compose(props: {
     const s = props.signatures.find((x) => x.id === sigId());
     return s?.custom && s.html ? s : null;
   };
-  // An HTML signature folds to one line like a text one (Editor's signatureFold).
-  const [htmlSigOpen, setHtmlSigOpen] = createSignal(false);
+  // An HTML signature folds to one line like a text one (Editor's signatureFold). One state for both: folded at the
+  // start, then as the person leaves it, through switches between the two kinds.
+  const [sigOpen, setSigOpen] = createSignal(false);
   const sigBelow = () => props.init.signature?.below ?? (settings.signatureBelow && !!props.init.inReplyTo);
   let tools: Awaited<ReturnType<typeof signatureTools>> | undefined;
   void signatureTools().then((t) => (tools = t));
@@ -1200,6 +1201,8 @@ export function Compose(props: {
                 options: () => accountSignatures().map((x) => ({ id: x.id, name: x.name || "Untitled" })),
                 current: () => sigId(),
                 pick: (id) => void switchSignature(accountSignatures().find((x) => x.id === id) ?? null),
+                open: sigOpen,
+                setOpen: setSigOpen,
               }}
               ref={editorReady}
               onPictures={pictures}
@@ -1253,16 +1256,19 @@ export function Compose(props: {
       <Show when={htmlSig()}>
         {(s) => (
           <div class="html-sig">
-            <div class="sig-line" classList={{ open: htmlSigOpen() }}>
+            <div class="sig-line" classList={{ open: sigOpen() }}>
               <button
                 type="button"
                 class="sig-toggle"
-                title={htmlSigOpen() ? "Fold the signature" : "Show the signature"}
-                onClick={() => setHtmlSigOpen(!htmlSigOpen())}
+                title={sigOpen() ? "Fold the signature" : "Show the signature"}
+                onClick={() => setSigOpen(!sigOpen())}
               >
-                {htmlSigOpen() ? "▾ Signature" : `▸ ${s().name ? `“${s().name}”` : "Your"} signature`}
+                {sigOpen() ? "▾ Signature" : "▸ Signature"}
               </button>
-              <Show when={htmlSigOpen()}>
+              <Show when={!sigOpen() && s().name}>
+                <span class="sig-name">{s().name}</span>
+              </Show>
+              <Show when={sigOpen()}>
                 <fieldset class="sig-choices" aria-label="Signature">
                   <For each={[...accountSignatures().map((x) => ({ id: x.id, name: x.name || "Untitled" })), { id: 0, name: "None" }]}>
                     {(o) => (
@@ -1279,13 +1285,13 @@ export function Compose(props: {
                 </fieldset>
               </Show>
               <span class="rule" />
-              <Show when={htmlSigOpen()}>
-                <button type="button" class="sig-fold-button" onClick={() => setHtmlSigOpen(false)}>
+              <Show when={sigOpen()}>
+                <button type="button" class="sig-fold-button" onClick={() => setSigOpen(false)}>
                   Fold
                 </button>
               </Show>
             </div>
-            <Show when={htmlSigOpen()}>
+            <Show when={sigOpen()}>
               <div class="html-signature" title="Your signature, as it goes out. Change it in Settings → Signatures.">
                 <HtmlFrame html={s().html!} title="Signature" />
               </div>

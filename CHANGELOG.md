@@ -43,6 +43,8 @@ every release needs one here before it is tagged.
   in on the next check.
 - A signature written as HTML code (from a signature generator, say) showed as code in compose and went out as code.
   Tern now sees the code, treats it as an HTML signature and shows it as it looks, including ones saved before.
+- The signature in compose stays open once you open it, until you press Fold, also when you switch between a text
+  and an HTML signature. It still starts folded, and the folded line now names the signature in the mail.
 
 ## [1.8.0] - 2026-11-02
 
