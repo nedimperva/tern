@@ -3,24 +3,25 @@
 import { For, type JSX } from "solid-js";
 import type { Account } from "../../api";
 import { setSetting, settings, type Settings } from "../../settings";
+import { Dropdown } from "../Dropdown";
 
 export type Choice<K extends keyof Settings> = { label: string; value: Settings[K] };
 
 export function Select<K extends keyof Settings>(props: { name: K; title: string; help: string; choices: Choice<K>[] }) {
   return (
-    <label class="setting">
+    <div class="setting">
       <span class="title">{props.title}</span>
-      <select
+      <Dropdown
+        label={props.title}
         value={String(settings[props.name])}
-        onChange={(e) => {
-          const picked = props.choices.find((c) => String(c.value) === e.currentTarget.value);
+        choices={props.choices.map((c) => ({ value: String(c.value), label: c.label }))}
+        onChange={(v) => {
+          const picked = props.choices.find((c) => String(c.value) === v);
           if (picked) setSetting(props.name, picked.value);
         }}
-      >
-        <For each={props.choices}>{(c) => <option value={String(c.value)}>{c.label}</option>}</For>
-      </select>
+      />
       <span class="help">{props.help}</span>
-    </label>
+    </div>
   );
 }
 

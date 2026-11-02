@@ -95,6 +95,8 @@ function signatureFold(picker?: SignaturePicker) {
         const asked = tr.getMeta(sigKey) as boolean | undefined;
         const range = signatureRange(state.doc);
         if (asked !== undefined) return { open: asked, text: asked && range ? sigText(state.doc, range) : "" };
+        // Compose swapped in another signature: the line stays as open or folded as it was, about the new one.
+        if (tr.getMeta("signatureSwap")) return { open: was.open && !!range, text: was.open && range ? sigText(state.doc, range) : "" };
         if (!range || !tr.selectionSet) return was;
         const { from, to } = state.selection;
         const inside = to > range.from && from < range.to;
@@ -138,11 +140,26 @@ function signatureFold(picker?: SignaturePicker) {
           toggle.onmousedown = (e) => (e.preventDefault(), view.dispatch(view.state.tr.setMeta(sigKey, !open)));
           el.append(toggle);
           if (open && options.length) {
-            const select = document.createElement("select");
-            select.setAttribute("aria-label", "Signature");
-            for (const o of [...options, { id: 0, name: "None" }]) select.add(new Option(o.name, String(o.id), false, o.id === (current ?? 0)));
-            select.onchange = () => picker?.pick(Number(select.value) || null);
-            el.append(select);
+            // The account's signatures as words to click, the one in the text marked: one or two names read
+            // faster than a list, and switching is one click.
+            const chips = document.createElement("span");
+            chips.className = "sig-choices";
+            chips.setAttribute("role", "group");
+            chips.setAttribute("aria-label", "Signature");
+            for (const o of [...options, { id: 0, name: "None" }]) {
+              const chip = document.createElement("button");
+              chip.type = "button";
+              chip.textContent = o.name;
+              const on = o.id === (current ?? 0);
+              chip.setAttribute("aria-pressed", String(on));
+              if (on) chip.className = "on";
+              chip.onmousedown = (e) => {
+                e.preventDefault();
+                if (!on) picker?.pick(o.id || null);
+              };
+              chips.append(chip);
+            }
+            el.append(chips);
           }
           const rule = document.createElement("span");
           rule.className = "rule";

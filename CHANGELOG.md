@@ -20,8 +20,11 @@ every release needs one here before it is tagged.
   set a little larger, and the tools fade while you type. The footer holds From (when you have more than one
   address), Saved and the word count on the left, and attach, AI, a ⋯ menu (other ways to send, snippets,
   signatures, discard) and Send on the right.
-- The signature folds to one line. Open it to read or change it, pick another one right there, and Fold it again;
-  it also folds again on its own when you go back to your text.
+- The signature folds to one line at the foot of the compose window. Open it to read it, switch to another one with
+  one click right there, and Fold it again; it also folds again on its own when you go back to your text.
+- Drop-downs are Tern's own everywhere (compose's From, Translate, Settings), instead of the system's lists.
+- In the sidebar, an account's Junk, Trash and other special folders sit under a "More" heading at the end, like
+  Folders and Labels.
 - Focus mode (Ctrl+Shift+F) fills the whole window: your mail is a white sheet on the warm background, with
   larger text, the signature line at the foot of the sheet, and Send and attach in a floating pill.
 - An empty mail says "Start writing, or press Space for writing help" on its first line, instead of a box.

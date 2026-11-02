@@ -1259,7 +1259,6 @@ button.primary kbd {
 .rail .rail-item:focus-visible,
 .rail-head:focus-visible,
 .rail-sub:focus-visible,
-.rail-more:focus-visible,
 .rail-foot button:focus-visible,
 .rail-compose:focus-visible {
   outline: none;
@@ -1350,18 +1349,11 @@ button.primary kbd {
   margin-top: var(--s-1);
   padding-left: 35px;
 }
-/* "More · 4": the account's other folders, folded by default. */
-.rail-more {
-  align-self: flex-start;
-  height: 26px;
-  padding: 0 var(--s-2) 0 35px;
-  border: 0;
-  background: none;
+/* "More": the server's other special folders (Junk, Trash, All Mail…), a heading like Folders and Labels at the end
+   of the account, folded by default, with how many it holds while folded. */
+.rail-sub .rail-sub-count {
+  font-weight: 400;
   color: var(--fg-2);
-  font-size: var(--t-sm);
-}
-.rail-more:hover {
-  color: var(--fg-0);
 }
 /* The places between New mail and the foot scroll on their own, with a thin bar that shows under the pointer. A
    stable gutter keeps the rows from shifting when it does; the negative margin gives that gutter the rail's
@@ -2512,23 +2504,6 @@ button.fold {
   border-radius: 50%;
   pointer-events: none;
 }
-.compose .from-pick svg {
-  position: absolute;
-  right: 8px;
-  pointer-events: none;
-}
-.compose .from-pick select {
-  appearance: none;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  padding: 4px 24px 4px 23px;
-  max-width: 420px;
-  text-overflow: ellipsis;
-  cursor: pointer;
-  field-sizing: content;
-}
 .compose .from-pick:hover {
   color: var(--fg-0);
 }
@@ -3096,7 +3071,7 @@ button.fold {
   margin: 0 0 var(--s-2);
   font-size: var(--t-lg);
 }
-.setup label {
+.setup :is(label, .pick) {
   display: flex;
   flex-direction: column;
   gap: var(--s-1);
@@ -3104,7 +3079,7 @@ button.fold {
   color: var(--fg-1);
 }
 .setup label input,
-.setup label select {
+.setup .pick .dropdown {
   color: var(--fg-0);
   font-size: var(--t-rd);
 }
@@ -4167,46 +4142,6 @@ button.place.muted {
   line-height: 1.55;
   white-space: pre-line;
 }
-/* Compose's footer: which signature the message carries. A text control like Later and Cc beside it, the whole
-   of it the select so a click anywhere opens it; the icons sit over it. */
-.compose .signature-pick {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--r-md);
-  color: var(--fg-1);
-}
-.compose .signature-pick:hover {
-  background: var(--bg-2);
-  color: var(--fg-0);
-}
-.compose .signature-pick svg {
-  position: absolute;
-  pointer-events: none;
-}
-.compose .signature-pick svg:first-child {
-  left: 6px;
-}
-.compose .signature-pick svg:last-child {
-  right: 6px;
-}
-.compose .signature-pick select {
-  appearance: none;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  padding: var(--s-1) 22px var(--s-1) 24px;
-  cursor: pointer;
-  /* As wide as the name picked, not the longest; older engines keep the native width. */
-  field-sizing: content;
-}
-.compose .signature-pick select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-  border-radius: var(--r-md);
-}
-
 /* MARK: Attachment viewer (docs/design/ui.md §4.11): the file over everything, on a dark scrim in either theme. */
 .viewer {
   position: fixed;
@@ -5104,7 +5039,7 @@ fieldset.plain {
   gap: var(--s-2);
   color: var(--fg-1);
 }
-.ai-inline select {
+.ai-inline .dropdown {
   max-width: 60%;
 }
 /* Mail it may read: the accounts and the redaction as rows of one card. */
@@ -5430,7 +5365,7 @@ button.link.danger {
 .ai-provider .help {
   flex-basis: 100%;
 }
-.ai-ledger select {
+.ai-ledger .dropdown {
   width: 100%;
   min-width: 0;
 }
@@ -6824,11 +6759,11 @@ button.link.danger {
   background: var(--bg-3);
   color: var(--fg-0);
 }
-.ai-side .ai-chips .translate select {
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
+.ai-side .ai-chips .dropdown.translate {
+  height: auto;
+  gap: 4px;
+  padding: 2px 6px 2px var(--s-2);
+  color: var(--fg-1);
 }
 .ai-found {
   display: flex;
@@ -6892,13 +6827,6 @@ button.link.danger {
 }
 .ai-side .ai-chips {
   align-items: center;
-}
-.ai-side .ai-chips .translate {
-  padding: 0 var(--s-1);
-}
-.ai-side .ai-chips .translate select {
-  padding: 2px 0;
-  font-size: var(--t-sm);
 }
 
 /* Paper (ui.md 4.4): compose is a sheet on the warm ground. Who, from where and about what read as one quiet block
@@ -7052,13 +6980,34 @@ button.link.danger {
   flex: 1;
   border-top: 1px dashed var(--line);
 }
-.sig-line select {
-  padding: 1px 6px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg-0);
+/* The account's signatures as words on the open line; the one in the text is marked. */
+.sig-choices {
+  margin: 0;
+  border: 0;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+}
+.sig-choices button {
+  padding: 1px var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
   color: var(--fg-1);
-  font: var(--t-sm) var(--font);
+  font: var(--t-sm) / 1.5 var(--font);
+  cursor: pointer;
+}
+.sig-choices button:hover {
+  color: var(--fg-0);
+}
+.sig-choices button.on {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  cursor: default;
 }
 .html-sig .html-signature {
   margin-left: 2px;
@@ -7092,14 +7041,11 @@ button.link.danger {
 }
 .compose-main > footer .from-pick .dot {
   position: static;
+  flex: none;
 }
-.compose-main > footer .from-pick select {
-  padding: 2px 16px 2px 0;
-  border-bottom: 1px dashed var(--line-strong);
-  max-width: 260px;
-}
-.compose-main > footer .from-pick svg {
-  right: 0;
+.compose-main > footer .from-pick .dropdown {
+  max-width: 280px;
+  margin-left: -6px;
 }
 .compose-main > footer .saved {
   font-size: var(--t-sm);
@@ -7219,12 +7165,14 @@ button.link.danger {
   color: var(--fg-2);
   pointer-events: none;
 }
-/* S1: the signature's line sits at the foot of the sheet while the mail is short, right after the text once long. */
-.compose.focus .editor-body .ProseMirror {
+/* S1: the signature's line sits at the foot of the sheet while the mail is short, right after the text once long,
+   in the dialog as in focus. */
+.compose:not(.inline) .editor-body .ProseMirror {
   display: flex;
   flex-direction: column;
+  min-height: 220px;
 }
-.compose.focus .editor-body .ProseMirror > .sig-line {
+.compose:not(.inline) .editor-body .ProseMirror > .sig-line {
   margin-top: auto;
   padding-top: var(--s-4);
 }
@@ -7446,4 +7394,139 @@ button.link.danger {
 }
 .rail-tree-row .rail-item {
   flex: 1;
+}
+
+/* Tern's own drop-down (Dropdown.tsx): a quiet button with the choice and a chevron; the list is drawn like the
+   other menus, on top of everything, with a tick on the chosen one. */
+.dropdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dropdown:hover:not(:disabled),
+.dropdown.open {
+  border-color: var(--line-strong);
+}
+.dropdown:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.dropdown:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.dropdown.empty .dropdown-value {
+  color: var(--fg-2);
+}
+.dropdown-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dropdown > svg:last-child {
+  flex: none;
+  color: var(--fg-2);
+  transition: transform var(--d-fast) var(--ease);
+}
+.dropdown.open > svg:last-child {
+  transform: rotate(180deg);
+}
+/* In a sentence (compose's footer, the signature line): no box until the pointer is on it. */
+.dropdown.bare {
+  height: 26px;
+  padding: 0 4px 0 6px;
+  border-color: transparent;
+  background: none;
+  color: var(--fg-1);
+}
+.dropdown.bare:hover:not(:disabled),
+.dropdown.bare.open {
+  border-color: transparent;
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.dropdown-list {
+  position: fixed;
+  z-index: 1000;
+  max-width: min(420px, calc(100vw - 32px));
+  max-height: min(320px, 60vh);
+  overflow-y: auto;
+  padding: var(--s-1);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  font: var(--t-md) / 1.35 var(--font);
+  color: var(--fg-0);
+  animation: dropdown-in var(--d-fast) var(--ease);
+}
+@keyframes dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+.dropdown-list.up {
+  animation-name: dropdown-up;
+}
+@keyframes dropdown-up {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+.dropdown-list [role="option"] {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 6px var(--s-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.dropdown-list [role="option"].pointed {
+  background: var(--bg-3);
+}
+.dropdown-list [role="option"] > svg {
+  flex: none;
+  margin-left: auto;
+  color: var(--accent);
+}
+.dropdown-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.dropdown-list .chosen .dropdown-text {
+  font-weight: 500;
+}
+.dropdown-detail {
+  font-size: var(--t-sm);
+  font-weight: 400;
+  color: var(--fg-2);
+}
+.dropdown-group {
+  padding: var(--s-2) var(--s-2) 2px;
+  font-size: var(--t-xs, 11px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dropdown-list {
+    animation: none;
+  }
 }

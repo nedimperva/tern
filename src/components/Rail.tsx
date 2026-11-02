@@ -184,12 +184,6 @@ export function Rail(props: {
               folded={<Count n={single() ? 0 : accountUnread()} />}
             >
               <For each={main()}>{row}</For>
-              <For each={shown(more(), showsMore())}>{row}</For>
-              <Show when={more().length}>
-                <button type="button" class="rail-more" aria-expanded={showsMore()} onClick={() => toggle(moreKey, false)}>
-                  {showsMore() ? "Less" : `More · ${more().length}`}
-                </button>
-              </Show>
               <Show when={own().length}>
                 <button type="button" class="rail-sub" aria-expanded={showsOwn()} onClick={() => toggle(ownKey, own().length <= 8)}>
                   <span>Folders</span>
@@ -208,6 +202,16 @@ export function Rail(props: {
                   <Icon name={showsLabels() ? "chevron-down" : "chevron-right"} size={12} />
                 </button>
                 <Tree nodes={folderTree(labels())} open={showsLabels()} depth={0} account={account.id} isTarget={props.isTarget} go={go} dots />
+              </Show>
+              <Show when={more().length}>
+                <button type="button" class="rail-sub" aria-expanded={showsMore()} onClick={() => toggle(moreKey, false)}>
+                  <span>More</span>
+                  <Show when={!showsMore()}>
+                    <span class="rail-sub-count">{more().length}</span>
+                  </Show>
+                  <Icon name={showsMore() ? "chevron-down" : "chevron-right"} size={12} />
+                </button>
+                <For each={shown(more(), showsMore())}>{row}</For>
               </Show>
             </Fold>
           );

@@ -26,6 +26,7 @@ import { until } from "./ConversationRow";
 import { SnoozePicker } from "./SnoozePicker";
 import type { SnippetSource } from "./Editor";
 import { Icon } from "./Icon";
+import { Dropdown } from "./Dropdown";
 import { wordDiff } from "../wordDiff";
 import { HtmlFrame } from "./HtmlFrame";
 // The editor is a chunk of its own (ProseMirror is most of its weight); App loads it once the list is up.
@@ -71,7 +72,6 @@ export type ComposeInit = {
 
 /** A From picker line: "From Ada · ada@example.com". */
 // It follows the word "from" in the sheet's top lines.
-const fromLabel = (name: string, email: string) => (name ? `${name} · ${email}` : email);
 
 /** The signature of `accountId` for new mail or for replies, if it has one. */
 export function defaultSignature(all: Signature[], accountId: number | undefined, kind: "new" | "reply") {
@@ -181,12 +181,13 @@ export function Compose(props: {
     const current = props.signatures.find((s) => s.id === sigId());
     const at = current ? findSignature(state.doc, current) : null;
     const blocks = next && !next.custom ? signatureDoc(next).content : null;
-    if (at) view.dispatch(blocks ? state.tr.replaceWith(at.from, at.to, blocks) : state.tr.delete(at.from, at.to));
+    // Which one is in use changes first: the signature line reads it as the swap redraws it.
+    setSigId(next?.id ?? null);
+    if (at) view.dispatch((blocks ? state.tr.replaceWith(at.from, at.to, blocks) : state.tr.delete(at.from, at.to)).setMeta("signatureSwap", true));
     else if (blocks) {
       const below = props.init.signature?.below ?? false;
-      view.dispatch(state.tr.insert(signaturePlace(state.doc, below), blocks));
+      view.dispatch(state.tr.insert(signaturePlace(state.doc, below), blocks).setMeta("signatureSwap", true));
     }
-    setSigId(next?.id ?? null);
     // The text did not change, but what goes out did.
     if (current?.custom || next?.custom) changed();
   };
@@ -1035,21 +1036,15 @@ export function Compose(props: {
                 </button>
               )}
             </For>
-            <label class="chip translate">
-              <span class="visually-hidden">Translate into</span>
-              <select
-                disabled={aiBusy() || (ownEmpty() && !versions().length)}
-                value=""
-                onChange={(e) => {
-                  const lang = e.currentTarget.value;
-                  e.currentTarget.value = "";
-                  if (lang) void askAi({ label: `In ${lang}`, request: `Translate it into ${lang}. Keep the meaning, the tone and the names.` });
-                }}
-              >
-                <option value="">Translate…</option>
-                <For each={LANGUAGES}>{(l) => <option value={l}>{l}</option>}</For>
-              </select>
-            </label>
+            <Dropdown
+              class="chip translate"
+              label="Translate into"
+              placeholder="Translate…"
+              value=""
+              disabled={aiBusy() || (ownEmpty() && !versions().length)}
+              choices={LANGUAGES.map((l) => ({ value: l, label: l }))}
+              onChange={(lang) => void askAi({ label: `In ${lang}`, request: `Translate it into ${lang}. Keep the meaning, the tone and the names.` })}
+            />
           </div>
         </section>
         <Show when={newMail() ? found() : null}>
@@ -1268,14 +1263,20 @@ export function Compose(props: {
                 {htmlSigOpen() ? "▾ Signature" : `▸ ${s().name ? `“${s().name}”` : "Your"} signature`}
               </button>
               <Show when={htmlSigOpen()}>
-                <select
-                  aria-label="Signature"
-                  value={String(sigId() ?? 0)}
-                  onChange={(e) => void switchSignature(accountSignatures().find((x) => x.id === Number(e.currentTarget.value)) ?? null)}
-                >
-                  <For each={accountSignatures()}>{(x) => <option value={String(x.id)}>{x.name || "Untitled"}</option>}</For>
-                  <option value="0">None</option>
-                </select>
+                <fieldset class="sig-choices" aria-label="Signature">
+                  <For each={[...accountSignatures().map((x) => ({ id: x.id, name: x.name || "Untitled" })), { id: 0, name: "None" }]}>
+                    {(o) => (
+                      <button
+                        type="button"
+                        aria-pressed={(sigId() ?? 0) === o.id}
+                        classList={{ on: (sigId() ?? 0) === o.id }}
+                        onClick={() => (sigId() ?? 0) !== o.id && void switchSignature(accountSignatures().find((x) => x.id === o.id) ?? null)}
+                      >
+                        {o.name}
+                      </button>
+                    )}
+                  </For>
+                </fieldset>
               </Show>
               <span class="rule" />
               <Show when={htmlSigOpen()}>
@@ -1415,33 +1416,21 @@ export function Compose(props: {
       </Show>
       <footer>
         <Show when={props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length)}>
-          <label class="from-pick" title="Send from">
+          <div class="from-pick">
             <span class="word">from</span>
-            <span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />
-            <select
-              aria-label="From"
+            <Dropdown
+              class="bare"
+              label="From"
+              title="Send from"
+              lead={<span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />}
               value={alias() ? `${from()} ${alias()}` : String(from())}
-              onChange={(e) => changeFrom(e.currentTarget.value)}
-            >
-              <For each={props.accounts}>
-                {(a) => (
-                  <>
-                    <option value={String(a.id)} title={fromLabel(a.displayName, a.email)}>
-                      {a.email}
-                    </option>
-                    <For each={a.aliases ?? []}>
-                      {(x) => (
-                        <option value={`${a.id} ${x.email}`} title={fromLabel(x.name || a.displayName, x.email)}>
-                          {x.email}
-                        </option>
-                      )}
-                    </For>
-                  </>
-                )}
-              </For>
-            </select>
-            <Icon name="chevron-down" size={12} />
-          </label>
+              choices={props.accounts.flatMap((a) => [
+                { value: String(a.id), label: a.email, detail: a.displayName || undefined },
+                ...(a.aliases ?? []).map((x) => ({ value: `${a.id} ${x.email}`, label: x.email, detail: x.name || a.displayName || undefined })),
+              ])}
+              onChange={changeFrom}
+            />
+          </div>
         </Show>
         <span class="saved" aria-live="polite">
           <Show when={saveState() === "saved"}>Saved</Show>

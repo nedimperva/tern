@@ -105,7 +105,7 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 │ Snoozed  │    GitHub            [tern] CI failed on main  Mon  │   pane    │
 │ account  │    Linear            LIN-233 moved to Done     Mon  │  (opt.)   │
 │ folders  │    …                                                │           │
-│ More · 3 ├────────────────────────────────────────────────────┤           │
+│ More   › ├────────────────────────────────────────────────────┤           │
 │ ⚙ Settin │  ● Synced · 2 changes waiting    ↩ Undo archive  Z │           │
 └──────────┴────────────────────────────────────────────────────┴───────────┘
 ```
@@ -125,8 +125,9 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   Narrower, turned off, or in focus mode, the same column slides over the list with a scrim and closes on `Esc`
   or after going somewhere. New mail at the top (the one raised control: `--bg-0`, a `--line` edge, `--raise`),
   then Inbox (All Inboxes with more than one account), Snoozed, Read later and Marks with icons, saved searches,
-  and each account: Inbox, Drafts, Sent, Archive, the server's other special folders under "More · N", then the
-  person's own Folders and the Labels. Accounts, Folders, Labels and Searches fold under their headings (the chevron
+  and each account: Inbox, Drafts, Sent, Archive, the person's own Folders, the Labels, and last the server's
+  other special folders (Junk, Trash, All Mail…) under a "More" heading like the others, folded, its count beside
+  it while folded (2026-11-02: a "More · N" / "Less" line read as a folder). Accounts, Folders, Labels and Searches fold under their headings (the chevron
   shows on hover or while folded; Folders start folded past eight, Labels past six). Folders and labels nest by
   name ("Projects/Alpha", or "INBOX.Projects" on servers that write them so): each level 14 px in, a chevron
   before a parent, parents start folded and show the unread of everything under them; a parent the server doesn't
@@ -334,9 +335,11 @@ none).
   `--line-strong` underline (× on hover), outside people in `--warn-fg` with a `--warn` underline. The sheet is
   `--bg-0` with a `--line-strong` border, 44 px side padding.
 - Signature (S): behind its own line. Folded: "▸ Name · signature" in `--fg-2` and a dashed rule. Open: "▾ Signature",
-  the picker (its signatures and None), the rule and Fold in `--accent`; the signature sits under it behind a 2 px
+  the account's signatures and None as words on a `--bg-2` track (the one in the text on `--bg-0`, one click
+  switches; 2026-11-02, a drop-down there felt slow), the rule and Fold in `--accent`; the signature sits under it behind a 2 px
   `--line` rule. It opens on a click, or when the caret goes in; it folds on Fold, or when the caret leaves it
-  unchanged. A click under the text puts the caret above it. An HTML signature folds the same way. It always goes
+  unchanged. A click under the text puts the caret above it.
+  The line sits at the foot of the text area (min 220 px) while the mail is short, in the dialog as in focus. An HTML signature folds the same way. It always goes
   out whole, and the word count never counts it.
 - Editor body: 15 px / 1.65 in the dialog (`--t-rd` inline), min 160 px, grows with content. Formatting bar appears only on text selection, floating above the selection: B I U S · link · list · quote.
 - Attachments: cards 132 px wide (picture thumbnail, else the file kind's icon; name and size; × on hover) and a
@@ -479,10 +482,15 @@ the header's panel icon; a Note from the selection bar opens it with the note's 
 - Redrawn 2026-10-29: the section list is the sidebar's (30 px rows, a 15 px icon or an account's dot, group labels
   in `--t-sm` 500 `--fg-2`, Close settings at the foot). Settings next to each other share a card (`--card`, a
   `--line` edge, `--r-lg`, a rule between rows): the name (`--t-md` 500) and its line (`--t-sm` `--fg-2`) on the
-  left, the control on the right, centred against both. Fields and selects are 32 px on `--bg-0` (a `--chevron` on
-  selects); buttons are `--bg-0` with a `--line` edge and `--raise`; checkboxes take `accent-color`. Segmented
+  left, the control on the right, centred against both. Fields and drop-downs are 32 px on `--bg-0`; buttons are `--bg-0` with a `--line` edge and `--raise`; checkboxes take `accent-color`. Segmented
   controls are a `--bg-2` track with the picked part on `--card`. The AI page's provider list, feature table, cards
   and the snippet and signature panels are cards the same way.
+- Drop-downs are Tern's own (`Dropdown.tsx`, 2026-11-02), never a native `<select>`: WebKitGTK and WebView2 draw
+  those lists in the system's look. The button shows the choice and a chevron (`.bare` in a sentence, as compose's
+  From: no box until hovered); the list is a menu on `--bg-1` with `--shadow`, the pointed row on `--bg-3`, a tick
+  in `--accent` on the chosen one, an optional second line in `--fg-2` and group names in small capitals. It opens
+  upward when the room is above, sits over everything (so a dialog never clips it), and takes the arrows, Home,
+  End, Enter, Esc and a first letter.
 - Built (2026-10-19), Snippets and Signatures use a wider (1040 px) list-and-detail layout. On the left, a list
   of rows (name, `;shortcut` or "New mail · Replies" in `--fg-2`); the picked row is `--bg-3`, nothing more, and a
   pressed filter pill is `--bg-3` too. Colour is for accounts: a per-account tab is underlined in that account's colour.

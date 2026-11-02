@@ -1,6 +1,6 @@
 // Settings → Signatures.
 
-import { createEffect, createSignal, For, Index, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
+import { createEffect, createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
 import { api, type Account, type Signature } from "../../api";
 import { colourOf } from "../../colours";
 import { setSetting, settings } from "../../settings";
@@ -9,6 +9,7 @@ import { HtmlFrame } from "../HtmlFrame";
 import { htmlText, localPictures, pastedHtml } from "../../htmlSignature";
 import { accountName, Group, MailPreview } from "./shared";
 import { formatted, keptHtml } from "./snippets";
+import { Dropdown } from "../Dropdown";
 
 const Editor = lazy(() => import("../Editor").then((m) => ({ default: m.Editor })));
 
@@ -269,36 +270,24 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
 
               <Group title="When it's used">
               <div class="pair">
-                <label class="field">
+                <div class="field">
                   <span class="title">New messages</span>
-                  <select onChange={(e) => void setDefault(false, e.currentTarget.value)}>
-                    <Index each={mine()}>
-                      {(x) => (
-                        <option value={String(x().id)} selected={x().id === forNew()}>
-                          {x().name || "Untitled"}
-                        </option>
-                      )}
-                    </Index>
-                    <option value="" selected={forNew() == null}>
-                      None
-                    </option>
-                  </select>
-                </label>
-                <label class="field">
+                  <Dropdown
+                    label="New messages"
+                    value={String(forNew() ?? "")}
+                    choices={[...mine().map((x) => ({ value: String(x.id), label: x.name || "Untitled" })), { value: "", label: "None" }]}
+                    onChange={(v) => void setDefault(false, v)}
+                  />
+                </div>
+                <div class="field">
                   <span class="title">Replies and forwards</span>
-                  <select onChange={(e) => void setDefault(true, e.currentTarget.value)}>
-                    <Index each={mine()}>
-                      {(x) => (
-                        <option value={String(x().id)} selected={x().id === forReply()}>
-                          {x().name || "Untitled"}
-                        </option>
-                      )}
-                    </Index>
-                    <option value="" selected={forReply() == null}>
-                      None
-                    </option>
-                  </select>
-                </label>
+                  <Dropdown
+                    label="Replies and forwards"
+                    value={String(forReply() ?? "")}
+                    choices={[...mine().map((x) => ({ value: String(x.id), label: x.name || "Untitled" })), { value: "", label: "None" }]}
+                    onChange={(v) => void setDefault(true, v)}
+                  />
+                </div>
               </div>
 
               <fieldset class="field">
