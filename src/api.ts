@@ -47,6 +47,8 @@ export type AiWriteInput = {
   replyingTo: string | null;
   turns: { request: string; wrote: string }[];
   newMail: boolean;
+  /** "In your style" unticked: this answer goes without the style note. */
+  plain?: boolean;
 };
 /** Someone the AI named in new mail, as said ("Tom"), and who that is in the contacts on this computer. */
 /** `stranger`: an address the AI wrote that is neither a contact nor typed by the person; never added by itself. */

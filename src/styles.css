@@ -2923,7 +2923,7 @@ button.fold {
 
 /* Send (its menu holds Send & Done, Send later and Remind), then the tools as icons, discard at the far end
    (ui.md 4.4). Wrapping is the fallback for a narrow window, not the normal layout. */
-.compose footer {
+.compose-main > footer {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2932,14 +2932,14 @@ button.fold {
   padding-top: var(--s-2);
   border-top: 1px solid var(--line);
 }
-.compose footer button {
+.compose-main > footer button {
   white-space: nowrap;
 }
-.compose footer .hint {
+.compose-main > footer .hint {
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
-.compose footer .tools {
+.compose-main > footer .tools {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -3089,13 +3089,13 @@ button.fold {
   opacity: 0.45;
   transition: opacity var(--d-base);
 }
-.compose.focus footer {
+.compose.focus .compose-main > footer {
   justify-content: center;
   border-top: 0;
 }
-.compose.focus footer .tools,
-.compose.focus footer .spacer,
-.compose.focus footer .discard {
+.compose.focus .compose-main > footer .tools,
+.compose.focus .compose-main > footer .spacer,
+.compose.focus .compose-main > footer .discard {
   display: none;
 }
 
@@ -5402,133 +5402,21 @@ button.link.danger {
   background: var(--bg-2);
 }
 .ai-invite kbd.ai-mark,
-.ai-talk kbd.ai-mark,
+.ai-side kbd.ai-mark,
+.ai-try kbd.ai-mark,
 .ai-button kbd.ai-mark {
   color: var(--accent);
   background: var(--accent-soft);
   border-color: transparent;
 }
-.ai-talk {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  margin: 0 var(--s-4) var(--s-3);
-  padding: var(--s-3);
-  border-radius: var(--r-lg);
-  background: var(--soft);
-}
-.ai-said {
-  display: flex;
-  justify-content: flex-end;
-}
-.ai-said span {
-  max-width: 78%;
-  padding: var(--s-1) var(--s-3);
-  border-radius: 10px 10px 2px 10px;
-  background: var(--accent-soft);
-  font-size: var(--t-md);
-  line-height: 1.45;
-  color: var(--fg-0);
-}
-.ai-version-row {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-}
-.ai-version {
-  padding: 2px var(--s-2);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg-0);
-  color: var(--fg-1);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.ai-version.on {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-weight: 600;
-}
-.ai-head-lines {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
-  padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
-  font-size: var(--t-md);
-}
-.ai-head-lines > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--s-1) var(--s-2);
-}
-.ai-head-lines .label {
-  width: 56px;
-  color: var(--fg-2);
-}
-.ai-person {
-  padding: 1px var(--s-2);
-  border-radius: var(--r-sm);
-  background: var(--accent-soft);
-}
-.ai-person .addr,
-.ai-person .others {
-  margin-left: var(--s-1);
-  font-size: var(--t-sm);
-  color: var(--fg-1);
-}
-.ai-person.missing {
-  background: var(--warn-soft);
-  color: var(--warn-fg);
-}
 .ai-preview {
-  max-height: 260px;
-  overflow-y: auto;
-  padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
+  min-height: 160px;
+  padding: var(--s-2) 0;
   font-size: var(--t-rd);
   line-height: 1.55;
-  color: var(--fg-1);
+  color: var(--fg-2);
   white-space: pre-wrap;
   user-select: text;
-}
-.ai-say {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 2px solid var(--accent);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
-}
-.ai-say input {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: transparent;
-  font: inherit;
-  font-size: var(--t-rd);
-  color: var(--fg-0);
-  outline: none;
-}
-.ai-talk-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2) var(--s-3);
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.ai-talk-foot .spacer {
-  flex: 1;
-}
-.ai-talk-foot button.link {
-  font-size: var(--t-sm);
-  color: var(--fg-1);
 }
 .ai-error {
   margin: 0;
@@ -6019,25 +5907,6 @@ button.link.danger {
   }
 }
 
-/* Quick asks under the AI field in compose. */
-.ai-talk .ai-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-1);
-}
-.ai-talk .ai-chips .chip {
-  padding: 2px var(--s-2);
-  border: none;
-  border-radius: var(--r-sm);
-  background: var(--bg-0);
-  color: var(--fg-1);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.ai-talk .ai-chips .chip:hover:not(:disabled) {
-  background: var(--bg-3);
-  color: var(--fg-0);
-}
 /* A tone ask's version shows what it changed: new words lit, dropped ones struck through. */
 .ai-preview.diff ins {
   border-radius: 2px;
@@ -6049,25 +5918,6 @@ button.link.danger {
   color: var(--fg-2);
   text-decoration: line-through;
   text-decoration-color: color-mix(in srgb, var(--fg-2) 60%, transparent);
-}
-/* The tone row beside the AI key in compose's footer: one click asks. */
-.tone-row {
-  display: inline-flex;
-  gap: 2px;
-  margin-left: var(--s-1);
-}
-.tone-row .chip {
-  padding: 2px var(--s-2);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: none;
-  color: var(--fg-2);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.tone-row .chip:hover {
-  background: var(--soft-hover);
-  color: var(--fg-0);
 }
 
 /* The reader (§4.2c): a newsletter in reading view. Who sent it and how long it reads, then its tools; the title
@@ -6816,4 +6666,279 @@ button.link.danger {
 }
 .ask-dock .send:disabled {
   opacity: 0.45;
+}
+
+/* Writing help (§4.4): AI as a sidebar beside compose's text. The dialog widens for it; an inline reply's goes in the
+   companion's column. A try shows in grey in the text's place, the editor kept underneath until Tab keeps it. */
+.compose-main {
+  display: contents;
+}
+.compose.with-ai {
+  width: min(1080px, 96vw);
+  flex-direction: row;
+  padding: 0;
+  overflow: hidden;
+}
+.compose.with-ai > .compose-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--s-2) var(--s-4) var(--s-3);
+}
+.editor-wrap.covered {
+  display: none;
+}
+.ai-try {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+.ai-try-subject {
+  display: flex;
+  gap: var(--s-2);
+  font-size: var(--t-md);
+  color: var(--fg-2);
+}
+.ai-try-subject .label {
+  width: 56px;
+}
+.ai-try-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-try-bar .text {
+  flex: 1;
+  min-width: 180px;
+}
+.ai-try-bar button.link {
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-side {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  flex: none;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--soft);
+  font-size: var(--t-md);
+}
+.ai-side-slot > div {
+  display: contents;
+}
+.ai-side-slot .ai-side {
+  width: auto;
+  flex: 1;
+  border-left: none;
+  background: var(--bg-1);
+}
+.ai-side > header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-2) var(--s-2) var(--s-3);
+}
+.ai-side > header .spacer,
+.ai-side .spacer {
+  flex: 1;
+}
+.ai-side-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ai-side section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-top: 1px solid var(--line);
+}
+.ai-side h3 {
+  margin: 0;
+  font-size: var(--t-xs, 11px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.ai-side .hint {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  line-height: 1.4;
+}
+.ai-brief {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.ai-side .ai-brief textarea {
+  min-height: 0;
+  margin: 0;
+  padding: var(--s-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  resize: vertical;
+  overflow: auto;
+  font: var(--t-md) / 1.45 var(--font);
+}
+.ai-side .ai-brief textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.ai-brief-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.ai-side-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  align-self: flex-start;
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: inherit;
+  font-size: var(--t-md);
+}
+.ai-side-button:hover:not(:disabled) {
+  background: var(--soft-hover);
+}
+.ai-side-button.small {
+  padding: 2px var(--s-2);
+  font-size: var(--t-sm);
+}
+.ai-tries {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-tries button.link {
+  padding: 0 var(--s-1);
+  font-size: var(--t-md);
+}
+.ai-start {
+  padding: var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: inherit;
+  font-size: var(--t-md);
+  text-align: left;
+}
+.ai-start:hover {
+  background: var(--soft-hover);
+}
+.ai-side .ai-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+.ai-side .ai-chips .chip {
+  padding: 2px var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.ai-side .ai-chips .chip:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.ai-side .ai-chips .translate select {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.ai-found {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-md);
+}
+.ai-found .who {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.ai-found .addr,
+.ai-found .others {
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.ai-found.missing {
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+  font-size: var(--t-sm);
+}
+.ai-side > footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  line-height: 1.4;
+}
+.ai-style-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--fg-1);
+}
+.ai-button.on {
+  background: var(--accent-soft);
+}
+@media (max-width: 760px) {
+  .compose.with-ai {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .compose.with-ai > .compose-main {
+    overflow: visible;
+  }
+  .ai-side {
+    width: auto;
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+}
+.compose.with-ai > .compose-main > footer {
+  margin-top: auto;
+}
+.ai-side .ai-chips {
+  align-items: center;
+}
+.ai-side .ai-chips .translate {
+  padding: 0 var(--s-1);
+}
+.ai-side .ai-chips .translate select {
+  padding: 2px 0;
+  font-size: var(--t-sm);
 }

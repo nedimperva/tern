@@ -230,27 +230,30 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
     of a few words (Accept, Another time) and the reply's start; under them the pointed reply in full, then Others
     and Dismiss. A click or the digit starts a reply with it above the signature and quote. One column under 760 px.
     Not offered on your own last message.
-- Write with AI, "talked through" (redesigned 2026-10-26, canvas boards F and G): an empty draft shows a dashed
-  invite under the text ("Write, or press Space and say what to answer"); Space on the empty first line, a click on
-  the invite, `Ctrl J` or the `AI` keycap in the footer opens a `--soft` panel. What the person says shows as
-  bubbles on the right (`--accent-soft`); each answer as a "Version n" pill, the one on show filled `--accent`
-  ("· below"), its text in a `--bg-0` box under them. The field ("Say more, or Tab to keep it", 2 px `--accent`)
-  asks again from the version on show, and quick asks above it (Write it out, which reads "Write a reply" in an empty
-  reply and writes from the conversation, Shorter, More formal, Friendlier, Fix grammar; the bubble shows the chip's
-  name) rework the version on show; `Tab` keeps it as ordinary text (signature and quote stay; `Ctrl Z` brings
-  back what was there), `↑`/`↓` step through versions, `Esc` drops them all. One quiet line says what it reads
-  ("Reads this conversation and your style."). It writes from the whole conversation; the draft may be empty.
-  Send waits while versions are open ("Keep a version (Tab) or drop them (Esc) before you send.").
-  Since 2026-10-29 (owner's picks): the quick asks are Write it out, Shorter, Warmer, Firmer, More formal and Fix
-  grammar. A draft that is only a list of points (two or more, nothing else of the person's own) reads "Write out
-  these points" and keeps each point in order. A tone ask's version shows what it changed against what it reworked
-  (`src/wordDiff.ts`): new words on `--accent-soft`, dropped ones struck through in `--fg-2`. With words in the draft
-  and the panel closed, a tone row (Shorter, Warmer, Firmer: outlined pills) sits beside the `AI` key in the footer
-  and asks at once.
-  New mail: the same, and the answer also names who it goes to and a subject: To, Cc and Subject show above the
-  text, each person matched in the contacts on this computer (the contacts never go to the AI): a found one on
-  `--accent-soft` with the address, "also …" to pick another with the same name, "No one called “Zed” in your
-  contacts" on `--warn-soft`. Tab fills the fields (Subject only when empty).
+- Writing help, an AI sidebar (2026-11-02, owner: "AI as a sidebar in compose, nothing lost, not a chat"; canvas
+  "Tern compose directions", boards S1 and S2). Replaced the talked-through panel of 2026-10-26. An empty draft shows
+  a dashed invite under the text; Space on the empty first line, the invite, `Ctrl J` or the `AI` keycap in the
+  footer opens it. In the dialog, compose widens to 1080 px and the sidebar (300 px, `--soft`) sits on the right;
+  for an inline reply it takes the companion's column while open (one panel on the right, §4.2b). From the top:
+  - Starts (replies only): "Suggest how to answer" asks for the suggested replies; each is a button, and a click makes
+    it a try.
+  - Brief: one note the person edits ("yes to friday, ask for the file"), not a conversation. `Enter` writes from it,
+    `Shift Enter` is a new line. Its button reads Write / Write again, or with the Brief empty Write it out, Write a
+    reply (empty reply: from the conversation) or Write out these points (a draft of two or more points, each kept in
+    order). With more than one try: "‹ Try 2 of 3 ›", also `Alt ↑`/`Alt ↓`.
+  - Reshape: Shorter, Warmer, Firmer, More formal, Fix grammar and Translate… (a few languages). They rework the try
+    on show, else the selection (the rest kept word for word), else all the person's own words.
+  - People it found (new mail): who the answer names, matched in the contacts on this computer (they never go to the
+    AI): name, address, "also …" to pick another with the same name, and Add to To / Add to Cc. Nobody is added
+    unless the person adds them; an address only the AI came up with is shown on `--warn-soft` and never offered.
+  - At the foot: "In your style" (for this compose; shown when a style note exists) and what it reads, "Nothing here
+    can send the mail."
+  A try shows in the text's place, in `--fg-2`, the editor kept underneath; a tone change shows what it changed
+  (`src/wordDiff.ts`: new words on `--accent-soft`, dropped ones struck through). Under it, on `--accent-soft`:
+  "Try n of m. It isn't in the email until you keep it." with `Tab` keep and `Esc` drop. `Tab` puts it in as
+  ordinary text (signature and quote stay; `Ctrl Z` brings back what was there), and in new mail the subject when
+  there is none. `Esc` drops the tries, and again closes the sidebar. Send waits while a try is on show ("Keep the
+  try (Tab) or drop it (Esc) before you send."). `Ctrl Enter` in the sidebar does nothing.
 
 ### 4.2a Details: what the newest message holds
 
@@ -334,6 +337,7 @@ none).
   attached" (Attach… / Send anyway; words in many languages, src/attachmentWords.ts, plus the person's own) and
   "There's no subject" on `--warn-soft`; "x is outside example.com" on `--bg-2` when outside people are mixed
   with the sender's own, dismissible. Sending again while they show sends anyway.
+- Only Send sends: the button, `Ctrl Enter` or the menu. `Enter` in a field (Subject, an empty To) never does.
 - Footer (above a `--line` rule): split `Send  Ctrl↵` button whose menu holds Send & Done, Send later…, Remind me
   if no reply… with their keys; then attach, snippet and signature as icons; discard as a trash icon at the far end.
 - Signature: a pill in the footer ("✎ Full ▾") when the account has any; picking one, or `Ctrl+Shift+S`

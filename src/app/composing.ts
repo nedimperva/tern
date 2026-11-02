@@ -90,6 +90,7 @@ export async function respond(m: ThreadMessage | undefined, kind: ReplyKind, onl
     inline: kind !== "forward" && openRow() !== null,
     forwardOf: init.forwardOf,
     forwardFiles: init.forwardOf ? m.attachments : undefined,
+    aiReplyTo: kind === "forward" ? undefined : m.id,
   });
 }
 

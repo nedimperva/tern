@@ -7,6 +7,20 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Changed
+
+- Writing help in compose is a sidebar now, not a chat. `Ctrl+J`, the AI key or Space in an empty draft opens it
+  beside the text; for a reply it takes the companion's place. It holds everything the old panel did: a Brief you
+  edit and write from again (Write it out, Write a reply, Write out these points), tries to step through, Shorter,
+  Warmer, Firmer, More formal and Fix grammar, and for new mail the people it found. New: suggested replies as
+  Starts, Translate, Reshape on just the selected words, and an "In your style" switch for one mail.
+- A try shows in grey where your text is, and is not in the email until you keep it with Tab. People the AI names
+  are added only when you add them. Nothing in the sidebar can send.
+
+### Fixed
+
+- Enter in the Subject field, or in an empty To field, sent the mail. Only Send and Ctrl+Enter send now.
+
 ## [1.8.0] - 2026-11-02
 
 ### Added

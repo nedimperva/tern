@@ -105,6 +105,11 @@ export const showCompanion = () => {
  * its own (ConversationView portals them in). */
 export const [detailsSlot, setDetailsSlot] = createSignal<HTMLElement | null>(null);
 
+/** An inline reply's AI sidebar is open: it takes the companion's column while it is (one panel on the right). */
+export const [aiSide, setAiSide] = createSignal(false);
+/** Where that sidebar is drawn; App puts it in the companion's place and Compose portals into it. */
+export const [aiSlot, setAiSlot] = createSignal<HTMLElement | null>(null);
+
 /** The search box, for `/`. */
 export const searchBox: { input?: HTMLInputElement } = {};
 
