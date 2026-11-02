@@ -41,6 +41,8 @@ export type Settings = {
   quietTo: string;
   /** The inbox in two splits, Important and Other, rather than one list. */
   splitInbox: boolean;
+  /** Which releases update this copy: stable ones, or betas too (read by the engine's updater). */
+  updateChannel: "stable" | "beta";
   /** First mail from people not known yet waits in New people (read by the engine at insert and in its lists). */
   screener: boolean;
   /** Domains whose people count as known to the screener, without the @ ("work.example"). */
@@ -125,6 +127,7 @@ export const DEFAULTS: Settings = {
   quietTo: "",
   splitInbox: true,
   screener: false,
+  updateChannel: "stable",
   knownDomains: [],
   darkMail: "darken",
   readingFacts: true,

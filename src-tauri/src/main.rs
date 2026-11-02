@@ -285,6 +285,7 @@ fn main() {
             commands::send_now,
             commands::update_ready,
             commands::restart_to_update,
+            commands::look_for_update,
             commands::autostart,
             commands::set_autostart,
             commands::default_mail_app,

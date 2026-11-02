@@ -276,7 +276,8 @@ export type Preset = {
 };
 export type Applied = { token: number[]; accounts: number[]; drafts: number[] };
 /** Settings → About. */
-export type About = { version: string; logFile: string; details: string };
+/** `updates`: this copy installs its own updates (the AppImage, Windows), so the update channel applies. */
+export type About = { version: string; logFile: string; details: string; updates: boolean };
 /** Queued work Tern stopped retrying: it waits for the person to retry or discard it. */
 export type OutboxProblem = {
   id: number;
@@ -440,6 +441,8 @@ export interface Api {
   onUpdateReady(f: (version: string) => void): void;
   /** Saves what is being written, installs the waiting update and starts the new version. */
   restartToUpdate(): Promise<void>;
+  /** Looks for an update now, on the channel just chosen. */
+  lookForUpdate(): Promise<void>;
   /** The tray and the system: Compose from the tray menu, a `mailto:` link, a clicked notification, Quit. */
   onDesktop(handlers: {
     compose: () => void;
@@ -648,6 +651,7 @@ const tauri: Api = {
     await flush();
     await invoke("restart_to_update");
   },
+  lookForUpdate: () => invoke("look_for_update"),
   onDesktop: (h) => {
     void listen("compose", () => h.compose());
     void listen<Mailto>("mailto", (e) => h.mailto(e.payload));
@@ -1274,6 +1278,7 @@ function fake(): Api {
     updateReady: async () => (location.hash === "#update" ? "0.4.0" : null),
     onUpdateReady: () => {},
     restartToUpdate: async () => location.reload(),
+    lookForUpdate: async () => {},
     onDesktop: () => {},
     takeMailto: async () => null,
     setSplit: async (ids, other) => {
@@ -1412,6 +1417,7 @@ function fake(): Api {
       version: "0.3.6",
       logFile: "/home/you/.local/share/app.tern.mail/logs/tern.log",
       details: "Tern 0.3.6 (release build, AppImage)\nSystem: linux x86_64, Arch Linux, Hyprland, Wayland\nAccount 1: Gmail, password sign-in, up to date\nMail here: 5000 messages, 5000 with their text",
+      updates: true,
     }),
     openLogs: async () => {},
     setWindowTheme: () => {},

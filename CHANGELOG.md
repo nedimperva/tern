@@ -7,6 +7,23 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- One-click unsubscribe: `Ctrl+U` (or the Unsubscribe button) on a list that offers it (RFC 8058) unsubscribes
+  without a browser, after the usual five seconds to undo, and the conversation goes to Done. Lists without it
+  open their page or start their mail, as before.
+- Block a sender, or everyone at their domain, from the companion, the conversation menu or the palette. Their
+  later mail is read and archived as it comes, and can still be found. Nothing tells them.
+- New people (off by default, Settings → Senders): first mail from someone you haven't written to waits in its own
+  tab until you let them in (`y`), send them to Other (`Shift+O`) or block them (`Shift+X`). List the domains whose
+  people you know.
+- Settings → Senders lists every choice you made about a sender (blocked, sent to Other, kept in Important), each
+  with a way back.
+- Updates: a Beta channel in Settings → About, for test versions of what comes next.
+- The companion: Recent with them is a list you can open (each row opens its conversation; the last finds all
+  their mail), and under their name are Write to, Copy address and where their mail goes.
+- Hold Ctrl to see each account's number in the sidebar (`Ctrl+1`…`Ctrl+9` opens its inbox).
+
 ## [1.9.0] - 2026-11-02
 
 ### Changed

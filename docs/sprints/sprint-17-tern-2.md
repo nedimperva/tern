@@ -29,11 +29,15 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
 ## Tasks
 
 ### A. Beta channel (first, so the rest can be tried early)
-- [ ] Settings → About → Updates: Stable / Beta (canvas board "Settings"). Default Stable.
-- [ ] A beta feed the updater can read. `releases/latest` skips pre-releases, so the release workflow also writes a
-  `latest-beta.json` the beta channel reads (see Decisions). Both stay signed with the same key.
-- [ ] Going back to Stable never installs an older version: it waits for the first stable release newer than the
-  beta, because migrations only go forward. The setting says so.
+- [x] Settings → About → Updates: Stable / Beta (canvas board "Settings"). Default Stable. Shown only on copies
+  that update themselves; changing it looks for an update at once (`update::look_now`).
+- [x] A beta feed the updater can read. `releases/latest` skips pre-releases, so the release workflow also writes a
+  `latest-beta.json` the beta channel reads (see Decisions). Both stay signed with the same key. Built as the
+  proposed rolling `beta` release: `.github/workflows/beta-feed.yml` copies a published release's latest.json there
+  when it is newer (semver, betas before their release). A tag with a hyphen makes a pre-release. Not yet run on
+  GitHub.
+- [x] Going back to Stable never installs an older version: it waits for the first stable release newer than the
+  beta, because migrations only go forward. The setting says so. (The updater only installs a newer version.)
 - [ ] A `2.0.0-beta.N` tag needs its CHANGELOG section like any release.
 
 ### B. Foundations
@@ -159,7 +163,10 @@ Direction A on the canvas (owner, 2026-11-02). Can go before G: it needs no Todo
 Open, for the owner:
 
 - **Beta feed:** a rolling `beta` release that holds `latest-beta.json`, or a file on GitHub Pages. Proposed: the
-  rolling release, so the workflow stays in one place.
+  rolling release, so the workflow stays in one place. Built that way; the owner can still change it.
+- **Beta version numbers:** WiX (the `.msi`) takes only numeric pre-release parts, so `2.0.0-beta.1` may fail the
+  Windows build where `2.0.0-1` works. Try a beta tag on a branch first (a PR that touches release.yml builds
+  without releasing); if the MSI refuses, number betas `2.0.0-1`, `2.0.0-2`, or drop the MSI for betas.
 - **Block's key:** `B` in a conversation switches reading view, so block has no key there; in New people it takes
   `X`? Proposed: menu and palette only in a conversation, `X` in New people. Built that way, as `Shift+X` (`x`
   selects) and `Shift+O` for Other (`o` opens); the owner can still change it.
@@ -190,3 +197,8 @@ Open, for the owner:
   B (a quick-add box docked beside Ask) was not chosen. Written into G, H and ui.md §4.2b.
 - 2026-11-02: H built on `sprint/17-companion`, checked on the fake backend in the browser (rows open, search,
   split with undo toast). Not yet tried in the Tauri app on Linux.
+- 2026-11-02 (overnight, same branch, a commit each): J, D, C (block, then the screener) and A. Engine tests and
+  the UI checks pass; each was tried on the fake backend in the browser, none in the Tauri app or against Stalwart
+  yet. store_bench on the Windows machine, main → branch: Important 1.70 → 1.91 ms, Other 4.60 → 4.76 ms; main
+  itself misses four targets there (unified/Important conversations, conversation pages), as before.
+  Owner checklist: `docs/acceptance/sprint-17-overnight.md`.

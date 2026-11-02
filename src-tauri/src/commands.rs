@@ -1118,6 +1118,12 @@ pub fn update_ready(app: AppHandle) -> Option<String> {
 }
 
 /// Installs the waiting update and restarts (the window has saved what was being written).
+/// The update channel changed: look for an update on it now.
+#[tauri::command]
+pub fn look_for_update(app: AppHandle) {
+    crate::update::look_now(&app);
+}
+
 #[tauri::command]
 pub fn restart_to_update(app: AppHandle) -> Reply<()> {
     crate::update::install(&app).map_err(|e| format!("{e:#}"))
