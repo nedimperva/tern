@@ -269,10 +269,10 @@ function Main() {
             menu={() => menu(bindings())}
             person={person}
           />
-          <Show when={compose()?.inline ? compose() : null}>
+          <Show when={compose()?.inline ? compose() : null} keyed>
             {(init) => (
               <div class="inline-reply">
-                <Compose accounts={accounts()} signatures={signatures()} init={init()} onSend={send} onClose={composeClosed} onDiscard={composeDiscarded} />
+                <Compose accounts={accounts()} signatures={signatures()} init={init} onSend={send} onClose={composeClosed} onDiscard={composeDiscarded} />
               </div>
             )}
           </Show>

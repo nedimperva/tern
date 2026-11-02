@@ -132,9 +132,12 @@ export const searchBox: { input?: HTMLInputElement } = {};
 
 export const current = () => rows()[focus()];
 export const context = (): Context => (openRow() ? "conversation" : "list");
+/** The keyboard is somewhere in the reply under the conversation (or its AI sidebar). Only then does the reply take
+ * the keys: clicked away from, the conversation's and the list's keys work again (owner, 2026-11-02). */
+const replyFocused = () => !!document.activeElement?.closest(".inline-reply, .ai-side");
 /** Something is over the list and takes the keys. */
 export const dialog = () =>
-  screen() || deck() !== null || reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin()) || setup() || rail() || snoozing() !== null || labeling() !== null ||
+  screen() || deck() !== null || reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin() && (!compose()!.inline || replyFocused())) || setup() || rail() || snoozing() !== null || labeling() !== null ||
   viewing() !== null;
 export const searching = () => query().trim() !== "";
 /** The role of the list on show ("" for a folder or label). */

@@ -22,6 +22,9 @@ every release needs one here before it is tagged.
 - Enter in the Subject field, or in an empty To field, sent the mail. Only Send and Ctrl+Enter send now.
 - A reply left open under a conversation showed up a second time above it, as a draft message, once it was saved.
   It shows only in the reply box now, and comes back as "Draft · R to continue" when you close the reply.
+- With a reply open under a conversation, clicking anywhere outside it left every key dead (Esc, C, G I…). The reply
+  takes the keys only while you're in it; outside it the usual keys work, R goes back to it, and leaving the
+  conversation keeps it as a draft.
 
 ## [1.8.0] - 2026-11-02
 

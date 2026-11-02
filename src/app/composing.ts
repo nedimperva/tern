@@ -11,7 +11,7 @@ import { settings } from "../settings";
 import { act } from "./actions";
 import { close, open } from "./conversation";
 import { load, loadSignatures } from "./list";
-import { asRow } from "./rows";
+import { asRow, keyOf } from "./rows";
 import {
   accounts,
   compose,
@@ -46,6 +46,15 @@ const signing = (accountId: number | undefined, kind: "new" | "reply", quote = "
 /** Compose's own effects; App runs this once. */
 export function watchCompose() {
   createEffect(on(compose, () => setComposeMin(false), { defer: true }));
+  // A reply under a conversation goes when the conversation does (Esc, Done, another one opened): it unmounts with
+  // the conversation and saves its draft on the way out, so nothing of it is left behind holding the keys.
+  createEffect(
+    on(
+      () => (openRow() ? keyOf(openRow()!) : null),
+      (now, before) => now !== before && compose()?.inline && setCompose(null),
+      { defer: true },
+    ),
+  );
 }
 
 /** Opens a reply, reply-all or forward to `m`, set up by the engine from the message's headers. Replies sit
@@ -94,8 +103,10 @@ export async function respond(m: ThreadMessage | undefined, kind: ReplyKind, onl
   });
 }
 
-/** r: continues this conversation's draft if it has one, else replies to the focused message. */
+/** r: continues this conversation's draft if it has one, else replies to the focused message. With the reply already
+ * open below, it goes back to it. */
 export async function reply() {
+  if (compose()?.inline) return void document.querySelector<HTMLElement>(".inline-reply .ProseMirror")?.focus();
   const picked = takeQuote();
   const from = picked && messages.find((m) => m.id === picked.id);
   if (from) return void respond(from, "reply", picked!.text);
