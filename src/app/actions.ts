@@ -2,7 +2,7 @@
 // shows at once, then goes to the engine, and can be undone.
 
 import { batch } from "solid-js";
-import { api, moves, type Action, type Applied, type Folder, type ThreadRow } from "../api";
+import { api, moves, type Action, type Applied, type Folder, type MessageRow, type ThreadRow } from "../api";
 import { leave, pop, type Way } from "../motion";
 import { ROLE_NAMES } from "../components/Rail";
 import { until } from "../components/ConversationRow";
@@ -268,6 +268,29 @@ export async function mute() {
   await api.mute(ids, true);
   const token = await act("archive", hit, false);
   showToast(hit.length === 1 ? "Muted" : `Muted ${hit.length} conversations`, token, () => api.mute(ids, false));
+}
+
+/** Who "the sender" is: in an open conversation, the newest one who wrote in it and isn't you (the companion's
+ * person); in the list, the focused conversation's newest sender. */
+export function senderHere(): MessageRow | undefined {
+  if (openRow()) return [...messages].reverse().find((m) => !isMine(m.fromAddr));
+  return targets()[0];
+}
+
+/** Blocks a sender (or everyone at their domain): mail from them that comes later is read and archived as it
+ * arrives, and the target conversations go to Done (in the list, those they sent). One undo puts both back.
+ * Nothing tells the sender. */
+export async function blockSender(wholeDomain = false, from = senderHere(), hit = targets()) {
+  const sender = from && (await api.senderOf(from.id));
+  if (!from || !sender) return;
+  const addr = wholeDomain ? `@${sender.domain}` : sender.addr;
+  const before = wholeDomain ? sender.domainChoice : sender.addressChoice;
+  const mine = (r: ThreadRow) => (wholeDomain ? r.fromAddr.toLowerCase().endsWith(addr) : r.fromAddr.toLowerCase() === addr);
+  await api.setSender(sender.accountId, addr, "blocked");
+  const token = await act("archive", openRow() ? hit : hit.filter(mine), false);
+  const back = () => api.setSender(sender.accountId, addr, before);
+  const who = wholeDomain ? `everyone at ${sender.domain}` : from.fromName || from.fromAddr;
+  showToast(`Blocked ${who}`, token, back, token.length ? undefined : async () => (await back(), void load()));
 }
 
 /** Ctrl+U: leaves the open conversation's mailing list. With one-click (RFC 8058) the request is queued like any

@@ -6109,6 +6109,29 @@ button.link.danger {
   color: inherit;
 }
 
+.senders-title {
+  margin-top: var(--s-5);
+}
+.senders > .senders-title:first-child {
+  margin-top: 0;
+}
+/* Settings → Senders, Your choices: a heading per choice, then its senders as rows like Who writes most. */
+.sender-choices h4 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin: var(--s-4) 0 0;
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+.sender-choices h4 .count {
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.sender-choices .help {
+  margin: var(--s-1) 0 0;
+}
+
 /* Settings → Who writes most: a sender a row, a bar for how much they wrote, and what to do about them. */
 .sender-list {
   display: flex;

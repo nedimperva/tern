@@ -43,18 +43,23 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
   the list patches those rows in place instead of loading the page again. Check holding `j` while a large sync runs.
 
 ### C. Senders: the screener, block and mute
-- [ ] Schema v32 (D took v31): `sender_splits.other` becomes a sender state (`important | other | waiting | blocked`), by address
-  or by domain. Migration test from v30; today's rows keep their meaning. This is also the base that rules (2.1)
-  build on.
+- [x] Schema v32 (D took v31): `sender_splits.other` becomes a sender state (`important | other | waiting | blocked`), by address
+  or by domain. Migration test from v31; today's rows keep their meaning. This is also the base that rules (2.1)
+  build on. Now `sender_state (account_id, addr, state, since)`, `addr` an address or `@domain`; `STATE_M` and
+  `IS_OTHER` in `store/mod.rs` (store_bench: Other split 4.7 ms, as before).
 - [ ] Screener, off by default (Settings → Senders). A first mail from someone unknown that isn't bulk goes to
   **New people** instead of Important. Known means: you wrote to them (`MINE_M`), they are in a conversation with
   you, they are at one of the domains the person lists, or you let them in before. Decided at insert, like splits.
 - [ ] New people tab next to Important and Other while it has mail (canvas board "Screener"): Let in `Y`, Other
   `O`, Block, Enter reads first. The choice applies to everything they sent and to later mail.
-- [ ] Block sender (by address or domain), from the conversation menu and from New people: their mail is archived
-  and marked read on arrival through the outbox, and still searchable. Nothing tells the sender.
+- [x] Block sender (by address or domain), from the conversation menu, the palette and the companion's drop-down:
+  mail from them dated after the block is marked read and archived on arrival through the outbox
+  (`archive_blocked`), and still searchable; the conversation goes to Done, one undo for both. Nothing tells the
+  sender. (From New people with C's screener.)
 - [ ] Settings → Senders (canvas board "Senders"): the screener switch, known domains, and Blocked, Muted, To Other
-  and Let in lists, each with a way back (Unblock, Unmute, To Important). Who writes most moves here.
+  and Let in lists, each with a way back (Unblock, Unmute, To Important). Who writes most moves here. Done so far:
+  "Your choices" (Blocked, To Other, Kept in Important, each with its way back) above Who writes most; the
+  screener switch, known domains, Muted and Let in come with the screener.
 - [ ] Tests: a fixture of headers with the expected state for each, screener on and off.
 
 ### D. One-click unsubscribe

@@ -1,9 +1,10 @@
-// Settings → Who writes most: the senders behind most of the last 30 days' mail, with a way to stop each one
-// (List-Unsubscribe) or send them to Other. Counted on this computer; Unsubscribe opens the sender's own page or
-// starts the mail it asks for, and nothing is sent without the person.
+// Settings → Senders: the choices made about senders (blocked, to Other, kept Important), each with a way back, then
+// who writes most: the senders behind most of the last 30 days' mail, with a way to stop each one (List-Unsubscribe)
+// or send them to Other. Counted on this computer; Unsubscribe opens the sender's own page or starts the mail it
+// asks for, and nothing is sent without the person.
 
 import { createSignal, For, onMount, Show } from "solid-js";
-import { api, type SenderVolume } from "../../api";
+import { api, type SenderChoice, type SenderState, type SenderVolume } from "../../api";
 import { fromLink } from "../../app/composing";
 import { setSettingsOpen } from "../../app/state";
 import { unsubscribeTarget } from "../../unsubscribe";
@@ -40,6 +41,8 @@ export function SendersSettings() {
 
   return (
     <div class="senders">
+      <Choices />
+      <h2 class="group-title senders-title">Who writes most</h2>
       <p class="help">
         Who sent you the most in the last {DAYS} days, most first. Unsubscribe opens the sender's own page, or starts the mail
         it asks for, for you to send.
@@ -78,5 +81,60 @@ export function SendersSettings() {
         </ol>
       </Show>
     </div>
+  );
+}
+
+const GROUPS: [SenderState, string, string][] = [
+  ["blocked", "Blocked", "Their new mail is read and archived as it comes. It can still be found."],
+  ["other", "To Other", "Their mail goes to Other."],
+  ["important", "Kept in Important", "Their mail stays in Important, even when it looks like a list."],
+];
+const BACK: Record<SenderState, string> = { blocked: "Unblock", other: "To Important", important: "Forget" };
+
+/** What the person chose about senders, a list per choice, each with a way back. */
+function Choices() {
+  const [choices, setChoices] = createSignal<SenderChoice[] | null>(null);
+  const read = () => void api.senderChoices().then(setChoices, () => setChoices([]));
+  onMount(read);
+  const back = async (c: SenderChoice) => {
+    // Out of Other is a choice for Important; unblocking and forgetting leave it to the headers again.
+    await api.setSender(c.accountId, c.addr, c.state === "other" ? "important" : null);
+    read();
+  };
+  const label = (c: SenderChoice) => (c.addr.startsWith("@") ? `Everyone at ${c.addr.slice(1)}` : c.name || c.addr);
+  return (
+    <Show when={choices()?.length}>
+      <h2 class="group-title senders-title">Your choices</h2>
+      <For each={GROUPS}>
+        {([state, title, help]) => (
+          <Show when={choices()!.some((c) => c.state === state)}>
+            <section class="sender-choices">
+              <h4>
+                {title} <span class="count">{choices()!.filter((c) => c.state === state).length}</span>
+              </h4>
+              <p class="help">{help}</p>
+              <ul class="sender-list">
+                <For each={choices()!.filter((c) => c.state === state)}>
+                  {(c) => (
+                    <li>
+                      <span class="who">
+                        <strong>{label(c)}</strong>
+                        <span class="addr">{c.addr.startsWith("@") ? "the whole domain" : c.addr}</span>
+                      </span>
+                      <span />
+                      <span class="actions">
+                        <button type="button" onClick={() => void back(c)}>
+                          {BACK[state]}
+                        </button>
+                      </span>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </section>
+          </Show>
+        )}
+      </For>
+    </Show>
   );
 }

@@ -1165,10 +1165,30 @@ pub async fn set_split(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>
     Ok(())
 }
 
-/// Whether mail from this message's sender goes to Other, for the companion's split choice.
+/// Who sent this message and where their mail goes, for the companion's choice.
 #[tauri::command]
-pub async fn goes_to_other(state: State<'_, AppState>, id: i64) -> Reply<bool> {
-    state.store.goes_to_other(id).map_err(text)
+pub async fn sender_of(state: State<'_, AppState>, id: i64) -> Reply<Option<tern_core::Sender>> {
+    state.store.sender_of(id).map_err(text)
+}
+
+/// Where mail from an address (or `@domain`) goes: important, other, blocked, or None to forget the choice.
+#[tauri::command]
+pub async fn set_sender(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account_id: i64,
+    addr: String,
+    choice: Option<String>,
+) -> Reply<()> {
+    state.store.set_sender(account_id, &addr, choice.as_deref()).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
+/// Every choice made about senders, for Settings → Senders.
+#[tauri::command]
+pub async fn sender_choices(state: State<'_, AppState>) -> Reply<Vec<tern_core::SenderChoice>> {
+    state.store.sender_choices().map_err(text)
 }
 
 /// Unread messages in the Important and Other splits.

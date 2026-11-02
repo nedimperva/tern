@@ -52,10 +52,10 @@ export function SettingsPage(props: {
     },
     {
       id: "Senders",
-      name: "Who writes most",
+      name: "Senders",
       icon: "inbox",
       group: "General",
-      words: "senders who fills inbox unsubscribe newsletters lists volume other important",
+      words: "senders who writes most fills inbox unsubscribe newsletters lists volume other important block blocked unblock",
       body: () => <SendersSettings />,
     },
     { id: "Notifications", name: "Notifications",

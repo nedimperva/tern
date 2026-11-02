@@ -142,6 +142,19 @@ export type MessageRow = {
   hasAttachments: boolean;
 };
 
+/** Where a sender's mail goes: what the person chose for the address or its domain, else what the headers give. */
+export type SenderState = "important" | "other" | "blocked";
+/** Who sent a message, and where their mail goes. `addressChoice` and `domainChoice` are null where nothing was chosen. */
+export type Sender = {
+  accountId: number;
+  addr: string;
+  domain: string;
+  state: SenderState;
+  addressChoice: SenderState | null;
+  domainChoice: SenderState | null;
+};
+/** A choice made about a sender: `addr` is an address, or `@domain` for everyone there. `since` is 0 for old ones. */
+export type SenderChoice = { accountId: number; addr: string; name: string; state: SenderState; since: number };
 /** A sender and how much they wrote lately. `newest` is their newest message, for `setSplit`. */
 export type SenderVolume = {
   accountId: number;
@@ -385,8 +398,12 @@ export interface Api {
   onCloseRequested(f: () => Promise<void>): () => void;
   /** Moves the senders of these messages to the inbox's Other split, or back to Important. */
   setSplit(ids: number[], other: boolean): Promise<void>;
-  /** Whether mail from this message's sender goes to Other. */
-  goesToOther(id: number): Promise<boolean>;
+  /** Who sent this message and where their mail goes. */
+  senderOf(id: number): Promise<Sender | null>;
+  /** Where mail from `addr` (an address, or `@domain`) goes; null forgets the choice. Mail already here stays put. */
+  setSender(accountId: number, addr: string, choice: SenderState | null): Promise<void>;
+  /** Every choice made about senders, newest first. */
+  senderChoices(): Promise<SenderChoice[]>;
   /** Queues the one-click unsubscribe this message offers, with the usual undo. Null when it offers none. */
   unsubscribe(id: number): Promise<number[] | null>;
   /** Unread messages in [Important, Other]. */
@@ -640,7 +657,9 @@ const tauri: Api = {
   takeMailto: () => invoke("take_mailto"),
   setSyncPaused: (on) => invoke("set_sync_paused", { on }),
   setSplit: (ids, other) => invoke("set_split", { ids, other }),
-  goesToOther: (id) => invoke("goes_to_other", { id }),
+  senderOf: (id) => invoke("sender_of", { id }),
+  setSender: (accountId, addr, choice) => invoke("set_sender", { accountId, addr, choice }),
+  senderChoices: () => invoke("sender_choices"),
   unsubscribe: (id) => invoke("unsubscribe", { id }),
   splitUnread: () => invoke("split_unread"),
   snooze: (ids, due) => invoke("snooze", { ids, due }),
@@ -899,8 +918,15 @@ function fake(): Api {
   let nextToken = 1;
   const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, draftId, listUnsubscribe, oneClick, ...r }: ThreadMessage): MessageRow => r;
   // Every seventh conversation is a newsletter, for the Other split.
-  const otherSenders = new Map<string, boolean>();
-  const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
+  // What the person chose, by address or `@domain`: as the engine's sender_state.
+  const senderStates = new Map<string, { state: SenderState; since: number }>();
+  const domainOf = (addr: string) => addr.slice(addr.indexOf("@"));
+  const chosen = (m: ThreadMessage) =>
+    (senderStates.get(m.fromAddr.toLowerCase()) ?? senderStates.get(domainOf(m.fromAddr.toLowerCase())))?.state;
+  const isOther = (m: ThreadMessage) => {
+    const state = chosen(m);
+    return state ? state !== "important" : Number(m.threadId.slice(1)) % 7 === 3;
+  };
   const snoozed = new Map<string, number>();
   const shelved = new Set<string>();
   // Pictures pasted into compose, by their made-up path, for their previews.
@@ -1237,7 +1263,9 @@ function fake(): Api {
     onDesktop: () => {},
     takeMailto: async () => null,
     setSplit: async (ids, other) => {
-      for (const m of messages.filter((m) => ids.includes(m.id))) otherSenders.set(m.fromAddr, other);
+      for (const m of messages.filter((m) => ids.includes(m.id)))
+        senderStates.set(m.fromAddr.toLowerCase(), { state: other ? "other" : "important", since: Date.now() / 1000 });
+      changed();
     },
     unsubscribe: async (id) => {
       const m = messages.find((m) => m.id === id);
@@ -1246,10 +1274,32 @@ function fake(): Api {
       pending.set(token, () => {});
       return [token];
     },
-    goesToOther: async (id) => {
+    senderOf: async (id) => {
       const m = messages.find((m) => m.id === id);
-      return m ? isOther(m) : false;
+      if (!m) return null;
+      const addr = m.fromAddr.toLowerCase();
+      return {
+        accountId: m.accountId,
+        addr,
+        domain: domainOf(addr).slice(1),
+        state: chosen(m) ?? (isOther(m) ? "other" : "important"),
+        addressChoice: senderStates.get(addr)?.state ?? null,
+        domainChoice: senderStates.get(domainOf(addr))?.state ?? null,
+      };
     },
+    setSender: async (_account, addr, choice) => {
+      if (choice) senderStates.set(addr.toLowerCase(), { state: choice, since: Date.now() / 1000 });
+      else senderStates.delete(addr.toLowerCase());
+      changed();
+    },
+    senderChoices: async () =>
+      [...senderStates].map(([addr, c]) => ({
+        accountId: 1,
+        addr,
+        name: messages.find((m) => m.fromAddr.toLowerCase() === addr)?.fromName ?? "",
+        state: c.state,
+        since: c.since,
+      })).sort((a, b) => b.since - a.since),
     splitUnread: async () => {
       const unread = messages.filter((m) => !m.seen && inInbox(m) && !snoozed.has(m.threadId) && !shelved.has(m.threadId));
       const other = unread.filter(isOther).length;

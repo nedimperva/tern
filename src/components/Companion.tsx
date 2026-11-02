@@ -5,10 +5,10 @@
 // AI switch.
 
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
-import { api, type AiAnswer, type ContactCard, type ThreadMessage } from "../api";
+import { api, type AiAnswer, type ContactCard, type Sender, type SenderState, type ThreadMessage } from "../api";
 import { filesOf } from "../files";
 import { promisesIn } from "../promises";
-import { splitSenders } from "../app/actions";
+import { blockSender, splitSenders } from "../app/actions";
 import { setDetailsSlot } from "../app/state";
 import { aiOn, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
@@ -50,22 +50,22 @@ export function Companion(props: {
     ),
   );
 
-  // Which split their mail goes to: read when the person changes, and kept in step with the choice made here.
-  const [other, setOther] = createSignal<boolean | null>(null);
-  createEffect(
-    on(
-      () => who()?.id,
-      (id) => {
-        setOther(null);
-        if (id) void api.goesToOther(id).then((o) => who()?.id === id && setOther(o), () => {});
-      },
-    ),
-  );
-  const split = (to: boolean) => {
+  // Where their mail goes: read when the person changes, and again after a choice made here.
+  const [theirs, setTheirs] = createSignal<Sender | null>(null);
+  const readSender = (id: number | undefined) => {
+    if (id) void api.senderOf(id).then((s) => who()?.id === id && setTheirs(s), () => {});
+  };
+  createEffect(on(() => who()?.id, (id) => (setTheirs(null), readSender(id))));
+  const choose = async (to: SenderState) => {
     const m = who();
-    if (!m || to === other()) return;
-    setOther(to);
-    void splitSenders([m.id], [m.fromName || m.fromAddr], to, () => who()?.id === m.id && setOther(!to));
+    const was = theirs();
+    if (!m || !was || to === was.state) return;
+    setTheirs({ ...was, state: to });
+    // Blocking also takes this conversation to Done; Important and Other are a choice for the address, which wins
+    // over a block of the whole domain.
+    if (to === "blocked") await blockSender(false, m);
+    else await splitSenders([m.id], [m.fromName || m.fromAddr], to === "other", () => readSender(m.id));
+    readSender(m.id);
   };
   const [copied, setCopied] = createSignal(false);
   const copy = async (email: string) => {
@@ -99,14 +99,24 @@ export function Companion(props: {
                   <button type="button" onClick={() => void copy(m().fromAddr)} title={m().fromAddr}>
                     {copied() ? "Copied" : "Copy address"}
                   </button>
-                  <Show when={other() !== null}>
-                    <label class="visually-hidden" for="companion-split">
-                      Where {firstName()}'s mail goes
-                    </label>
-                    <select id="companion-split" value={other() ? "other" : "important"} onChange={(e) => split(e.currentTarget.value === "other")}>
-                      <option value="important">Important</option>
-                      <option value="other">Other</option>
-                    </select>
+                  <Show when={theirs()}>
+                    {(s) => (
+                      <>
+                        <label class="visually-hidden" for="companion-split">
+                          Where {firstName()}'s mail goes
+                        </label>
+                        <select
+                          id="companion-split"
+                          value={s().state}
+                          title={s().domainChoice === "blocked" && s().state === "blocked" ? `Everyone at ${s().domain} is blocked` : undefined}
+                          onChange={(e) => void choose(e.currentTarget.value as SenderState)}
+                        >
+                          <option value="important">Important</option>
+                          <option value="other">Other</option>
+                          <option value="blocked">Blocked</option>
+                        </select>
+                      </>
+                    )}
                   </Show>
                 </div>
               </div>

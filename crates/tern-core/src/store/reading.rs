@@ -190,23 +190,113 @@ impl Store {
     pub fn set_split(&self, ids: &[i64], other: bool) -> Result<()> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
-            "INSERT INTO sender_splits (account_id, addr, other)
-             SELECT account_id, lower(from_addr), ?2 FROM messages WHERE id = ?1 AND from_addr <> ''
-             ON CONFLICT (account_id, addr) DO UPDATE SET other = excluded.other",
+            "INSERT INTO sender_state (account_id, addr, state, since)
+             SELECT account_id, lower(from_addr), ?2, ?3 FROM messages WHERE id = ?1 AND from_addr <> ''
+             ON CONFLICT (account_id, addr) DO UPDATE SET state = excluded.state, since = excluded.since",
         )?;
         for id in ids {
-            stmt.execute(params![id, other])?;
+            stmt.execute(params![id, if other { "other" } else { "important" }, now()])?;
         }
         Ok(())
     }
 
-    /// Whether mail like this message goes to Other: its sender's split, or with no choice made, whether it is bulk.
-    pub fn goes_to_other(&self, id: i64) -> Result<bool> {
+    /// The sender of this message and where their mail goes: what the person chose for them (or their domain), else
+    /// the split the headers give it.
+    pub fn sender_of(&self, id: i64) -> Result<Option<Sender>> {
         let conn = self.reader();
-        let other = conn
-            .query_row(&format!("SELECT {IS_OTHER} FROM messages m WHERE m.id = ?1"), [id], |r| r.get(0))
-            .optional()?;
-        Ok(other.unwrap_or(false))
+        Ok(conn
+            .query_row(
+                &format!(
+                    "SELECT m.account_id, lower(m.from_addr), {STATE_M}, m.bulk,
+                            (SELECT s.state FROM sender_state s WHERE s.account_id = m.account_id
+                               AND s.addr = lower(m.from_addr)),
+                            (SELECT s.state FROM sender_state s WHERE s.account_id = m.account_id
+                               AND s.addr = substr(lower(m.from_addr), instr(m.from_addr, '@')))
+                     FROM messages m WHERE m.id = ?1 AND m.from_addr <> ''"
+                ),
+                [id],
+                |r| {
+                    let addr: String = r.get(1)?;
+                    let chosen: Option<String> = r.get(2)?;
+                    let bulk: bool = r.get(3)?;
+                    Ok(Sender {
+                        account_id: r.get(0)?,
+                        domain: addr.rsplit_once('@').map(|(_, d)| d.to_string()).unwrap_or_default(),
+                        addr,
+                        state: chosen.unwrap_or_else(|| if bulk { "other" } else { "important" }.into()),
+                        address_choice: r.get(4)?,
+                        domain_choice: r.get(5)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    /// Sets what happens to mail from `addr` (an address, or `@domain` for everyone there): important, other or
+    /// blocked; None forgets the choice, and the headers decide again. Blocking does not move mail already here:
+    /// the caller archives what it wants gone, with its own undo.
+    pub fn set_sender(&self, account_id: i64, addr: &str, state: Option<&str>) -> Result<()> {
+        let addr = addr.trim().to_lowercase();
+        if addr.is_empty() || addr == "@" {
+            anyhow::bail!("No address to set");
+        }
+        let conn = self.conn();
+        match state {
+            Some(state @ ("important" | "other" | "blocked")) => conn.execute(
+                "INSERT INTO sender_state (account_id, addr, state, since) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (account_id, addr) DO UPDATE SET state = excluded.state, since = excluded.since",
+                params![account_id, addr, state, now()],
+            )?,
+            Some(other) => anyhow::bail!("Unknown sender state {other}"),
+            None => conn.execute(
+                "DELETE FROM sender_state WHERE account_id = ?1 AND addr = ?2",
+                params![account_id, addr],
+            )?,
+        };
+        Ok(())
+    }
+
+    /// Every choice the person made about senders, newest first, for Settings → Senders.
+    pub fn sender_choices(&self) -> Result<Vec<SenderChoice>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(
+            "SELECT s.account_id, s.addr, s.state, s.since,
+                    (SELECT c.name FROM contacts c WHERE c.email = s.addr)
+             FROM sender_state s ORDER BY s.since DESC, s.addr",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(SenderChoice {
+                account_id: r.get(0)?,
+                addr: r.get(1)?,
+                state: r.get(2)?,
+                since: r.get(3)?,
+                name: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Reads and archives what blocked senders sent to an inbox folder since they were blocked (new mail from them;
+    /// what was there before stays where the person left it). Returns whether there was any; both go to the server
+    /// through the outbox like any change, and the mail stays searchable.
+    pub fn archive_blocked(&self, folder_id: i64) -> Result<bool> {
+        let ids: Vec<i64> = {
+            let conn = self.conn();
+            let mut stmt = conn.prepare_cached(&format!(
+                "SELECT m.id FROM messages m JOIN folders f ON f.id = m.folder_id
+                 WHERE m.folder_id = ?1 AND f.role = 'inbox' AND m.uid IS NOT NULL AND {STATE_M} = 'blocked'
+                   AND m.date >= (SELECT max(s.since) FROM sender_state s WHERE s.account_id = m.account_id
+                                    AND s.addr IN (lower(m.from_addr), substr(lower(m.from_addr), instr(m.from_addr, '@'))))"
+            ))?;
+            let ids = stmt.query_map([folder_id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+            ids
+        };
+        if ids.is_empty() {
+            return Ok(false);
+        }
+        self.apply(&ids, Action::MarkRead, 0)?;
+        self.apply(&ids, Action::Archive, 0)?;
+        Ok(true)
     }
 
     /// Snoozes the conversations of these messages until `due`: they leave the inbox's lists (not its folder,

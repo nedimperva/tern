@@ -147,8 +147,7 @@ impl Store {
                     max(m.id),
                     -- From their mail in the window: a lookup across all their mail took a second per page.
                     max(m.list_unsubscribe),
-                    COALESCE((SELECT s.other FROM sender_splits s
-                               WHERE s.account_id = m.account_id AND s.addr = lower(m.from_addr)), max(m.bulk))
+                    COALESCE({STATE_M} IN ('other', 'blocked'), max(m.bulk))
              FROM messages m JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id
              WHERE m.date > ?1 AND f.role NOT IN ('sent', 'drafts', 'junk') AND m.from_addr <> ''
                AND NOT {MINE_M}

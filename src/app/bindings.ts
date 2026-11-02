@@ -14,11 +14,13 @@ import { aiOn, omarchyAvailable, setSetting, settings, type Settings } from "../
 import {
   accountOf,
   act,
+  blockSender,
   folderName,
   markAllRead,
   moveToSplit,
   mute,
   restartToUpdate,
+  senderHere,
   shelve,
   startLabel,
   switchAccount,
@@ -167,8 +169,20 @@ export const menu = (all: Binding[]) => {
     if (!b || (k === "v" && !messages.some((m) => m.attachments.length))) return [];
     return [{ name: b.name, keys: keyLabel(b.keys), run: () => void b.run() }];
   });
-  items.splice(items.findIndex((i) => i.name === "Mark as spam"), 0, { name: "Move to …", run: () => void choose("Move to …") });
+  const spam = items.findIndex((i) => i.name === "Mark as spam");
+  items.splice(spam, 0, { name: "Move to …", run: () => void choose("Move to …") }, ...blocking());
   return items;
+};
+
+/** Block the sender, or everyone at their domain: in the menu and the palette, with no key (`B` reads). */
+const blocking = (): MenuItem[] => {
+  const r = senderHere();
+  const domain = r?.fromAddr.split("@")[1];
+  if (!r || !domain) return [];
+  return [
+    { name: `Block ${r.fromName || r.fromAddr}`, run: () => void blockSender(false) },
+    { name: `Block everyone at ${domain}`, run: () => void blockSender(true) },
+  ];
 };
 
 /** The command palette: every key that works here, then what has no key. */
@@ -189,6 +203,7 @@ export const commands = (all: Binding[]): Command[] => [
         { name: "Move sender to Important", group: "Actions", run: () => void moveToSplit(false) },
       ]
     : []),
+  ...blocking().map((b) => ({ ...b, group: "Actions" })),
   {
     name: "Move to …",
     group: "Actions",

@@ -199,6 +199,35 @@ pub struct DayStart {
     pub to_read: Vec<ToRead>,
 }
 
+/// Who sent a message, and where their mail goes (the companion's choice).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Sender {
+    pub account_id: i64,
+    /// Lowercase.
+    pub addr: String,
+    pub domain: String,
+    /// important, other or blocked: what the person chose, else what the headers give.
+    pub state: String,
+    /// What the person chose for the address itself, and for its whole domain; None where nothing was chosen.
+    pub address_choice: Option<String>,
+    pub domain_choice: Option<String>,
+}
+
+/// A choice the person made about a sender, for Settings → Senders.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SenderChoice {
+    pub account_id: i64,
+    /// An address, or `@domain` for everyone there.
+    pub addr: String,
+    pub name: String,
+    /// important, other or blocked.
+    pub state: String,
+    /// When it was chosen (Unix seconds); 0 for choices from before 2.0.
+    pub since: i64,
+}
+
 /// A sender and how much they wrote lately ("Who fills your inbox").
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

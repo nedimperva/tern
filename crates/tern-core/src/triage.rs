@@ -3,7 +3,7 @@
 //! The inbox has two splits: **Important** (people writing to you) and **Other** (mail sent to many: newsletters,
 //! notifications, receipts). A message is Other when its headers say it went to a list (`List-Id`,
 //! `List-Unsubscribe`, `Precedence: bulk`) or it comes from an address nobody answers (noreply@…). Moving a
-//! conversation to the other split remembers its sender (`sender_splits`), which wins over the headers.
+//! conversation to the other split remembers its sender (`sender_state`), which wins over the headers.
 
 use crate::models::NewMessage;
 

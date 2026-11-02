@@ -22,7 +22,7 @@ mod settings;
 mod syncing;
 mod writing;
 
-const SCHEMA_VERSION: i64 = 31;
+const SCHEMA_VERSION: i64 = 32;
 
 /// What a mark is kept by: the message's Message-ID, or its row for mail without one.
 const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
@@ -247,12 +247,25 @@ pub const LATER: &str = "later";
 /// Conversations with something marked in them, in any folder.
 pub const MARKED: &str = "marked";
 
-/// The message goes to Other: its sender was moved there, or (with no choice made) it is bulk mail.
 /// The account `a` sent message `m`: its sender is the account's own address or one of its aliases.
 const MINE_M: &str = "(lower(m.from_addr) = lower(a.email)
                        OR lower(m.from_addr) IN (SELECT email FROM account_aliases WHERE account_id = a.id))";
-const IS_OTHER: &str = "COALESCE((SELECT s.other FROM sender_splits s
-                                  WHERE s.account_id = m.account_id AND s.addr = lower(m.from_addr)), m.bulk)";
+/// What the person chose for the sender of message `m` (important, other, blocked), NULL if nothing: a choice for
+/// the address wins over one for its whole domain (`@domain`). Key lookups, and the domain's only when a domain
+/// was chosen at all (an uncorrelated check, run once per query): an `IN` with an ORDER BY doubled the Other split's
+/// time. `@…` sorts between digits and letters, so `[@, A)` holds exactly the domains. A macro so IS_OTHER can be
+/// built from it with `concat!`.
+macro_rules! state_m {
+    () => {
+        "COALESCE((SELECT s.state FROM sender_state s WHERE s.account_id = m.account_id AND s.addr = lower(m.from_addr)),
+                  CASE WHEN (SELECT 1 FROM sender_state WHERE addr >= '@' AND addr < 'A' LIMIT 1) THEN
+                    (SELECT s.state FROM sender_state s WHERE s.account_id = m.account_id
+                       AND s.addr = substr(lower(m.from_addr), instr(m.from_addr, '@'))) END)"
+    };
+}
+const STATE_M: &str = state_m!();
+/// The message goes to Other: its sender was moved there or blocked, or (with no choice made) it is bulk mail.
+const IS_OTHER: &str = concat!("COALESCE(", state_m!(), " IN ('other', 'blocked'), m.bulk)");
 /// The conversation a follow-up reminder `r` watches: the one its sent message is in, once that is here.
 const FOLLOW_UP_THREAD: &str = "(SELECT f.thread_id FROM messages f
                                  WHERE f.account_id = r.account_id AND f.message_id = r.message_id LIMIT 1)";

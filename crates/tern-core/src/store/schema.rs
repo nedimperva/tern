@@ -328,6 +328,16 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
             // One-click unsubscribe (RFC 8058, package 17 D): the message carried List-Unsubscribe-Post. Older mail
             // keeps 0 and unsubscribes through its page or address, as before.
             30 => "ALTER TABLE messages ADD COLUMN unsubscribe_post INTEGER NOT NULL DEFAULT 0;",
+            // Senders (package 17 C): the split choice becomes a state, for an address or a whole domain
+            // (`@domain`): important, other or blocked. Today's choices keep their meaning.
+            31 => {
+                "CREATE TABLE sender_state (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                            addr TEXT NOT NULL, state TEXT NOT NULL, since INTEGER NOT NULL DEFAULT 0,
+                                            PRIMARY KEY (account_id, addr));
+                 INSERT INTO sender_state (account_id, addr, state)
+                   SELECT account_id, addr, CASE WHEN other THEN 'other' ELSE 'important' END FROM sender_splits;
+                 DROP TABLE sender_splits;"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
