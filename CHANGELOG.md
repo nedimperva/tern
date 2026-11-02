@@ -41,6 +41,8 @@ every release needs one here before it is tagged.
 - New mail from the 1st to the 9th of a month never arrived from SmarterMail. It writes those dates without the
   space the standard asks for, and Tern dropped the whole message. Tern reads them now, and the missed mail comes
   in on the next check.
+- A signature written as HTML code (from a signature generator, say) showed as code in compose and went out as code.
+  Tern now sees the code, treats it as an HTML signature and shows it as it looks, including ones saved before.
 
 ## [1.8.0] - 2026-11-02
 

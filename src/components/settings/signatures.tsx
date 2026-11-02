@@ -6,7 +6,7 @@ import { colourOf } from "../../colours";
 import { setSetting, settings } from "../../settings";
 import { Icon } from "../Icon";
 import { HtmlFrame } from "../HtmlFrame";
-import { htmlText, localPictures, pastedHtml } from "../../htmlSignature";
+import { htmlSource, htmlText, localPictures, pastedHtml } from "../../htmlSignature";
 import { accountName, Group, MailPreview } from "./shared";
 import { formatted, keptHtml } from "./snippets";
 import { Dropdown } from "../Dropdown";
@@ -258,7 +258,11 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
                             html={s().html}
                             toolbar
                             lineBreaks
-                            onChange={(text, html) => edit({ body: text, html: formatted(html) ? html : null })}
+                            onChange={(text, html) => {
+                              // HTML code pasted as words: an HTML signature, shown and sent as one.
+                              const src = formatted(html) ? null : htmlSource(text);
+                              edit(src ? { custom: true, html: src, body: htmlText(src) } : { body: text, html: formatted(html) ? html : null });
+                            }}
                           />
                         )}
                       </Show>

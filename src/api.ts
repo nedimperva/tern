@@ -3,6 +3,7 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { codeAsHtml } from "./htmlSignature";
 
 /** The start of the day: what came in since the person was last here and what needs them (see `day_start`). */
 export type DayStart = {
@@ -642,7 +643,7 @@ const tauri: Api = {
   saveSnippet: (snippet) => invoke("save_snippet", { snippet }),
   deleteSnippet: (id) => invoke("delete_snippet", { id }),
   snippetUsed: (id) => invoke("snippet_used", { id }),
-  signatures: () => invoke("signatures"),
+  signatures: () => invoke<Signature[]>("signatures").then((list) => list.map(codeAsHtml)),
   saveSignature: (signature) => invoke("save_signature", { signature }),
   setSignatureDefault: (accountId, reply, id) => invoke("set_signature_default", { accountId, reply, id }),
   deleteSignature: (id) => invoke("delete_signature", { id }),
