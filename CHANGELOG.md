@@ -7,6 +7,8 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-02
+
 ### Added
 
 - Send from more than one address in an account. Settings → an account → Also send as takes other addresses the
