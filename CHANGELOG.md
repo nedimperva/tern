@@ -16,10 +16,13 @@ every release needs one here before it is tagged.
   Starts, Translate, Reshape on just the selected words, and an "In your style" switch for one mail.
 - A try shows in grey where your text is, and is not in the email until you keep it with Tab. People the AI names
   are added only when you add them. Nothing in the sidebar can send.
-- Compose is calmer: a light sheet whose top reads as words (To …, from …, about …) with people as underlined
-  names, the subject as the mail's title, and the text set a little larger. The signature folds to one line until
-  you open it. Saved and the word count sit at the bottom left, Send at the right, and the tools fade while you type
-  and come back when you pause or move the mouse.
+- Compose is calmer. The subject leads as the mail's title with the people in one small line under it, the text is
+  set a little larger, and the tools fade while you type. The footer holds From (when you have more than one
+  address), Saved and the word count on the left, and attach, AI, a ⋯ menu (other ways to send, snippets,
+  signatures, discard) and Send on the right.
+- The signature folds to one line. Open it to read or change it, pick another one right there, and Fold it again;
+  it also folds again on its own when you go back to your text.
+- Focus mode (Ctrl+Shift+F) fills the whole window, with larger text and Send in a floating pill.
 - Long mails get room. Past about 150 words compose widens and shows an outline of your paragraphs: click one to go
   there, drag to reorder, or Alt+Up/Down to move the one you're in. If your question sits below the first part, it
   says so once and can move it up. Ctrl+Shift+O opens or hides the outline.

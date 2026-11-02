@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createResource, createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
 import type { EditorView } from "prosemirror-view";
 import { TextSelection } from "prosemirror-state";
-import { type Part, partsOf } from "../editor/outline";
+import { type Part, partsOf, signatureRange } from "../editor/outline";
 import {
   api,
   type Account,
@@ -403,7 +403,9 @@ export function Compose(props: {
       const parts: string[] = [];
       // Line breaks as text too, or the signature's lines run together and are not found below.
       const doc = view.state.doc;
-      doc.forEach((node, _, i) => {
+      const sig = signatureRange(doc);
+      doc.forEach((node, pos, i) => {
+        if (sig && pos >= sig.from && pos < sig.to) return;
         // Not the quote, nor the "On …, Ada wrote:" line just above it.
         const attribution = doc.maybeChild(i + 1)?.type.name === "blockquote" && /:\s*$/.test(node.textContent);
         if (node.type.name !== "blockquote" && !attribution) parts.push(node.textBetween(0, node.content.size, "\n", "\n"));
@@ -1127,9 +1129,6 @@ export function Compose(props: {
           <span class="summary">{[to().length ? `To ${to().join(", ")}` : "", subject()].filter(Boolean).join(" · ")}</span>
         </Show>
         <span class="spacer" />
-        <Show when={focusMode()}>
-          <span class="saved">{words()} words</span>
-        </Show>
         <Show when={!props.init.inline}>
           <Show
             when={!focusMode()}
@@ -1146,8 +1145,19 @@ export function Compose(props: {
         <Show when={!focusMode()}>{iconButton("x", "Close and keep the draft (Esc)", () => void close())}</Show>
       </div>
       <div class="fields">
+        <Show when={!props.init.inline || !props.init.inReplyTo}>
+          <div class="field subject">
+            <input
+              aria-label="Subject"
+              placeholder="Subject"
+              value={subject()}
+              onInput={(e) => (setSubject(e.currentTarget.value), changed())}
+            />
+          </div>
+        </Show>
         <RecipientField
-          label="To"
+          label="to"
+          placeholder="add people"
           value={to()}
           onChange={(v) => (setTo(v), changed())}
           ref={(el) => (toInput = el)}
@@ -1168,46 +1178,10 @@ export function Compose(props: {
           }
         />
         <Show when={showCc()}>
-          <RecipientField label="Cc" value={cc()} onChange={(v) => (setCc(v), changed())} ref={(el) => (ccInput = el)} outside={isOutside} />
+          <RecipientField label="cc" value={cc()} onChange={(v) => (setCc(v), changed())} ref={(el) => (ccInput = el)} outside={isOutside} />
         </Show>
         <Show when={showBcc()}>
-          <RecipientField label="Bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} outside={isOutside} />
-        </Show>
-        <Show when={props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length)}>
-          <div class="field from-row">
-            <span class="label">from</span>
-            <label class="from-pick" title="Send from">
-            <span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />
-            <select
-              aria-label="From"
-              value={alias() ? `${from()} ${alias()}` : String(from())}
-              onChange={(e) => changeFrom(e.currentTarget.value)}
-            >
-              <For each={props.accounts}>
-                {(a) => (
-                  <>
-                    <option value={String(a.id)}>{fromLabel(a.displayName, a.email)}</option>
-                    <For each={a.aliases ?? []}>
-                      {(x) => <option value={`${a.id} ${x.email}`}>{fromLabel(x.name || a.displayName, x.email)}</option>}
-                    </For>
-                  </>
-                )}
-              </For>
-            </select>
-            <Icon name="chevron-down" size={12} />
-          </label>
-          </div>
-        </Show>
-        <Show when={!props.init.inline || !props.init.inReplyTo}>
-          <div class="field subject">
-            <span class="label">about</span>
-            <input
-              aria-label="Subject"
-              placeholder="Subject"
-              value={subject()}
-              onInput={(e) => (setSubject(e.currentTarget.value), changed())}
-            />
-          </div>
+          <RecipientField label="bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} outside={isOutside} />
         </Show>
       </div>
       {/* A try from the AI shows in the text's place; the editor stays as it was underneath until it is kept. */}
@@ -1222,6 +1196,11 @@ export function Compose(props: {
               snippets={snippets}
               quoteOpen={props.init.quoteOpen}
               foldSignature
+              signatures={{
+                options: () => accountSignatures().map((x) => ({ id: x.id, name: x.name || "Untitled" })),
+                current: () => sigId(),
+                pick: (id) => void switchSignature(accountSignatures().find((x) => x.id === id) ?? null),
+              }}
               ref={editorReady}
               onPictures={pictures}
               pictures={shownPictures}
@@ -1273,18 +1252,39 @@ export function Compose(props: {
       </Show>
       <Show when={htmlSig()}>
         {(s) => (
-          <Show
-            when={htmlSigOpen()}
-            fallback={
-              <button type="button" class="sig-fold" title="Show the signature" onClick={() => setHtmlSigOpen(true)}>
-                — {s().name ? `“${s().name}” signature` : "Your signature"} · show
+          <div class="html-sig">
+            <div class="sig-line" classList={{ open: htmlSigOpen() }}>
+              <button
+                type="button"
+                class="sig-toggle"
+                title={htmlSigOpen() ? "Fold the signature" : "Show the signature"}
+                onClick={() => setHtmlSigOpen(!htmlSigOpen())}
+              >
+                {htmlSigOpen() ? "▾ Signature" : `▸ ${s().name ? `“${s().name}”` : "Your"} signature`}
               </button>
-            }
-          >
-            <div class="html-signature" title="Your signature, as it goes out. Change it in Settings → Signatures.">
-              <HtmlFrame html={s().html!} title="Signature" />
+              <Show when={htmlSigOpen()}>
+                <select
+                  aria-label="Signature"
+                  value={String(sigId() ?? 0)}
+                  onChange={(e) => void switchSignature(accountSignatures().find((x) => x.id === Number(e.currentTarget.value)) ?? null)}
+                >
+                  <For each={accountSignatures()}>{(x) => <option value={String(x.id)}>{x.name || "Untitled"}</option>}</For>
+                  <option value="0">None</option>
+                </select>
+              </Show>
+              <span class="rule" />
+              <Show when={htmlSigOpen()}>
+                <button type="button" class="sig-fold-button" onClick={() => setHtmlSigOpen(false)}>
+                  Fold
+                </button>
+              </Show>
             </div>
-          </Show>
+            <Show when={htmlSigOpen()}>
+              <div class="html-signature" title="Your signature, as it goes out. Change it in Settings → Signatures.">
+                <HtmlFrame html={s().html!} title="Signature" />
+              </div>
+            </Show>
+          </div>
         )}
       </Show>
       <Show when={cards().length || forwardOf()}>
@@ -1405,6 +1405,35 @@ export function Compose(props: {
         </div>
       </Show>
       <footer>
+        <Show when={props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length)}>
+          <label class="from-pick" title="Send from">
+            <span class="word">from</span>
+            <span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />
+            <select
+              aria-label="From"
+              value={alias() ? `${from()} ${alias()}` : String(from())}
+              onChange={(e) => changeFrom(e.currentTarget.value)}
+            >
+              <For each={props.accounts}>
+                {(a) => (
+                  <>
+                    <option value={String(a.id)} title={fromLabel(a.displayName, a.email)}>
+                      {a.email}
+                    </option>
+                    <For each={a.aliases ?? []}>
+                      {(x) => (
+                        <option value={`${a.id} ${x.email}`} title={fromLabel(x.name || a.displayName, x.email)}>
+                          {x.email}
+                        </option>
+                      )}
+                    </For>
+                  </>
+                )}
+              </For>
+            </select>
+            <Icon name="chevron-down" size={12} />
+          </label>
+        </Show>
         <span class="saved" aria-live="polite">
           <Show when={saveState() === "saved"}>Saved</Show>
           <Show when={saveState() === "saving"}>Saving…</Show>
@@ -1417,34 +1446,7 @@ export function Compose(props: {
             )}
           </Show>
         </span>
-        <div class="send-split" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setSendMenu(false)}>
-          <button type="button" class="primary" onClick={() => send(false)}>
-            Send <kbd>Ctrl ↵</kbd>
-          </button>
-          <button
-            type="button"
-            class="primary more"
-            aria-label="More ways to send"
-            aria-haspopup="menu"
-            aria-expanded={sendMenu()}
-            onClick={() => setSendMenu(!sendMenu())}
-          >
-            <Icon name="chevron-down" size={14} />
-          </button>
-          <Show when={sendMenu()}>
-            <div class="send-menu" role="menu">
-              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), send(true))}>
-                Send & Done <kbd>Ctrl Shift ↵</kbd>
-              </button>
-              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), setPicking("later"))}>
-                Send later… <kbd>Ctrl Shift L</kbd>
-              </button>
-              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), setPicking("followUp"))}>
-                Remind me if no reply… <kbd>Ctrl Shift H</kbd>
-              </button>
-            </div>
-          </Show>
-        </div>
+        <span class="spacer" />
         <Show when={checks()}>
           <span class="hint">Ctrl ↵ again sends anyway</span>
         </Show>
@@ -1465,7 +1467,6 @@ export function Compose(props: {
         </Show>
         <span class="tools">
           {iconButton("paperclip", "Attach files (Ctrl+Shift+A), or drop them here", () => void pick())}
-          <Show when={snippetList().length}>{iconButton("file-text", "Snippet ( ; )", openSnippets)}</Show>
           <Show when={aiAllowed()}>
             <button
               type="button"
@@ -1479,26 +1480,65 @@ export function Compose(props: {
               <kbd class="ai-mark">AI</kbd>
             </button>
           </Show>
-          <Show when={accountSignatures().length}>
-            <label class="signature-pick" title="Signature (Ctrl+Shift+S)">
-              <Icon name="pen-line" size={14} />
-              <select
-                aria-label="Signature"
-                value={String(sigId() ?? "")}
-                onChange={(e) => {
-                  const id = Number(e.currentTarget.value);
-                  void switchSignature(accountSignatures().find((s) => s.id === id) ?? null);
-                }}
-              >
-                <For each={accountSignatures()}>{(s) => <option value={String(s.id)}>{s.name || "Untitled"}</option>}</For>
-                <option value="">None</option>
-              </select>
-              <Icon name="chevron-down" size={12} />
-            </label>
-          </Show>
         </span>
-        <span class="spacer" />
-        {iconButton("trash", "Discard (Ctrl+Shift+,)", discard, "discard")}
+        {/* Everything else that happens to the mail: other ways to send, snippets, the signature, discard. */}
+        <div class="more-wrap" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setSendMenu(false)}>
+          <button
+            type="button"
+            class="icon-button more"
+            title="More"
+            aria-label="More"
+            aria-haspopup="menu"
+            aria-expanded={sendMenu()}
+            onClick={() => setSendMenu(!sendMenu())}
+          >
+            <Icon name="more" size={16} />
+          </button>
+          <Show when={sendMenu()}>
+            <div class="send-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), send(true))}>
+                Send & Done <kbd>Ctrl Shift ↵</kbd>
+              </button>
+              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), setPicking("later"))}>
+                Send later… <kbd>Ctrl Shift L</kbd>
+              </button>
+              <button type="button" role="menuitem" onClick={() => (setSendMenu(false), setPicking("followUp"))}>
+                Remind me if no reply… <kbd>Ctrl Shift H</kbd>
+              </button>
+              <Show when={snippetList().length}>
+                <hr />
+                <button type="button" role="menuitem" onClick={() => (setSendMenu(false), openSnippets())}>
+                  Snippet… <kbd>;</kbd>
+                </button>
+              </Show>
+              <Show when={accountSignatures().length}>
+                <hr />
+                <For each={[...accountSignatures(), null]}>
+                  {(sig) => (
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={(sigId() ?? null) === (sig?.id ?? null)}
+                      onClick={() => (setSendMenu(false), void switchSignature(sig))}
+                    >
+                      {sig ? `Signature: ${sig.name || "Untitled"}` : "No signature"}
+                      <Show when={(sigId() ?? null) === (sig?.id ?? null)}>
+                        <Icon name="check" size={14} />
+                      </Show>
+                    </button>
+                  )}
+                </For>
+              </Show>
+              <hr />
+              <button type="button" role="menuitem" class="danger" onClick={() => (setSendMenu(false), discard())}>
+                Discard draft <kbd>Ctrl Shift ,</kbd>
+              </button>
+            </div>
+          </Show>
+        </div>
+        <button type="button" class="primary send" onClick={() => send(false)}>
+          Send <kbd>Ctrl ↵</kbd>
+        </button>
       </footer>
       </div>
       <Show when={aiOpen() && !props.init.inline}>{side()}</Show>

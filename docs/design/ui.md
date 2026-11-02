@@ -325,16 +325,16 @@ none).
 - Top row: the From pill (account colour dot, "From Name · address ▾") when > 1 identity; then, right-aligned,
   "✓ Saved" / "Saving…" in `--fg-2`, and icon buttons Minimize (`Ctrl+Shift+M`), Focus (`Ctrl+Shift+F`) and Close
   (`Esc`, keeps the draft). An inline reply has no Minimize or Focus.
-- Paper (2026-11-02): the dialog is a sheet, `--bg-0` with a `--line-strong` border, 44 px side padding. Its top
-  reads as words, not a form: `To` people, then `Cc` `Bcc` when used, `from` address (only with more than one
-  identity), `about` Subject. No rules between rows; the small
-  words are `--t-rd` `--fg-2`. People are names with a dashed `--line-strong` underline (× on hover), outside
-  people in `--warn-fg` with a `--warn` underline. The subject is the sheet's title, `--t-xl` 600.
-- Signature: folded to one line, "— Name · signature" in `--fg-2`, from the `-- ` line to the quote. A click on it,
-  or the caret moving into it, opens it; a click in the empty space below the text puts the caret above it. An
-  HTML signature folds the same way. It always goes out whole. Recipients are chips (`--bg-2`, `--r-sm`): initials on
-  `--accent-soft`, the contact's name when known (address on hover), remove on `Backspace`. A chip outside the
-  sender's organisation (not for public mail services) is on `--warn-soft` with the domain after the name.
+- Top (T1, 2026-11-02): the subject first, as the sheet's title (24 px 600, "Subject" as placeholder), then the
+  people in small `--t-md` lines under it: `to` (placeholder "add people", `Cc` `Bcc` toggles at its right end, or
+  `Ctrl+Shift+C/B`), then `cc` `bcc` when used. No rules between rows. People are names with a dashed
+  `--line-strong` underline (× on hover), outside people in `--warn-fg` with a `--warn` underline. The sheet is
+  `--bg-0` with a `--line-strong` border, 44 px side padding.
+- Signature (S): behind its own line. Folded: "▸ Name · signature" in `--fg-2` and a dashed rule. Open: "▾ Signature",
+  the picker (its signatures and None), the rule and Fold in `--accent`; the signature sits under it behind a 2 px
+  `--line` rule. It opens on a click, or when the caret goes in; it folds on Fold, or when the caret leaves it
+  unchanged. A click under the text puts the caret above it. An HTML signature folds the same way. It always goes
+  out whole, and the word count never counts it.
 - Editor body: 15 px / 1.65 in the dialog (`--t-rd` inline), min 160 px, grows with content. Formatting bar appears only on text selection, floating above the selection: B I U S · link · list · quote.
 - Attachments: cards 132 px wide (picture thumbnail, else the file kind's icon; name and size; × on hover) and a
   size bar against 25 MB, `--warn` from 70 %, `--danger` over. Files dragged over the window show a dashed
@@ -352,13 +352,15 @@ none).
   text keeps a 640 px measure and parts the caret isn't in sit at 70 %. If the first ask is below the first part,
   one `--warn-soft` note says where it is (Move it up / Leave it). Words and minutes to read at the foot. Not for an
   inline reply, focus mode or with the Writing help sidebar open.
-- Footer (above a `--line` rule): "Saved · N words" on the left; at the right attach, snippet, AI and signature,
-  discard as a trash icon, and last the split `Send  Ctrl↵` button whose menu (opening leftwards) holds Send & Done,
-  Send later…, Remind me if no reply… with their keys. While
-  the person types, the tools, discard and the top row's buttons fade out; a 1.2 s pause, the mouse or focus brings
-  them back. Send never fades.
-- Signature: a pill in the footer ("✎ Full ▾") when the account has any; picking one, or `Ctrl+Shift+S`
-  to step through them and None, swaps the signature in the text. Changing From brings the new account's.
+- Footer (G, above a `--line` rule): "from ● address ▾" when there is more than one identity, then "Saved · N words"
+  (words once there are some); at the right attach and AI, a ⋯ menu (Send & Done, Send later…, Remind me if no
+  reply…, Snippet…, the signatures, Discard draft) and Send last. While the person types, the tools, ⋯ and the top
+  row's buttons fade out; a 1.2 s pause, the mouse or focus brings them back. Send never fades.
+- Focus (F, `Ctrl+Shift+F`): the whole window, `--bg-0`, no edges. The top is one faint line (to whom · subject) with
+  Exit focus; 17 px text in a 640 px column, the paragraph being written in full colour; the footer becomes a
+  floating pill at the bottom: Saved · words, attach, AI, Send.
+- Signature switching: the open signature line's picker, the ⋯ menu, or `Ctrl+Shift+S` to step through them and
+  None. Changing From brings the new account's.
 - Minimized: the dialog hides (its editor kept) and a 320 px card waits bottom right: subject, recipients, the
   start of the text, Saved. Click or `Ctrl+Shift+M` opens it again; the app's keys work meanwhile.
 - Focus mode: compose fills the window, fields hidden behind a one-line summary, the text in a 640 px column at
