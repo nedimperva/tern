@@ -38,6 +38,9 @@ every release needs one here before it is tagged.
 - With a reply open under a conversation, clicking anywhere outside it left every key dead (Esc, C, G I…). The reply
   takes the keys only while you're in it; outside it the usual keys work, R goes back to it, and leaving the
   conversation keeps it as a draft.
+- New mail from the 1st to the 9th of a month never arrived from SmarterMail. It writes those dates without the
+  space the standard asks for, and Tern dropped the whole message. Tern reads them now, and the missed mail comes
+  in on the next check.
 
 ## [1.8.0] - 2026-11-02
 
