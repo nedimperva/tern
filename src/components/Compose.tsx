@@ -144,6 +144,8 @@ export function Compose(props: {
     const s = props.signatures.find((x) => x.id === sigId());
     return s?.custom && s.html ? s : null;
   };
+  // An HTML signature folds to one line like a text one (Editor's signatureFold).
+  const [htmlSigOpen, setHtmlSigOpen] = createSignal(false);
   const sigBelow = () => props.init.signature?.below ?? (settings.signatureBelow && !!props.init.inReplyTo);
   let tools: Awaited<ReturnType<typeof signatureTools>> | undefined;
   void signatureTools().then((t) => (tools = t));
@@ -151,8 +153,11 @@ export function Compose(props: {
   const accountSignatures = () => props.signatures.filter((s) => s.accountId === from());
   let view: EditorView | undefined;
   let formEl: HTMLFormElement | undefined;
+  // The view arrives after the first render; what reads it (ownText) runs again then.
+  const [ready, setReady] = createSignal(false);
   const editorReady = (v: EditorView) => {
     view = v;
+    setReady(true);
     // An inline reply opens below the whole conversation; the editor takes the focus without scrolling (ProseMirror
     // focuses that way), so bring the reply into view, the end of the message above it still showing.
     if (props.init.inline) {
@@ -390,13 +395,17 @@ export function Compose(props: {
   };
   /** What the person wrote themselves: not the quoted message, not the signature. */
   const ownText = () => {
+    ready();
     let text = body();
     if (view) {
       const parts: string[] = [];
       // Line breaks as text too, or the signature's lines run together and are not found below.
-      view.state.doc.forEach(
-        (node) => void (node.type.name !== "blockquote" && parts.push(node.textBetween(0, node.content.size, "\n", "\n"))),
-      );
+      const doc = view.state.doc;
+      doc.forEach((node, _, i) => {
+        // Not the quote, nor the "On …, Ada wrote:" line just above it.
+        const attribution = doc.maybeChild(i + 1)?.type.name === "blockquote" && /:\s*$/.test(node.textContent);
+        if (node.type.name !== "blockquote" && !attribution) parts.push(node.textBetween(0, node.content.size, "\n", "\n"));
+      });
       text = parts.join("\n");
     }
     // Compared with spaces collapsed: the editor and the saved signature break lines differently.
@@ -1109,28 +1118,6 @@ export function Compose(props: {
       <Show when={long()}>{outline()}</Show>
       <div class="compose-main">
       <div class="compose-head">
-        <Show when={props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length)}>
-          <label class="from-pick" title="Send from">
-            <span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />
-            <select
-              aria-label="From"
-              value={alias() ? `${from()} ${alias()}` : String(from())}
-              onChange={(e) => changeFrom(e.currentTarget.value)}
-            >
-              <For each={props.accounts}>
-                {(a) => (
-                  <>
-                    <option value={String(a.id)}>{fromLabel(a.displayName, a.email)}</option>
-                    <For each={a.aliases ?? []}>
-                      {(x) => <option value={`${a.id} ${x.email}`}>{fromLabel(x.name || a.displayName, x.email)}</option>}
-                    </For>
-                  </>
-                )}
-              </For>
-            </select>
-            <Icon name="chevron-down" size={12} />
-          </label>
-        </Show>
         <Show when={focusMode()}>
           <span class="summary">{[to().length ? `To ${to().join(", ")}` : "", subject()].filter(Boolean).join(" · ")}</span>
         </Show>
@@ -1138,12 +1125,6 @@ export function Compose(props: {
         <Show when={focusMode()}>
           <span class="saved">{words()} words</span>
         </Show>
-        <span class="saved" aria-live="polite">
-          <Show when={saveState() === "saved"}>
-            <Icon name="check" size={12} /> Saved
-          </Show>
-          <Show when={saveState() === "saving"}>Saving…</Show>
-        </span>
         <Show when={!props.init.inline}>
           <Show
             when={!focusMode()}
@@ -1187,8 +1168,34 @@ export function Compose(props: {
         <Show when={showBcc()}>
           <RecipientField label="Bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} outside={isOutside} />
         </Show>
+        <Show when={props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length)}>
+          <div class="field from-row">
+            <span class="label">from</span>
+            <label class="from-pick" title="Send from">
+            <span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />
+            <select
+              aria-label="From"
+              value={alias() ? `${from()} ${alias()}` : String(from())}
+              onChange={(e) => changeFrom(e.currentTarget.value)}
+            >
+              <For each={props.accounts}>
+                {(a) => (
+                  <>
+                    <option value={String(a.id)}>{fromLabel(a.displayName, a.email)}</option>
+                    <For each={a.aliases ?? []}>
+                      {(x) => <option value={`${a.id} ${x.email}`}>{fromLabel(x.name || a.displayName, x.email)}</option>}
+                    </For>
+                  </>
+                )}
+              </For>
+            </select>
+            <Icon name="chevron-down" size={12} />
+          </label>
+          </div>
+        </Show>
         <Show when={!props.init.inline || !props.init.inReplyTo}>
           <div class="field subject">
+            <span class="label">about</span>
             <input
               aria-label="Subject"
               placeholder="Subject"
@@ -1209,6 +1216,7 @@ export function Compose(props: {
               autofocus={bodyFirst ? "start" : false}
               snippets={snippets}
               quoteOpen={props.init.quoteOpen}
+              foldSignature
               ref={editorReady}
               onPictures={pictures}
               pictures={shownPictures}
@@ -1260,9 +1268,18 @@ export function Compose(props: {
       </Show>
       <Show when={htmlSig()}>
         {(s) => (
-          <div class="html-signature" title="Your signature, as it goes out. Change it in Settings → Signatures.">
-            <HtmlFrame html={s().html!} title="Signature" />
-          </div>
+          <Show
+            when={htmlSigOpen()}
+            fallback={
+              <button type="button" class="sig-fold" title="Show the signature" onClick={() => setHtmlSigOpen(true)}>
+                — {s().name ? `“${s().name}” signature` : "Your signature"} · show
+              </button>
+            }
+          >
+            <div class="html-signature" title="Your signature, as it goes out. Change it in Settings → Signatures.">
+              <HtmlFrame html={s().html!} title="Signature" />
+            </div>
+          </Show>
         )}
       </Show>
       <Show when={cards().length || forwardOf()}>
@@ -1383,6 +1400,18 @@ export function Compose(props: {
         </div>
       </Show>
       <footer>
+        <span class="saved" aria-live="polite">
+          <Show when={saveState() === "saved"}>Saved</Show>
+          <Show when={saveState() === "saving"}>Saving…</Show>
+          <Show when={words()}>
+            {(n) => (
+              <span>
+                {saveState() ? " · " : ""}
+                {n()} {n() === 1 ? "word" : "words"}
+              </span>
+            )}
+          </Show>
+        </span>
         <div class="send-split" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setSendMenu(false)}>
           <button type="button" class="primary" onClick={() => send(false)}>
             Send <kbd>Ctrl ↵</kbd>

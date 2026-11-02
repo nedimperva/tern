@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { partsOf } from "../editor/outline";
+import { partsOf, signatureRange } from "../editor/outline";
 import { fromText } from "../editor/schema";
 
 const labels = (text: string, sig = "") => partsOf(fromText(text), sig).map((p) => p.label);
@@ -30,5 +30,19 @@ describe("outline", () => {
 
   it("shortens a long paragraph to its first words", () => {
     expect(labels("one two three four five six seven eight nine.")).toEqual(["one two three four five six seven…"]);
+  });
+});
+
+describe("signature range", () => {
+  it("runs from the -- line to the quote, leaving the 'wrote:' line to the quote, and names the sender", () => {
+    const doc = fromText("Thanks!\n\n-- \nBest,\nAda Lovelace\nExample Ltd\n\nOn 1 Nov, Grace wrote:\n\n> Hi");
+    const r = signatureRange(doc);
+    expect(r?.name).toBe("Ada Lovelace");
+    expect(doc.textBetween(r!.from, r!.to, "\n", "\n")).not.toContain("wrote:");
+    expect(doc.textBetween(r!.from, r!.to, "\n", "\n")).toContain("Example Ltd");
+  });
+
+  it("is null without a -- line", () => {
+    expect(signatureRange(fromText("Just text.\n\nAda"))).toBeNull();
   });
 });

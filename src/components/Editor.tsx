@@ -4,11 +4,12 @@ import { history, redo, undo } from "prosemirror-history";
 import { inputRules, wrappingInputRule, InputRule } from "prosemirror-inputrules";
 import { keymap } from "prosemirror-keymap";
 import { liftListItem, sinkListItem, splitListItem, wrapInList } from "prosemirror-schema-list";
-import { EditorState, Plugin, TextSelection, type Command } from "prosemirror-state";
+import { EditorState, Plugin, PluginKey, TextSelection, type Command } from "prosemirror-state";
 import { Slice } from "prosemirror-model";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import { fromHtml, fromText, insertPictures, schema, toHtml, toText, type Picture } from "../editor/schema";
 import type { Snippet } from "../api";
+import { signatureRange } from "../editor/outline";
 
 /** Where compose's snippets come from: the ones offered here, their text with the places filled in, and what using
  * one does besides (its use counted, its subject and Cc filled in). */
@@ -71,6 +72,50 @@ const currentBlock = new Plugin({
   },
 });
 
+const sigKey = new PluginKey<boolean>("signatureFold");
+/** Folds the signature to one line ("— Name · signature") until it is clicked open or the caret goes into it; the
+ * text stays in the document, so it goes out as before. */
+const signatureFold = new Plugin<boolean>({
+  key: sigKey,
+  state: { init: () => false, apply: (tr, open) => tr.getMeta(sigKey) ?? open },
+  props: {
+    // A click in the empty space under the text lands at the end of the document, inside the folded signature;
+    // it means "write here", so the caret goes to the end of the text above it instead.
+    handleClick(view, pos) {
+      if (sigKey.getState(view.state)) return false;
+      const range = signatureRange(view.state.doc);
+      if (!range || range.from === 0 || pos < range.from || pos > range.to) return false;
+      view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(range.from - 1), -1)));
+      view.focus();
+      return true;
+    },
+    decorations(state) {
+      if (sigKey.getState(state)) return null;
+      const range = signatureRange(state.doc);
+      if (!range) return null;
+      const { from, to } = state.selection;
+      if (to > range.from && from < range.to) return null;
+      const folded: Decoration[] = [];
+      state.doc.forEach((node, pos) => {
+        if (pos >= range.from && pos < range.to) folded.push(Decoration.node(pos, pos + node.nodeSize, { class: "sig-hidden" }));
+      });
+      const label = `— ${range.name || "Your signature"} · signature`;
+      const widget = (view: EditorView) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "sig-fold";
+        b.contentEditable = "false";
+        b.textContent = label;
+        b.title = "Show the signature";
+        b.onmousedown = (e) => (e.preventDefault(), view.dispatch(view.state.tr.setMeta(sigKey, true)));
+        return b;
+      };
+      folded.push(Decoration.widget(range.from, widget, { side: -1, key: label, ignoreSelection: true }));
+      return DecorationSet.create(state.doc, folded);
+    },
+  },
+});
+
 /** Compose's body: rich text that writes plain text and HTML (docs/design/ui.md §4.4). */
 export function Editor(props: {
   /** Saved HTML if any, else plain text. */
@@ -88,6 +133,8 @@ export function Editor(props: {
   toolbar?: boolean;
   /** Enter starts a new line rather than a paragraph: a signature's lines sit together. */
   lineBreaks?: boolean;
+  /** The signature folds to one line until opened (compose). */
+  foldSignature?: boolean;
   /** Pictures pasted or dropped into the text: kept by compose, which says what they go out as. Without it, a
    * pasted picture is left out. */
   onPictures?: (files: File[]) => Promise<Picture[]>;
@@ -216,6 +263,7 @@ export function Editor(props: {
           history(),
           rules,
           currentBlock,
+          ...(props.foldSignature ? [signatureFold] : []),
           keymap({
             "Mod-z": undo,
             "Mod-Shift-z": redo,

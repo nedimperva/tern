@@ -30,3 +30,33 @@ export function partsOf(doc: ProseNode, signature: string): Part[] {
   }
   return out;
 }
+
+/** Where the signature sits: from its "-- " line to the quote or the end, and a name to show while it is folded
+ * (its first line that isn't a closing like "Best," or "S poštovanjem,"). */
+export function signatureRange(doc: ProseNode): { from: number; to: number; name: string } | null {
+  let from = -1;
+  let to = doc.content.size;
+  const lines: string[] = [];
+  doc.forEach((node, pos) => {
+    if (from >= 0 && to === doc.content.size && node.type.name === "blockquote") to = pos;
+    if (from >= 0 || node.type.name === "blockquote") {
+      if (from >= 0 && pos < to) lines.push(...node.textBetween(0, node.content.size, "\n", "\n").split("\n"));
+      return;
+    }
+    const text = node.textBetween(0, node.content.size, "\n", "\n");
+    if (!/^--[ \t]*(\n|$)/.test(text)) return;
+    from = pos;
+    lines.push(...text.split("\n").slice(1));
+  });
+  if (from < 0) return null;
+  // The "On …, Ada wrote:" line just above the quote belongs to the quote, not to the signature.
+  if (to < doc.content.size) {
+    const before = doc.resolve(to).nodeBefore;
+    if (before && to - before.nodeSize > from && /:\s*$/.test(before.textContent)) {
+      to -= before.nodeSize;
+      lines.splice(lines.length - before.textBetween(0, before.content.size, "\n", "\n").split("\n").length);
+    }
+  }
+  const name = lines.map((l) => l.trim()).find((l) => l && !/[,:]$/.test(l)) ?? "";
+  return { from, to, name: name.length > 40 ? `${name.slice(0, 40)}…` : name };
+}

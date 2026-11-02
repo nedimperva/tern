@@ -6952,35 +6952,167 @@ button.link.danger {
   font-size: var(--t-sm);
 }
 
-/* Paper (ui.md 4.4): who and what read as one quiet block, no lines between fields; the subject is the page's title. */
+/* Paper (ui.md 4.4): compose is a sheet on the warm ground. Who, from where and about what read as one quiet block
+   of words, not a form; the subject is the sheet's title and the text sits at reading size in a measure. */
+.compose:not(.inline) {
+  width: min(760px, 92vw);
+  background: var(--bg-0);
+  border: 1px solid var(--line-strong);
+  padding: var(--s-3) 44px var(--s-3);
+}
+.compose.with-ai:not(.inline),
+.compose.long {
+  padding: 0;
+}
+.compose.with-ai > .compose-main,
+.compose.long > .compose-main {
+  padding: var(--s-3) 44px var(--s-3);
+}
+.compose-head {
+  min-height: 24px;
+  margin-bottom: 0;
+}
+.compose .fields {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--s-4);
+  font-size: var(--t-rd);
+  color: var(--fg-1);
+}
 .compose .field {
   border-bottom: 0;
-  min-height: 30px;
-  padding: 2px 0;
+  min-height: 28px;
+  padding: 1px 0;
+  gap: 2px var(--s-2);
 }
 .compose .field .label {
-  width: 40px;
-  font-size: var(--t-sm);
+  width: auto;
+  min-width: 34px;
+  font-size: var(--t-rd);
+  color: var(--fg-2);
 }
 .compose .suggestions {
-  left: 44px;
+  left: 40px;
+}
+/* People as names in the sentence, underlined dashed like something to click, not as boxes. */
+.compose .chip {
+  height: 24px;
+  padding: 0;
+  gap: 2px;
+  border-radius: 0;
+  background: none;
+  color: var(--fg-0);
+  font-size: var(--t-rd);
+  border-bottom: 1px dashed var(--line-strong);
+}
+.compose .chip .initials {
+  display: none;
+}
+.compose .chip button {
+  opacity: 0;
+  padding: 0 2px;
+}
+.compose .chip:hover button,
+.compose .chip button:focus-visible {
+  opacity: 1;
+}
+.compose .chip.outside {
+  background: none;
+  box-shadow: none;
+  color: var(--warn-fg);
+  border-bottom-color: var(--warn);
+}
+.compose .chip.invalid {
+  border: 0;
+  border-bottom: 1px dashed var(--danger);
+}
+.compose .field.from-row .from-pick {
+  background: none;
+  border-radius: 0;
+  color: var(--fg-0);
+  font-size: var(--t-rd);
+  border-bottom: 1px dashed var(--line-strong);
+}
+.compose .field.from-row .from-pick select {
+  padding: 2px 18px 2px 14px;
+}
+.compose .field.from-row .from-pick .dot {
+  left: 0;
+  width: 7px;
+  height: 7px;
+}
+.compose .field.from-row .from-pick svg {
+  right: 0;
+}
+.compose .field.subject {
+  align-items: baseline;
+  margin-top: 2px;
 }
 .compose .field.subject input {
   min-width: 0;
-  padding: var(--s-1) 0 2px;
-  font: 600 var(--t-xl) / 1.3 var(--font);
+  padding: 0;
+  font: 600 var(--t-xl) / 1.35 var(--font);
   color: var(--fg-0);
 }
 .compose .field.subject input::placeholder {
   color: var(--fg-2);
   font-weight: 500;
 }
+.compose:not(.inline) .editor-wrap,
+.compose:not(.inline) .ai-try {
+  width: 100%;
+  max-width: 600px;
+}
 .compose:not(.inline) .editor-body .ProseMirror {
   font-size: 15px;
   line-height: 1.65;
 }
+/* The signature, folded to one line until opened or the caret goes in (Editor's signatureFold). */
+.editor-body .ProseMirror .sig-hidden {
+  display: none;
+}
+.compose .sig-fold {
+  display: block;
+  margin: var(--s-1) 0 var(--s-2);
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  font: var(--t-md) / 1.4 var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+.compose .sig-fold:hover {
+  color: var(--fg-0);
+}
+/* The footer holds what's always true on the left (saved, length), the tools, and Send at the right end. */
 .compose-main > footer {
-  border-top-color: transparent;
+  border-top: 1px solid var(--line);
+}
+.compose-main > footer .saved {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+.compose-main > footer .spacer {
+  order: 1;
+}
+.compose-main > footer .hint,
+.compose-main > footer .follow-up {
+  order: 2;
+}
+.compose-main > footer .tools {
+  order: 3;
+}
+.compose-main > footer .discard {
+  order: 4;
+}
+.compose-main > footer .send-split {
+  order: 5;
+}
+.compose-main > footer .send-menu {
+  left: auto;
+  right: 0;
 }
 /* While the person types, the tools fade; a pause, the mouse or focus on them brings them back. */
 .compose-main > footer .tools,
@@ -7013,7 +7145,6 @@ button.link.danger {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding: var(--s-2) var(--s-5) var(--s-3);
 }
 .compose.long > .compose-main > .fields,
 .compose.long > .compose-main > .editor-wrap,
