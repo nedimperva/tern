@@ -1,6 +1,8 @@
 // HTML signatures (Signature.custom), the person's own from another mail app: reading a paste, the text version,
 // and pictures that would not reach anyone. Kept apart from signature.ts, which needs the editor.
 
+import type { Signature } from "./api";
+
 /** The plain-text version of an HTML signature, for the text part of the mail: one line per row or block. */
 export function htmlText(html: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -40,6 +42,21 @@ export function pastedHtml(data: DataTransfer): string {
   while (empty(doc.body.firstChild)) doc.body.firstChild!.remove();
   while (empty(doc.body.lastChild)) doc.body.lastChild!.remove();
   return doc.body.innerHTML.trim();
+}
+
+/** `text` when it is HTML code (a signature from a generator or another app's settings, pasted as text), else null. */
+export function htmlSource(text: string): string | null {
+  const t = text.trim();
+  const opens = /^<(!doctype|html|body|table|div|p|span|a|img|font|b|strong|em|i|h[1-6]|ul|ol|section|style|meta)\b/i;
+  if (!opens.test(t) || !t.endsWith(">") || !/<\/[a-z]|\/>|<br\b/i.test(t)) return null;
+  return t;
+}
+
+/** A signature whose text is HTML code, as the HTML signature it was meant to be. Written in "Write it here",
+ * the code was kept as words and went out as code. */
+export function codeAsHtml(sig: Signature): Signature {
+  const src = sig.custom || sig.html ? null : htmlSource(sig.body);
+  return src ? { ...sig, custom: true, html: src, body: htmlText(src) } : sig;
 }
 
 /** Pictures in an HTML signature that the people written to can't see: ones only on this computer. */
