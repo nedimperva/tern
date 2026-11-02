@@ -149,6 +149,8 @@ function HtmlBody(props: {
   // When the fold starts with a signature, the pill says whose it is.
   const [sigLine, setSigLine] = createSignal<string | null>(null);
   let frame: HTMLIFrameElement | undefined;
+  let sizer: ResizeObserver | undefined;
+  onCleanup(() => sizer?.disconnect());
 
   // Same-origin without scripts: the frame cannot run anything, but we can measure it and catch link clicks.
   const onLoad = (e: Event) => {
@@ -189,27 +191,40 @@ function HtmlBody(props: {
     doc.addEventListener("mouseover", (ev) => hover((ev.target as Element).closest?.("a") ?? null, frame));
     doc.addEventListener("mouseleave", () => setHovered(null));
     doc.addEventListener("mousedown", (ev) => ev.button === 0 && setLinkMenu(null));
-    // The rest only dresses the message: a step that fails (a mail no rule expected) is skipped, not fatal.
     setReady(true);
+    // Sizing comes before the steps that dress the message, so one of them failing can't leave the frame at the
+    // browser's default 150 px with the rest of the mail cut off.
+    const el = frame;
+    // On the next frame, not in the callback: sizing the frame there could resize the body in the same frame (mail
+    // laid out in vh, a scroll bar coming and going), and the observer reported a loop thousands of times.
+    let queued = false;
+    const size = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        // A newer load owns the frame now.
+        if (docOf(el) === doc) fitFrame(el, doc);
+      });
+    };
+    fitFrame(el, doc);
+    sizer?.disconnect();
+    sizer = new ResizeObserver(size);
+    if (doc.body) sizer.observe(doc.body);
+    // WebKitGTK does not always report a change inside a script-less frame (its own listeners never run there), and
+    // newsletters grow after load as their pictures and fonts come in: measured then, the frame stayed short. So the
+    // frame's own width is watched from out here, and it is measured again a few times while the mail settles.
+    sizer.observe(el);
+    void doc.fonts?.ready.then(size, () => {});
+    for (const ms of [100, 400, 1200, 3000]) setTimeout(size, ms);
+    // The rest only dresses the message: a step that fails (a mail no rule expected) is skipped, not fatal.
     try {
       if (darkened()) darken(doc);
       markQuotes(doc);
       setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
       setSigLine(htmlSignature(doc));
       doc.documentElement.classList.toggle("tern-fold", !unfolded());
-      const size = () => fitFrame(frame!, doc);
       size();
-      // On the next frame, not in the callback: sizing the frame there could resize the body in the same frame (mail
-      // laid out in vh, a scroll bar coming and going), and the observer reported a loop thousands of times.
-      let queued = false;
-      new ResizeObserver(() => {
-        if (queued) return;
-        queued = true;
-        requestAnimationFrame(() => {
-          queued = false;
-          size();
-        });
-      }).observe(doc.body);
       quietMenu(doc);
       const marks = doc.createElement("style");
       marks.textContent = FRAME_MARK_STYLE;

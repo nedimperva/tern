@@ -7,6 +7,11 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Fixed
+
+- A newsletter sometimes opened in a short box with the rest cut off, until reading view was switched on and off.
+  The frame is measured again as its pictures and fonts arrive and when its width changes.
+
 ## [1.7.0] - 2026-10-30
 
 ### Changed
