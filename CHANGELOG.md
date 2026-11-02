@@ -7,6 +7,8 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-02
+
 ### Changed
 
 - Writing help in compose is a sidebar now, not a chat. `Ctrl+J`, the AI key or Space in an empty draft opens it
