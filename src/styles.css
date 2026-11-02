@@ -5359,25 +5359,7 @@ button.link.danger {
   }
 }
 
-/* Write with AI, talked through: what the person said, each version, the one on show, and where to say more. */
-.ai-invite {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  margin: 0 var(--s-4) var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 1px dashed var(--line);
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--fg-2);
-  font: inherit;
-  font-size: var(--t-md);
-  text-align: left;
-}
-.ai-invite:hover {
-  background: var(--bg-2);
-}
-.ai-invite kbd.ai-mark,
+/* The AI mark wherever writing help shows. */
 .ai-side kbd.ai-mark,
 .ai-try kbd.ai-mark,
 .ai-button kbd.ai-mark {
@@ -7150,7 +7132,7 @@ button.link.danger {
    the page (it still goes out) and is picked from the pill. */
 .compose-overlay.focused {
   padding: 0;
-  background: var(--bg-0);
+  background: var(--bg-2);
 }
 .compose.focus:not(.inline) {
   width: 100vw;
@@ -7160,25 +7142,43 @@ button.link.danger {
   border-radius: 0;
   box-shadow: none;
   padding: 0;
+  background: var(--bg-2);
   flex-direction: row;
   overflow: hidden;
 }
+/* V1: the page is a sheet on the warm desk; the outline lies on the desk beside it. */
 .compose.focus > .compose-main {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  max-width: 820px;
+  margin: var(--s-5) auto 0;
   overflow-y: auto;
-  padding: var(--s-2) var(--s-5) 0;
+  padding: var(--s-3) 64px 0;
+  background: var(--bg-0);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--fg-0) 8%, transparent);
+}
+.compose.focus .outline li.current button {
+  background: var(--bg-0);
+}
+.compose.focus .outline li button:hover {
+  background: color-mix(in srgb, var(--bg-0) 60%, transparent);
 }
 .compose.focus .outline {
   width: 220px;
-  padding: 64px var(--s-2) var(--s-4) var(--s-4);
+  padding: 72px var(--s-2) var(--s-4) var(--s-4);
+}
+/* A right-hand space as wide as the outline keeps the sheet in the window's middle. */
+.compose.focus.with-outline::after {
+  content: "";
+  flex: none;
+  width: 220px;
 }
 .compose.focus .fields,
 .compose.focus .editor-wrap,
 .compose.focus .ai-try,
-.compose.focus .ai-invite,
 .compose.focus .focus-column {
   width: 100%;
   max-width: 640px;
@@ -7211,18 +7211,22 @@ button.link.danger {
   font-size: 17px;
   line-height: 1.75;
 }
-/* An empty mail in focus says where to start. */
-.compose.focus.empty-body .ProseMirror > p:first-child::before {
-  content: "Start writing…";
+/* An empty mail says where to start in its first line (and Space for writing help), in the placeholder grey. */
+.compose.empty-body .ProseMirror > p:first-child:empty::before,
+.compose.empty-body .ProseMirror > p:first-child:has(> br:only-child)::before {
+  content: var(--hint);
   position: absolute;
   color: var(--fg-2);
   pointer-events: none;
 }
-.compose.focus .sig-line,
-.compose.focus .ProseMirror .sig-open,
-.compose.focus .ProseMirror .sig-hidden,
-.compose.focus .html-sig {
-  display: none;
+/* S1: the signature's line sits at the foot of the sheet while the mail is short, right after the text once long. */
+.compose.focus .editor-body .ProseMirror {
+  display: flex;
+  flex-direction: column;
+}
+.compose.focus .editor-body .ProseMirror > .sig-line {
+  margin-top: auto;
+  padding-top: var(--s-4);
 }
 .compose.focus .compose-head {
   position: sticky;
@@ -7252,22 +7256,6 @@ button.link.danger {
 .compose.focus .compose-main > footer .more-wrap,
 .compose.focus .compose-main > footer .spacer {
   display: none;
-}
-.pill-signature {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-  white-space: nowrap;
-}
-.pill-signature select {
-  border: 0;
-  background: none;
-  color: var(--fg-1);
-  font: var(--t-sm) var(--font);
-  padding: 2px 0;
-  cursor: pointer;
 }
 .outline-empty {
   padding: 0 var(--s-2);

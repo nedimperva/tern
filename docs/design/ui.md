@@ -234,9 +234,9 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
     and Dismiss. A click or the digit starts a reply with it above the signature and quote. One column under 760 px.
     Not offered on your own last message.
 - Writing help, an AI sidebar (2026-11-02, owner: "AI as a sidebar in compose, nothing lost, not a chat"; canvas
-  "Tern compose directions", boards S1 and S2). Replaced the talked-through panel of 2026-10-26. An empty draft shows
-  a dashed invite under the text; Space on the empty first line, the invite, `Ctrl J` or the `AI` keycap in the
-  footer opens it. In the dialog, compose widens to 1080 px and the sidebar (300 px, `--soft`) sits on the right;
+  "Tern compose directions", boards S1 and S2). Replaced the talked-through panel of 2026-10-26. An empty draft's
+  first line says "Start writing, or press Space for writing help" in `--fg-2` (no box; board H1, 2026-11-02);
+  Space on that empty line, `Ctrl J` or the `AI` keycap in the footer opens it. In the dialog, compose widens to 1080 px and the sidebar (300 px, `--soft`) sits on the right;
   for an inline reply it takes the companion's column while open (one panel on the right, §4.2b). From the top:
   - Starts (replies only): "Suggest how to answer" asks for the suggested replies; each is a button, and a click makes
     it a try.
@@ -356,14 +356,16 @@ none).
   (words once there are some); at the right attach and AI, a ⋯ menu (Send & Done, Send later…, Remind me if no
   reply…, Snippet…, the signatures, Discard draft) and Send last. While the person types, the tools, ⋯ and the top
   row's buttons fade out; a 1.2 s pause, the mouse or focus brings them back. Send never fades.
-- Focus (F, `Ctrl+Shift+F`): the whole window, `--bg-0`, no edges, Exit focus at the top right. A 640 px column
+- Focus (F, `Ctrl+Shift+F`): the whole window on `--bg-2` (the desk), Exit focus at the top right. The page is a
+  white sheet (V1): `--bg-0`, up to 820 px wide with 64 px sides, rounded top corners, a soft shadow. A 640 px column
   keeps the subject (28 px) and people editable at its top; the text below runs the window's height at 17 px / 1.75,
-  "Start writing…" while empty, the paragraph being written in full colour. The outline is a 220 px column on the
-  left (hidden under 900 px wide, or with `Ctrl+Shift+O`): each paragraph's first words, a short line over a real
-  paragraph bold, "asks" on parts that ask, the one where the caret is on `--accent-soft`. Click goes there, drag
+  "Start writing" while empty, the paragraph being written in full colour. The outline is a 220 px column on the
+  left, lying on the desk (hidden under 900 px wide, or with `Ctrl+Shift+O`): each paragraph's first words, a short line over a real
+  paragraph bold, "asks" on parts that ask, the one where the caret is on `--bg-0`. Click goes there, drag
   moves a part, `Alt ↑/↓` moves the part the caret is in. If the first ask is below the first part, one
-  `--warn-soft` note says where it is (Move it up / Leave it). The signature leaves the page (it still goes out);
-  the footer is a floating pill at the bottom: Saved · words · minutes, Signature picker, attach, AI, Send.
+  `--warn-soft` note says where it is (Move it up / Leave it). The signature is the same folded line as in the dialog
+  (S1): at the foot of the sheet while the mail is short, right after the text once it is long. The footer is a
+  floating pill at the bottom: Saved · words · minutes, attach, AI, Send.
 - Signature switching: the open signature line's picker, the ⋯ menu, or `Ctrl+Shift+S` to step through them and
   None. Changing From brings the new account's.
 - Minimized: the dialog hides (its editor kept) and a 320 px card waits bottom right: subject, recipients, the

@@ -22,8 +22,9 @@ every release needs one here before it is tagged.
   signatures, discard) and Send on the right.
 - The signature folds to one line. Open it to read or change it, pick another one right there, and Fold it again;
   it also folds again on its own when you go back to your text.
-- Focus mode (Ctrl+Shift+F) fills the whole window, with larger text and Send, the signature and attach in a
-  floating pill.
+- Focus mode (Ctrl+Shift+F) fills the whole window: your mail is a white sheet on the warm background, with
+  larger text, the signature line at the foot of the sheet, and Send and attach in a floating pill.
+- An empty mail says "Start writing, or press Space for writing help" on its first line, instead of a box.
 - Long mails get room in focus mode. The compose window offers focus once a mail is long; focus keeps the subject
   and people at the top, gives the text the window's height, and shows an outline of your paragraphs on the left:
   click one to go there, drag to reorder, or Alt+Up/Down to move the one you're in. If your question sits below

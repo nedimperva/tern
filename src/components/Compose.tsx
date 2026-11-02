@@ -1125,6 +1125,8 @@ export function Compose(props: {
       classList={{ inline: props.init.inline, focus: focusMode(), "with-ai": aiOpen() && !props.init.inline, "with-outline": long(), typing: typing(), "empty-body": ownEmpty() }}
       onKeyDown={onKeyDown}
       onMouseMove={() => typing() && setTyping(false)}
+      // What the empty text says, in its first line: where to start, and Space for writing help when it is on.
+      style={{ "--hint": JSON.stringify(aiAllowed() && !aiOpen() ? "Start writing, or press Space for writing help" : "Start writing") }}
       // Only Send (the button, Ctrl+Enter) sends: a form submitted any other way does nothing.
       onSubmit={(e) => e.preventDefault()}
     >
@@ -1357,14 +1359,6 @@ export function Compose(props: {
       <Show when={problem()}>
         <p class="error">{problem()}</p>
       </Show>
-      <Show when={!aiOpen() && aiAllowed() && ownEmpty()}>
-        <button type="button" class="ai-invite" onClick={openAi}>
-          <kbd class="ai-mark">AI</kbd>
-          <span>
-            Write, or press <kbd>Space</kbd> for help {newMail() ? "with what to write and to whom" : "with the answer"}
-          </span>
-        </button>
-      </Show>
       <Show when={aiHold()}>
         <p class="ai-hold">Keep the try (Tab) or drop it (Esc) before you send.</p>
       </Show>
@@ -1480,19 +1474,6 @@ export function Compose(props: {
               </button>
             </span>
           )}
-        </Show>
-        <Show when={focusMode() && accountSignatures().length}>
-          <label class="pill-signature" title="Signature (Ctrl+Shift+S)">
-            <span>Signature:</span>
-            <select
-              aria-label="Signature"
-              value={String(sigId() ?? 0)}
-              onChange={(e) => void switchSignature(accountSignatures().find((x) => x.id === Number(e.currentTarget.value)) ?? null)}
-            >
-              <For each={accountSignatures()}>{(x) => <option value={String(x.id)}>{x.name || "Untitled"}</option>}</For>
-              <option value="0">None</option>
-            </select>
-          </label>
         </Show>
         <span class="tools">
           {iconButton("paperclip", "Attach files (Ctrl+Shift+A), or drop them here", () => void pick())}
