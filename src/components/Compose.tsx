@@ -70,7 +70,8 @@ export type ComposeInit = {
 };
 
 /** A From picker line: "From Ada · ada@example.com". */
-const fromLabel = (name: string, email: string) => (name ? `From ${name} · ${email}` : `From ${email}`);
+// It follows the word "from" in the sheet's top lines.
+const fromLabel = (name: string, email: string) => (name ? `${name} · ${email}` : email);
 
 /** The signature of `accountId` for new mail or for replies, if it has one. */
 export function defaultSignature(all: Signature[], accountId: number | undefined, kind: "new" | "reply") {
@@ -85,6 +86,7 @@ const schemaTools = () => import("../editor/schema");
 const LARGE_BYTES = 25_000_000;
 /** From here on a mail counts as long: compose widens and shows its outline. */
 const LONG_WORDS = 150;
+const LONG_BLOCKS = 16;
 
 
 function size(bytes: number): string {
@@ -745,10 +747,13 @@ export function Compose(props: {
   // folds back 30 words lower, so cutting a sentence doesn't make the page jump; Ctrl+Shift+O opens or hides it.
   const [outlinePref, setOutlinePref] = createSignal<boolean | null>(null);
   const [grown, setGrown] = createSignal(false);
+  // Many short lines make a long mail too, though few words: count the paragraphs as well.
+  const blocks = () => (body(), ready() && view ? view.state.doc.childCount : 0);
   createEffect(() => {
     const n = words();
-    if (n >= LONG_WORDS) setGrown(true);
-    else if (n < LONG_WORDS - 30) setGrown(false);
+    const b = blocks();
+    if (n >= LONG_WORDS || b >= LONG_BLOCKS) setGrown(true);
+    else if (n < LONG_WORDS - 30 && b < LONG_BLOCKS - 3) setGrown(false);
   });
   const long = () => !props.init.inline && !focusMode() && !aiOpen() && (outlinePref() ?? grown());
   // The top-level block the caret is in, for the outline's highlight.

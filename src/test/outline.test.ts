@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { partsOf, signatureRange } from "../editor/outline";
-import { fromText } from "../editor/schema";
+import { fromHtml, fromText } from "../editor/schema";
 
 const labels = (text: string, sig = "") => partsOf(fromText(text), sig).map((p) => p.label);
 
@@ -15,7 +15,7 @@ describe("outline", () => {
   });
 
   it("marks the greeting, short title lines and the parts that ask", () => {
-    const parts = partsOf(fromText("Hi Ada,\n\nWhere Q3 landed\n\nRevenue was up.\n\nCould you send the deck by Friday?"), "");
+    const parts = partsOf(fromText("Hi Ada,\n\nWhere Q3 landed\n\nRevenue was up four percent over the plan, and support load fell for the second quarter.\n\nCould you send the deck by Friday?"), "");
     expect(parts.map((p) => [p.greeting, p.heading, p.ask])).toEqual([
       [true, false, false],
       [false, true, false],
@@ -44,5 +44,18 @@ describe("signature range", () => {
 
   it("is null without a -- line", () => {
     expect(signatureRange(fromText("Just text.\n\nAda"))).toBeNull();
+  });
+});
+
+describe("signature range from HTML", () => {
+  it("finds a '--' line with a no-break space, as a saved draft writes it, and skips the closing", () => {
+    const doc = fromHtml("<p>Hi</p><p>--&nbsp;</p><p>S poštovanjem,</p><p><strong>Ada Lovelace</strong></p>");
+    expect(signatureRange(doc)?.name).toBe("Ada Lovelace");
+  });
+});
+
+describe("short lines", () => {
+  it("are not titles when no real paragraph follows them", () => {
+    expect(partsOf(fromText("milk\n\neggs\n\nbread"), "").some((p) => p.heading)).toBe(false);
   });
 });

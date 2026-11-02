@@ -6954,6 +6954,13 @@ button.link.danger {
 
 /* Paper (ui.md 4.4): compose is a sheet on the warm ground. Who, from where and about what read as one quiet block
    of words, not a form; the subject is the sheet's title and the text sits at reading size in a measure. */
+/* The sheet always fits the window: it starts higher than other dialogs and scrolls inside once the mail is long. */
+.compose-overlay:not(.focused) {
+  padding-top: 6vh;
+}
+.compose:not(.inline):not(.focus) {
+  max-height: calc(100vh - var(--titlebar-h) - 12vh);
+}
 .compose:not(.inline) {
   width: min(760px, 92vw);
   background: var(--bg-0);
@@ -7084,6 +7091,15 @@ button.link.danger {
 }
 .compose .sig-fold:hover {
   color: var(--fg-0);
+}
+/* However long the mail, Send stays in sight at the bottom of the sheet. */
+.compose:not(.inline) > .compose-main > footer {
+  position: sticky;
+  bottom: calc(-1 * var(--s-3));
+  z-index: 2;
+  padding-bottom: var(--s-3);
+  margin-bottom: calc(-1 * var(--s-3));
+  background: var(--bg-0);
 }
 /* The footer holds what's always true on the left (saved, length), the tools, and Send at the right end. */
 .compose-main > footer {

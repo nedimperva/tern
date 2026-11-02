@@ -24,7 +24,9 @@ export function partsOf(doc: ProseNode, signature: string): Part[] {
   for (const [k, p] of out.entries()) {
     const n = p.label.split(" ").length;
     p.greeting = k === 0 && n <= 4 && /[,!]$/.test(p.label);
-    p.heading = !p.greeting && k < out.length - 1 && n <= 8 && !/[.?!:,;]$/.test(p.label);
+    // A short line is a title only over a real paragraph; a list of short lines stays a list.
+    const next = out[k + 1]?.label.split(" ").length ?? 0;
+    p.heading = !p.greeting && next > 12 && n <= 8 && !/[.?!:,;]$/.test(p.label);
     if (p.heading) p.ask = false;
     p.label = n > 7 ? `${p.label.split(" ").slice(0, 7).join(" ")}…` : p.label;
   }
@@ -44,7 +46,7 @@ export function signatureRange(doc: ProseNode): { from: number; to: number; name
       return;
     }
     const text = node.textBetween(0, node.content.size, "\n", "\n");
-    if (!/^--[ \t]*(\n|$)/.test(text)) return;
+    if (!/^--[^\S\n]*(\n|$)/.test(text)) return;
     from = pos;
     lines.push(...text.split("\n").slice(1));
   });

@@ -344,8 +344,10 @@ none).
   "There's no subject" on `--warn-soft`; "x is outside example.com" on `--bg-2` when outside people are mixed
   with the sender's own, dismissible. Sending again while they show sends anyway.
 - Only Send sends: the button, `Ctrl Enter` or the menu. `Enter` in a field (Subject, an empty To) never does.
-- Long mail: from 150 words (back under 120) the dialog widens to 1080 px at a fixed height and an outline sits on
-  the left, `--bg-2`, 230 px: each paragraph's first words, short title lines bold, "asks" on parts that ask. Click
+- The sheet starts 6 vh from the top and never runs past the window: it scrolls inside, the footer staying in
+  sight at its bottom.
+- Long mail: from 150 words or 16 paragraphs (back under 120 and 13) the dialog widens to 1080 px at a fixed height and an outline sits on
+  the left, `--bg-2`, 230 px: each paragraph's first words, a short line over a real paragraph bold, "asks" on parts that ask. Click
   goes there, drag moves a part, `Alt ↑/↓` moves the part the caret is in; `Ctrl+Shift+O` opens or hides it. The
   text keeps a 640 px measure and parts the caret isn't in sit at 70 %. If the first ask is below the first part,
   one `--warn-soft` note says where it is (Move it up / Leave it). Words and minutes to read at the foot. Not for an
