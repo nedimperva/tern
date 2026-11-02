@@ -173,7 +173,7 @@ pub async fn connect_with(
                 .connect(name, plain.stream)
                 .await
                 .context("Could not make a secure connection")?;
-            let mut conn = Conn { stream: tls, fragmentizer: plain.fragmentizer };
+            let mut conn = Conn { stream: tls, fragmentizer: plain.fragmentizer, mend: plain.mend };
             // Capabilities from before TLS cannot be trusted; ask again.
             let capabilities = conn.capability().await?;
             Imap::sign_in(conn, &capabilities, username, credential).await
@@ -457,7 +457,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
         let mut read: Option<usize> = None;
         let mut sent_done = false;
         loop {
-            match idle.resume(&mut self.conn.fragmentizer, read.take().map(|n| &buf[..n])) {
+            match idle.resume(&mut self.conn.fragmentizer, read.take().map(|n| &self.conn.mend.out[..n])) {
                 ImapCoroutineState::Complete(result) => {
                     result.context("IDLE failed")?;
                     return Ok(outcome);
@@ -476,10 +476,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
                         continue;
                     }
                     let n = if sent_done {
-                        self.conn.stream.read(&mut buf).await?
+                        self.conn.read_mended(&mut buf).await?
                     } else {
                         tokio::select! {
-                            n = self.conn.stream.read(&mut buf) => n?,
+                            n = self.conn.read_mended(&mut buf) => n?,
                             _ = tokio::time::sleep_until(deadline) => {
                                 done.store(true, Ordering::SeqCst);
                                 continue;
@@ -739,11 +739,99 @@ fn leaf_parts(structure: &BodyStructure, prefix: &str, out: &mut Vec<Part>) {
 struct Conn<S> {
     stream: S,
     fragmentizer: Fragmentizer,
+    mend: Mend,
 }
 
 impl<S> Conn<S> {
     fn new(stream: S) -> Self {
-        Self { stream, fragmentizer: Fragmentizer::new(MAX_RESPONSE) }
+        Self { stream, fragmentizer: Fragmentizer::new(MAX_RESPONSE), mend: Mend::default() }
+    }
+}
+
+impl<S: AsyncRead + Unpin> Conn<S> {
+    /// Reads from the server until there is something mended to hand the parser. Zero means it hung up.
+    async fn read_mended(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            let n = self.stream.read(buf).await?;
+            if n == 0 {
+                return Ok(0);
+            }
+            self.mend.feed(&buf[..n]);
+            if !self.mend.out.is_empty() {
+                return Ok(self.mend.out.len());
+            }
+        }
+    }
+}
+
+/// Fixes what servers get wrong in ways io-imap cannot read. Its parser drops a response it cannot read, without
+/// an error, so one bad date loses the message.
+///
+/// SmarterMail writes a one-digit day as `INTERNALDATE "2-Nov-2026 …"`; RFC 3501 wants `" 2-Nov-2026 …"`. Only
+/// response lines are touched, never literal contents (the mail itself), so the stream is split at CRLF and
+/// `{n}` literals pass through as they are.
+#[derive(Default)]
+struct Mend {
+    /// The current line, until its CRLF arrives.
+    line: Vec<u8>,
+    /// Literal bytes still to pass through untouched.
+    literal: usize,
+    /// What the parser gets next.
+    out: Vec<u8>,
+}
+
+impl Mend {
+    fn feed(&mut self, mut bytes: &[u8]) {
+        self.out.clear();
+        while !bytes.is_empty() {
+            if self.literal > 0 {
+                let n = self.literal.min(bytes.len());
+                self.out.extend_from_slice(&bytes[..n]);
+                self.literal -= n;
+                bytes = &bytes[n..];
+                continue;
+            }
+            match bytes.iter().position(|&b| b == b'\n') {
+                Some(i) => {
+                    self.line.extend_from_slice(&bytes[..=i]);
+                    bytes = &bytes[i + 1..];
+                    self.literal = literal_after(&self.line);
+                    mend_dates(&mut self.line);
+                    self.out.append(&mut self.line);
+                }
+                None => {
+                    self.line.extend_from_slice(bytes);
+                    // A line too long to be anything but broken: let the parser have it and fail as it would.
+                    if self.line.len() > MAX_RESPONSE as usize {
+                        self.out.append(&mut self.line);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// The size of the literal announced at the end of `line` (`{n}`, `{n+}` or `~{n}` before CRLF), or 0.
+fn literal_after(line: &[u8]) -> usize {
+    let line = line.strip_suffix(b"\r\n").or_else(|| line.strip_suffix(b"\n")).unwrap_or(line);
+    let Some(inner) = line.strip_suffix(b"}") else { return 0 };
+    let Some(open) = inner.iter().rposition(|&b| b == b'{') else { return 0 };
+    let digits = &inner[open + 1..];
+    let digits = digits.strip_suffix(b"+").unwrap_or(digits);
+    std::str::from_utf8(digits).ok().and_then(|d| d.parse().ok()).unwrap_or(0)
+}
+
+/// `INTERNALDATE "2-` becomes `INTERNALDATE " 2-`.
+fn mend_dates(line: &mut Vec<u8>) {
+    const KEY: &[u8] = b"INTERNALDATE \"";
+    let mut i = 0;
+    while let Some(at) = line[i..].windows(KEY.len()).position(|w| w.eq_ignore_ascii_case(KEY)) {
+        let day = i + at + KEY.len();
+        if line.get(day).is_some_and(u8::is_ascii_digit) && line.get(day + 1) == Some(&b'-') {
+            line.insert(day, b' ');
+        }
+        i = day;
     }
 }
 
@@ -761,10 +849,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> ImapClientAsync for Conn<S> {
             let mut buf = vec![0u8; 64 * 1024];
             let mut read: Option<usize> = None;
             loop {
-                match coroutine.resume(&mut self.fragmentizer, read.take().map(|n| &buf[..n])) {
+                match coroutine.resume(&mut self.fragmentizer, read.take().map(|n| &self.mend.out[..n])) {
                     ImapCoroutineState::Complete(out) => return out.map_err(Into::into),
                     ImapCoroutineState::Yielded(ImapYield::WantsRead) => {
-                        let n = self.stream.read(&mut buf).await?;
+                        let n = self.read_mended(&mut buf).await?;
                         if n == 0 {
                             let eof =
                                 std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "the server hung up");
@@ -1130,6 +1218,43 @@ mod tests {
         assert!(
             sent.lock().unwrap().iter().any(|c| c.contains("BODY.PEEK[HEADER.FIELDS")),
             "must not mark read"
+        );
+    }
+
+    /// SmarterMail leaves out the space before a one-digit day; io-imap dropped every such message.
+    #[tokio::test]
+    async fn reads_a_one_digit_day_without_its_space() {
+        let (stream, _) = signed_in(
+            "{tag} OK [CAPABILITY IMAP4rev1] in\r\n",
+            vec![(
+                "UID FETCH 4 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT \
+                 MESSAGE-ID IN-REPLY-TO REFERENCES LIST-ID LIST-UNSUBSCRIBE REPLY-TO MAIL-FOLLOWUP-TO PRECEDENCE)])",
+                "* 1 FETCH (UID 4 FLAGS (\\Seen) INTERNALDATE \"2-Nov-2026 09:30:59 +0100\" RFC822.SIZE 25625 BODYSTRUCTURE \
+                 (\"text\" \"plain\" (\"charset\" \"utf-8\") NIL NIL \"base64\" 1876 25 NIL NIL NIL) \
+                 BODY[HEADER.FIELDS (FROM)] {13}\r\nFrom: a@b.c\r\n)\r\n{tag} OK done\r\n",
+            )],
+        );
+        let mut imap = Imap::open(stream, "ada", "x").await.unwrap();
+        let fetched = imap.headers("4").await.unwrap();
+        assert_eq!(fetched.len(), 1);
+        assert_eq!(fetched[0].received, Some(1_793_608_259));
+    }
+
+    #[test]
+    fn mend_fixes_lines_and_leaves_literals_alone() {
+        let mut m = Mend::default();
+        let mut got = Vec::new();
+        // Split mid-line and mid-literal, as reads arrive.
+        let reply: &[u8] = b"* 1 FETCH (INTERNALDATE \"2-Nov-2026 09:30:59 +0100\" BODY[] {27}\r\n\
+                             INTERNALDATE \"3-Nov-2026\"\r\n)\r\n* 2 FETCH (INTERNALDATE \"12-Nov-2026 09:30:59 +0100\")\r\n";
+        for chunk in reply.chunks(7) {
+            m.feed(chunk);
+            got.extend_from_slice(&m.out);
+        }
+        assert_eq!(
+            String::from_utf8(got).unwrap(),
+            "* 1 FETCH (INTERNALDATE \" 2-Nov-2026 09:30:59 +0100\" BODY[] {27}\r\n\
+             INTERNALDATE \"3-Nov-2026\"\r\n)\r\n* 2 FETCH (INTERNALDATE \"12-Nov-2026 09:30:59 +0100\")\r\n"
         );
     }
 
