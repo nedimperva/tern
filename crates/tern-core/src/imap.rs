@@ -282,8 +282,13 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
         self.capabilities.iter().any(|c| c.to_string().eq_ignore_ascii_case(name))
     }
 
+    /// Says goodbye. Never fails: the work is done by now, and some servers answer LOGOUT
+    /// without the BYE the RFC asks for, or just close the connection. Neither is worth an error.
     pub async fn logout(mut self) -> Result<()> {
-        Ok(self.conn.logout().await?)
+        if let Err(e) = self.conn.logout().await {
+            log::debug!("LOGOUT did not end cleanly: {e}");
+        }
+        Ok(())
     }
 
     pub async fn folders(&mut self) -> Result<Vec<Folder>> {
@@ -977,6 +982,14 @@ mod tests {
         imap.logout().await.unwrap();
         // A plain EXPUNGE would also delete other mail someone marked deleted.
         assert!(!sent.lock().unwrap().iter().any(|c| c.contains("EXPUNGE")));
+    }
+
+    #[tokio::test]
+    async fn logout_without_bye_is_fine() {
+        let (stream, _) =
+            signed_in("{tag} OK [CAPABILITY IMAP4rev1] in\r\n", vec![("LOGOUT", "{tag} OK done\r\n")]);
+        let imap = Imap::open(stream, "ada", "x").await.unwrap();
+        imap.logout().await.unwrap();
     }
 
     #[tokio::test]
