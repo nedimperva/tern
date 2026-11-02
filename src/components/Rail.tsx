@@ -21,6 +21,13 @@ export const ROLE_NAMES: Record<string, string> = {
   starred: "Starred",
 };
 
+// Ctrl held: each account shows the number that opens its inbox (Ctrl+1 … Ctrl+9). One listener for the window;
+// losing focus lets go, as the keyup goes elsewhere.
+const [ctrlHeld, setCtrlHeld] = createSignal(false);
+window.addEventListener("keydown", (e) => setCtrlHeld(e.key === "Control" || (e.ctrlKey && ctrlHeld())), true);
+window.addEventListener("keyup", (e) => e.key === "Control" && setCtrlHeld(false), true);
+window.addEventListener("blur", () => setCtrlHeld(false));
+
 /** Where a folder in the rail or the palette goes: a Gmail label lists All Mail's messages with it. */
 export const targetOf = (f: Folder): Target => (f.role === "label" ? { label: f.id } : { folder: f.id });
 
@@ -148,7 +155,7 @@ export function Rail(props: {
         </Fold>
       </Show>
       <For each={props.accounts}>
-        {(account) => {
+        {(account, at) => {
           const mine = () => props.folders.filter((f) => f.accountId === account.id);
           const main = () =>
             MAIN_ROLES.flatMap((r) => mine().filter((f) => f.role === r)).filter((f) => !(single() && f.role === "inbox"));
@@ -178,6 +185,11 @@ export function Rail(props: {
                   </span>
                   <Show when={SYNC_LABELS[props.syncStates[account.id]]}>
                     {(label) => <span class={`sync-state ${props.syncStates[account.id]}`}>{label()}</span>}
+                  </Show>
+                  <Show when={ctrlHeld() && !single() && at() < 9}>
+                    <kbd class="account-key" aria-hidden="true">
+                      Ctrl {at() + 1}
+                    </kbd>
                   </Show>
                 </>
               }

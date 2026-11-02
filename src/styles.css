@@ -1495,6 +1495,13 @@ button.primary kbd {
     0 0 0 2px var(--bg-1),
     0 0 0 4px var(--fg-0);
 }
+/* Shown while Ctrl is held: the key that opens this account's inbox. */
+.account-key {
+  flex: none;
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: 0;
+}
 .sync-state {
   flex: none;
   text-transform: none;

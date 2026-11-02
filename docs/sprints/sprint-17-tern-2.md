@@ -133,7 +133,7 @@ Direction A on the canvas (owner, 2026-11-02). Can go before G: it needs no Todo
 - [ ] Tests: mbox round trip (From-line escaping, attachments, non-UTF-8 headers).
 
 ### J. Small finishes
-- [ ] The sidebar shows each account's `Ctrl` number while Ctrl is held.
+- [x] The sidebar shows each account's `Ctrl` number while Ctrl is held (`src/components/Rail.tsx`).
 
 ### K. Release gate for 2.0
 - [ ] (owner) The M2 checklist (`docs/acceptance/m2-beta.md`) passed: Fastmail and Gmail runs and the tester group.
