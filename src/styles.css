@@ -6976,6 +6976,17 @@ button.link.danger {
 .sig-line .sig-fold-button {
   color: var(--accent);
 }
+/* Folded, which signature is in the mail: its name from Settings, quiet beside the line's label. */
+.sig-line .sig-name {
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font: var(--t-sm) / 1.6 var(--font);
+}
 .sig-line .rule {
   flex: 1;
   border-top: 1px dashed var(--line);

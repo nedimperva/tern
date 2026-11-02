@@ -77,9 +77,14 @@ export type SignaturePicker = {
   options: () => { id: number; name: string }[];
   current: () => number | null;
   pick: (id: number | null) => void;
+  /** Open or folded as the person left it, kept by compose across a switch to or from an HTML signature. */
+  open?: () => boolean;
+  setOpen?: (open: boolean) => void;
 };
 
-type SigFold = { open: boolean; text: string };
+/** `held`: opened by the person, so it stays open until they fold it. Opened by the caret going in, it folds again
+ * when the caret leaves it unchanged. */
+type SigFold = { open: boolean; text: string; held?: boolean };
 const sigKey = new PluginKey<SigFold>("signatureFold");
 const sigText = (doc: ProseNode, r: { from: number; to: number }) => doc.textBetween(r.from, r.to, "\n", "\n");
 
@@ -94,17 +99,28 @@ function signatureFold(picker?: SignaturePicker) {
       apply(tr, was, _old, state) {
         const asked = tr.getMeta(sigKey) as boolean | undefined;
         const range = signatureRange(state.doc);
-        if (asked !== undefined) return { open: asked, text: asked && range ? sigText(state.doc, range) : "" };
-        // Compose swapped in another signature: the line stays as open or folded as it was, about the new one.
-        if (tr.getMeta("signatureSwap")) return { open: was.open && !!range, text: was.open && range ? sigText(state.doc, range) : "" };
+        if (asked !== undefined) return { open: asked, text: asked && range ? sigText(state.doc, range) : "", held: asked };
+        // Compose swapped in another signature: the line stays as open or folded as it was, about the new one, also
+        // when the one before was an HTML signature outside the text.
+        if (tr.getMeta("signatureSwap")) {
+          const open = (picker?.open?.() ?? was.open) && !!range;
+          return { open, text: open && range ? sigText(state.doc, range) : "", held: open };
+        }
         if (!range || !tr.selectionSet) return was;
         const { from, to } = state.selection;
         const inside = to > range.from && from < range.to;
         if (!was.open && inside) return { open: true, text: sigText(state.doc, range) };
-        if (was.open && !inside && sigText(state.doc, range) === was.text) return { open: false, text: "" };
+        if (was.open && !was.held && !inside && sigText(state.doc, range) === was.text) return { open: false, text: "" };
         return was;
       },
     },
+    // Compose hears of each open and fold, while there is a signature in the text to be open or folded.
+    view: () => ({
+      update(view, prev) {
+        const open = !!sigKey.getState(view.state)?.open;
+        if (open !== !!sigKey.getState(prev)?.open && signatureRange(view.state.doc)) picker?.setOpen?.(open);
+      },
+    }),
     props: {
       // A click in the empty space under the text lands at the end of the document, inside the folded signature;
       // it means "write here", so the caret goes to the end of the text above it instead.
@@ -135,10 +151,18 @@ function signatureFold(picker?: SignaturePicker) {
           const toggle = document.createElement("button");
           toggle.type = "button";
           toggle.className = "sig-toggle";
-          toggle.textContent = open ? "▾ Signature" : `▸ ${range.name || "Your signature"} · signature`;
+          toggle.textContent = open ? "▾ Signature" : "▸ Signature";
           toggle.title = open ? "Fold the signature" : "Show the signature";
           toggle.onmousedown = (e) => (e.preventDefault(), view.dispatch(view.state.tr.setMeta(sigKey, !open)));
           el.append(toggle);
+          // Folded, the line says which one is in the text; open, the marked choice says it.
+          const name = options.find((o) => o.id === current)?.name ?? range.name;
+          if (!open && name) {
+            const tag = document.createElement("span");
+            tag.className = "sig-name";
+            tag.textContent = name;
+            el.append(tag);
+          }
           if (open && options.length) {
             // The account's signatures as words to click, the one in the text marked: one or two names read
             // faster than a list, and switching is one click.

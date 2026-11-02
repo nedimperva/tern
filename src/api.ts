@@ -762,7 +762,17 @@ function fake(): Api {
   let signatures: Signature[] = [
     { id: 1, accountId: 1, name: "Full", body: "Ada Lovelace\nAnalytical Engines Ltd", html: null, forNew: true, forReply: false },
     { id: 2, accountId: 1, name: "Short", body: "Ada", html: null, forNew: false, forReply: true },
-  ];
+    // Written as code in "Write it here": it shows as an HTML signature (codeAsHtml), to switch to and from.
+    {
+      id: 3,
+      accountId: 1,
+      name: "Card",
+      body: '<table style="font-family:Arial;font-size:12px;color:#444"><tr><td style="padding-right:12px;border-right:2px solid #c8102e"><b style="font-size:14px;color:#111">Ada Lovelace</b><br>Analytical Engines Ltd</td><td style="padding-left:12px">ada@example.com<br>+44 20 7946 0000</td></tr></table>',
+      html: null,
+      forNew: false,
+      forReply: false,
+    },
+  ].map(codeAsHtml);
   const folders: Folder[] = [
     { id: 1, accountId: 1, name: "INBOX", role: "inbox", unread: 0 },
     { id: 2, accountId: 1, name: "Archive", role: "archive", unread: 0 },
