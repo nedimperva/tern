@@ -19,6 +19,8 @@ every release needs one here before it is tagged.
 
 ### Fixed
 
+- Adding or saving an account could fail with "IMAP LOGOUT failed: server did not send the expected BYE" even
+  though the sign-in worked. Some servers end the connection without that goodbye; Tern no longer minds.
 - A newsletter sometimes opened in a short box with the rest cut off, until reading view was switched on and off.
   The frame is measured again as its pictures and fonts arrive and when its width changes.
 
