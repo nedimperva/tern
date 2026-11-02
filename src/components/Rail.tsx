@@ -187,7 +187,7 @@ export function Rail(props: {
                     {(label) => <span class={`sync-state ${props.syncStates[account.id]}`}>{label()}</span>}
                   </Show>
                   <Show when={ctrlHeld() && !single() && at() < 9}>
-                    <kbd class="account-key" aria-hidden="true">
+                    <kbd class="account-key">
                       Ctrl {at() + 1}
                     </kbd>
                   </Show>
