@@ -1,5 +1,7 @@
-import { createEffect, createResource, createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
 import type { EditorView } from "prosemirror-view";
+import { TextSelection } from "prosemirror-state";
+import { type Part, partsOf } from "../editor/outline";
 import {
   api,
   type Account,
@@ -81,6 +83,9 @@ const schemaTools = () => import("../editor/schema");
 
 /** Above this a message may bounce: many servers take 25 MB at most. */
 const LARGE_BYTES = 25_000_000;
+/** From here on a mail counts as long: compose widens and shows its outline. */
+const LONG_WORDS = 150;
+
 
 function size(bytes: number): string {
   if (bytes < 1000) return `${bytes} B`;
@@ -695,6 +700,8 @@ export function Compose(props: {
     else if (e.key === "Escape") void close();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "f" && !props.init.inline) setFocusMode(!focusMode());
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "m" && !props.init.inline) (setFocusMode(false), props.onMinimize?.(true));
+    else if (ctrl && e.shiftKey && e.key.toLowerCase() === "o" && !props.init.inline) (setOutlinePref(!long()), aiOpen() && closeAi());
+    else if (e.altKey && !ctrl && (e.key === "ArrowUp" || e.key === "ArrowDown") && view?.hasFocus()) stepPart(e.key === "ArrowUp" ? -1 : 1);
     else if (ctrl && e.key === "Enter") send(e.shiftKey);
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "l") setPicking("later");
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "h") setPicking("followUp");
@@ -714,6 +721,171 @@ export function Compose(props: {
   };
 
   const words = () => (ownText().match(/\p{L}[\p{L}\p{N}'’-]*/gu) ?? []).length;
+
+  // While the person types, the tools step back; a pause, the mouse or a Tab into them brings them again.
+  const [typing, setTyping] = createSignal(false);
+  let typingTimer: number | undefined;
+  const typed = () => {
+    setTyping(true);
+    clearTimeout(typingTimer);
+    typingTimer = window.setTimeout(() => setTyping(false), 1200);
+  };
+  onCleanup(() => clearTimeout(typingTimer));
+
+  // Long-mail mode: past LONG_WORDS a dialog compose widens and lists the mail's parts beside the text. It only
+  // folds back 30 words lower, so cutting a sentence doesn't make the page jump; Ctrl+Shift+O opens or hides it.
+  const [outlinePref, setOutlinePref] = createSignal<boolean | null>(null);
+  const [grown, setGrown] = createSignal(false);
+  createEffect(() => {
+    const n = words();
+    if (n >= LONG_WORDS) setGrown(true);
+    else if (n < LONG_WORDS - 30) setGrown(false);
+  });
+  const long = () => !props.init.inline && !focusMode() && !aiOpen() && (outlinePref() ?? grown());
+  // The top-level block the caret is in, for the outline's highlight.
+  const [at, setAt] = createSignal(-1);
+  const caret = () => view && setAt(view.state.selection.$from.index(0));
+  onMount(() => {
+    const moved = () => view?.hasFocus() && caret();
+    document.addEventListener("selectionchange", moved);
+    onCleanup(() => document.removeEventListener("selectionchange", moved));
+  });
+  const parts = createMemo<Part[]>(() => {
+    body();
+    return long() && view ? partsOf(view.state.doc, props.signatures.find((s) => s.id === sigId())?.body ?? "") : [];
+  });
+  const [askSeen, setAskSeen] = createSignal(false);
+  /** The first part that asks something, when it sits below the first part of a mail long enough to skim. */
+  const lateAsk = () => {
+    const all = parts();
+    const rest = all.filter((p) => !p.greeting);
+    const k = rest.findIndex((p) => p.ask);
+    return !askSeen() && rest.length >= 3 && k >= 1 ? { part: rest[k], n: all.indexOf(rest[k]) + 1, of: all.length, top: rest[0] } : null;
+  };
+  /** Moves a top-level block to just before `before` (a position in the current doc), the caret going with it. */
+  const movePart = (pos: number, before: number) => {
+    if (!view || pos === before) return;
+    const node = view.state.doc.nodeAt(pos);
+    if (!node) return;
+    const tr = view.state.tr.delete(pos, pos + node.nodeSize);
+    const to = tr.mapping.map(before);
+    tr.insert(to, node);
+    tr.setSelection(TextSelection.near(tr.doc.resolve(to + 1))).scrollIntoView();
+    view.dispatch(tr);
+    view.focus();
+    caret();
+  };
+  const jump = (p: Part) => {
+    if (!view) return;
+    view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(p.pos + 1))).scrollIntoView());
+    view.focus();
+    caret();
+  };
+  /** Alt+↑/↓: the block the caret is in swaps with the one above or below; the quote at the end stays put. */
+  const stepPart = (dir: -1 | 1) => {
+    if (!view) return;
+    const { doc, selection } = view.state;
+    const i = selection.$from.index(0);
+    const j = i + dir;
+    if (j < 0 || j >= doc.childCount || doc.child(i).type.name === "blockquote" || doc.child(j).type.name === "blockquote") return;
+    const first = Math.min(i, j);
+    let pos = 0;
+    for (let k = 0; k < first; k++) pos += doc.child(k).nodeSize;
+    const a = doc.child(first);
+    const b = doc.child(first + 1);
+    const offset = selection.from - (dir === -1 ? pos + a.nodeSize : pos);
+    const tr = view.state.tr.replaceWith(pos, pos + a.nodeSize + b.nodeSize, [b, a]);
+    const start = dir === -1 ? pos : pos + b.nodeSize;
+    tr.setSelection(TextSelection.near(tr.doc.resolve(start + offset))).scrollIntoView();
+    view.dispatch(tr);
+    caret();
+  };
+  // Reordering in the outline by pointer, not HTML drag and drop: the shell takes drops for files on Windows.
+  const [dragged, setDragged] = createSignal<number | null>(null);
+  const [dragOver, setDragOver] = createSignal<number | null>(null);
+  const grab = (e: PointerEvent, k: number) => {
+    if (e.button !== 0) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let moving = false;
+    const move = (m: PointerEvent) => {
+      if (!moving && Math.abs(m.clientY - y0) + Math.abs(m.clientX - x0) < 5) return;
+      moving = true;
+      setDragged(k);
+      const li = document.elementFromPoint(m.clientX, m.clientY)?.closest<HTMLElement>(".outline li");
+      setDragOver(li ? Number(li.dataset.k) : null);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      const to = dragOver();
+      const list = parts();
+      setDragged(null);
+      setDragOver(null);
+      if (!moving) return jump(list[k]);
+      if (to == null || to === k || !list[to]) return;
+      // Dragged down, it lands after the part it is dropped on; dragged up, before it.
+      movePart(list[k].pos, to > k ? list[to].pos + list[to].size : list[to].pos);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const outline = () => (
+    <aside class="outline" aria-label="Outline">
+      <div class="outline-head">
+        <span>Outline</span>
+        <span class="faint">drag to move</span>
+        <span class="spacer" />
+        <button type="button" class="link" title="Hide the outline (Ctrl+Shift+O)" onClick={() => (setOutlinePref(false), view?.focus())}>
+          Hide
+        </button>
+      </div>
+      <ol>
+        <For each={parts()}>
+          {(p, k) => (
+            <li
+              data-k={k()}
+              classList={{ current: p.index === at(), heading: p.heading, greeting: p.greeting, dragged: dragged() === k(), over: dragOver() === k() && dragged() !== k() }}
+            >
+              <button
+                type="button"
+                title="Go there; drag to move it. Alt+↑/↓ moves the part you're in."
+                onPointerDown={(e) => grab(e, k())}
+                onClick={(e) => e.detail === 0 && jump(p)}
+              >
+                <span class="num">{k() + 1}</span>
+                <span class="label">{p.label}</span>
+                <Show when={p.ask}>
+                  <span class="tag">asks</span>
+                </Show>
+              </button>
+            </li>
+          )}
+        </For>
+      </ol>
+      <span class="spacer" />
+      <Show when={lateAsk()} keyed>
+        {(l) => (
+          <div class="outline-check">
+            <span>
+              Your question is in part {l.n} of {l.of}. Most people read the first part closely.
+            </span>
+            <span class="row">
+              <button type="button" class="link" onClick={() => (movePart(l.part.pos, l.top.pos), setAskSeen(true))}>
+                Move it up
+              </button>
+              <button type="button" class="link" onClick={() => setAskSeen(true)}>
+                Leave it
+              </button>
+            </span>
+          </div>
+        )}
+      </Show>
+      <span class="outline-foot">
+        {words()} words · about {Math.max(1, Math.round(words() / 230))} min to read
+      </span>
+    </aside>
+  );
   const iconButton = (icon: Parameters<typeof Icon>[0]["name"], label: string, run: () => void, cls = "") => (
     <button type="button" class={`icon-button ${cls}`} title={label} aria-label={label} onClick={run}>
       <Icon name={icon} size={16} />
@@ -928,11 +1100,13 @@ export function Compose(props: {
     <form
       ref={formEl}
       class="compose"
-      classList={{ inline: props.init.inline, focus: focusMode(), "with-ai": aiOpen() && !props.init.inline }}
+      classList={{ inline: props.init.inline, focus: focusMode(), "with-ai": aiOpen() && !props.init.inline, long: long(), typing: typing() }}
       onKeyDown={onKeyDown}
+      onMouseMove={() => typing() && setTyping(false)}
       // Only Send (the button, Ctrl+Enter) sends: a form submitted any other way does nothing.
       onSubmit={(e) => e.preventDefault()}
     >
+      <Show when={long()}>{outline()}</Show>
       <div class="compose-main">
       <div class="compose-head">
         <Show when={props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length)}>
@@ -1014,10 +1188,14 @@ export function Compose(props: {
           <RecipientField label="Bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} outside={isOutside} />
         </Show>
         <Show when={!props.init.inline || !props.init.inReplyTo}>
-          <label class="field subject">
-            <span class="label">Subject</span>
-            <input value={subject()} onInput={(e) => (setSubject(e.currentTarget.value), changed())} />
-          </label>
+          <div class="field subject">
+            <input
+              aria-label="Subject"
+              placeholder="Subject"
+              value={subject()}
+              onInput={(e) => (setSubject(e.currentTarget.value), changed())}
+            />
+          </div>
         </Show>
       </div>
       {/* A try from the AI shows in the text's place; the editor stays as it was underneath until it is kept. */}
@@ -1034,7 +1212,7 @@ export function Compose(props: {
               ref={editorReady}
               onPictures={pictures}
               pictures={shownPictures}
-              onChange={(text, rich) => (setBody(text), setHtml(rich), changed())}
+              onChange={(text, rich) => (setBody(text), setHtml(rich), changed(), typed(), caret())}
             />
           )}
         </Show>
@@ -1363,7 +1541,7 @@ export function Compose(props: {
         {/* biome-ignore lint/a11y/noStaticElementInteractions: a click beside compose closes it (the draft is kept), as Esc does */}
         <div
           class="overlay compose-overlay"
-          classList={{ minimized: props.minimized, focused: focusMode() }}
+          classList={{ minimized: props.minimized, focused: focusMode(), long: long() }}
           onMouseDown={(e) => e.target === e.currentTarget && void close()}
         >
           {form}

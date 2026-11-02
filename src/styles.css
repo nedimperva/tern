@@ -6951,3 +6951,215 @@ button.link.danger {
   padding: 2px 0;
   font-size: var(--t-sm);
 }
+
+/* Paper (ui.md 4.4): who and what read as one quiet block, no lines between fields; the subject is the page's title. */
+.compose .field {
+  border-bottom: 0;
+  min-height: 30px;
+  padding: 2px 0;
+}
+.compose .field .label {
+  width: 40px;
+  font-size: var(--t-sm);
+}
+.compose .suggestions {
+  left: 44px;
+}
+.compose .field.subject input {
+  min-width: 0;
+  padding: var(--s-1) 0 2px;
+  font: 600 var(--t-xl) / 1.3 var(--font);
+  color: var(--fg-0);
+}
+.compose .field.subject input::placeholder {
+  color: var(--fg-2);
+  font-weight: 500;
+}
+.compose:not(.inline) .editor-body .ProseMirror {
+  font-size: 15px;
+  line-height: 1.65;
+}
+.compose-main > footer {
+  border-top-color: transparent;
+}
+/* While the person types, the tools fade; a pause, the mouse or focus on them brings them back. */
+.compose-main > footer .tools,
+.compose-main > footer .discard,
+.compose-head .icon-button {
+  transition: opacity var(--d-base);
+}
+.compose.typing .compose-main > footer .tools:not(:focus-within),
+.compose.typing .compose-main > footer .discard:not(:focus-visible),
+.compose.typing .compose-head .icon-button:not(:focus-visible) {
+  opacity: 0;
+}
+
+/* Long mail: the dialog widens, the text keeps a reading measure, and the outline sits on the left. */
+.compose-overlay.long {
+  padding-top: 4vh;
+}
+/* A fixed height, so the dialog doesn't grow line by line as the mail does. */
+.compose.long {
+  width: min(1080px, 96vw);
+  height: calc(92vh - var(--titlebar-h));
+  max-height: none;
+  flex-direction: row;
+  padding: 0;
+  overflow: hidden;
+}
+.compose.long > .compose-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--s-2) var(--s-5) var(--s-3);
+}
+.compose.long > .compose-main > .fields,
+.compose.long > .compose-main > .editor-wrap,
+.compose.long > .compose-main > .ai-try {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.compose.long > .compose-main > footer {
+  margin-top: auto;
+}
+.compose.long .ProseMirror:focus > :not(.current) {
+  opacity: 0.7;
+  transition: opacity var(--d-base);
+}
+.outline {
+  width: 230px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-3) var(--s-2);
+  background: var(--bg-2);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+.outline .spacer {
+  flex: 1;
+}
+.outline-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-1);
+  padding: 0 var(--s-2) var(--s-1);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.outline-head .faint {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.outline-head .link {
+  font-size: var(--t-xs);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.outline ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.outline li button {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  width: 100%;
+  padding: 5px var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  line-height: 1.35;
+  text-align: left;
+  cursor: grab;
+  touch-action: none;
+}
+.outline li button:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.outline li.current button {
+  background: var(--accent-soft);
+  color: var(--fg-0);
+}
+.outline li.heading .label {
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.outline li.greeting button {
+  color: var(--fg-2);
+}
+.outline li.dragged {
+  opacity: 0.4;
+}
+.outline li.over {
+  box-shadow: 0 -2px 0 var(--accent);
+}
+.outline .num {
+  width: 14px;
+  flex: none;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.outline .label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.outline .tag {
+  margin-left: auto;
+  font-size: var(--t-xs);
+  color: var(--accent);
+}
+.outline-check {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+  font-size: var(--t-sm);
+  line-height: 1.4;
+}
+.outline-check .row {
+  display: flex;
+  gap: var(--s-3);
+}
+.outline-check .link {
+  color: var(--warn-fg);
+  text-decoration: underline;
+}
+.outline-foot {
+  padding: var(--s-1) var(--s-2) 0;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+@media (max-width: 760px) {
+  .compose.long {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .compose.long > .compose-main {
+    overflow: visible;
+  }
+  .outline {
+    width: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}

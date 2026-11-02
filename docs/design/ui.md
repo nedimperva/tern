@@ -325,11 +325,12 @@ none).
 - Top row: the From pill (account colour dot, "From Name · address ▾") when > 1 identity; then, right-aligned,
   "✓ Saved" / "Saving…" in `--fg-2`, and icon buttons Minimize (`Ctrl+Shift+M`), Focus (`Ctrl+Shift+F`) and Close
   (`Esc`, keeps the draft). An inline reply has no Minimize or Focus.
-- Field rows: `To` (with `Cc` `Bcc` toggles at its right end, or `Ctrl+Shift+C/B`), then `Cc` `Bcc` when used,
-  `Subject`. Labels are `--fg-2` on the left (64 px). Recipients are chips (`--bg-2`, `--r-sm`): initials on
+- Field rows (Paper, 2026-11-02): no rules between them. `To` (with `Cc` `Bcc` toggles at its right end, or
+  `Ctrl+Shift+C/B`), then `Cc` `Bcc` when used; labels `--t-sm` `--fg-2` on the left (40 px). The subject has no
+  label: it is the page's title, `--t-xl` 600, "Subject" as its placeholder. Recipients are chips (`--bg-2`, `--r-sm`): initials on
   `--accent-soft`, the contact's name when known (address on hover), remove on `Backspace`. A chip outside the
   sender's organisation (not for public mail services) is on `--warn-soft` with the domain after the name.
-- Editor body: `--t-rd`, min 160 px, grows with content. Formatting bar appears only on text selection, floating above the selection: B I U S · link · list · quote.
+- Editor body: 15 px / 1.65 in the dialog (`--t-rd` inline), min 160 px, grows with content. Formatting bar appears only on text selection, floating above the selection: B I U S · link · list · quote.
 - Attachments: cards 132 px wide (picture thumbnail, else the file kind's icon; name and size; × on hover) and a
   size bar against 25 MB, `--warn` from 70 %, `--danger` over. Files dragged over the window show a dashed
   `--accent` drop zone over compose.
@@ -338,8 +339,16 @@ none).
   "There's no subject" on `--warn-soft`; "x is outside example.com" on `--bg-2` when outside people are mixed
   with the sender's own, dismissible. Sending again while they show sends anyway.
 - Only Send sends: the button, `Ctrl Enter` or the menu. `Enter` in a field (Subject, an empty To) never does.
-- Footer (above a `--line` rule): split `Send  Ctrl↵` button whose menu holds Send & Done, Send later…, Remind me
-  if no reply… with their keys; then attach, snippet and signature as icons; discard as a trash icon at the far end.
+- Long mail: from 150 words (back under 120) the dialog widens to 1080 px at a fixed height and an outline sits on
+  the left, `--bg-2`, 230 px: each paragraph's first words, short title lines bold, "asks" on parts that ask. Click
+  goes there, drag moves a part, `Alt ↑/↓` moves the part the caret is in; `Ctrl+Shift+O` opens or hides it. The
+  text keeps a 640 px measure and parts the caret isn't in sit at 70 %. If the first ask is below the first part,
+  one `--warn-soft` note says where it is (Move it up / Leave it). Words and minutes to read at the foot. Not for an
+  inline reply, focus mode or with the Writing help sidebar open.
+- Footer (no rule): split `Send  Ctrl↵` button whose menu holds Send & Done, Send later…, Remind me
+  if no reply… with their keys; then attach, snippet and signature as icons; discard as a trash icon at the far end. While
+  the person types, the tools, discard and the top row's buttons fade out; a 1.2 s pause, the mouse or focus brings
+  them back. Send never fades.
 - Signature: a pill in the footer ("✎ Full ▾") when the account has any; picking one, or `Ctrl+Shift+S`
   to step through them and None, swaps the signature in the text. Changing From brings the new account's.
 - Minimized: the dialog hides (its editor kept) and a 320 px card waits bottom right: subject, recipients, the
