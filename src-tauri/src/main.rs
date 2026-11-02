@@ -200,6 +200,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::accounts,
             commands::set_account_name,
+            commands::set_account_aliases,
             commands::folders,
             commands::preset,
             commands::add_account,

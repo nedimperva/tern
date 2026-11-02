@@ -77,6 +77,7 @@ export async function respond(m: ThreadMessage | undefined, kind: ReplyKind, onl
   // The signature goes above what is quoted or forwarded, unless set to go below a quote.
   setCompose({
     accountId: init.accountId,
+    from: init.from,
     to: init.to,
     cc: init.cc,
     subject: init.subject,
@@ -108,6 +109,7 @@ export function resume(record: DraftRecord, inline = false) {
   const d = record.draft;
   setCompose({
     accountId: record.accountId,
+    from: d.from ?? null,
     to: d.to,
     cc: d.cc ?? [],
     bcc: d.bcc ?? [],

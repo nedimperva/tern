@@ -1421,6 +1421,7 @@ mod tests {
                 smtp_port: 1,
                 smtp_security: Security::Tls,
                 auth: Default::default(),
+                aliases: Vec::new(),
             })
             .unwrap();
         let (pause, paused) = tokio::sync::watch::channel(true);
@@ -1519,6 +1520,7 @@ mod tests {
                     smtp_port: 465,
                     smtp_security: Security::Tls,
                     auth: Default::default(),
+                    aliases: Vec::new(),
                 })
                 .unwrap();
             (store, account.id)
@@ -1660,6 +1662,7 @@ mod tests {
                     smtp_port: 465,
                     smtp_security: Security::Tls,
                     auth: Default::default(),
+                    aliases: Vec::new(),
                 })
                 .unwrap();
             let all = store.upsert_folder(account.id, "[Gmail]/All Mail", "all").unwrap();
@@ -1826,6 +1829,7 @@ mod tests {
                     smtp_port: 465,
                     smtp_security: Security::Tls,
                     auth: Default::default(),
+                    aliases: Vec::new(),
                 })
                 .unwrap();
             let inbox = store.upsert_folder(account.id, "INBOX", "inbox").unwrap();
@@ -1858,6 +1862,7 @@ mod tests {
 
         fn draft() -> crate::models::Draft {
             crate::models::Draft {
+                from: None,
                 html: None,
                 to: vec!["b@example.com".into()],
                 cc: vec![],
@@ -2225,6 +2230,7 @@ mod tests {
                     smtp_port: 465,
                     smtp_security: Security::Tls,
                     auth: Default::default(),
+                    aliases: Vec::new(),
                 })
                 .unwrap();
             let inbox = store.upsert_folder(account.id, "INBOX", "inbox").unwrap();
@@ -2337,6 +2343,7 @@ mod tests {
             smtp_port: 1465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            aliases: Vec::new(),
         };
         (config, crate::secrets::Login::Password(password))
     }
@@ -2356,6 +2363,7 @@ mod tests {
         while super::pass(&store, &account, &password, &mut session, &mut schedule, &nothing).await.unwrap() {
         }
         let draft = Draft {
+            from: None,
             html: None,
             to: vec!["test@localhost".into()],
             cc: vec![],
@@ -2405,6 +2413,7 @@ mod tests {
         }
         let subject = format!("draft check {}", std::process::id());
         let draft = |body: &str| Draft {
+            from: None,
             html: None,
             to: vec!["test@localhost".into()],
             cc: vec![],
@@ -2492,6 +2501,7 @@ mod tests {
         };
         let subject = format!("attachments check {}", std::process::id());
         let draft = |subject: String, attachments, forward_of| Draft {
+            from: None,
             html: None,
             to: vec!["test@localhost".into()],
             cc: vec![],
@@ -2691,6 +2701,7 @@ mod tests {
         // Its own message, so the other checks running against the same inbox cannot move it meanwhile.
         let subject = format!("star after archive {}", std::process::id());
         let draft = crate::models::Draft {
+            from: None,
             html: None,
             to: vec!["test@localhost".into()],
             cc: vec![],

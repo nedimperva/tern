@@ -339,7 +339,9 @@ impl Store {
     ///
     /// Reply goes to Reply-To, else the sender; to a message this account sent, it goes back to its recipients.
     /// Reply-all honours Mail-Followup-To when the message has one, else adds everyone in To and Cc. The
-    /// account's own address is never a recipient. References carry the chain on, ending with this message.
+    /// account's own addresses (aliases too) are never recipients. It answers from the alias the message went to
+    /// (or was sent from), so mail to a custom-domain address is answered from it. References carry the chain on,
+    /// ending with this message.
     pub fn reply_init(&self, id: i64, kind: ReplyKind) -> Result<ReplyInit> {
         let conn = self.conn();
         type Row = (
@@ -386,13 +388,31 @@ impl Store {
         let list = |s: &str| -> Vec<String> {
             s.split(',').map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect()
         };
-        let mine = |a: &String| a.to_lowercase() == me;
+        let own = own_addresses(&conn, account_id)?;
+        let mine = |a: &String| own.contains(&a.to_lowercase());
+        // Which of its addresses the message was about: the sender when the account sent it, else the first of
+        // them in To, then Cc.
+        let addressed = if mine(&from_addr) {
+            Some(from_addr.to_lowercase())
+        } else {
+            list(&to).into_iter().chain(list(&cc)).map(|a| a.to_lowercase()).find(|a| own.contains(a))
+        };
+        let from = match addressed.filter(|a| *a != me) {
+            Some(alias) => conn
+                .query_row(
+                    "SELECT spelled FROM account_aliases WHERE account_id = ?1 AND email = ?2",
+                    params![account_id, alias],
+                    |r| r.get(0),
+                )
+                .optional()?,
+            None => None,
+        };
         let mut seen = HashSet::new();
         // Each address once, never this account's.
         let mut keep = |list: Vec<String>| -> Vec<String> {
             list.into_iter().filter(|a| !mine(a) && seen.insert(a.to_lowercase())).collect()
         };
-        let from_me = from_addr.to_lowercase() == me;
+        let from_me = mine(&from_addr);
         let sender = if !reply_to.is_empty() { list(&reply_to) } else { vec![from_addr.clone()] };
         let (to_list, cc_list) = match kind {
             ReplyKind::Forward => (Vec::new(), Vec::new()),
@@ -425,6 +445,7 @@ impl Store {
         }
         Ok(ReplyInit {
             account_id,
+            from,
             to: to_list,
             cc: cc_list,
             subject: if already { subject } else { format!("{prefix}{subject}") },

@@ -317,6 +317,14 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
             // Data only: mail joined into a conversation by its subject alone, though it was no reply, gets its own
             // again (see `split_subject_threads`).
             28 => "",
+            // An account's other From addresses (an iCloud custom domain, an alias): `email` lowercase for matching
+            // mail to the account, `spelled` as the person wrote it, in the order they listed them.
+            29 => {
+                "CREATE TABLE account_aliases (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                               email TEXT NOT NULL, spelled TEXT NOT NULL,
+                                               name TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0,
+                                               PRIMARY KEY (account_id, email));"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
@@ -431,7 +439,7 @@ pub(super) fn fill_contacts(conn: &Connection) -> Result<()> {
         })?
         .collect::<rusqlite::Result<_>>()?;
     for (me, m) in rows {
-        note_people(conn, &me, &m)?;
+        note_people(conn, &[me], &m)?;
     }
     Ok(())
 }

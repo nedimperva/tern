@@ -29,6 +29,8 @@ import { RecipientField, splitAddresses, validAddress } from "./RecipientField";
 
 export type ComposeInit = {
   accountId?: number;
+  /** One of the account's aliases to send as; none sends as the account's address. */
+  from?: string | null;
   to?: string[];
   cc?: string[];
   bcc?: string[];
@@ -59,6 +61,9 @@ export type ComposeInit = {
   /** A saved draft's HTML signature, shown under the text again. */
   htmlSignature?: number | null;
 };
+
+/** A From picker line: "From Ada · ada@example.com". */
+const fromLabel = (name: string, email: string) => (name ? `From ${name} · ${email}` : `From ${email}`);
 
 /** The signature of `accountId` for new mail or for replies, if it has one. */
 export function defaultSignature(all: Signature[], accountId: number | undefined, kind: "new" | "reply") {
@@ -98,6 +103,12 @@ export function Compose(props: {
   onMinimize?: (on: boolean) => void;
 }) {
   const [from, setFrom] = createSignal(props.init.accountId ?? props.accounts[0]?.id);
+  // The alias it goes out as, spelled as the account lists it; null is the account's own address.
+  const aliasOf = (accountId: number | undefined, address: string | null | undefined) => {
+    const key = address?.trim().toLowerCase();
+    return props.accounts.find((a) => a.id === accountId)?.aliases?.find((x) => x.email.toLowerCase() === key)?.email ?? null;
+  };
+  const [alias, setAlias] = createSignal(aliasOf(from(), props.init.from));
   const [to, setTo] = createSignal(props.init.to ?? []);
   const [cc, setCc] = createSignal(props.init.cc ?? []);
   const [bcc, setBcc] = createSignal(props.init.bcc ?? []);
@@ -169,10 +180,15 @@ export function Compose(props: {
     const i = list.findIndex((s) => s.id === sigId());
     void switchSignature(i + 1 < list.length ? list[i + 1] : null);
   };
-  /** Writing from another account brings its signature, when the one in the text was the old account's. */
-  const changeFrom = (accountId: number) => {
+  /** Writing from another account brings its signature, when the one in the text was the old account's. The
+   * picker's value is the account's id, then a space and the alias when it is one. */
+  const changeFrom = (picked: string) => {
+    const [id, address] = picked.split(" ");
+    const accountId = Number(id);
     const old = props.signatures.find((s) => s.id === sigId());
+    setAlias(aliasOf(accountId, address));
     setFrom(accountId);
+    changed();
     if (old && old.accountId !== accountId) void switchSignature(defaultSignature(props.signatures, accountId, sigKind));
     else if (!old && props.init.signature) void switchSignature(defaultSignature(props.signatures, accountId, sigKind));
   };
@@ -262,6 +278,7 @@ export function Compose(props: {
     const sig = htmlSig();
     const out = sig && view && tools ? tools.withHtmlSignature(view.state.doc, sig, sigBelow()) : null;
     return {
+      from: alias(),
       to: to(),
       cc: cc(),
       bcc: bcc(),
@@ -345,7 +362,7 @@ export function Compose(props: {
     if (!bodyFirst) toInput.focus();
   });
 
-  const sender = () => props.accounts.find((a) => a.id === from())?.email;
+  const sender = () => alias() ?? props.accounts.find((a) => a.id === from())?.email;
   const isOutside = (address: string) => outside(address, sender());
   /** Outside recipients, when they are mixed with people from the sender's own organisation. */
   const outsiders = () => {
@@ -651,12 +668,23 @@ export function Compose(props: {
       onSubmit={(e) => (e.preventDefault(), send(false))}
     >
       <div class="compose-head">
-        <Show when={props.accounts.length > 1}>
+        <Show when={props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length)}>
           <label class="from-pick" title="Send from">
             <span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />
-            <select aria-label="From" value={from()} onChange={(e) => changeFrom(Number(e.currentTarget.value))}>
+            <select
+              aria-label="From"
+              value={alias() ? `${from()} ${alias()}` : String(from())}
+              onChange={(e) => changeFrom(e.currentTarget.value)}
+            >
               <For each={props.accounts}>
-                {(a) => <option value={a.id}>{a.displayName ? `From ${a.displayName} · ${a.email}` : `From ${a.email}`}</option>}
+                {(a) => (
+                  <>
+                    <option value={String(a.id)}>{fromLabel(a.displayName, a.email)}</option>
+                    <For each={a.aliases ?? []}>
+                      {(x) => <option value={`${a.id} ${x.email}`}>{fromLabel(x.name || a.displayName, x.email)}</option>}
+                    </For>
+                  </>
+                )}
               </For>
             </select>
             <Icon name="chevron-down" size={12} />

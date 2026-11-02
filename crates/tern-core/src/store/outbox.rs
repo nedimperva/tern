@@ -175,10 +175,13 @@ impl Store {
     ) -> Result<i64> {
         let conn = self.conn();
         // Who the person writes to ranks first in autocomplete, before the copy in Sent is even synced.
-        let me: String =
-            conn.query_row("SELECT lower(email) FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
+        let me = own_addresses(&conn, account_id)?;
+        // An address the account no longer has (an alias taken off while this was being written) goes out as the
+        // account's own, as smtp::build does.
+        let sender = draft.from.as_deref().map(str::to_lowercase).filter(|f| me.contains(f));
+        let sender = sender.unwrap_or_else(|| me[0].clone());
         let sent = NewMessage {
-            from_addr: me.clone(),
+            from_addr: sender.clone(),
             to_addrs: draft.to.join(", "),
             cc_addrs: [draft.cc.clone(), draft.bcc.clone()].concat().join(", "),
             date: now(),
@@ -186,9 +189,7 @@ impl Store {
         };
         note_people(&conn, &me, &sent)?;
         if draft.message_id.is_none() {
-            let email: String =
-                conn.query_row("SELECT email FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
-            let domain = email.rsplit_once('@').map_or("localhost", |(_, d)| d);
+            let domain = sender.rsplit_once('@').map_or("localhost", |(_, d)| d);
             draft.message_id = Some(crate::smtp::new_message_id(domain)?);
         }
         let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
@@ -241,7 +242,7 @@ impl Store {
                 "DELETE FROM reminders AS r WHERE r.kind = 'followup' AND EXISTS (
                      SELECT 1 FROM messages m JOIN accounts a ON a.id = m.account_id
                      WHERE m.account_id = r.account_id AND m.thread_id = {FOLLOW_UP_THREAD}
-                       AND m.date > r.created AND lower(m.from_addr) <> lower(a.email))"
+                       AND m.date > r.created AND NOT {MINE_M})"
             ),
             [],
         )?;

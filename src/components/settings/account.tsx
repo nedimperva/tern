@@ -1,7 +1,7 @@
 // Settings → an account: its name, password and removal.
 
-import { createSignal, For, Show } from "solid-js";
-import { api, type Account } from "../../api";
+import { createSignal, For, Index, Show } from "solid-js";
+import { api, type Account, type Alias } from "../../api";
 import { ACCOUNT_COLOURS, COLOUR_NAMES } from "../../colours";
 import { radioKeys } from "../../a11y";
 import { type NotifyMode, setSetting, settings } from "../../settings";
@@ -20,6 +20,20 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
       setError(String(e));
     }
   };
+  // Other addresses it sends as. Edits save when a field is left; an empty address is dropped then.
+  const [aliases, setAliases] = createSignal<Alias[]>(props.account.aliases ?? []);
+  const [aliasError, setAliasError] = createSignal("");
+  const saveAliases = async (list: Alias[]) => {
+    setAliasError("");
+    try {
+      setAliases(await api.setAccountAliases(props.account.id, list));
+      props.onRenamed();
+    } catch (e) {
+      setAliasError(String(e));
+    }
+  };
+  const editAlias = (i: number, patch: Partial<Alias>) =>
+    setAliases((list) => list.map((a, j) => (j === i ? { ...a, ...patch } : a)));
   const [google, setGoogle] = createSignal(false);
   void api.googleAvailable().then(setGoogle, () => setGoogle(false));
   const [signing, setSigning] = createSignal(false);
@@ -102,6 +116,45 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
       <div class="setting">
         <span class="title">Address</span>
         <span>{props.account.email}</span>
+      </div>
+      <div class="setting">
+        <span class="title">Also send as</span>
+        <span class="help">
+          Addresses this account may send from through {props.account.smtpHost}, such as a custom domain set up in
+          iCloud or an alias. They show in the From picker, and replies go out from the address the mail came to.
+          The server has to allow each one; an empty name uses yours.
+        </span>
+        <div class="aliases">
+          <Index each={aliases()}>
+            {(a, i) => (
+              <span class="alias">
+                <input
+                  type="email"
+                  aria-label="Address"
+                  placeholder="you@your-domain.com"
+                  value={a().email}
+                  ref={(el) => !a().email && queueMicrotask(() => el.focus())}
+                  onInput={(e) => editAlias(i, { email: e.currentTarget.value })}
+                  onChange={() => void saveAliases(aliases())}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                />
+                <input
+                  aria-label="Name"
+                  placeholder={props.account.displayName || "Your name"}
+                  value={a().name}
+                  onInput={(e) => editAlias(i, { name: e.currentTarget.value })}
+                  onChange={() => void saveAliases(aliases())}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                />
+                <button onClick={() => void saveAliases(aliases().filter((_, j) => j !== i))}>Remove</button>
+              </span>
+            )}
+          </Index>
+          <button onClick={() => setAliases((list) => [...list, { email: "", name: "" }])}>Add an address</button>
+        </div>
+        <Show when={aliasError()}>
+          <p class="setting-error">{aliasError()}</p>
+        </Show>
       </div>
       <div class="setting">
         <span class="title">Colour</span>

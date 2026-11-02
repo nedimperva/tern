@@ -43,6 +43,11 @@ const DONE: Record<Exclude<Action, object>, string> = {
 
 export const folderName = (f: Folder | undefined) => (f ? ROLE_NAMES[f.role] ?? f.name : "folder");
 export const accountOf = (id: number) => accounts().find((a) => a.id === id)?.email ?? "";
+/** One of the person's addresses: an account's own or one of its aliases. */
+export const isMine = (addr: string) => {
+  const key = addr.trim().toLowerCase();
+  return accounts().some((a) => a.email.toLowerCase() === key || (a.aliases ?? []).some((x) => x.email.toLowerCase() === key));
+};
 
 /** What an action applies to: the selection if there is one, else the open conversation or the focused row. */
 export function targets(): ThreadRow[] {

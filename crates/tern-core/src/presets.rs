@@ -52,7 +52,10 @@ pub fn for_email(email: &str) -> Option<Preset> {
             "imap.mail.me.com",
             "smtp.mail.me.com",
             587,
-            Some("iCloud needs an app-specific password (appleid.apple.com)."),
+            Some(
+                "iCloud needs an app-specific password (account.apple.com). A custom domain in iCloud: sign in with \
+                 the iCloud address, then add the domain's address under Settings → this account → Also send as.",
+            ),
         ),
         "yahoo.com" | "ymail.com" => {
             known("imap.mail.yahoo.com", "smtp.mail.yahoo.com", 465, Some("Yahoo needs an app password."))

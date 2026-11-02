@@ -68,7 +68,11 @@ export type AccountConfig = {
   smtpSecurity: Security;
   /** "google": signed in with Google in the browser, no password. Missing means a password. */
   auth?: "password" | "google";
+  /** Other addresses it sends as, through the same server (an iCloud custom domain, an alias). */
+  aliases?: Alias[];
 };
+/** An extra From address of an account; an empty name uses the account's. */
+export type Alias = { email: string; name: string };
 export type Account = AccountConfig & { id: number };
 /** What a `mailto:` link fills in. */
 export type Mailto = { to: string[]; cc: string[]; bcc: string[]; subject: string; body: string };
@@ -205,6 +209,8 @@ export type OutgoingAttachment = {
 /** Where a forwarded message is on the server; its attachments go along when the forward is sent. */
 export type ForwardOf = { folder: string; uid: number; validity: number | null; messageId: string | null };
 export type Draft = {
+  /** Sent as this alias of the account; missing or not one of its aliases sends as the account's address. */
+  from?: string | null;
   attachments?: OutgoingAttachment[];
   forwardOf?: ForwardOf | null;
   to: string[];
@@ -227,6 +233,8 @@ export type DraftRecord = { id: number; accountId: number; draft: Draft & { mess
 /** How a reply or forward starts; the UI writes the quote header in the person's language. */
 export type ReplyInit = {
   accountId: number;
+  /** The alias the message went to (or came from), to answer from; null answers from the account's address. */
+  from: string | null;
   to: string[];
   cc: string[];
   subject: string;
@@ -289,6 +297,8 @@ export interface Api {
   accounts(): Promise<Account[]>;
   /** The name on mail sent from the account; empty sends the address alone. */
   setAccountName(id: number, name: string): Promise<void>;
+  /** Replaces the account's other From addresses; returns what was kept (trimmed, each once). */
+  setAccountAliases(id: number, aliases: Alias[]): Promise<Alias[]>;
   folders(): Promise<Folder[]>;
   preset(email: string): Promise<Preset | null>;
   addAccount(config: AccountConfig, password: string): Promise<Account>;
@@ -519,6 +529,7 @@ function installClose() {
 const tauri: Api = {
   accounts: () => invoke("accounts"),
   setAccountName: (id, name) => invoke("set_account_name", { id, name }),
+  setAccountAliases: (id, aliases) => invoke("set_account_aliases", { id, aliases }),
   folders: () => invoke("folders"),
   preset: (email) => invoke("preset", { email }),
   addAccount: (config, password) => invoke("add_account", { config, password }),
@@ -738,6 +749,7 @@ function fake(): Api {
     smtpHost: "smtp.example.com",
     smtpPort: 465,
     smtpSecurity: "tls",
+    aliases: location.hash === "#alias" ? [{ email: "hello@your-domain.example", name: "" }] : [],
   };
   const plain = { accountId: null, subject: null, cc: [], used: 0, lastUsed: null };
   let snippets: Snippet[] = [
@@ -795,7 +807,7 @@ function fake(): Api {
       flagged: i % 23 === 0,
       hasAttachments: i % 11 === 0,
       messageId: `${i}@example.com`,
-      toAddrs: account.email,
+      toAddrs: account.aliases?.length && i % 3 === 0 ? account.aliases[0].email : account.email,
       bodyText: body,
       bodyHtml:
         i % 7 === 1
@@ -901,6 +913,13 @@ function fake(): Api {
     accounts: async () =>
       location.hash === "#two" ? [account, { ...account, id: 2, email: "ada@work.example", displayName: "Ada Work", username: "ada@work.example" }] : [account],
     setAccountName: async (_, name) => void (account.displayName = name.trim()),
+    setAccountAliases: async (_, aliases) => {
+      const seen = new Set([account.email.toLowerCase()]);
+      account.aliases = aliases
+        .map((a) => ({ email: a.email.trim(), name: a.name.trim() }))
+        .filter((a) => a.email && !seen.has(a.email.toLowerCase()) && seen.add(a.email.toLowerCase()));
+      return account.aliases;
+    },
     folders: async () =>
       folders.map((f) => ({ ...f, unread: messages.filter((m) => m.folderId === f.id && !m.seen).length })),
     preset: async () => ({
@@ -1108,8 +1127,10 @@ function fake(): Api {
     replyInit: async (id, kind) => {
       const m = messages.find((m) => m.id === id)!;
       const forward = kind === "forward";
+      const own = (account.aliases ?? []).find((a) => m.toAddrs.toLowerCase().includes(a.email.toLowerCase()));
       return {
         accountId: m.accountId,
+        from: own?.email ?? null,
         to: forward ? [] : [m.fromAddr],
         cc: kind === "replyAll" ? ["bob@example.com"] : [],
         subject: `${forward ? "Fwd" : "Re"}: ${m.subject}`,

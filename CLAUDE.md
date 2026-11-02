@@ -41,6 +41,9 @@ decisions that aren't visible from the code.
   column without tabs; a thread has day headings, quiet own lines and an answer panel; signatures fold to one line.
   The line above the inbox is gone (`g o` opens the morning screen). Word patterns in `src/facts.ts` and
   `src/promises.ts` use Unicode-aware edges: `\b` takes č/š/ž for gaps between words.
+  Send as (2026-10-31, schema v30): an account's aliases (`account_aliases`, `AccountConfig::aliases`) go out
+  through its own SMTP sign-in; `Draft::from` picks one, replies start from the alias the mail went to. SQL that
+  asks "did the person send this?" uses `MINE_M`, never `a.email` alone.
 - IMAP goes through **io-imap** 0.7 (provisional owner decision, package 01), and only `crates/tern-core/src/imap.rs`
   touches it. It is pinned exactly and needs `nom` with `alloc` (see `Cargo.toml`). Its parser drops FETCH
   responses that carry Gmail X-GM-* items. Gmail still goes through IMAP, signed in with Google (XOAUTH2), with labels

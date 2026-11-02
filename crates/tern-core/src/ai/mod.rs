@@ -312,19 +312,23 @@ pub fn summary_of(text: &str, cached: bool) -> Summary {
     Summary { line, facts, points, cached }
 }
 
-fn own_address(store: &Store, account: i64) -> Result<String> {
-    Ok(store.account(account)?.map(|a| a.config.email).unwrap_or_default())
+/// The account's addresses: its own first, then its aliases.
+fn own_address(store: &Store, account: i64) -> Result<Vec<String>> {
+    Ok(store
+        .account(account)?
+        .map(|a| [vec![a.config.email], a.config.aliases.into_iter().map(|x| x.email).collect()].concat())
+        .unwrap_or_default())
 }
 
 /// The conversation as the model reads it: each message's sender, date and own words (quoted replies left out,
 /// they repeat what is already there), inside tags that mark it as material. The reader's own messages say "you".
-fn transcript(messages: &[ThreadMessage], redact_it: bool, me: &str) -> String {
+fn transcript(messages: &[ThreadMessage], redact_it: bool, me: &[String]) -> String {
     let mut out = String::from("<conversation>\n");
     let subject = &messages[0].row.subject;
     out.push_str(&format!("<subject>{}</subject>\n", fence(subject)));
     for m in messages {
         let name = m.row.from_name.trim();
-        let mine = !me.is_empty() && m.row.from_addr.eq_ignore_ascii_case(me);
+        let mine = me.iter().any(|a| m.row.from_addr.eq_ignore_ascii_case(a));
         let from = match (name.is_empty(), redact_it) {
             _ if mine => "you".to_string(),
             (false, true) => name.to_string(),
@@ -854,7 +858,7 @@ pub fn learn_style(store: &Store, model: &dyn Model, account: i64) -> Result<Lea
     let r = allowed(&s, Feature::Voice, account)?;
     let me = own_address(store, account)?;
     let samples: Vec<String> = store
-        .own_texts(account, &me, STYLE_SAMPLES * 2)?
+        .own_texts(account, me.first().map_or("", String::as_str), STYLE_SAMPLES * 2)?
         .into_iter()
         .map(|text| own_words(&without_signature(&text)))
         .filter(|t| t.split_whitespace().count() >= 5)
@@ -987,6 +991,7 @@ mod tests {
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            aliases: Vec::new(),
         };
         let account = store.add_account(&config).unwrap().id;
         let inbox = store.upsert_folder(account, "INBOX", "inbox").unwrap();

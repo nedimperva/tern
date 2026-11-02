@@ -3388,7 +3388,7 @@ button.fold {
   color: var(--fg-2);
 }
 /* What needs the row's width: a form that opens in it, details, a list of accounts. */
-.setting > :is(.ai-key, .about-details, .backup-accounts, .backup-passphrase) {
+.setting > :is(.ai-key, .about-details, .backup-accounts, .backup-passphrase, .aliases) {
   grid-column: 1 / -1;
   margin-top: var(--s-2);
 }
@@ -3470,6 +3470,25 @@ button.fold {
   gap: var(--s-2);
 }
 .setting .ai-key input {
+  flex: 1;
+}
+/* Settings → an account → Also send as: one line per address, its name beside it. */
+.setting .aliases {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.setting .alias {
+  display: flex;
+  gap: var(--s-2);
+  width: 100%;
+}
+.setting .alias input {
+  flex: 2;
+  min-width: 0;
+}
+.setting .alias input + input {
   flex: 1;
 }
 .settings-page input[type="checkbox"],

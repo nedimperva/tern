@@ -17,8 +17,7 @@ impl Store {
     pub fn insert_messages(&self, account_id: i64, folder_id: i64, messages: &[NewMessage]) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        let me: String =
-            tx.query_row("SELECT lower(email) FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
+        let me = own_addresses(&tx, account_id)?;
         for m in messages {
             // A message moved here on this device: it has a row already, waiting for its uid.
             if let Some(mid) = &m.message_id {

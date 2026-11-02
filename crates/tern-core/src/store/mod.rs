@@ -22,7 +22,7 @@ mod settings;
 mod syncing;
 mod writing;
 
-const SCHEMA_VERSION: i64 = 29;
+const SCHEMA_VERSION: i64 = 30;
 
 /// What a mark is kept by: the message's Message-ID, or its row for mail without one.
 const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
@@ -72,7 +72,7 @@ fn conversations(conn: &Connection, latests: Vec<MessageRow>) -> Result<Vec<Thre
     let mut sums: HashMap<(i64, String), Sums> = HashMap::new();
     let mut messages = conn.prepare_cached(&format!(
         "SELECT m.account_id, m.thread_id, m.id, m.message_id, m.seen, m.flagged, m.from_name, m.from_addr,
-                lower(m.from_addr) = lower(a.email)
+                {MINE_M}
          FROM messages m JOIN accounts a ON a.id = m.account_id
          WHERE (m.account_id, m.thread_id) IN {page}
          ORDER BY m.account_id, m.thread_id, m.date, m.id"
@@ -168,7 +168,7 @@ pub fn now() -> i64 {
 
 /// Counts a message's people for autocomplete: mail this account sent counts for its recipients (three times
 /// over, in `contacts`' ranking), mail it received for the sender. Automated senders (no-reply) are left out.
-fn note_people(conn: &Connection, me: &str, m: &NewMessage) -> Result<()> {
+fn note_people(conn: &Connection, me: &[String], m: &NewMessage) -> Result<()> {
     let mut bump = conn.prepare_cached(
         "INSERT INTO contacts (email, name, sent_count, received_count, last_seen) VALUES (lower(?1), ?2, ?3, ?4, ?5)
          ON CONFLICT (email) DO UPDATE SET
@@ -183,9 +183,10 @@ fn note_people(conn: &Connection, me: &str, m: &NewMessage) -> Result<()> {
             .iter()
             .any(|n| a.contains(n))
     };
-    if m.from_addr.eq_ignore_ascii_case(me) {
+    let mine = |a: &str| me.iter().any(|x| x.eq_ignore_ascii_case(a));
+    if mine(&m.from_addr) {
         for addr in m.to_addrs.split(',').chain(m.cc_addrs.split(',')).map(str::trim) {
-            if addr.contains('@') && !addr.eq_ignore_ascii_case(me) {
+            if addr.contains('@') && !mine(addr) {
                 bump.execute(params![addr, "", 1, 0, m.date])?;
             }
         }
@@ -193,6 +194,16 @@ fn note_people(conn: &Connection, me: &str, m: &NewMessage) -> Result<()> {
         bump.execute(params![m.from_addr, m.from_name, 0, 1, m.date])?;
     }
     Ok(())
+}
+
+/// The account's addresses, lowercase: its own first, then its aliases.
+fn own_addresses(conn: &Connection, account_id: i64) -> Result<Vec<String>> {
+    let own: String =
+        conn.query_row("SELECT lower(email) FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
+    let mut stmt =
+        conn.prepare_cached("SELECT email FROM account_aliases WHERE account_id = ?1 ORDER BY position")?;
+    let aliases = stmt.query_map([account_id], |r| r.get(0))?.collect::<rusqlite::Result<Vec<String>>>()?;
+    Ok([vec![own], aliases].concat())
 }
 
 /// A subject as conversations compare it: lowercase, without reply and forward prefixes ("Re:", "Fwd:", "AW:",
@@ -237,6 +248,9 @@ pub const LATER: &str = "later";
 pub const MARKED: &str = "marked";
 
 /// The message goes to Other: its sender was moved there, or (with no choice made) it is bulk mail.
+/// The account `a` sent message `m`: its sender is the account's own address or one of its aliases.
+const MINE_M: &str = "(lower(m.from_addr) = lower(a.email)
+                       OR lower(m.from_addr) IN (SELECT email FROM account_aliases WHERE account_id = a.id))";
 const IS_OTHER: &str = "COALESCE((SELECT s.other FROM sender_splits s
                                   WHERE s.account_id = m.account_id AND s.addr = lower(m.from_addr)), m.bulk)";
 /// The conversation a follow-up reminder `r` watches: the one its sent message is in, once that is here.
@@ -252,7 +266,10 @@ const IS_LATER: &str = "EXISTS (SELECT 1 FROM read_later l
                                WHERE l.account_id = m.account_id AND l.thread_id = m.thread_id
                                  AND NOT EXISTS (SELECT 1 FROM messages x JOIN accounts a ON a.id = x.account_id
                                                  WHERE x.account_id = l.account_id AND x.thread_id = l.thread_id
-                                                   AND x.date > l.added AND lower(x.from_addr) <> lower(a.email)))";
+                                                   AND x.date > l.added
+                                                   AND lower(x.from_addr) <> lower(a.email)
+                                                   AND lower(x.from_addr) NOT IN (SELECT email FROM account_aliases
+                                                                                  WHERE account_id = a.id)))";
 
 /// The message (any copy of it) has marks. Taken from the marks, so a few marks in a big mailbox stay quick.
 const IS_MARKED: &str = "m.id IN (SELECT x.id FROM marks k JOIN messages x
@@ -395,6 +412,21 @@ fn mirror_draft(tx: &Connection, account_id: i64, draft: &Draft) -> Result<()> {
         tx.query_row("SELECT email, display_name FROM accounts WHERE id = ?1", [account_id], |r| {
             Ok((r.get(0)?, r.get(1)?))
         })?;
+    // From an alias, the row shows it, as the message will.
+    let alias: Option<(String, String)> = match &draft.from {
+        Some(from) => tx
+            .query_row(
+                "SELECT spelled, name FROM account_aliases WHERE account_id = ?1 AND email = lower(?2)",
+                params![account_id, from.trim()],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?,
+        None => None,
+    };
+    let (email, name) = match alias {
+        Some((spelled, alias_name)) => (spelled, if alias_name.is_empty() { name } else { alias_name }),
+        None => (email, name),
+    };
     let (body, out_html) = draft.outgoing();
     let snippet = crate::mime::snippet(body);
     let to = draft.to.join(", ");

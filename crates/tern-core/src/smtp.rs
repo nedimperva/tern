@@ -95,14 +95,17 @@ fn mailboxes(list: &[String], draft: bool) -> Result<Vec<Mailbox>> {
 }
 
 fn build_as(config: &AccountConfig, draft: &Draft, extra: &[FileBytes], for_draft: bool) -> Result<Message> {
-    let name = Some(config.display_name.clone()).filter(|n| !n.is_empty());
-    let from: lettre::Address = config.email.parse()?;
+    // An alias goes out as itself, envelope and all: iCloud and the like accept a custom-domain address the signed-in
+    // account owns, and a bounce then names the address the person wrote from.
+    let (address, name) = config.sender(draft.from.as_deref());
+    let name = Some(name.to_string()).filter(|n| !n.is_empty());
+    let from: lettre::Address = address.parse()?;
     let mut builder = Message::builder()
         .message_id(Some(match &draft.message_id {
             Some(id) => id.clone(),
             None => new_message_id(from.domain())?,
         }))
-        .from(Mailbox::new(name, from))
+        .from(Mailbox::new(name, from.clone()))
         .subject(draft.subject.clone());
     let to = mailboxes(&draft.to, for_draft)?;
     let cc = mailboxes(&draft.cc, for_draft)?;
@@ -110,7 +113,7 @@ fn build_as(config: &AccountConfig, draft: &Draft, extra: &[FileBytes], for_draf
     // A draft may have no recipients yet. lettre wants someone in the envelope to build a message at all; the
     // envelope is never used for a draft (it is only stored), and no header changes.
     if to.is_empty() && cc.is_empty() && bcc.is_empty() {
-        let me: lettre::Address = config.email.parse()?;
+        let me = from.clone();
         builder = builder.envelope(Envelope::new(Some(me.clone()), vec![me])?);
     }
     for mailbox in to {
@@ -363,8 +366,10 @@ mod tests {
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            aliases: Vec::new(),
         };
         let draft = Draft {
+            from: None,
             html: None,
             to: vec!["b@example.com".into()],
             cc: vec![],
@@ -391,6 +396,49 @@ mod tests {
     }
 
     #[test]
+    fn an_alias_goes_out_as_itself() {
+        let config = AccountConfig {
+            email: "ada@icloud.example".into(),
+            display_name: "Ada".into(),
+            username: "ada@icloud.example".into(),
+            imap_host: String::new(),
+            imap_port: 993,
+            imap_security: Security::Tls,
+            smtp_host: String::new(),
+            smtp_port: 587,
+            smtp_security: Security::Starttls,
+            auth: Default::default(),
+            aliases: vec![
+                crate::models::Alias { email: "hi@custom.example".into(), name: String::new() },
+                crate::models::Alias { email: "work@custom.example".into(), name: "Ada at Work".into() },
+            ],
+        };
+        let draft = Draft {
+            from: Some("HI@custom.example".into()),
+            to: vec!["b@x.example".into()],
+            ..Default::default()
+        };
+        let m = build(&config, &draft, &[]).unwrap();
+        let raw = String::from_utf8(m.formatted()).unwrap();
+        assert!(raw.contains("From: Ada <hi@custom.example>"), "{raw}");
+        assert!(raw.lines().any(|l| l.starts_with("Message-ID: <") && l.ends_with("@custom.example>")));
+        assert_eq!(m.envelope().from().map(|a| a.to_string()).as_deref(), Some("hi@custom.example"));
+        let named = Draft { from: Some("work@custom.example".into()), ..draft.clone() };
+        let raw = String::from_utf8(build(&config, &named, &[]).unwrap().formatted()).unwrap();
+        assert!(
+            raw.contains("From: \"Ada at Work\" <work@custom.example>")
+                || raw.contains("From: Ada at Work <work@custom.example>"),
+            "{raw}"
+        );
+        let gone = Draft { from: Some("old@custom.example".into()), ..draft };
+        let raw = String::from_utf8(build(&config, &gone, &[]).unwrap().formatted()).unwrap();
+        assert!(
+            raw.contains("From: Ada <ada@icloud.example>"),
+            "an address the account no longer has: {raw}"
+        );
+    }
+
+    #[test]
     fn an_html_signature_goes_out_in_its_place() {
         let config = AccountConfig {
             email: "ada@example.com".into(),
@@ -403,6 +451,7 @@ mod tests {
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            aliases: Vec::new(),
         };
         let draft = Draft {
             to: vec!["b@example.com".into()],
@@ -438,8 +487,10 @@ Ada"
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            aliases: Vec::new(),
         };
         let draft = Draft {
+            from: None,
             html: None,
             to: vec!["b@example.com".into()],
             cc: vec![],
@@ -477,8 +528,10 @@ Ada"
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            aliases: Vec::new(),
         };
         let draft = Draft {
+            from: None,
             html: None,
             to: vec!["nedim".into()],
             cc: vec!["b@example.com".into()],
@@ -519,8 +572,10 @@ Ada"
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            aliases: Vec::new(),
         };
         let draft = Draft {
+            from: None,
             html: None,
             to: vec!["b@example.com".into()],
             cc: vec![],
@@ -567,8 +622,10 @@ Ada"
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            aliases: Vec::new(),
         };
         let draft = Draft {
+            from: None,
             html: Some("<p>Hello <strong>there</strong></p>".into()),
             to: vec!["b@example.com".into()],
             cc: vec![],
@@ -615,6 +672,7 @@ Ada"
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            aliases: Vec::new(),
         };
         let picture = |name: &str, cid: &str| crate::models::OutgoingAttachment {
             path: dir.join(name).display().to_string(),
@@ -624,6 +682,7 @@ Ada"
             cid: Some(cid.into()),
         };
         let draft = Draft {
+            from: None,
             html: Some(r#"<p>Look:</p><p><img src="cid:a1@tern" alt="shot.png"></p>"#.into()),
             to: vec!["b@example.com".into()],
             cc: vec![],
@@ -699,8 +758,10 @@ Ada"
             smtp_port: port,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            aliases: Vec::new(),
         };
         let draft = Draft {
+            from: None,
             html: None,
             to: vec!["b@example.com".into()],
             cc: vec![],

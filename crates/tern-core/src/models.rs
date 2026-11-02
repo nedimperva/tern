@@ -16,6 +16,38 @@ pub struct AccountConfig {
     /// How the account signs in. Older callers and stores without it mean a password.
     #[serde(default)]
     pub auth: Auth,
+    /// Other addresses the account sends as, through the same server and sign-in (an iCloud custom domain, an
+    /// alias). `email` stays the account's own and the one it signs in for.
+    #[serde(default)]
+    pub aliases: Vec<Alias>,
+}
+
+/// An extra From address of an account.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Alias {
+    pub email: String,
+    /// The name sent with it; empty uses the account's.
+    #[serde(default)]
+    pub name: String,
+}
+
+impl AccountConfig {
+    /// Whether `address` is one of the account's: its own or an alias.
+    pub fn owns(&self, address: &str) -> bool {
+        let address = address.trim();
+        self.email.eq_ignore_ascii_case(address)
+            || self.aliases.iter().any(|a| a.email.eq_ignore_ascii_case(address))
+    }
+
+    /// The address and name a draft goes out as: the one it names when the account owns it, else the account's.
+    pub fn sender(&self, from: Option<&str>) -> (&str, &str) {
+        match from.and_then(|f| self.aliases.iter().find(|a| a.email.eq_ignore_ascii_case(f.trim()))) {
+            Some(alias) if !alias.name.trim().is_empty() => (&alias.email, alias.name.trim()),
+            Some(alias) => (&alias.email, &self.display_name),
+            None => (&self.email, &self.display_name),
+        }
+    }
 }
 
 /// How an account proves who it is. Either way the secret itself is in the keychain, never here.
@@ -330,6 +362,10 @@ pub struct Cursor {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Draft {
+    /// The address it goes out as, when not the account's own: one of its aliases. A name no longer among them
+    /// (taken off in Settings) falls back to the account's address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
     pub to: Vec<String>,
     #[serde(default)]
     pub cc: Vec<String>,
@@ -469,6 +505,9 @@ pub enum ReplyKind {
 #[serde(rename_all = "camelCase")]
 pub struct ReplyInit {
     pub account_id: i64,
+    /// The alias to answer from: the one of the account's addresses the message went to (or came from), when that
+    /// is not its own. None answers from the account's address.
+    pub from: Option<String>,
     pub to: Vec<String>,
     pub cc: Vec<String>,
     pub subject: String,
