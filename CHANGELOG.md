@@ -22,13 +22,12 @@ every release needs one here before it is tagged.
   signatures, discard) and Send on the right.
 - The signature folds to one line. Open it to read or change it, pick another one right there, and Fold it again;
   it also folds again on its own when you go back to your text.
-- Focus mode (Ctrl+Shift+F) fills the whole window, with larger text and Send in a floating pill.
-- Long mails get room. Past about 150 words compose widens and shows an outline of your paragraphs: click one to go
-  there, drag to reorder, or Alt+Up/Down to move the one you're in. If your question sits below the first part, it
-  says so once and can move it up. Ctrl+Shift+O opens or hides the outline.
-
-### Fixed
-
+- Focus mode (Ctrl+Shift+F) fills the whole window, with larger text and Send, the signature and attach in a
+  floating pill.
+- Long mails get room in focus mode. The compose window offers focus once a mail is long; focus keeps the subject
+  and people at the top, gives the text the window's height, and shows an outline of your paragraphs on the left:
+  click one to go there, drag to reorder, or Alt+Up/Down to move the one you're in. If your question sits below
+  the first part, it says so once and can move it up. Ctrl+Shift+O hides or shows the outline.
 - Enter in the Subject field, or in an empty To field, sent the mail. Only Send and Ctrl+Enter send now.
 - A reply left open under a conversation showed up a second time above it, as a draft message, once it was saved.
   It shows only in the reply box now, and comes back as "Draft · R to continue" when you close the reply.

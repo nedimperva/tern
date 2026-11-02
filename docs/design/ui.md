@@ -346,19 +346,21 @@ none).
 - Only Send sends: the button, `Ctrl Enter` or the menu. `Enter` in a field (Subject, an empty To) never does.
 - The sheet starts 6 vh from the top and never runs past the window: it scrolls inside, the footer staying in
   sight at its bottom.
-- Long mail: from 150 words or 16 paragraphs (back under 120 and 13) the dialog widens to 1080 px at a fixed height and an outline sits on
-  the left, `--bg-2`, 230 px: each paragraph's first words, a short line over a real paragraph bold, "asks" on parts that ask. Click
-  goes there, drag moves a part, `Alt ↑/↓` moves the part the caret is in; `Ctrl+Shift+O` opens or hides it. The
-  text keeps a 640 px measure and parts the caret isn't in sit at 70 %. If the first ask is below the first part,
-  one `--warn-soft` note says where it is (Move it up / Leave it). Words and minutes to read at the foot. Not for an
-  inline reply, focus mode or with the Writing help sidebar open.
+- Long mail: the dialog never widens and has no outline; it grows to the window's height, then scrolls with the
+  footer in sight. From 150 words or 16 paragraphs (until 120 and 13), one `--soft` line above the footer offers
+  focus ("Open in focus  Ctrl Shift F", × hides it for this mail).
 - Footer (G, above a `--line` rule): "from ● address ▾" when there is more than one identity, then "Saved · N words"
   (words once there are some); at the right attach and AI, a ⋯ menu (Send & Done, Send later…, Remind me if no
   reply…, Snippet…, the signatures, Discard draft) and Send last. While the person types, the tools, ⋯ and the top
   row's buttons fade out; a 1.2 s pause, the mouse or focus brings them back. Send never fades.
-- Focus (F, `Ctrl+Shift+F`): the whole window, `--bg-0`, no edges. The top is one faint line (to whom · subject) with
-  Exit focus; 17 px text in a 640 px column, the paragraph being written in full colour; the footer becomes a
-  floating pill at the bottom: Saved · words, attach, AI, Send.
+- Focus (F, `Ctrl+Shift+F`): the whole window, `--bg-0`, no edges, Exit focus at the top right. A 640 px column
+  keeps the subject (28 px) and people editable at its top; the text below runs the window's height at 17 px / 1.75,
+  "Start writing…" while empty, the paragraph being written in full colour. The outline is a 220 px column on the
+  left (hidden under 900 px wide, or with `Ctrl+Shift+O`): each paragraph's first words, a short line over a real
+  paragraph bold, "asks" on parts that ask, the one where the caret is on `--accent-soft`. Click goes there, drag
+  moves a part, `Alt ↑/↓` moves the part the caret is in. If the first ask is below the first part, one
+  `--warn-soft` note says where it is (Move it up / Leave it). The signature leaves the page (it still goes out);
+  the footer is a floating pill at the bottom: Saved · words · minutes, Signature picker, attach, AI, Send.
 - Signature switching: the open signature line's picker, the ⋯ menu, or `Ctrl+Shift+S` to step through them and
   None. Changing From brings the new account's.
 - Minimized: the dialog hides (its editor kept) and a 320 px card waits bottom right: subject, recipients, the

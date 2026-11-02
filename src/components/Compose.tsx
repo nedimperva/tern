@@ -713,7 +713,8 @@ export function Compose(props: {
     else if (e.key === "Escape") void close();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "f" && !props.init.inline) setFocusMode(!focusMode());
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "m" && !props.init.inline) (setFocusMode(false), props.onMinimize?.(true));
-    else if (ctrl && e.shiftKey && e.key.toLowerCase() === "o" && !props.init.inline) (setOutlinePref(!long()), aiOpen() && closeAi());
+    else if (ctrl && e.shiftKey && e.key.toLowerCase() === "o" && !props.init.inline)
+      focusMode() ? setOutlinePref(!long()) : (setOutlinePref(true), setFocusMode(true));
     else if (e.altKey && !ctrl && (e.key === "ArrowUp" || e.key === "ArrowDown") && view?.hasFocus()) stepPart(e.key === "ArrowUp" ? -1 : 1);
     else if (ctrl && e.key === "Enter") send(e.shiftKey);
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "l") setPicking("later");
@@ -745,8 +746,8 @@ export function Compose(props: {
   };
   onCleanup(() => clearTimeout(typingTimer));
 
-  // Long-mail mode: past LONG_WORDS a dialog compose widens and lists the mail's parts beside the text. It only
-  // folds back 30 words lower, so cutting a sentence doesn't make the page jump; Ctrl+Shift+O opens or hides it.
+  // A long mail (past LONG_WORDS, or many short lines) gets one quiet offer of focus in the dialog; focus is where
+  // the outline lives. It only counts as short again 30 words lower, so cutting a sentence doesn't flicker it.
   const [outlinePref, setOutlinePref] = createSignal<boolean | null>(null);
   const [grown, setGrown] = createSignal(false);
   // Many short lines make a long mail too, though few words: count the paragraphs as well.
@@ -757,7 +758,10 @@ export function Compose(props: {
     if (n >= LONG_WORDS || b >= LONG_BLOCKS) setGrown(true);
     else if (n < LONG_WORDS - 30 && b < LONG_BLOCKS - 3) setGrown(false);
   });
-  const long = () => !props.init.inline && !focusMode() && !aiOpen() && (outlinePref() ?? grown());
+  // The outline: in focus only, unless hidden there with Ctrl+Shift+O.
+  const long = () => focusMode() && !props.init.inline && outlinePref() !== false;
+  const [focusOffered, setFocusOffered] = createSignal(false);
+  const offerFocus = () => !props.init.inline && !focusMode() && grown() && !focusOffered();
   // The top-level block the caret is in, for the outline's highlight.
   const [at, setAt] = createSignal(-1);
   const caret = () => view && setAt(view.state.selection.$from.index(0));
@@ -850,7 +854,6 @@ export function Compose(props: {
     <aside class="outline" aria-label="Outline">
       <div class="outline-head">
         <span>Outline</span>
-        <span class="faint">drag to move</span>
         <span class="spacer" />
         <button type="button" class="link" title="Hide the outline (Ctrl+Shift+O)" onClick={() => (setOutlinePref(false), view?.focus())}>
           Hide
@@ -879,6 +882,9 @@ export function Compose(props: {
           )}
         </For>
       </ol>
+      <Show when={!parts().length}>
+        <span class="outline-empty">Your parts show here as you write: each paragraph's first words, titles in bold.</span>
+      </Show>
       <span class="spacer" />
       <Show when={lateAsk()} keyed>
         {(l) => (
@@ -897,9 +903,9 @@ export function Compose(props: {
           </div>
         )}
       </Show>
-      <span class="outline-foot">
-        {words()} words · about {Math.max(1, Math.round(words() / 230))} min to read
-      </span>
+      <Show when={parts().length}>
+        <span class="outline-foot">Click to go there · drag to move · Alt+↑/↓</span>
+      </Show>
     </aside>
   );
   const iconButton = (icon: Parameters<typeof Icon>[0]["name"], label: string, run: () => void, cls = "") => (
@@ -1116,7 +1122,7 @@ export function Compose(props: {
     <form
       ref={formEl}
       class="compose"
-      classList={{ inline: props.init.inline, focus: focusMode(), "with-ai": aiOpen() && !props.init.inline, long: long(), typing: typing() }}
+      classList={{ inline: props.init.inline, focus: focusMode(), "with-ai": aiOpen() && !props.init.inline, "with-outline": long(), typing: typing(), "empty-body": ownEmpty() }}
       onKeyDown={onKeyDown}
       onMouseMove={() => typing() && setTyping(false)}
       // Only Send (the button, Ctrl+Enter) sends: a form submitted any other way does nothing.
@@ -1125,9 +1131,6 @@ export function Compose(props: {
       <Show when={long()}>{outline()}</Show>
       <div class="compose-main">
       <div class="compose-head">
-        <Show when={focusMode()}>
-          <span class="summary">{[to().length ? `To ${to().join(", ")}` : "", subject()].filter(Boolean).join(" · ")}</span>
-        </Show>
         <span class="spacer" />
         <Show when={!props.init.inline}>
           <Show
@@ -1404,6 +1407,18 @@ export function Compose(props: {
           </Show>
         </div>
       </Show>
+      <Show when={offerFocus()}>
+        <div class="focus-offer">
+          <span>This is getting long. Focus gives it the whole window and an outline.</span>
+          <span class="spacer" />
+          <button type="button" class="link" onClick={() => (setFocusOffered(true), setFocusMode(true), view?.focus())}>
+            Open in focus <kbd>Ctrl Shift F</kbd>
+          </button>
+          <button type="button" class="dismiss" aria-label="Don't offer focus for this mail" onClick={() => setFocusOffered(true)}>
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+      </Show>
       <footer>
         <Show when={props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length)}>
           <label class="from-pick" title="Send from">
@@ -1442,6 +1457,7 @@ export function Compose(props: {
               <span>
                 {saveState() ? " · " : ""}
                 {n()} {n() === 1 ? "word" : "words"}
+                {focusMode() && n() >= LONG_WORDS ? ` · ${Math.round(n() / 230)} min` : ""}
               </span>
             )}
           </Show>
@@ -1464,6 +1480,19 @@ export function Compose(props: {
               </button>
             </span>
           )}
+        </Show>
+        <Show when={focusMode() && accountSignatures().length}>
+          <label class="pill-signature" title="Signature (Ctrl+Shift+S)">
+            <span>Signature:</span>
+            <select
+              aria-label="Signature"
+              value={String(sigId() ?? 0)}
+              onChange={(e) => void switchSignature(accountSignatures().find((x) => x.id === Number(e.currentTarget.value)) ?? null)}
+            >
+              <For each={accountSignatures()}>{(x) => <option value={String(x.id)}>{x.name || "Untitled"}</option>}</For>
+              <option value="0">None</option>
+            </select>
+          </label>
         </Show>
         <span class="tools">
           {iconButton("paperclip", "Attach files (Ctrl+Shift+A), or drop them here", () => void pick())}
@@ -1615,7 +1644,7 @@ export function Compose(props: {
         {/* biome-ignore lint/a11y/noStaticElementInteractions: a click beside compose closes it (the draft is kept), as Esc does */}
         <div
           class="overlay compose-overlay"
-          classList={{ minimized: props.minimized, focused: focusMode(), long: long() }}
+          classList={{ minimized: props.minimized, focused: focusMode() }}
           onMouseDown={(e) => e.target === e.currentTarget && void close()}
         >
           {form}

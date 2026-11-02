@@ -3069,43 +3069,10 @@ button.fold {
 .compose-card .close:hover {
   background: var(--bg-2);
 }
-/* Focus mode: the whole window, one narrow column, the paragraph being written in full colour. */
-.compose-overlay.focused {
-  padding: 0;
-}
-.compose.focus {
-  width: 100vw;
-  height: calc(100vh - var(--titlebar-h));
-  max-height: none;
-  border-radius: 0;
-  box-shadow: none;
-  padding: var(--s-3) var(--s-5);
-}
-.compose.focus .fields {
-  display: none;
-}
-.compose.focus .editor {
-  flex: 1;
-}
-.compose.focus .editor-body {
-  max-width: 640px;
-  margin: 0 auto;
-  padding-top: var(--s-6);
-  font-size: 16px;
-  line-height: 1.7;
-}
+/* Focus mode (the rest is with the compose sheet's rules, ui.md 4.4): the paragraph being written in full colour. */
 .compose.focus .ProseMirror:focus > :not(.current) {
   opacity: 0.45;
   transition: opacity var(--d-base);
-}
-.compose.focus .compose-main > footer {
-  justify-content: center;
-  border-top: 0;
-}
-.compose.focus .compose-main > footer .tools,
-.compose.focus .compose-main > footer .spacer,
-.compose.focus .compose-main > footer .discard {
-  display: none;
 }
 
 .setup {
@@ -6967,12 +6934,10 @@ button.link.danger {
   border: 1px solid var(--line-strong);
   padding: var(--s-3) 44px var(--s-3);
 }
-.compose.with-ai:not(.inline),
-.compose.long {
+.compose.with-ai:not(.inline) {
   padding: 0;
 }
-.compose.with-ai > .compose-main,
-.compose.long > .compose-main {
+.compose.with-ai > .compose-main {
   padding: var(--s-3) 44px var(--s-3);
 }
 .compose-head {
@@ -7180,7 +7145,9 @@ button.link.danger {
   gap: var(--s-2);
 }
 
-/* F: focus takes the whole window. No sheet edges; the top is one faint line; Send floats in a pill. */
+/* F: focus takes the whole window. No sheet edges; subject and people stay editable at the top of a 640 px column
+   that runs the window's height; the outline is a column on the left; Send floats in a pill. The signature leaves
+   the page (it still goes out) and is picked from the pill. */
 .compose-overlay.focused {
   padding: 0;
   background: var(--bg-0);
@@ -7192,43 +7159,149 @@ button.link.danger {
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  padding: 0;
+  flex-direction: row;
+  overflow: hidden;
+}
+.compose.focus > .compose-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
   padding: var(--s-2) var(--s-5) 0;
 }
+.compose.focus .outline {
+  width: 220px;
+  padding: 64px var(--s-2) var(--s-4) var(--s-4);
+}
+.compose.focus .fields,
 .compose.focus .editor-wrap,
-.compose.focus .html-sig {
-  max-width: 640px;
+.compose.focus .ai-try,
+.compose.focus .ai-invite,
+.compose.focus .focus-column {
   width: 100%;
-  margin: 0 auto;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.compose.focus .field.subject input {
+  font-size: 28px;
+}
+.compose.focus .editor-wrap {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+.compose.focus .editor,
+.compose.focus .editor-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 .compose.focus .editor-body {
   max-width: none;
-  padding-top: var(--s-5);
+  margin: 0;
+  padding-top: var(--s-2);
 }
 .compose.focus .editor-body .ProseMirror {
+  flex: 1;
+  min-height: 50vh;
+  padding-bottom: 96px;
   font-size: 17px;
   line-height: 1.75;
+}
+/* An empty mail in focus says where to start. */
+.compose.focus.empty-body .ProseMirror > p:first-child::before {
+  content: "Start writing…";
+  position: absolute;
+  color: var(--fg-2);
+  pointer-events: none;
+}
+.compose.focus .sig-line,
+.compose.focus .ProseMirror .sig-open,
+.compose.focus .ProseMirror .sig-hidden,
+.compose.focus .html-sig {
+  display: none;
+}
+.compose.focus .compose-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
 }
 .compose.focus .compose-main > footer {
   position: sticky;
   bottom: var(--s-4);
   align-self: center;
-  margin: auto auto 0;
+  margin: 0 auto var(--s-4);
   padding: 6px 6px 6px var(--s-4);
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--bg-0);
   box-shadow: var(--shadow);
   flex-wrap: nowrap;
+  justify-content: flex-start;
+}
+.compose.focus .compose-main > footer .tools {
+  display: inline-flex;
 }
 .compose.focus .compose-main > footer .send {
   border-radius: 999px;
 }
 .compose.focus .compose-main > footer .from-pick,
-.compose.focus .compose-main > footer .more-wrap {
+.compose.focus .compose-main > footer .more-wrap,
+.compose.focus .compose-main > footer .spacer {
   display: none;
 }
-.compose.focus .compose-head .summary {
+.pill-signature {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: var(--t-sm);
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+.pill-signature select {
+  border: 0;
+  background: none;
+  color: var(--fg-1);
+  font: var(--t-sm) var(--font);
+  padding: 2px 0;
+  cursor: pointer;
+}
+.outline-empty {
+  padding: 0 var(--s-2);
+  font-size: var(--t-sm);
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+/* The dialog's one offer of focus once a mail is long. */
+.focus-offer {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  padding: 6px var(--s-2) 6px var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--soft);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.focus-offer .link {
+  white-space: nowrap;
+}
+.focus-offer .dismiss {
+  display: inline-flex;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  padding: 2px;
+  cursor: pointer;
+}
+@media (max-width: 900px) {
+  .compose.focus .outline {
+    display: none;
+  }
 }
 
 /* While the person types, the tools fade; a pause, the mouse or focus on them brings them back. */
@@ -7243,41 +7316,7 @@ button.link.danger {
   opacity: 0;
 }
 
-/* Long mail: the dialog widens, the text keeps a reading measure, and the outline sits on the left. */
-.compose-overlay.long {
-  padding-top: 4vh;
-}
-/* A fixed height, so the dialog doesn't grow line by line as the mail does. */
-.compose.long {
-  width: min(1080px, 96vw);
-  height: calc(92vh - var(--titlebar-h));
-  max-height: none;
-  flex-direction: row;
-  padding: 0;
-  overflow: hidden;
-}
-.compose.long > .compose-main {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  overflow-y: auto;
-}
-.compose.long > .compose-main > .fields,
-.compose.long > .compose-main > .editor-wrap,
-.compose.long > .compose-main > .ai-try {
-  width: 100%;
-  max-width: 640px;
-  margin-left: auto;
-  margin-right: auto;
-}
-.compose.long > .compose-main > footer {
-  margin-top: auto;
-}
-.compose.long .ProseMirror:focus > :not(.current) {
-  opacity: 0.7;
-  transition: opacity var(--d-base);
-}
+/* The outline: in focus, a quiet column on the left of the text (ui.md 4.4). */
 .outline {
   width: 230px;
   flex: none;
@@ -7285,8 +7324,6 @@ button.link.danger {
   flex-direction: column;
   gap: var(--s-1);
   padding: var(--s-3) var(--s-2);
-  background: var(--bg-2);
-  border-right: 1px solid var(--line);
   overflow-y: auto;
 }
 .outline .spacer {
@@ -7396,18 +7433,4 @@ button.link.danger {
   padding: var(--s-1) var(--s-2) 0;
   font-size: var(--t-xs);
   color: var(--fg-2);
-}
-@media (max-width: 760px) {
-  .compose.long {
-    flex-direction: column;
-    overflow-y: auto;
-  }
-  .compose.long > .compose-main {
-    overflow: visible;
-  }
-  .outline {
-    width: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
 }
