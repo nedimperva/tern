@@ -11,6 +11,15 @@ body,
   height: 100%;
   overflow: hidden;
 }
+/* The shell never scrolls, not even from script: with overflow hidden, a scrollIntoView or a focus could still shift
+   the whole window up and leave a blank band at the bottom (seen on Windows, 2026-11-02). Panes scroll inside. */
+html,
+body,
+#root,
+.window,
+.window-body {
+  overflow: clip;
+}
 
 body {
   background: var(--bg-0);
