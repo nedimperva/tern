@@ -15,7 +15,7 @@ import {
   type Contact,
 } from "../api";
 import { Portal } from "solid-js/web";
-import { aiSlot, setAiSide, setAiSlot } from "../app/state";
+import { aiSlot, setAiSide, setAiSlot, setReplyDraft } from "../app/state";
 import { fillSnippet } from "../snippets";
 import { attachmentWords, domainOf, mentionsAttachment, outside } from "../attachmentWords";
 import { colourOf } from "../colours";
@@ -276,6 +276,12 @@ export function Compose(props: {
   const [outsideDismissed, setOutsideDismissed] = createSignal(false);
   // The draft this compose saves to, once there is one, and whether anything changed since it opened.
   let draftId: number | null = props.init.draftId ?? null;
+  // Read once: `init` is gone by the time compose is cleaned up.
+  const inline = !!props.init.inline;
+  // An inline reply's draft is written here, so the conversation above leaves its copy out meanwhile.
+  let gone = false;
+  if (inline) setReplyDraft(draftId);
+  onCleanup(() => ((gone = true), inline && setReplyDraft(null)));
   // Reopened after undo-send, what is here may never have been saved.
   let dirty = props.init.unsaved ?? false;
   let saveTimer: number | undefined;
@@ -307,6 +313,8 @@ export function Compose(props: {
     setSaveState("saving");
     try {
       draftId = await api.saveDraft(draftId, from()!, draft(), uploadNow);
+      // A save still on its way when compose closed must not hide the draft again.
+      if (inline && !gone) setReplyDraft(draftId);
       setSaveState("saved");
     } catch {
       setSaveState(null);
@@ -473,9 +481,7 @@ export function Compose(props: {
     setFound(null);
     view?.focus();
   };
-  // An inline reply's sidebar takes the companion's place for as long as it is open. Read once: `init` is gone by
-  // the time compose is cleaned up.
-  const inline = !!props.init.inline;
+  // An inline reply's sidebar takes the companion's place for as long as it is open.
   createEffect(() => {
     if (!inline) return;
     setAiSide(aiOpen());

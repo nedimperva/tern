@@ -50,7 +50,24 @@ export const [openRow, setOpenRow] = createSignal<ThreadRow | null>(null);
 // so their HTML frames are not rebuilt (which flickered, most visibly on Windows).
 const [messagesStore, setMessagesStore] = createStore<ThreadMessage[]>([]);
 export const messages = messagesStore;
-export const setMessages = (t: ThreadMessage[]) => setMessagesStore(reconcile(t, { key: "id" }));
+// The draft open in an inline reply is not shown again as a message above it (owner, 2026-11-02): it is being
+// written right there. It comes back as "Draft · R to continue" once compose closes.
+let thread: ThreadMessage[] = [];
+const [replyDraft, setReplyDraftId] = createSignal<number | null>(null);
+const shown = () => {
+  const id = replyDraft();
+  return id == null ? thread : thread.filter((m) => m.draftId !== id);
+};
+export const setMessages = (t: ThreadMessage[]) => {
+  thread = t;
+  setMessagesStore(reconcile(shown(), { key: "id" }));
+};
+/** The inline reply's saved draft, or null when there is none open. */
+export const setReplyDraft = (id: number | null) => {
+  if (id === replyDraft()) return;
+  setReplyDraftId(id);
+  setMessagesStore(reconcile(shown(), { key: "id" }));
+};
 export const [messageFocus, setMessageFocus] = createSignal(0);
 export const [expanded, setExpanded] = createSignal<ReadonlySet<number>>(new Set());
 // Whether the open conversation is muted, for "Unmute" in the palette.

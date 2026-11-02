@@ -20,6 +20,8 @@ every release needs one here before it is tagged.
 ### Fixed
 
 - Enter in the Subject field, or in an empty To field, sent the mail. Only Send and Ctrl+Enter send now.
+- A reply left open under a conversation showed up a second time above it, as a draft message, once it was saved.
+  It shows only in the reply box now, and comes back as "Draft · R to continue" when you close the reply.
 
 ## [1.8.0] - 2026-11-02
 
