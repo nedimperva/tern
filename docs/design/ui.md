@@ -125,9 +125,12 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   Narrower, turned off, or in focus mode, the same column slides over the list with a scrim and closes on `Esc`
   or after going somewhere. New mail at the top (the one raised control: `--bg-0`, a `--line` edge, `--raise`),
   then Inbox (All Inboxes with more than one account), Snoozed, Read later and Marks with icons, saved searches,
-  and each account: Inbox, Drafts, Sent, Archive, the rest under "More · N", then its labels. Accounts, Labels
-  and Searches fold under their headings (the chevron shows on hover or while folded; labels start folded past
-  six); a folded folder that is open still shows. Settings and + (Add account) share the foot. Search lives in the
+  and each account: Inbox, Drafts, Sent, Archive, the server's other special folders under "More · N", then the
+  person's own Folders and the Labels. Accounts, Folders, Labels and Searches fold under their headings (the chevron
+  shows on hover or while folded; Folders start folded past eight, Labels past six). Folders and labels nest by
+  name ("Projects/Alpha", or "INBOX.Projects" on servers that write them so): each level 14 px in, a chevron
+  before a parent, parents start folded and show the unread of everything under them; a parent the server doesn't
+  list as a folder only folds. A folded folder that is open in the list still shows, its branch open. Settings and + (Add account) share the foot. Search lives in the
   list's header. Rows are 30 px, 8 px rounded, every name in one column (an empty icon slot where there is no
   icon, a label's dot in it); the current row is `--bg-3`. Unread counts show for inboxes, labels and the
   person's own folders, not for Drafts, Sent, Archive, All Mail, Junk or Trash. Beside a docked sidebar an open conversation's narrow list is on `--bg-0` with a

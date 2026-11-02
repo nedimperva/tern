@@ -1,6 +1,7 @@
 import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js";
 import type { Account, Folder, SyncState, Target } from "../api";
 import { labelColour } from "../colours";
+import { folderTree, holds, type TreeNode, unreadUnder } from "../folderTree";
 import { AccountAvatar } from "./AccountAvatar";
 import { Icon } from "./Icon";
 
@@ -151,8 +152,13 @@ export function Rail(props: {
           const mine = () => props.folders.filter((f) => f.accountId === account.id);
           const main = () =>
             MAIN_ROLES.flatMap((r) => mine().filter((f) => f.role === r)).filter((f) => !(single() && f.role === "inbox"));
-          const more = () => mine().filter((f) => f.role !== "label" && !MAIN_ROLES.includes(f.role));
+          // The server's other special folders (Junk, Trash, All Mail…) wait under More; the person's own folders and
+          // labels nest by name under their own headings.
+          const more = () => mine().filter((f) => f.role !== "label" && f.role !== "other" && !MAIN_ROLES.includes(f.role));
+          const own = () => mine().filter((f) => f.role === "other");
           const labels = () => mine().filter((f) => f.role === "label");
+          const ownKey = `folders:${account.id}`;
+          const showsOwn = () => isOpen(ownKey, own().length <= 8);
           const moreKey = `more:${account.id}`;
           const labelsKey = `labels:${account.id}`;
           const showsMore = () => isOpen(moreKey, false);
@@ -184,6 +190,13 @@ export function Rail(props: {
                   {showsMore() ? "Less" : `More · ${more().length}`}
                 </button>
               </Show>
+              <Show when={own().length}>
+                <button type="button" class="rail-sub" aria-expanded={showsOwn()} onClick={() => toggle(ownKey, own().length <= 8)}>
+                  <span>Folders</span>
+                  <Icon name={showsOwn() ? "chevron-down" : "chevron-right"} size={12} />
+                </button>
+                <Tree nodes={folderTree(own())} open={showsOwn()} depth={0} account={account.id} isTarget={props.isTarget} go={go} />
+              </Show>
               <Show when={labels().length}>
                 <button
                   type="button"
@@ -194,18 +207,7 @@ export function Rail(props: {
                   <span>Labels</span>
                   <Icon name={showsLabels() ? "chevron-down" : "chevron-right"} size={12} />
                 </button>
-                <For each={shown(labels(), showsLabels())}>
-                  {(f) => (
-                    <Item
-                      active={props.isTarget(targetOf(f))}
-                      onClick={() => go(targetOf(f))}
-                      lead={<span class="label-dot" style={{ "--label": labelColour(f.name) }} />}
-                    >
-                      <span class="name">{f.name}</span>
-                      <Count n={f.unread} />
-                    </Item>
-                  )}
-                </For>
+                <Tree nodes={folderTree(labels())} open={showsLabels()} depth={0} account={account.id} isTarget={props.isTarget} go={go} dots />
               </Show>
             </Fold>
           );
@@ -237,6 +239,60 @@ export function Rail(props: {
     <div class="scrim" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       {nav}
     </div>
+  );
+}
+
+/** Folders or labels nested by name. A parent starts folded and shows the unread of everything under it; a
+ * branch holding the folder open in the list stays open, so the rail always says where you are. With the group
+ * itself folded, only that branch shows. */
+function Tree(props: {
+  nodes: TreeNode[];
+  open: boolean;
+  depth: number;
+  account: number;
+  isTarget: (t: Target) => boolean;
+  go: (t: Target) => void;
+  dots?: boolean;
+}) {
+  const here = (f: Folder) => props.isTarget(targetOf(f));
+  return (
+    <For each={props.nodes.filter((n) => props.open || holds(n, here))}>
+      {(n) => {
+        const key = `tree:${props.account}:${n.path}`;
+        const kids = () => n.children.length > 0;
+        const unfolded = () => isOpen(key, false) || n.children.some((c) => holds(c, here));
+        return (
+          <>
+            <div class="rail-tree-row" style={{ "--depth": props.depth }}>
+              <Show when={kids()} fallback={<span class="tree-toggle" />}>
+                <button
+                  type="button"
+                  class="tree-toggle"
+                  aria-expanded={unfolded()}
+                  aria-label={`${unfolded() ? "Fold" : "Unfold"} ${n.name}`}
+                  onClick={() => toggle(key, false)}
+                >
+                  <Icon name={unfolded() ? "chevron-down" : "chevron-right"} size={12} />
+                </button>
+              </Show>
+              <Item
+                active={!!n.folder && here(n.folder)}
+                onClick={() => (n.folder ? props.go(targetOf(n.folder)) : toggle(key, false))}
+                lead={props.dots && props.depth === 0 ? <span class="label-dot" style={{ "--label": labelColour(n.path) }} /> : undefined}
+              >
+                <span class="name" title={n.path}>
+                  {n.name}
+                </span>
+                <Count n={kids() && !unfolded() ? unreadUnder(n) : (n.folder?.unread ?? 0)} />
+              </Item>
+            </div>
+            <Show when={kids() && unfolded()}>
+              <Tree {...props} nodes={n.children} open depth={props.depth + 1} />
+            </Show>
+          </>
+        );
+      }}
+    </For>
   );
 }
 

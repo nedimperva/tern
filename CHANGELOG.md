@@ -47,6 +47,10 @@ every release needs one here before it is tagged.
 - The iCloud preset says how to set up a custom domain: sign in with the iCloud address and add the domain's address
   under Also send as.
 
+- The sidebar nests folders and labels by name: "Projects/Alpha" sits under Projects, which starts folded and
+  shows the unread of everything under it. Your own folders get their own Folders heading instead of hiding under
+  More, which now holds only the server's special folders (Junk, Trash, All Mail).
+
 ### Fixed
 
 - Adding or saving an account could fail with "IMAP LOGOUT failed: server did not send the expected BYE" even

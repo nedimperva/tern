@@ -7434,3 +7434,28 @@ button.link.danger {
   font-size: var(--t-xs);
   color: var(--fg-2);
 }
+
+/* Folders and labels nested by name (ui.md 3.x Sidebar): each level 14 px further in, a chevron before a parent. */
+.rail-tree-row {
+  display: flex;
+  align-items: center;
+  padding-left: calc(var(--depth) * 14px);
+}
+.rail-tree-row .tree-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 30px;
+  margin-right: -6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+}
+.rail-tree-row .tree-toggle:hover {
+  color: var(--fg-0);
+}
+.rail-tree-row .rail-item {
+  flex: 1;
+}
