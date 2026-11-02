@@ -64,7 +64,8 @@ Optional AI remains an intended follow-on feature, not a rejected idea. Order ot
 ### Version numbers
 
 The version follows the milestones: **0.1** foundation (M0), **0.2** Linux private alpha (M1, current),
-**0.3** focused Linux beta (M2), **1.0** the Windows release (M3). A patch number (0.2.1, …) marks a build
+**0.3** focused Linux beta (M2), **1.0** the Windows release (M3), **2.0** the owner's next major release
+([package 17](sprints/sprint-17-tern-2.md), planned 2026-11-02, betas first). A patch number (0.2.1, …) marks a build
 handed to the owner or testers within a milestone. Bump `package.json`, `src-tauri/tauri.conf.json` and both
 `Cargo.toml` files together.
 
@@ -139,6 +140,7 @@ measure input-to-visible-response, not just the duration of a signal update.
 | 11 | [Outlook](sprints/sprint-11-outlook.md) | M4; does not gate Gmail or a backend boundary |
 | 12 | [Gmail API candidate](sprints/sprint-12-gmail-api.md) | M0 spike; M2 only if selected; otherwise deferred |
 | 15+ | [Backlog](sprints/sprint-15-plus-backlog.md) | Owner-prioritized expansion |
+| 17 | [Tern 2.0](sprints/sprint-17-tern-2.md) | 2.0: beta channel, screener and senders, one-click unsubscribe, search on server, AI on request, Todoist, companion, mbox; gated on the M2 checklist |
 
 ## Working agreement
 
@@ -162,6 +164,10 @@ product decisions; it does not claim an implemented feature, selected Gmail tran
 (package 01 gate; evidence in `docs/research/stack.md`). The Gmail comparison still runs in M0 and can reopen
 both before Gmail-specific code is written. M0 testing uses a local Stalwart server instead of Fastmail
 (Fastmail app passwords need a paid plan); real-provider acceptance waits for the owner's provider choice.
+
+2026-11-02 — Owner chose the scope of 2.0 (package 17) from the ideas page and the canvas "Tern 2.0 screens", and
+added Todoist and companion improvements. Outlook, Gmail threads by `X-GM-THRID`, rules, server-side snooze and
+attachment search wait for 2.1 or later. 2.0 is not tagged until the M2 checklist passes.
 
 Research: [stack](research/stack.md), [Gmail OAuth](research/gmail-oauth.md),
 [Gmail decision](research/gmail-backend-decision.md), [Microsoft OAuth](research/microsoft-oauth.md),

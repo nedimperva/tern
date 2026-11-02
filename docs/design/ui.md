@@ -465,6 +465,23 @@ the header's panel icon; a Note from the selection bar opens it with the note's 
   scrolls to it: answers stream in, each `[n]` becomes a chip ("Ana · Tue") that shows that message, and under each
   a receipt: provider, messages and characters sent, "nothing kept". Chats stay per conversation while Tern runs.
   With AI off the foot says what Ask needs and links to Settings → AI; nothing is sent.
+- **Planned for 2.0** (package 17, owner's pick 2026-11-02: canvas "Tern 2.0 screens", direction A):
+  - Under the name, Write to them and Copy address as small `--bg-0` buttons with a `--line` edge, and the sender's
+    state (Important, Other, Blocked) as a drop-down on `--bg-2` at the right.
+  - **Tasks**, after the details, with "Todoist" at the right of its heading, only once Todoist is connected: a
+    card with the conversation's tasks (a round tick in the priority's colour, the title, "day · project · from
+    this mail" in `--fg-2`, Open) and a last row "Add a task from this mail" with its keycap `T`. The conversation
+    shows an `--accent-soft` pill "In Todoist · due Fri" under its subject.
+  - `T` turns the card into the task box: a `--bg-0` card with an `--accent` edge and `--shadow`; the title as a
+    plain field, then chips (the day on `--accent-soft`, project, priority, label on `--bg-2`), the description
+    line ("From Ana Kovač · subject · Open in Tern"), a `--soft` row saying where the fields came from with Suggest
+    with AI, and Cancel `Esc` / Add task `Enter`. Under the card, in `--t-sm` `--fg-2`, exactly what goes to Todoist.
+    The sentence it came from is lit in the mail (`--accent-soft` with a 2 px `--accent` underline) while the box is
+    open. Under it, "Also in this mail": the other asks and dates, each with Use.
+  - Ask and promise rows get **+ Task** (a small `--card` button); a row already in Todoist shows its task instead.
+  - **Recent with them** becomes a card of rows that open their conversation: an `--accent` unread dot, the subject
+    (600 if unread), a line of the newest text, the date; the hovered row on `--bg-2`. The last row is "All mail with
+    Ana · 37 →" in `--accent`, opening a search for the person.
 
 ### 4.8 Settings (`Ctrl+,`)
 
