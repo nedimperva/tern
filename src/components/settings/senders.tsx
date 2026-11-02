@@ -44,7 +44,7 @@ export function SendersSettings() {
   const domains = (text: string) =>
     setSetting(
       "knownDomains",
-      [...new Set(text.split(/[\s,]+/).map((d) => d.trim().replace(/^@/, "").toLowerCase()).filter((d) => d.includes(".")))],
+      [...new Set(text.split(/[\s,]+/).map((d) => d.trim().replace(/^@/, "").toLowerCase()).filter(Boolean))],
     );
   return (
     <>
