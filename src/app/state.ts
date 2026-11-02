@@ -27,6 +27,8 @@ export const [syncStates, setSyncStates] = createSignal<Record<number, SyncState
 export const [progress, setProgress] = createSignal<SyncProgress[]>([]);
 export const [folders, setFolders] = createSignal<Folder[]>([]);
 export const [splitUnread, setSplitUnread] = createSignal<[number, number]>([0, 0]);
+/** Conversations waiting in New people (the screener). */
+export const [newPeople, setNewPeople] = createSignal(0);
 export const [problems, setProblems] = createSignal<OutboxProblem[]>([]);
 export const [waiting, setWaiting] = createSignal<OutboxWaiting[]>([]);
 export const [ready, setReady] = createSignal(false);

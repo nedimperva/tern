@@ -145,6 +145,16 @@ export async function moveToSplit(other: boolean) {
   await splitSenders(ids, hit.map((r) => r.fromName || r.fromAddr), other);
 }
 
+/** New people: lets the senders of the target conversations in (Important), or sends them to Other. Either way
+ * they leave New people, and their later mail goes straight there. */
+export async function screen(other: boolean) {
+  const hit = targets();
+  if (!hit.length) return;
+  dropRows(hit);
+  await splitSenders(hit.map((r) => r.id), hit.map((r) => r.fromName || r.fromAddr), other);
+  void refresh(false);
+}
+
 /** Sends the senders of these messages to Other (or Important) and says so; Undo puts them back. */
 export async function splitSenders(ids: number[], names: string[], other: boolean, undone?: () => void) {
   await api.setSplit(ids, other);
@@ -199,7 +209,7 @@ export async function act(action: Action, hit = targets(), announce = true): Pro
         }
       : undefined;
     // What leaves the inbox counts for Inbox Zero's Flock and Your migration; an undo takes it off again.
-    const cleared = !searching() && moves(action) && action !== "inbox" && ["inbox", "important", "bulk"].includes(role()) ? hit.length : 0;
+    const cleared = !searching() && moves(action) && action !== "inbox" && ["inbox", "important", "bulk", "new_people"].includes(role()) ? hit.length : 0;
     countCleared(cleared);
     const uncount = cleared ? () => countCleared(-cleared) : undefined;
     if (announce) showToast(hit.length === 1 ? done : `${done} (${hit.length} conversations)`, token, uncount, undoDrafts);

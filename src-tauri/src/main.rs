@@ -293,6 +293,7 @@ fn main() {
             commands::sender_of,
             commands::set_sender,
             commands::sender_choices,
+            commands::new_people,
             commands::unsubscribe,
             commands::split_unread,
             commands::snooze,

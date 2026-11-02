@@ -166,7 +166,7 @@ impl Store {
              WHERE m.id > ?1 AND m.id <= ?3 AND m.date >= ?2 AND f.role = 'inbox' AND NOT m.seen
                AND NOT {MINE_M}
                AND NOT EXISTS (SELECT 1 FROM muted u WHERE u.account_id = m.account_id AND u.thread_id = m.thread_id)
-               AND (?4 OR NOT {IS_OTHER}) AND NOT {IS_SNOOZED} AND NOT {IS_LATER}
+               AND (?4 OR NOT {IS_OTHER}) AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND NOT {SCREENED_M}
              ORDER BY m.id"
         ))?;
         let mail = stmt
@@ -419,12 +419,25 @@ impl Store {
     pub fn split_unread(&self) -> Result<(i64, i64)> {
         Ok(self.reader().query_row(
             &format!(
-                "SELECT count(*) FILTER (WHERE NOT {IS_OTHER}), count(*) FILTER (WHERE {IS_OTHER})
+                "SELECT count(*) FILTER (WHERE NOT {IS_OTHER} AND NOT {SCREENED_M}), count(*) FILTER (WHERE {IS_OTHER})
                  FROM messages m JOIN folders f ON f.id = m.folder_id
                  WHERE f.role = 'inbox' AND NOT m.seen AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"
             ),
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
+        )?)
+    }
+
+    /// How many conversations wait in New people (read or not): its tab shows while there are any.
+    pub fn new_people(&self) -> Result<i64> {
+        Ok(self.reader().query_row(
+            &format!(
+                "SELECT count(DISTINCT m.account_id || ':' || m.thread_id)
+                 FROM messages m INDEXED BY messages_screen JOIN folders f ON f.id = m.folder_id
+                 WHERE m.screen = 1 AND f.role = 'inbox' AND {SCREENED_M} AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"
+            ),
+            [],
+            |r| r.get(0),
         )?)
     }
 

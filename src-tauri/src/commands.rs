@@ -1185,6 +1185,12 @@ pub async fn set_sender(
     Ok(())
 }
 
+/// How many conversations wait in New people (the screener), for its tab.
+#[tauri::command]
+pub async fn new_people(state: State<'_, AppState>) -> Reply<i64> {
+    state.store.new_people().map_err(text)
+}
+
 /// Every choice made about senders, for Settings → Senders.
 #[tauri::command]
 pub async fn sender_choices(state: State<'_, AppState>) -> Reply<Vec<tern_core::SenderChoice>> {

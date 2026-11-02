@@ -404,6 +404,8 @@ export interface Api {
   setSender(accountId: number, addr: string, choice: SenderState | null): Promise<void>;
   /** Every choice made about senders, newest first. */
   senderChoices(): Promise<SenderChoice[]>;
+  /** How many conversations wait in New people (the screener). */
+  newPeople(): Promise<number>;
   /** Queues the one-click unsubscribe this message offers, with the usual undo. Null when it offers none. */
   unsubscribe(id: number): Promise<number[] | null>;
   /** Unread messages in [Important, Other]. */
@@ -660,6 +662,7 @@ const tauri: Api = {
   senderOf: (id) => invoke("sender_of", { id }),
   setSender: (accountId, addr, choice) => invoke("set_sender", { accountId, addr, choice }),
   senderChoices: () => invoke("sender_choices"),
+  newPeople: () => invoke("new_people"),
   unsubscribe: (id) => invoke("unsubscribe", { id }),
   splitUnread: () => invoke("split_unread"),
   snooze: (ids, due) => invoke("snooze", { ids, due }),
@@ -923,6 +926,15 @@ function fake(): Api {
   const domainOf = (addr: string) => addr.slice(addr.indexOf("@"));
   const chosen = (m: ThreadMessage) =>
     (senderStates.get(m.fromAddr.toLowerCase()) ?? senderStates.get(domainOf(m.fromAddr.toLowerCase())))?.state;
+  // With the screener on, a few conversations from people not known yet wait in New people.
+  const screenerOn = () => {
+    try {
+      return JSON.parse(localStorage.getItem("tern.fake.settings") ?? "{}").screener === true;
+    } catch {
+      return false;
+    }
+  };
+  const screened = (m: ThreadMessage) => screenerOn() && Number(m.threadId.slice(1)) % 13 === 5 && !chosen(m);
   const isOther = (m: ThreadMessage) => {
     const state = chosen(m);
     return state ? state !== "important" : Number(m.threadId.slice(1)) % 7 === 3;
@@ -948,9 +960,11 @@ function fake(): Api {
       case "starred":
         return m.flagged && inInbox(m) && !away;
       case "important":
-        return inInbox(m) && !away && !isOther(m);
+        return inInbox(m) && !away && !isOther(m) && !screened(m);
       case "bulk":
-        return inInbox(m) && !away && isOther(m);
+        return inInbox(m) && !away && isOther(m) && !screened(m);
+      case "new_people":
+        return inInbox(m) && !away && screened(m);
       case "snoozed":
         return inInbox(m) && asleep;
       case "later":
@@ -1292,6 +1306,7 @@ function fake(): Api {
       else senderStates.delete(addr.toLowerCase());
       changed();
     },
+    newPeople: async () => new Set(messages.filter((m) => inTarget(m, { role: "new_people" })).map((m) => m.threadId)).size,
     senderChoices: async () =>
       [...senderStates].map(([addr, c]) => ({
         accountId: 1,

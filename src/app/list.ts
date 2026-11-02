@@ -16,8 +16,10 @@ import {
   folders,
   home,
   messages,
+  newPeople,
   openRow,
   query,
+  role,
   rows,
   searching,
   selection,
@@ -25,6 +27,7 @@ import {
   setFocus,
   setFolders,
   setMessages,
+  setNewPeople,
   setOpenRow,
   setPartial,
   setProblems,
@@ -95,12 +98,13 @@ export async function loadMore() {
 /** Everything the window shows, read again. Sync never changes signatures, so its changes leave them out. */
 export async function refresh(signatures = true) {
   if (signatures) loadSignatures();
-  const [a, f, p, w, s] = await Promise.all([
+  const [a, f, p, w, s, n] = await Promise.all([
     api.accounts(),
     api.folders(),
     api.problems(),
     api.waiting(),
     api.splitUnread(),
+    api.newPeople(),
   ]);
   if (settings.wingBeat && !quietNow()) {
     // A send that was past its undo window and is gone now, not to the problems: it went out.
@@ -114,6 +118,7 @@ export async function refresh(signatures = true) {
     setAccounts(a);
     setFolders(f);
     setSplitUnread(s);
+    setNewPeople(n);
     setProblems(p);
     setWaiting(w);
     setReady(true);
@@ -164,11 +169,15 @@ export const go = (t: Target) => {
   else if ("label" in t) void api.checkFolder(t.label);
 };
 
-/** The inbox splits, shown as tabs over the unified inbox. */
+/** The inbox splits, shown as tabs over the unified inbox. New people shows while someone waits there (or while
+ * it is open, so deciding about the last one does not pull the tab away). */
 export const SPLITS = (): { name: string; target: Target }[] =>
   settings.splitInbox
     ? [
         { name: "Important", target: { role: "important" } },
+        ...(settings.screener && (newPeople() > 0 || role() === "new_people")
+          ? [{ name: "New people", target: { role: "new_people" } }]
+          : []),
         { name: "Other", target: { role: "bulk" } },
         { name: "Starred", target: { role: "starred" } },
       ]
@@ -196,13 +205,13 @@ export function watchList() {
       { defer: true },
     ),
   );
-  // Turning the splits on or off moves the list to where `g i` now goes.
+  // Turning the splits (or the screener) on or off moves the list to where `g i` now goes.
   createEffect(
     on(
-      () => settings.splitInbox,
+      () => [settings.splitInbox, settings.screener],
       () => {
         const t = target();
-        if ("role" in t && ["inbox", "important", "bulk"].includes(t.role)) go(home());
+        if ("role" in t && ["inbox", "important", "bulk", "new_people"].includes(t.role)) go(home());
       },
       { defer: true },
     ),
@@ -264,6 +273,7 @@ const inboxUnread = () => folders().filter((f) => f.role === "inbox").reduce((n,
 /** The unread count a split's tab shows; Starred shows none. */
 export const tabUnread = (t: Target) => {
   const role = "role" in t ? t.role : "";
+  if (role === "new_people") return newPeople();
   return role === "important" ? splitUnread()[0] : role === "bulk" ? splitUnread()[1] : role === "inbox" ? inboxUnread() : 0;
 };
 

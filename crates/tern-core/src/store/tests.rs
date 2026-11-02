@@ -1290,6 +1290,58 @@ fn blocking_a_sender_or_their_domain() {
     assert!(store.set_sender(account, "x@y", Some("sometimes")).is_err());
 }
 
+#[test]
+fn the_screener_holds_first_mail_from_people_not_known_yet() {
+    let (store, account, inbox, _) = setup();
+    let from = |n: u32, addr: &str| NewMessage {
+        message_id: Some(format!("{n}@x")),
+        from_addr: addr.into(),
+        ..message(n, &format!("mail {n}"), n as i64)
+    };
+    // Off: nothing is screened, and turning it on later leaves that mail where it is.
+    store.insert_messages(account, inbox, &[from(1, "early@new.example")]).unwrap();
+    store.set_setting("screener", &serde_json::json!(true)).unwrap();
+    store.set_setting("knownDomains", &serde_json::json!(["@work.example"])).unwrap();
+    store.queue_send(account, Draft { to: vec!["friend@x.example".into()], ..draft_to("hi") }, 0).unwrap();
+    let news = NewMessage { precedence_bulk: true, ..from(6, "news@shop.example") };
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[
+                from(2, "stranger@new.example"),
+                from(3, "colleague@work.example"),
+                from(4, "friend@x.example"),
+                from(5, "me@example.com"),
+                news,
+            ],
+        )
+        .unwrap();
+    assert_eq!(subjects(&store, NEW_PEOPLE), ["mail 2"], "the stranger only");
+    assert_eq!(store.new_people().unwrap(), 1);
+    assert!(!subjects(&store, IMPORTANT).contains(&"mail 2".to_string()));
+    assert_eq!(subjects(&store, OTHER), ["mail 6"], "bulk keeps its own split");
+    assert!(
+        store.new_mail(0, 0, true).unwrap().1.iter().all(|m| m.subject != "mail 2"),
+        "no notification while they wait"
+    );
+
+    // Let in: Important from now on, and their later mail too.
+    let stranger = store.list_threads(&ListTarget::Role(NEW_PEOPLE.into()), None, 5).unwrap()[0].latest.id;
+    store.set_split(&[stranger], false).unwrap();
+    assert!(subjects(&store, NEW_PEOPLE).is_empty());
+    assert!(subjects(&store, IMPORTANT).contains(&"mail 2".to_string()));
+    store.insert_messages(account, inbox, &[from(7, "stranger@new.example")]).unwrap();
+    assert!(subjects(&store, NEW_PEOPLE).is_empty());
+
+    // Off again: what waited shows in Important.
+    store.insert_messages(account, inbox, &[from(8, "other@new.example")]).unwrap();
+    assert_eq!(subjects(&store, NEW_PEOPLE), ["mail 8"]);
+    store.set_setting("screener", &serde_json::json!(false)).unwrap();
+    assert!(subjects(&store, NEW_PEOPLE).is_empty());
+    assert!(subjects(&store, IMPORTANT).contains(&"mail 8".to_string()));
+}
+
 fn draft_to(subject: &str) -> Draft {
     Draft {
         from: None,
@@ -1677,7 +1729,8 @@ fn wind_back(conn: &Connection, version: i64) {
                                              PRIMARY KEY (account_id, addr));
                  INSERT INTO sender_splits SELECT account_id, addr, state = 'other' FROM sender_state
                    WHERE substr(addr, 1, 1) <> '@' AND state <> 'blocked';
-                 DROP TABLE sender_state;"
+                 DROP TABLE sender_state;
+                 DROP INDEX messages_screen; ALTER TABLE messages DROP COLUMN screen;"
             }
             30 => "ALTER TABLE messages DROP COLUMN unsubscribe_post;",
             29 => "DROP TABLE account_aliases;",

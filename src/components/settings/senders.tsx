@@ -7,7 +7,9 @@ import { createSignal, For, onMount, Show } from "solid-js";
 import { api, type SenderChoice, type SenderState, type SenderVolume } from "../../api";
 import { fromLink } from "../../app/composing";
 import { setSettingsOpen } from "../../app/state";
+import { setSetting, settings } from "../../settings";
 import { unsubscribeTarget } from "../../unsubscribe";
+import { Select } from "./shared";
 
 const DAYS = 30;
 
@@ -39,8 +41,35 @@ export function SendersSettings() {
     say(s, s.other ? "Back in Important, past mail and new." : "In Other from now on, past mail too.");
   };
 
+  const domains = (text: string) =>
+    setSetting(
+      "knownDomains",
+      [...new Set(text.split(/[\s,]+/).map((d) => d.trim().replace(/^@/, "").toLowerCase()).filter((d) => d.includes(".")))],
+    );
   return (
-    <div class="senders">
+    <>
+      <Select
+        name="screener"
+        title="New people"
+        help="First mail from someone you haven't written to waits in New people until you let them in (Y), send them to Other (Shift O) or block them (Shift X). Lists and newsletters go to Other as before. Mail already here stays where it is."
+        choices={[
+          { label: "Off", value: false },
+          { label: "On", value: true },
+        ]}
+      />
+      <Show when={settings.screener}>
+        <label class="setting">
+          <span class="title">People you know at</span>
+          <input
+            value={settings.knownDomains.join(", ")}
+            placeholder="work.example, school.example"
+            onChange={(e) => domains(e.currentTarget.value)}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+          />
+          <span class="help">Everyone at these domains counts as known, so their mail goes straight to Important.</span>
+        </label>
+      </Show>
+      <div class="senders">
       <Choices />
       <h2 class="group-title senders-title">Who writes most</h2>
       <p class="help">
@@ -80,7 +109,8 @@ export function SendersSettings() {
           </For>
         </ol>
       </Show>
-    </div>
+      </div>
+    </>
   );
 }
 

@@ -241,6 +241,8 @@ pub const STARRED: &str = "starred";
 pub const IMPORTANT: &str = "important";
 /// The Other split. Not "other": that is the role of every folder without a special one.
 pub const OTHER: &str = "bulk";
+/// The inbox's New people: first mail from people not known yet, while the screener is on.
+pub const NEW_PEOPLE: &str = "new_people";
 pub const SNOOZED: &str = "snoozed";
 /// The Read later shelf.
 pub const LATER: &str = "later";
@@ -264,6 +266,19 @@ macro_rules! state_m {
     };
 }
 const STATE_M: &str = state_m!();
+/// The message waits in New people: it came from someone unknown while the screener was on (Settings → Senders,
+/// an uncorrelated check run once per query), and nobody has decided about them since. `m.screen` first: it is 0
+/// for nearly all mail. Turning the screener off shows what waited in Important again.
+macro_rules! screened_m {
+    () => {
+        concat!(
+            "(m.screen AND COALESCE((SELECT value FROM settings WHERE key = 'screener'), 'false') = 'true' AND ",
+            state_m!(),
+            " IS NULL)"
+        )
+    };
+}
+const SCREENED_M: &str = screened_m!();
 /// The message goes to Other: its sender was moved there or blocked, or (with no choice made) it is bulk mail.
 const IS_OTHER: &str = concat!("COALESCE(", state_m!(), " IN ('other', 'blocked'), m.bulk)");
 /// The conversation a follow-up reminder `r` watches: the one its sent message is in, once that is here.
@@ -309,7 +324,10 @@ fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
     let filter = match role {
         "inbox" => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"),
         STARRED => format!("m.flagged AND {inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"),
-        IMPORTANT => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND NOT {IS_OTHER}"),
+        IMPORTANT => {
+            format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND NOT {IS_OTHER} AND NOT {SCREENED_M}")
+        }
+        NEW_PEOPLE => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND {SCREENED_M}"),
         OTHER => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND {IS_OTHER}"),
         SNOOZED => format!("{inbox} AND {IS_SNOOZED}"),
         // Wherever the conversation is: one shelved from Archive or a search stays there, and shows here too. Not

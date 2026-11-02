@@ -47,20 +47,24 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
   or by domain. Migration test from v31; today's rows keep their meaning. This is also the base that rules (2.1)
   build on. Now `sender_state (account_id, addr, state, since)`, `addr` an address or `@domain`; `STATE_M` and
   `IS_OTHER` in `store/mod.rs` (store_bench: Other split 4.7 ms, as before).
-- [ ] Screener, off by default (Settings → Senders). A first mail from someone unknown that isn't bulk goes to
+- [x] Screener, off by default (Settings → Senders). A first mail from someone unknown that isn't bulk goes to
   **New people** instead of Important. Known means: you wrote to them (`MINE_M`), they are in a conversation with
   you, they are at one of the domains the person lists, or you let them in before. Decided at insert, like splits.
-- [ ] New people tab next to Important and Other while it has mail (canvas board "Screener"): Let in `Y`, Other
-  `O`, Block, Enter reads first. The choice applies to everything they sent and to later mail.
+  `messages.screen` (in v32), set only while the screener is on, so turning it on later leaves old mail alone;
+  turning it off shows what waited in Important. No notifications for mail waiting there.
+- [x] New people tab next to Important and Other while it has mail (canvas board "Screener"): Let in `y`, Other
+  `Shift+O`, Block `Shift+X` (`x` selects), Enter reads first. The choice applies to everything they sent and to
+  later mail.
 - [x] Block sender (by address or domain), from the conversation menu, the palette and the companion's drop-down:
   mail from them dated after the block is marked read and archived on arrival through the outbox
   (`archive_blocked`), and still searchable; the conversation goes to Done, one undo for both. Nothing tells the
   sender. (From New people with C's screener.)
 - [ ] Settings → Senders (canvas board "Senders"): the screener switch, known domains, and Blocked, Muted, To Other
   and Let in lists, each with a way back (Unblock, Unmute, To Important). Who writes most moves here. Done so far:
-  "Your choices" (Blocked, To Other, Kept in Important, each with its way back) above Who writes most; the
-  screener switch, known domains, Muted and Let in come with the screener.
-- [ ] Tests: a fixture of headers with the expected state for each, screener on and off.
+  the screener switch, "People you know at" (known domains), "Your choices" (Blocked, To Other, Kept in
+  Important, each with its way back; Let in shows as Kept in Important) above Who writes most. Muted is still to do.
+- [x] Tests: a fixture of senders with the expected place for each, screener on and off
+  (`the_screener_holds_first_mail_from_people_not_known_yet`, `blocking_a_sender_or_their_domain`).
 
 ### D. One-click unsubscribe
 - [x] `Ctrl+U` on a conversation (canvas board "Unsubscribe"). With `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
@@ -157,7 +161,8 @@ Open, for the owner:
 - **Beta feed:** a rolling `beta` release that holds `latest-beta.json`, or a file on GitHub Pages. Proposed: the
   rolling release, so the workflow stays in one place.
 - **Block's key:** `B` in a conversation switches reading view, so block has no key there; in New people it takes
-  `X`? Proposed: menu and palette only in a conversation, `X` in New people.
+  `X`? Proposed: menu and palette only in a conversation, `X` in New people. Built that way, as `Shift+X` (`x`
+  selects) and `Shift+O` for Other (`o` opens); the owner can still change it.
 - **Search on server** is a read from a UI command on its own connection, like `sync::download`. Proposed: add it to
   that exception in CLAUDE.md.
 - **Ask your mail's switch:** the summaries switch, or its own ("Ask across mail"), since it reads every account the

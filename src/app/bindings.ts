@@ -20,6 +20,7 @@ import {
   moveToSplit,
   mute,
   restartToUpdate,
+  screen,
   senderHere,
   shelve,
   startLabel,
@@ -50,6 +51,7 @@ import {
   palette,
   perf,
   problems,
+  role,
   rows,
   searchBox,
   setExpanded,
@@ -108,6 +110,13 @@ export const bindings = (): Binding[] => [
   { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
   { keys: "r", name: "Reply (or continue the draft)", context: "conversation", run: reply },
   { keys: "v", name: "View attachments", context: "conversation", run: viewFiles },
+  ...(role() === "new_people"
+    ? [
+        { keys: "y", name: "Let them in (Important)", context: "list" as const, run: () => void screen(false) },
+        { keys: "O", name: "Send them to Other", context: "list" as const, run: () => void screen(true) },
+        { keys: "X", name: "Block them", context: "list" as const, run: () => void blockSender(false) },
+      ]
+    : []),
   ...(aiOn("summaries", messages[0]?.accountId)
     ? [{ keys: "S", name: "Summarize with AI", context: "conversation" as const, run: summon }]
     : []),

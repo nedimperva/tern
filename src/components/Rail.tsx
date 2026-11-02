@@ -15,6 +15,7 @@ export const ROLE_NAMES: Record<string, string> = {
   trash: "Trash",
   important: "Important",
   bulk: "Other",
+  new_people: "New people",
   snoozed: "Snoozed",
   later: "Read later",
   marked: "Marks",
