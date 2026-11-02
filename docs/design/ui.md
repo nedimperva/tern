@@ -458,16 +458,20 @@ the header's panel icon; a Note from the selection bar opens it with the note's 
 - **Files**: every attachment in the conversation, newest first, in a card: a tile with its kind (PDF on
   `--danger`, sheets on `--ok`, documents and pictures on `--accent-soft`), its name, who, when and its size; a click
   opens it.
-- **Recent with them**: four of your latest conversations with the person. No AI in any of the above.
+- **Recent with {name}**: up to four other conversations with the person in a card, each row opening it (click,
+  or Tab then Enter): an `--accent` unread dot, the subject (600 if unread), the date, and a line of the newest text;
+  the hovered row on `--bg-2`. The last row, "All mail from {name} · 37 →" in `--accent`, searches `from:` them.
+  No AI in any of the above.
 - **Ask**, docked at the foot under a `--line`: two suggested questions until the first is asked, then a box
   (Enter asks). It goes through `ai::ask_about` behind the summaries switch (on request; the transcript, the chat
   so far and the question, redacted like a summary; never kept). The chat is drawn at the end of the column, which
   scrolls to it: answers stream in, each `[n]` becomes a chip ("Ana · Tue") that shows that message, and under each
   a receipt: provider, messages and characters sent, "nothing kept". Chats stay per conversation while Tern runs.
   With AI off the foot says what Ask needs and links to Settings → AI; nothing is sent.
+- **Under the name**: Write to {name} and Copy address as small `--bg-0` buttons with a `--line` edge, and where
+  their mail goes (Important or Other, `setSplit` with the usual undo) as a drop-down on `--bg-2` at the right.
 - **Planned for 2.0** (package 17, owner's pick 2026-11-02: canvas "Tern 2.0 screens", direction A):
-  - Under the name, Write to them and Copy address as small `--bg-0` buttons with a `--line` edge, and the sender's
-    state (Important, Other, Blocked) as a drop-down on `--bg-2` at the right.
+  - The drop-down gains Blocked (section C).
   - **Tasks**, after the details, with "Todoist" at the right of its heading, only once Todoist is connected: a
     card with the conversation's tasks (a round tick in the priority's colour, the title, "day · project · from
     this mail" in `--fg-2`, Open) and a last row "Add a task from this mail" with its keycap `T`. The conversation
@@ -479,9 +483,6 @@ the header's panel icon; a Note from the selection bar opens it with the note's 
     The sentence it came from is lit in the mail (`--accent-soft` with a 2 px `--accent` underline) while the box is
     open. Under it, "Also in this mail": the other asks and dates, each with Use.
   - Ask and promise rows get **+ Task** (a small `--card` button); a row already in Todoist shows its task instead.
-  - **Recent with them** becomes a card of rows that open their conversation: an `--accent` unread dot, the subject
-    (600 if unread), a line of the newest text, the date; the hovered row on `--bg-2`. The last row is "All mail with
-    Ana · 37 →" in `--accent`, opening a search for the person.
 
 ### 4.8 Settings (`Ctrl+,`)
 

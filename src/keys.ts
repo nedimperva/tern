@@ -61,6 +61,10 @@ export function keyHandler(bindings: () => Binding[], context: () => Context, bl
     // open or someone is typing (Ctrl+A there selects the text, not every conversation).
     if (name !== "Ctrl+k" && name !== "Ctrl+q" && (blocked() || typing(e))) return;
     if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
+    // Enter or Space on a focused button in the companion presses it, not Reply all: its rows are reached with Tab.
+    // Elsewhere a button keeps focus after a click, and Enter there still means the key's own action.
+    const t = e.target;
+    if (!pending && (e.key === "Enter" || e.key === " ") && t instanceof Element && t.closest(".companion :is(button, a[href])")) return;
     const keys = pending ? `${pending} ${name}` : name;
     pending = "";
     const fits = (b: Binding) => b.keys === keys && (!b.context || b.context === context());

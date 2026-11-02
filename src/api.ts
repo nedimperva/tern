@@ -383,6 +383,8 @@ export interface Api {
   onCloseRequested(f: () => Promise<void>): () => void;
   /** Moves the senders of these messages to the inbox's Other split, or back to Important. */
   setSplit(ids: number[], other: boolean): Promise<void>;
+  /** Whether mail from this message's sender goes to Other. */
+  goesToOther(id: number): Promise<boolean>;
   /** Unread messages in [Important, Other]. */
   splitUnread(): Promise<[number, number]>;
   /** Snoozes these conversations until `due` (Unix seconds); they come back unread. */
@@ -634,6 +636,7 @@ const tauri: Api = {
   takeMailto: () => invoke("take_mailto"),
   setSyncPaused: (on) => invoke("set_sync_paused", { on }),
   setSplit: (ids, other) => invoke("set_split", { ids, other }),
+  goesToOther: (id) => invoke("goes_to_other", { id }),
   splitUnread: () => invoke("split_unread"),
   snooze: (ids, due) => invoke("snooze", { ids, due }),
   unsnooze: (ids) => invoke("unsnooze", { ids }),
@@ -1229,6 +1232,10 @@ function fake(): Api {
     takeMailto: async () => null,
     setSplit: async (ids, other) => {
       for (const m of messages.filter((m) => ids.includes(m.id))) otherSenders.set(m.fromAddr, other);
+    },
+    goesToOther: async (id) => {
+      const m = messages.find((m) => m.id === id);
+      return m ? isOther(m) : false;
     },
     splitUnread: async () => {
       const unread = messages.filter((m) => !m.seen && inInbox(m) && !snoozed.has(m.threadId) && !shelved.has(m.threadId));

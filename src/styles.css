@@ -6328,17 +6328,72 @@ button.link.danger {
 .companion .what button.link:hover {
   text-decoration: underline;
 }
+/* Under the person's name: write to them, copy the address, and which split their mail goes to. */
+.companion .person-do {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-1);
+}
+.companion .person-do button {
+  padding: 2px var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-size: var(--t-sm);
+}
+.companion .person-do button:hover {
+  background: var(--bg-2);
+}
+.companion .person-do select {
+  margin-left: auto;
+  padding: 2px var(--s-2);
+  border-color: transparent;
+  background: var(--bg-2);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+/* Recent with them: each row opens its conversation; the last finds all their mail. */
 .companion .recent {
   display: flex;
   flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  align-items: stretch;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--fg-0);
+  font: inherit;
+  text-align: left;
 }
-.companion .recent li {
+.companion .recent:first-child {
+  border-top-left-radius: var(--r-lg);
+  border-top-right-radius: var(--r-lg);
+}
+.companion .recent:last-child {
+  border-bottom-left-radius: var(--r-lg);
+  border-bottom-right-radius: var(--r-lg);
+}
+.companion .recent:hover {
+  background: var(--bg-2);
+}
+.companion .recent:focus-visible {
+  outline-offset: -2px;
+}
+.companion .recent .line {
   display: flex;
+  align-items: center;
   gap: var(--s-2);
-  padding: var(--s-1) 0;
+  min-width: 0;
+}
+.companion .recent .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
 }
 .companion .recent .subject {
   flex: 1;
@@ -6346,6 +6401,18 @@ button.link.danger {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.companion .recent.unread .subject {
+  font-weight: 600;
+}
+.companion .recent .snippet {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.companion .recent.all {
+  font-size: var(--t-sm);
+  color: var(--accent);
 }
 .companion .pledge {
   display: flex;

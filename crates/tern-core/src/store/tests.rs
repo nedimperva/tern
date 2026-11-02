@@ -1930,7 +1930,9 @@ fn moving_a_sender_changes_its_split() {
     assert_eq!(subjects(&store, OTHER), ["sale"]);
     assert_eq!(store.split_unread().unwrap(), (1, 1));
     let sale = store.list_threads(&ListTarget::Role(OTHER.into()), None, 1).unwrap()[0].latest.id;
+    assert!(store.goes_to_other(sale).unwrap(), "bulk goes to Other until the person says otherwise");
     store.set_split(&[sale], false).unwrap();
+    assert!(!store.goes_to_other(sale).unwrap());
     assert_eq!(subjects(&store, IMPORTANT), ["hello", "sale"]);
     let later = NewMessage {
         from_addr: "news@shop.example".into(),

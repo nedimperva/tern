@@ -1153,6 +1153,12 @@ pub async fn set_split(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>
     Ok(())
 }
 
+/// Whether mail from this message's sender goes to Other, for the companion's split choice.
+#[tauri::command]
+pub async fn goes_to_other(state: State<'_, AppState>, id: i64) -> Reply<bool> {
+    state.store.goes_to_other(id).map_err(text)
+}
+
 /// Unread messages in the Important and Other splits.
 #[tauri::command]
 pub async fn split_unread(state: State<'_, AppState>) -> Reply<(i64, i64)> {

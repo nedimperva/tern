@@ -200,6 +200,15 @@ impl Store {
         Ok(())
     }
 
+    /// Whether mail like this message goes to Other: its sender's split, or with no choice made, whether it is bulk.
+    pub fn goes_to_other(&self, id: i64) -> Result<bool> {
+        let conn = self.reader();
+        let other = conn
+            .query_row(&format!("SELECT {IS_OTHER} FROM messages m WHERE m.id = ?1"), [id], |r| r.get(0))
+            .optional()?;
+        Ok(other.unwrap_or(false))
+    }
+
     /// Snoozes the conversations of these messages until `due`: they leave the inbox's lists (not its folder,
     /// so other mail apps still show them there) and come back unread when due, or when someone replies.
     pub fn snooze(&self, ids: &[i64], due: i64, now: i64) -> Result<()> {

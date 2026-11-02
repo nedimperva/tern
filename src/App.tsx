@@ -288,6 +288,7 @@ function Main() {
           <Companion
             messages={messages}
             mine={isMine}
+            person={person}
             onJump={(id) => {
               const i = messages.findIndex((m) => m.id === id);
               if (i >= 0 && i < messages.length - 1 && !expanded().has(id)) toggleMessage(i);

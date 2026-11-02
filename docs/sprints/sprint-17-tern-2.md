@@ -117,12 +117,14 @@ column, at rest" and "A — Adding a task from the mail").
 ### H. The companion column
 Direction A on the canvas (owner, 2026-11-02). Can go before G: it needs no Todoist.
 
-- [ ] Recent with them (named "Recent with Ana"): each row opens that conversation (click or Enter), in a card,
-  with an unread dot and a line of its newest text. Today the rows are plain text and do nothing.
-- [ ] "All mail with Ana · 37 →" as the card's last row opens a search for that person.
-- [ ] Header actions for the person under the name: Write to Ana, Copy address, and their sender state (Important,
-  Other, Blocked from section C) as a small drop-down on the right.
-- [ ] Every row in the column is reachable with Tab and has a visible focus.
+- [x] Recent with them (named "Recent with Ana"): each row opens that conversation (click or Enter), in a card,
+  with an unread dot and a line of its newest text. The open conversation is left out.
+- [x] "All mail from Ana · 37 →" as the card's last row searches `from:` them (the search has no "from or to"
+  filter, so it says "from"; the count is their mail).
+- [x] Header actions under the name: Write to Ana, Copy address, and where their mail goes (Important / Other) as
+  a drop-down on the right (`goes_to_other`, `splitSenders` with undo). Blocked joins it with section C.
+- [x] Every row in the column is reachable with Tab and has a visible focus: Enter or Space on a companion button
+  presses it instead of the conversation's Reply all (`src/keys.ts`).
 
 ### I. Your mail as files
 - [ ] Export a folder or a search as one mbox; bodies not yet downloaded are fetched first, with progress and Stop
@@ -173,3 +175,5 @@ Open, for the owner:
 - 2026-11-02: planned with the owner from the ideas page and the canvas. Nothing built yet.
 - 2026-11-02: owner picked direction A for the companion and Todoist (a Tasks section with a task box in place);
   B (a quick-add box docked beside Ask) was not chosen. Written into G, H and ui.md §4.2b.
+- 2026-11-02: H built on `sprint/17-companion`, checked on the fake backend in the browser (rows open, search,
+  split with undo toast). Not yet tried in the Tauri app on Linux.

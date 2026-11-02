@@ -1,5 +1,6 @@
 // The companion (docs/design/ui.md §4.2b, `Ctrl+.`, `i`): one column beside the open conversation. The person at the
-// top, then what the newest message holds (Details), what is owed each way, the files and recent mail with them,
+// top with ways to write to them and to choose their split, then what the newest message holds (Details), what is
+// owed each way, the files and recent conversations with them (each opens),
 // all from this computer; Ask sits at the foot and talks about the conversation with AI, on request and behind the
 // AI switch.
 
@@ -7,11 +8,13 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from
 import { api, type AiAnswer, type ContactCard, type ThreadMessage } from "../api";
 import { filesOf } from "../files";
 import { promisesIn } from "../promises";
+import { splitSenders } from "../app/actions";
 import { setDetailsSlot } from "../app/state";
 import { aiOn, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
 import { Avatar } from "./ConversationView";
 import { Icon } from "./Icon";
+import type { PersonActions } from "./PersonCard";
 
 type Turn = { question: string; answer: string; done: AiAnswer | null; error: string };
 // Chats live as long as Tern runs, a list per conversation: the person can come back to one in the same session.
@@ -26,6 +29,8 @@ export function Companion(props: {
   onJump: (id: number) => void;
   onClose: () => void;
   onOpenAi: () => void;
+  /** Write to the person, find their mail, open one of your conversations with them. */
+  person: PersonActions;
 }) {
   const first = () => props.messages[0];
   const key = () => (first() ? `${first().accountId}:${first().threadId}` : "");
@@ -45,6 +50,33 @@ export function Companion(props: {
     ),
   );
 
+  // Which split their mail goes to: read when the person changes, and kept in step with the choice made here.
+  const [other, setOther] = createSignal<boolean | null>(null);
+  createEffect(
+    on(
+      () => who()?.id,
+      (id) => {
+        setOther(null);
+        if (id) void api.goesToOther(id).then((o) => who()?.id === id && setOther(o), () => {});
+      },
+    ),
+  );
+  const split = (to: boolean) => {
+    const m = who();
+    if (!m || to === other()) return;
+    setOther(to);
+    void splitSenders([m.id], [m.fromName || m.fromAddr], to, () => who()?.id === m.id && setOther(!to));
+  };
+  const [copied, setCopied] = createSignal(false);
+  const copy = async (email: string) => {
+    await navigator.clipboard.writeText(email).catch(() => {});
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
+  const firstName = () => (who() ? sender(who()!) : "");
+  /** Other conversations with them, newest first: the open one is already on screen. */
+  const recent = () => (card()?.recent ?? []).filter((r) => !(r.accountId === first()?.accountId && r.threadId === first()?.threadId)).slice(0, 4);
+
   const ask = askAbout(() => props.messages, key);
   let body!: HTMLDivElement;
   // A new question goes to the foot of the column, where its answer streams in.
@@ -60,6 +92,23 @@ export function Companion(props: {
               <div class="who">
                 <strong title={m().fromAddr}>{m().fromName || m().fromAddr}</strong>
                 <span>{pace(card(), props.messages, props.mine)}</span>
+                <div class="person-do">
+                  <button type="button" onClick={() => props.person.write(m().fromAddr)}>
+                    Write to {firstName()}
+                  </button>
+                  <button type="button" onClick={() => void copy(m().fromAddr)} title={m().fromAddr}>
+                    {copied() ? "Copied" : "Copy address"}
+                  </button>
+                  <Show when={other() !== null}>
+                    <label class="visually-hidden" for="companion-split">
+                      Where {firstName()}'s mail goes
+                    </label>
+                    <select id="companion-split" value={other() ? "other" : "important"} onChange={(e) => split(e.currentTarget.value === "other")}>
+                      <option value="important">Important</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </Show>
+                </div>
               </div>
             </>
           )}
@@ -72,20 +121,35 @@ export function Companion(props: {
         <DetailsSlot />
         <Promises messages={props.messages} mine={props.mine} onJump={props.onJump} />
         <Files messages={props.messages} sender={sender} />
-        <Show when={card()?.recent.length}>
-          <section>
-            <h2>Recent with them</h2>
-            <ul class="recent">
-              <For each={card()!.recent.slice(0, 4)}>
-                {(r) => (
-                  <li>
-                    <span class="subject">{r.subject || "(no subject)"}</span>
-                    <span class="quiet">{when(r.date)}</span>
-                  </li>
-                )}
-              </For>
-            </ul>
-          </section>
+        <Show when={card() && who() && (recent().length || card()!.received > 0) ? card() : null}>
+          {(c) => (
+            <section>
+              <h2>Recent with {firstName()}</h2>
+              <div class="rows">
+                <For each={recent()}>
+                  {(r) => (
+                    <button type="button" class="recent" classList={{ unread: !r.seen }} onClick={() => props.person.open(r)} title="Open this conversation">
+                      <span class="line">
+                        <Show when={!r.seen}>
+                          <span class="dot" aria-hidden="true" />
+                          <span class="visually-hidden">Unread: </span>
+                        </Show>
+                        <span class="subject">{r.subject || "(no subject)"}</span>
+                        <span class="quiet">{when(r.date)}</span>
+                      </span>
+                      <Show when={r.snippet}>
+                        <span class="quiet snippet">{r.snippet}</span>
+                      </Show>
+                    </button>
+                  )}
+                </For>
+                <button type="button" class="recent all" onClick={() => props.person.search(c().email)}>
+                  All mail from {firstName()}
+                  {c().received ? ` · ${c().received.toLocaleString()}` : ""} →
+                </button>
+              </div>
+            </section>
+          )}
         </Show>
         <p class="found-here">Found on this computer, from the words of the mail.</p>
         <Show when={ask.turns().length}>

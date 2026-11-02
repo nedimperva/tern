@@ -137,11 +137,17 @@ export async function moveToSplit(other: boolean) {
   const ids = hit.map((r) => r.id);
   const shown = role();
   if ((other && shown === "important") || (!other && shown === "bulk")) dropRows(hit);
+  await splitSenders(ids, hit.map((r) => r.fromName || r.fromAddr), other);
+}
+
+/** Sends the senders of these messages to Other (or Important) and says so; Undo puts them back. */
+export async function splitSenders(ids: number[], names: string[], other: boolean, undone?: () => void) {
   await api.setSplit(ids, other);
-  const senders = [...new Set(hit.map((r) => r.fromName || r.fromAddr))];
+  const senders = [...new Set(names)];
   const who = senders.length === 1 ? senders[0] : `${senders.length} senders`;
   showToast(`${who}: ${other ? "Other" : "Important"} from now on`, [], undefined, async () => {
     await api.setSplit(ids, !other);
+    undone?.();
     void load();
   });
 }
