@@ -291,6 +291,7 @@ fn main() {
             commands::make_default_mail_app,
             commands::set_split,
             commands::goes_to_other,
+            commands::unsubscribe,
             commands::split_unread,
             commands::snooze,
             commands::unsnooze,

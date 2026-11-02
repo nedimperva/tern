@@ -25,6 +25,7 @@ import {
   targets,
   toggleRead,
   toggleStar,
+  unsubscribe,
   wake,
 } from "./actions";
 import { moveMessage, open, toggleMessage, unmute, viewFiles } from "./conversation";
@@ -97,6 +98,7 @@ export const bindings = (): Binding[] => [
   { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
   { keys: "]", name: "Next mark", context: "conversation", run: () => jumpMark(1), repeat: true },
   { keys: "B", name: "Reading view or the original look", context: "conversation", run: switchReading },
+  { keys: "Ctrl+u", name: "Unsubscribe from this list", context: "conversation", run: () => void unsubscribe() },
   { keys: "i", name: "The companion: the person, what's in the mail, promises and files", context: "conversation", run: toggleCompanion },
   { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1), repeat: true },
   { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },

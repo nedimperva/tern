@@ -1145,7 +1145,9 @@ impl std::error::Error for Unworkable {}
 fn failure(e: &anyhow::Error) -> Failure {
     if smtp::maybe_sent(e) {
         Failure::MaybeSent
-    } else if smtp::is_permanent(e) || e.chain().any(|c| c.is::<Unworkable>()) {
+    } else if smtp::is_permanent(e)
+        || e.chain().any(|c| c.is::<Unworkable>() || c.is::<crate::unsubscribe::Refused>())
+    {
         Failure::Permanent
     } else {
         Failure::Retry
@@ -1220,6 +1222,10 @@ async fn run_op<S: Stream>(
                 None => Vec::new(),
             };
             return smtp::send(&account.config, &login.credential().await?, draft, &extra).await;
+        }
+        OutboxOp::Unsubscribe { url, .. } => {
+            let url = url.clone();
+            tokio::task::spawn_blocking(move || crate::unsubscribe::post(&url)).await??;
         }
         OutboxOp::Append { folder, message, .. } => {
             // Sent may have changed since the copy was queued (a duplicate removed, a folder renamed).

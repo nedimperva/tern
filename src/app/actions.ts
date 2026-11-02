@@ -9,12 +9,15 @@ import { until } from "../components/ConversationRow";
 import { countCleared } from "../zero";
 import { keyOf } from "./rows";
 import { open } from "./conversation";
+import { unsubscribeTarget } from "../unsubscribe";
+import { fromLink } from "./composing";
 import { go, load, refresh } from "./list";
 import {
   accounts,
   current,
   focus,
   folders,
+  messages,
   openRow,
   role,
   rows,
@@ -25,8 +28,10 @@ import {
   setRows,
   setSelection,
   setSnoozing,
+  setUnsubscribed,
   snoozing,
   target,
+  unsubscribed,
 } from "./state";
 import { showToast } from "./toast";
 
@@ -263,6 +268,28 @@ export async function mute() {
   await api.mute(ids, true);
   const token = await act("archive", hit, false);
   showToast(hit.length === 1 ? "Muted" : `Muted ${hit.length} conversations`, token, () => api.mute(ids, false));
+}
+
+/** Ctrl+U: leaves the open conversation's mailing list. With one-click (RFC 8058) the request is queued like any
+ * change and the conversation goes to Done, one undo for both; otherwise the list's page opens in the browser, or
+ * its address in compose. */
+export async function unsubscribe() {
+  const list = [...messages].reverse().find((m) => unsubscribeTarget(m.listUnsubscribe));
+  const target = unsubscribeTarget(list?.listUnsubscribe ?? null);
+  if (!list || !target || unsubscribed().startsWith("Unsubscribed")) return;
+  const who = list.fromName || list.fromAddr;
+  const token = list.oneClick ? await api.unsubscribe(list.id).catch(() => null) : null;
+  if (token) {
+    setUnsubscribed(`Unsubscribed from ${who}.`);
+    const done = await act("archive", targets(), false);
+    showToast(`Unsubscribed from ${who}`, [...token, ...done], () => setUnsubscribed(""));
+  } else if ("web" in target) {
+    api.openUrl(target.web);
+    setUnsubscribed("Unsubscribe page opened in your browser.");
+  } else {
+    fromLink(target.mail);
+    setUnsubscribed("Unsubscribe mail started.");
+  }
 }
 
 /** The inbox of the account at this place in the account list (Ctrl+1 … Ctrl+9). */

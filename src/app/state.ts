@@ -72,6 +72,8 @@ export const [messageFocus, setMessageFocus] = createSignal(0);
 export const [expanded, setExpanded] = createSignal<ReadonlySet<number>>(new Set());
 // Whether the open conversation is muted, for "Unmute" in the palette.
 export const [openMuted, setOpenMuted] = createSignal(false);
+/** What unsubscribing from the open conversation's list did, for its button; empty until then. */
+export const [unsubscribed, setUnsubscribed] = createSignal("");
 
 export const [width, setWidth] = createSignal(window.innerWidth);
 // The rail sliding over the list: the sidebar's place in a narrow window, or with the sidebar turned off.

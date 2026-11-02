@@ -37,14 +37,14 @@ impl Store {
                 "INSERT OR IGNORE INTO messages (account_id, folder_id, uid, message_id, thread_id, subject, from_name,
                                                  from_addr, to_addrs, date, snippet, seen, flagged, has_attachments,
                                                  size, body_state, list_id, list_unsubscribe, parts, subject_norm,
-                                                 cc_addrs, reply_to, followup_to, refs, bulk)
+                                                 cc_addrs, reply_to, followup_to, refs, bulk, unsubscribe_post)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-                         ?21, ?22, ?23, ?24, ?25)",
+                         ?21, ?22, ?23, ?24, ?25, ?26)",
                 params![
                     account_id, folder_id, m.uid, m.message_id, thread_id, m.subject, m.from_name, m.from_addr,
                     m.to_addrs, m.date, m.snippet, m.seen, m.flagged, m.has_attachments, m.size, body_state,
                     m.list_id, m.list_unsubscribe, parts, subject_norm(&m.subject), m.cc_addrs, m.reply_to,
-                    m.followup_to, m.references.join(" "), crate::triage::is_bulk(m)
+                    m.followup_to, m.references.join(" "), crate::triage::is_bulk(m), m.unsubscribe_post
                 ],
             )?;
             if inserted == 0 {

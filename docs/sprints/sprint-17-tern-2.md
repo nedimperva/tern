@@ -12,7 +12,7 @@ The next major release after 1.9.0. The owner picked these on 2026-11-02 from th
 Each slice is its own `sprint/17-…` branch and PR, in the order of the sections. Before UI work, copy the board's
 layout into `docs/design/ui.md` (the spec, not the canvas, is the source of truth). Every slice keeps the rules in
 CLAUDE.md: the UI reads only SQLite, changes go through the outbox with undo, mail HTML stays sandboxed, AI goes
-through `ai::allowed`. Schema changes start at v31 (1.9.0 is v30), each with a migration test from the version before.
+through `ai::allowed`. Schema changes start at v31 (1.9.0 is v30; D is v31), each with a migration test from the version before.
 
 Postponed by the owner (2026-11-02): Outlook and Microsoft 365, Gmail threads by `X-GM-THRID`, rules and custom
 splits, snooze that moves mail on the server, search inside attachments. See **Later** at the end.
@@ -43,7 +43,7 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
   the list patches those rows in place instead of loading the page again. Check holding `j` while a large sync runs.
 
 ### C. Senders: the screener, block and mute
-- [ ] Schema v31: `sender_splits.other` becomes a sender state (`important | other | waiting | blocked`), by address
+- [ ] Schema v32 (D took v31): `sender_splits.other` becomes a sender state (`important | other | waiting | blocked`), by address
   or by domain. Migration test from v30; today's rows keep their meaning. This is also the base that rules (2.1)
   build on.
 - [ ] Screener, off by default (Settings → Senders). A first mail from someone unknown that isn't bulk goes to
@@ -58,13 +58,16 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
 - [ ] Tests: a fixture of headers with the expected state for each, screener on and off.
 
 ### D. One-click unsubscribe
-- [ ] `Ctrl+U` on a conversation (canvas board "Unsubscribe"). With `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+- [x] `Ctrl+U` on a conversation (canvas board "Unsubscribe"). With `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
   and an https link, Tern sends the RFC 8058 POST: queued in the outbox with the usual 5-second undo, sent by the
   sync worker, no cookies, no referrer, the body exactly `List-Unsubscribe=One-Click`. A failure lands in the
-  problems list like any other queued work.
-- [ ] Without one-click, today's paths stay: an address opens the mail in compose, a page opens in the browser.
-- [ ] After unsubscribing: the conversation goes to Done, with "Also block {domain}".
-- [ ] Tests: header parsing (one-click, mailto only, web only, both), the queued op and its undo.
+  problems list like any other queued work. Schema v31 keeps `messages.unsubscribe_post` (the header is fetched
+  with the list headers); mail from before it has 0 and uses its page. Redirects are not followed; a 4xx is
+  permanent (`unsubscribe::Refused`), a 5xx retries. `crates/tern-core/src/unsubscribe.rs`, `OutboxOp::Unsubscribe`.
+- [x] Without one-click, today's paths stay: an address opens the mail in compose, a page opens in the browser.
+- [x] After unsubscribing: the conversation goes to Done, one undo for both. ("Also block {domain}" waits for C.)
+- [x] Tests: header parsing (one-click, mailto only, web only, both), the POST against a local server, the queued
+  op and its undo, migration 31.
 
 ### E. Search that reaches the server
 - [ ] Search on server: when local results may be partial (the search note already knows how much is downloaded),

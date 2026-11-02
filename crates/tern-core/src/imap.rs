@@ -104,7 +104,7 @@ pub struct Fetched {
 }
 
 /// The header fields the list, threading and list handling need; the rest of the header comes with the body.
-const LIST_HEADERS: [&str; 13] = [
+const LIST_HEADERS: [&str; 14] = [
     "FROM",
     "TO",
     "CC",
@@ -115,6 +115,7 @@ const LIST_HEADERS: [&str; 13] = [
     "REFERENCES",
     "LIST-ID",
     "LIST-UNSUBSCRIBE",
+    "LIST-UNSUBSCRIBE-POST",
     "REPLY-TO",
     "MAIL-FOLLOWUP-TO",
     "PRECEDENCE",
@@ -1180,7 +1181,7 @@ mod tests {
             "{tag} OK [CAPABILITY IMAP4rev1] in\r\n",
             vec![(
                 "UID FETCH 4 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT \
-                 MESSAGE-ID IN-REPLY-TO REFERENCES LIST-ID LIST-UNSUBSCRIBE REPLY-TO MAIL-FOLLOWUP-TO PRECEDENCE)])",
+                 MESSAGE-ID IN-REPLY-TO REFERENCES LIST-ID LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST REPLY-TO MAIL-FOLLOWUP-TO PRECEDENCE)])",
                 // multipart/mixed: (alternative: plain, html), a PDF attachment, an inline image.
                 "* 1 FETCH (UID 4 FLAGS (\\Seen) INTERNALDATE \"17-Jul-2026 02:44:25 -0700\" RFC822.SIZE 52000 BODYSTRUCTURE (\
                  ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"QUOTED-PRINTABLE\" 120 4 NIL NIL NIL NIL)\
@@ -1228,7 +1229,7 @@ mod tests {
             "{tag} OK [CAPABILITY IMAP4rev1] in\r\n",
             vec![(
                 "UID FETCH 4 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (FROM TO CC DATE SUBJECT \
-                 MESSAGE-ID IN-REPLY-TO REFERENCES LIST-ID LIST-UNSUBSCRIBE REPLY-TO MAIL-FOLLOWUP-TO PRECEDENCE)])",
+                 MESSAGE-ID IN-REPLY-TO REFERENCES LIST-ID LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST REPLY-TO MAIL-FOLLOWUP-TO PRECEDENCE)])",
                 "* 1 FETCH (UID 4 FLAGS (\\Seen) INTERNALDATE \"2-Nov-2026 09:30:59 +0100\" RFC822.SIZE 25625 BODYSTRUCTURE \
                  (\"text\" \"plain\" (\"charset\" \"utf-8\") NIL NIL \"base64\" 1876 25 NIL NIL NIL) \
                  BODY[HEADER.FIELDS (FROM)] {13}\r\nFrom: a@b.c\r\n)\r\n{tag} OK done\r\n",

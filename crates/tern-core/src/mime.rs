@@ -45,6 +45,8 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
         headers_only: false,
         list_id: raw_header(&msg, "List-Id"),
         list_unsubscribe: raw_header(&msg, "List-Unsubscribe"),
+        unsubscribe_post: raw_header(&msg, "List-Unsubscribe-Post")
+            .is_some_and(|p| crate::unsubscribe::offers_one_click(&p)),
         precedence_bulk: raw_header(&msg, "Precedence")
             .is_some_and(|p| ["bulk", "list", "junk"].contains(&p.to_ascii_lowercase().as_str())),
         cc_addrs: addrs(msg.cc()),

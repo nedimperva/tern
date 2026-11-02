@@ -19,6 +19,7 @@ pub mod smtp;
 pub mod store;
 pub mod sync;
 pub mod triage;
+pub mod unsubscribe;
 
 pub use models::*;
 pub use store::Store;

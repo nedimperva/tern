@@ -22,7 +22,7 @@ mod settings;
 mod syncing;
 mod writing;
 
-const SCHEMA_VERSION: i64 = 30;
+const SCHEMA_VERSION: i64 = 31;
 
 /// What a mark is kept by: the message's Message-ID, or its row for mail without one.
 const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
@@ -589,7 +589,7 @@ fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
                 )?;
             }
         }
-        OutboxOp::Send(_) | OutboxOp::Append { .. } => {}
+        OutboxOp::Send(_) | OutboxOp::Append { .. } | OutboxOp::Unsubscribe { .. } => {}
     }
     Ok(())
 }
@@ -615,6 +615,7 @@ fn describe(op: &OutboxOp) -> String {
         OutboxOp::Label { label, add: false, uids, .. } => {
             format!("Remove the label {label} from {}", count(uids.len()))
         }
+        OutboxOp::Unsubscribe { sender, .. } => format!("Unsubscribe from {sender}"),
         OutboxOp::Flags { flag, add, uids, .. } => {
             let verb = match (flag.as_str(), add) {
                 ("\\Seen", true) => "Mark read",

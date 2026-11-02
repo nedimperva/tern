@@ -1152,6 +1152,61 @@ fn migration_30_adds_aliases() {
     assert_eq!(store.account(account).unwrap().unwrap().config.aliases.len(), 1);
 }
 
+#[test]
+fn migration_31_keeps_old_mail_off_one_click() {
+    let (store, account, inbox, _) = setup();
+    let list =
+        NewMessage { list_unsubscribe: Some("<https://list.example/u/1>".into()), ..message(1, "news", 1) };
+    store.insert_messages(account, inbox, &[list]).unwrap();
+    let conn = store.conn.into_inner().unwrap();
+    wind_back(&conn, 30);
+    let store = Store::init(conn).unwrap();
+    let id = store.list_threads(&ListTarget::Folder(inbox), None, 1).unwrap()[0].latest.id;
+    assert!(!store.thread(id).unwrap()[0].one_click);
+    assert_eq!(store.queue_unsubscribe(id, 5).unwrap(), None, "its page is still the way");
+}
+
+#[test]
+fn one_click_unsubscribe_is_queued_with_undo() {
+    let (store, account, inbox, _) = setup();
+    let offers = |n, header: &str, post| NewMessage {
+        message_id: Some(format!("{n}@list")),
+        from_name: "Weekly".into(),
+        list_unsubscribe: Some(header.into()),
+        unsubscribe_post: post,
+        ..message(n, &format!("issue {n}"), n as i64)
+    };
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[
+                offers(1, "<mailto:u@list.example>, <https://list.example/u/1>", true),
+                offers(2, "<mailto:u@list.example>", true),
+                offers(3, "<https://list.example/u/3>", false),
+            ],
+        )
+        .unwrap();
+    let id = |n: u32| -> i64 {
+        store.conn().query_row("SELECT id FROM messages WHERE uid = ?1", [n], |r| r.get(0)).unwrap()
+    };
+    let threads: Vec<bool> = (1..=3).map(|n| store.thread(id(n)).unwrap()[0].one_click).collect();
+    assert_eq!(threads, [true, false, false], "https link and the Post header, both");
+    assert_eq!(store.queue_unsubscribe(id(2), 5).unwrap(), None, "mailto only");
+    assert_eq!(store.queue_unsubscribe(id(3), 5).unwrap(), None, "web only");
+    let (queued_for, token) = store.queue_unsubscribe(id(1), 5).unwrap().unwrap();
+    assert_eq!(queued_for, account);
+    let waiting = store.outbox_waiting().unwrap();
+    assert_eq!(waiting.len(), 1);
+    assert_eq!(waiting[0].what, "Unsubscribe from Weekly");
+    match store.outbox_op(token[0]).unwrap().unwrap() {
+        OutboxOp::Unsubscribe { url, .. } => assert_eq!(url, "https://list.example/u/1"),
+        other => panic!("queued {other:?}"),
+    }
+    assert!(store.undo(&token).unwrap());
+    assert!(store.outbox_waiting().unwrap().is_empty());
+}
+
 fn draft_to(subject: &str) -> Draft {
     Draft {
         from: None,
@@ -1533,6 +1588,7 @@ fn renumbering_keeps_messages_queued_work_is_about_to_change() {
 fn wind_back(conn: &Connection, version: i64) {
     for from in (version..SCHEMA_VERSION).rev() {
         let undo = match from {
+            30 => "ALTER TABLE messages DROP COLUMN unsubscribe_post;",
             29 => "DROP TABLE account_aliases;",
             28 => "",
             27 => "DROP TABLE read_later;",

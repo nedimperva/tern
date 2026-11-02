@@ -325,6 +325,9 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
                                                name TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0,
                                                PRIMARY KEY (account_id, email));"
             }
+            // One-click unsubscribe (RFC 8058, package 17 D): the message carried List-Unsubscribe-Post. Older mail
+            // keeps 0 and unsubscribes through its page or address, as before.
+            30 => "ALTER TABLE messages ADD COLUMN unsubscribe_post INTEGER NOT NULL DEFAULT 0;",
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),

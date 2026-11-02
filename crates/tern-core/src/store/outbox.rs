@@ -159,6 +159,25 @@ impl Store {
         Ok(Applied { token, accounts: accounts.into_iter().collect(), drafts })
     }
 
+    /// Queues the one-click unsubscribe this message offers. Returns its account and the undo token, or None when
+    /// it offers none
+    /// (no List-Unsubscribe-Post, or no https link): then its page or address is the way, as before.
+    pub fn queue_unsubscribe(&self, id: i64, delay: i64) -> Result<Option<(i64, Vec<i64>)>> {
+        let conn = self.conn();
+        let found: Option<(i64, String, String, Option<String>, bool)> = conn
+            .query_row(
+                "SELECT account_id, from_name, from_addr, list_unsubscribe, unsubscribe_post FROM messages WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .optional()?;
+        let Some((account_id, name, addr, Some(header), true)) = found else { return Ok(None) };
+        let Some(url) = crate::unsubscribe::one_click_url(&header) else { return Ok(None) };
+        let sender = if name.is_empty() { addr } else { name };
+        let token = vec![enqueue(&conn, account_id, &OutboxOp::Unsubscribe { url, sender }, delay)?];
+        Ok(Some((account_id, token)))
+    }
+
     pub fn queue_send(&self, account_id: i64, draft: Draft, delay: i64) -> Result<i64> {
         self.queue_send_at(account_id, draft, delay, None, None)
     }

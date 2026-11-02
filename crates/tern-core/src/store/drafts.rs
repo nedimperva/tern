@@ -514,7 +514,7 @@ impl Store {
                     m.body_state = 'full' OR b.message_id IS NOT NULL, m.parts,
                     (SELECT d.id FROM drafts d WHERE d.account_id = m.account_id AND d.message_id = m.message_id
                        AND d.discarded_at IS NULL AND d.sent_at IS NULL),
-                    m.list_unsubscribe
+                    m.list_unsubscribe, m.unsubscribe_post
              FROM messages m LEFT JOIN bodies b ON b.message_id = m.id
              WHERE m.account_id = (SELECT account_id FROM messages WHERE id = ?1)
                AND m.thread_id = (SELECT thread_id FROM messages WHERE id = ?1)
@@ -532,6 +532,11 @@ impl Store {
                     body_loaded: r.get(16)?,
                     attachments: attachments_of(r.get::<_, Option<String>>(17)?.as_deref()),
                     draft_id: r.get(18)?,
+                    one_click: r.get::<_, bool>(20)?
+                        && r.get::<_, Option<String>>(19)?
+                            .as_deref()
+                            .and_then(crate::unsubscribe::one_click_url)
+                            .is_some(),
                     list_unsubscribe: r.get(19)?,
                 })
             })?

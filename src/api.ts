@@ -167,6 +167,8 @@ export type ThreadMessage = MessageRow & {
   draftId: number | null;
   /** The List-Unsubscribe header, raw: `<mailto:…>, <https://…>`. */
   listUnsubscribe: string | null;
+  /** The list offers one-click unsubscribe (RFC 8058): `unsubscribe` queues it. */
+  oneClick: boolean;
 };
 /** One conversation in a list: its newest message in the listed folder(s), and the whole conversation's totals. */
 export type ThreadRow = MessageRow & {
@@ -385,6 +387,8 @@ export interface Api {
   setSplit(ids: number[], other: boolean): Promise<void>;
   /** Whether mail from this message's sender goes to Other. */
   goesToOther(id: number): Promise<boolean>;
+  /** Queues the one-click unsubscribe this message offers, with the usual undo. Null when it offers none. */
+  unsubscribe(id: number): Promise<number[] | null>;
   /** Unread messages in [Important, Other]. */
   splitUnread(): Promise<[number, number]>;
   /** Snoozes these conversations until `due` (Unix seconds); they come back unread. */
@@ -637,6 +641,7 @@ const tauri: Api = {
   setSyncPaused: (on) => invoke("set_sync_paused", { on }),
   setSplit: (ids, other) => invoke("set_split", { ids, other }),
   goesToOther: (id) => invoke("goes_to_other", { id }),
+  unsubscribe: (id) => invoke("unsubscribe", { id }),
   splitUnread: () => invoke("split_unread"),
   snooze: (ids, due) => invoke("snooze", { ids, due }),
   unsnooze: (ids) => invoke("unsnooze", { ids }),
@@ -841,6 +846,7 @@ function fake(): Api {
       bodyLoaded: true,
       draftId: null,
       listUnsubscribe: i % 7 === 1 ? "<mailto:leave@fieldnotes.example?subject=unsubscribe>, <https://example.com/u>" : null,
+      oneClick: i % 14 === 1,
       attachments:
         i % 11 === 0
           ? [
@@ -891,7 +897,7 @@ function fake(): Api {
   const changed = () => listeners.forEach((f) => f());
   const pending = new Map<number, () => void>();
   let nextToken = 1;
-  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, draftId, listUnsubscribe, ...r }: ThreadMessage): MessageRow => r;
+  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, draftId, listUnsubscribe, oneClick, ...r }: ThreadMessage): MessageRow => r;
   // Every seventh conversation is a newsletter, for the Other split.
   const otherSenders = new Map<string, boolean>();
   const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
@@ -1077,10 +1083,10 @@ function fake(): Api {
       return { token: [token], accounts: [1], drafts: [] };
     },
     undo: async (token) => {
-      const revert = pending.get(token[0]);
-      if (!revert) return false;
-      revert();
-      pending.delete(token[0]);
+      const reverts = token.map((t) => pending.get(t)).filter((r) => r !== undefined);
+      if (!reverts.length) return false;
+      for (const revert of reverts) revert();
+      for (const t of token) pending.delete(t);
       changed();
       return true;
     },
@@ -1232,6 +1238,13 @@ function fake(): Api {
     takeMailto: async () => null,
     setSplit: async (ids, other) => {
       for (const m of messages.filter((m) => ids.includes(m.id))) otherSenders.set(m.fromAddr, other);
+    },
+    unsubscribe: async (id) => {
+      const m = messages.find((m) => m.id === id);
+      if (!m?.oneClick) return null;
+      const token = nextToken++;
+      pending.set(token, () => {});
+      return [token];
     },
     goesToOther: async (id) => {
       const m = messages.find((m) => m.id === id);

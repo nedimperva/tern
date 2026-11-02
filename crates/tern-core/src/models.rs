@@ -174,6 +174,8 @@ pub struct ThreadMessage {
     pub draft_id: Option<i64>,
     /// The List-Unsubscribe header, raw (`<mailto:…>, <https://…>`), for the Unsubscribe button.
     pub list_unsubscribe: Option<String>,
+    /// List-Unsubscribe-Post offered one-click unsubscribe, and List-Unsubscribe has an https link for it.
+    pub one_click: bool,
 }
 
 /// The start of the day (what Tern shows on the first open of a day, and the line above the inbox): counts since
@@ -283,6 +285,8 @@ pub struct NewMessage {
     /// List-Id and List-Unsubscribe, raw, for mailing-list handling later.
     pub list_id: Option<String>,
     pub list_unsubscribe: Option<String>,
+    /// `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058).
+    pub unsubscribe_post: bool,
     /// `Precedence: bulk` (or list, junk): sent to many at once.
     pub precedence_bulk: bool,
     /// Addresses only, comma-separated, as `to_addrs`. Kept for reply-all.
@@ -572,6 +576,12 @@ pub enum OutboxOp {
         ids: Vec<i64>,
         #[serde(default)]
         validity: Option<u32>,
+    },
+    /// One-click unsubscribe (RFC 8058): a POST to the list's https link. Nothing local to put back on undo.
+    Unsubscribe {
+        url: String,
+        /// Who it unsubscribes from, for the problems list.
+        sender: String,
     },
     /// A copy of a sent message for the Sent folder, exactly as it went out.
     Append {

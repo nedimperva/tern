@@ -311,6 +311,18 @@ pub async fn apply(
     Ok(applied)
 }
 
+/// One-click unsubscribe (RFC 8058) from the list this message came from, queued with the usual undo. Returns the
+/// undo token, or None when the message offers no one-click link (then its page or address is the way).
+#[tauri::command]
+pub async fn unsubscribe(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<Option<Vec<i64>>> {
+    let Some((account, token)) = state.store.queue_unsubscribe(id, UNDO_SECONDS).map_err(text)? else {
+        return Ok(None);
+    };
+    state.wake(account);
+    let _ = app.emit("mail-changed", ());
+    Ok(Some(token))
+}
+
 #[tauri::command]
 pub async fn undo(app: AppHandle, state: State<'_, AppState>, token: Vec<i64>) -> Reply<bool> {
     let undone = state.store.undo(&token).map_err(text)?;

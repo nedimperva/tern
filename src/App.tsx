@@ -256,7 +256,6 @@ function Main() {
             onToggle={toggleMessage}
             onReply={(m, kind, text) => respond(m, kind, undefined, text)}
             onView={(message, index) => setViewing({ message, index })}
-            onMailto={fromLink}
             onDone={() => act("archive")}
             onClose={close}
             onQuote={() => void reply()}
