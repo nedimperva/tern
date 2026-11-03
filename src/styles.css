@@ -844,9 +844,18 @@ button.primary kbd {
   display: flex;
   gap: var(--s-4);
   flex: 1;
+  min-width: 0;
   height: 100%;
 }
+/* Beside an open conversation the list is narrow: the tabs close up, and slide sideways rather than wrap
+   "New people" when four tabs with counts still don't fit. */
+.split .splits {
+  gap: var(--s-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
 .splits button {
+  white-space: nowrap;
   background: none;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -6227,6 +6236,7 @@ button.link.danger {
 }
 .companion > header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s-3);
   padding: var(--s-4) var(--s-3) var(--s-3) var(--s-4);
@@ -6360,13 +6370,18 @@ button.link.danger {
 }
 /* Under the person's name: write to them, copy the address, and which split their mail goes to. */
 .companion .person-do {
+  flex: 1 0 100%;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--s-3);
-  margin-top: var(--s-1);
+  gap: var(--s-2);
 }
 .companion .person-do button {
-  padding: 2px var(--s-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  white-space: nowrap;
+  padding: 3px var(--s-2);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg-0);

@@ -92,33 +92,6 @@ export function Companion(props: {
               <div class="who">
                 <strong title={m().fromAddr}>{m().fromName || m().fromAddr}</strong>
                 <span>{pace(card(), props.messages, props.mine)}</span>
-                <div class="person-do">
-                  <button type="button" onClick={() => props.person.write(m().fromAddr)}>
-                    Write to {firstName()}
-                  </button>
-                  <button type="button" onClick={() => void copy(m().fromAddr)} title={m().fromAddr}>
-                    {copied() ? "Copied" : "Copy address"}
-                  </button>
-                  <Show when={theirs()}>
-                    {(s) => (
-                      <>
-                        <label class="visually-hidden" for="companion-split">
-                          Where {firstName()}'s mail goes
-                        </label>
-                        <select
-                          id="companion-split"
-                          value={s().state}
-                          title={s().domainChoice === "blocked" && s().state === "blocked" ? `Everyone at ${s().domain} is blocked` : undefined}
-                          onChange={(e) => void choose(e.currentTarget.value as SenderState)}
-                        >
-                          <option value="important">Important</option>
-                          <option value="other">Other</option>
-                          <option value="blocked">Blocked</option>
-                        </select>
-                      </>
-                    )}
-                  </Show>
-                </div>
               </div>
             </>
           )}
@@ -126,6 +99,39 @@ export function Companion(props: {
         <button type="button" class="icon-button" onClick={props.onClose} title="Close the companion (Ctrl+.)" aria-label="Close the companion">
           <Icon name="x" size={15} />
         </button>
+        {/* Its own row under the name, the width of the column: beside the avatar the buttons wrapped word by word. */}
+        <Show when={who()}>
+          {(m) => (
+            <div class="person-do">
+              <button type="button" onClick={() => props.person.write(m().fromAddr)}>
+                <Icon name="pen-line" size={13} />
+                Write to {firstName()}
+              </button>
+              <button type="button" onClick={() => void copy(m().fromAddr)} title={m().fromAddr}>
+                {copied() ? "Copied" : "Copy address"}
+              </button>
+              <Show when={theirs()}>
+                {(s) => (
+                  <>
+                    <label class="visually-hidden" for="companion-split">
+                      Where {firstName()}'s mail goes
+                    </label>
+                    <select
+                      id="companion-split"
+                      value={s().state}
+                      title={s().domainChoice === "blocked" && s().state === "blocked" ? `Everyone at ${s().domain} is blocked` : undefined}
+                      onChange={(e) => void choose(e.currentTarget.value as SenderState)}
+                    >
+                      <option value="important">Important</option>
+                      <option value="other">Other</option>
+                      <option value="blocked">Blocked</option>
+                    </select>
+                  </>
+                )}
+              </Show>
+            </div>
+          )}
+        </Show>
       </header>
       <div class="companion-body" ref={body}>
         <DetailsSlot />
