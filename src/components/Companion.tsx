@@ -59,8 +59,9 @@ export function Companion(props: {
   const choose = async (to: SenderState) => {
     const m = who();
     const was = theirs();
-    if (!m || !was || to === was.state) return;
-    setTheirs({ ...was, state: to });
+    // While they wait, "Important" is a choice too: their state only says where they'd go.
+    if (!m || !was || (to === was.state && !was.waiting)) return;
+    setTheirs({ ...was, state: to, waiting: false });
     // Blocking also takes this conversation to Done; Important and Other are a choice for the address, which wins
     // over a block of the whole domain.
     if (to === "blocked") await blockSender(false, m);
@@ -119,10 +120,16 @@ export function Companion(props: {
                     </label>
                     <select
                       id="companion-split"
-                      value={s().state}
+                      value={s().waiting ? "waiting" : s().state}
                       title={s().domainChoice === "blocked" && s().state === "blocked" ? `Everyone at ${s().domain} is blocked` : undefined}
                       onChange={(e) => void choose(e.currentTarget.value as SenderState)}
                     >
+                      {/* Until they are let in, their mail is in neither split: say so rather than "Important". */}
+                      <Show when={s().waiting}>
+                        <option value="waiting" disabled>
+                          Waiting
+                        </option>
+                      </Show>
                       <option value="important">Important</option>
                       <option value="other">Other</option>
                       <option value="blocked">Blocked</option>

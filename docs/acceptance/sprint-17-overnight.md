@@ -69,15 +69,19 @@ webhook.site address of your own to see exactly what arrives.
 
 - [ ] Settings → Senders: New people is Off. Turn it On; "People you know at" appears.
 - [ ] Mail already in the inbox stays where it is.
-- [ ] `scripts/dev-mail-server.sh seed 3`: the three new senders appear under a "New people" tab between
-      Important and Other, not in Important, with no notification.
+- [ ] With it On, New people is in the sidebar under Inbox, always (`g n` goes there). Empty, it says "Nobody new".
+- [ ] `scripts/dev-mail-server.sh seed 3`: the three new senders appear in New people, a row each with name and
+      address, not in Important, with no notification. The sidebar counts 3, and a line above Important says
+      "3 new people want to write to you · Screen them"; clicking it opens New people.
+- [ ] Two conversations from one stranger make one row, with a 2 beside the name. Opening one: the companion's
+      drop-down says Waiting.
 - [ ] Mail from someone you have written to goes to Important. So does a list mail to Other, as before.
-- [ ] In New people: `y` lets the focused sender in (toast with Undo, their mail moves to Important), `Shift+O`
-      sends them to Other, `Shift+X` blocks them. Enter opens the mail as usual.
+- [ ] In New people: `y` lets the focused person in (toast with Undo, all their mail moves to Important), `Shift+O`
+      sends them to Other, `Shift+X` blocks them (all their conversations go to Done). The status strip shows these
+      keys. Enter opens the mail as usual; choosing in the companion's drop-down does the same.
 - [ ] Their next mail goes straight to Important (or Other).
-- [ ] When the last one is decided the tab stays while you're on it and goes once you leave.
 - [ ] Add `localhost` to "People you know at", then seed again: nothing goes to New people.
-- [ ] Turn the screener Off: whatever waited shows in Important; the tab is gone.
+- [ ] Turn the screener Off: whatever waited shows in Important; New people leaves the sidebar.
 
 ## Beta channel (A)
 

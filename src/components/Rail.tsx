@@ -2,6 +2,8 @@ import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js"
 import type { Account, Folder, SyncState, Target } from "../api";
 import { labelColour } from "../colours";
 import { folderTree, holds, type TreeNode, unreadUnder } from "../folderTree";
+import { newPeople } from "../app/state";
+import { settings } from "../settings";
 import { AccountAvatar } from "./AccountAvatar";
 import { Icon } from "./Icon";
 
@@ -123,6 +125,18 @@ export function Rail(props: {
           <span class="name">{single() ? "Inbox" : "All Inboxes"}</span>
           <Count n={inboxUnread()} />
         </Item>
+        {/* Always there while the screener is on, so a person waiting is never one tab-switch from being seen. */}
+        <Show when={settings.screener}>
+          <Item active={props.isTarget({ role: "new_people" })} onClick={() => go({ role: "new_people" })} icon="user-plus">
+            <span class="name">New people</span>
+            <Show when={newPeople()}>
+              <span class="count">
+                {newPeople()}
+                <span class="visually-hidden"> waiting</span>
+              </span>
+            </Show>
+          </Item>
+        </Show>
         <Item active={props.isTarget({ role: "snoozed" })} onClick={() => go({ role: "snoozed" })} icon="clock">
           <span class="name">Snoozed</span>
         </Item>
@@ -343,7 +357,7 @@ function Count(props: { n: number }) {
 function Item(props: {
   active: boolean;
   onClick: () => void;
-  icon?: "inbox" | "clock" | "book-open" | "highlighter";
+  icon?: "inbox" | "clock" | "book-open" | "highlighter" | "user-plus";
   /** Drawn where the icon goes (a label's dot). */
   lead?: JSX.Element;
   children: JSX.Element;

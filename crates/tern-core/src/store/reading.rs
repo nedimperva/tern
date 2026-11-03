@@ -211,7 +211,8 @@ impl Store {
                             (SELECT s.state FROM sender_state s WHERE s.account_id = m.account_id
                                AND s.addr = lower(m.from_addr)),
                             (SELECT s.state FROM sender_state s WHERE s.account_id = m.account_id
-                               AND s.addr = substr(lower(m.from_addr), instr(m.from_addr, '@')))
+                               AND s.addr = substr(lower(m.from_addr), instr(m.from_addr, '@'))),
+                            {SCREENED_M}
                      FROM messages m WHERE m.id = ?1 AND m.from_addr <> ''"
                 ),
                 [id],
@@ -226,6 +227,7 @@ impl Store {
                         state: chosen.unwrap_or_else(|| if bulk { "other" } else { "important" }.into()),
                         address_choice: r.get(4)?,
                         domain_choice: r.get(5)?,
+                        waiting: r.get(6)?,
                     })
                 },
             )
@@ -428,11 +430,11 @@ impl Store {
         )?)
     }
 
-    /// How many conversations wait in New people (read or not): its tab shows while there are any.
+    /// How many people wait in New people (read or not): the decision is about a person, not a conversation.
     pub fn new_people(&self) -> Result<i64> {
         Ok(self.reader().query_row(
             &format!(
-                "SELECT count(DISTINCT m.account_id || ':' || m.thread_id)
+                "SELECT count(DISTINCT m.account_id || ':' || lower(m.from_addr))
                  FROM messages m INDEXED BY messages_screen JOIN folders f ON f.id = m.folder_id
                  WHERE m.screen = 1 AND f.role = 'inbox' AND {SCREENED_M} AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"
             ),

@@ -152,6 +152,8 @@ export type Sender = {
   state: SenderState;
   addressChoice: SenderState | null;
   domainChoice: SenderState | null;
+  /** Their mail waits in New people: nothing was chosen about them yet. */
+  waiting: boolean;
 };
 /** A choice made about a sender: `addr` is an address, or `@domain` for everyone there. `since` is 0 for old ones. */
 export type SenderChoice = { accountId: number; addr: string; name: string; state: SenderState; since: number };
@@ -196,6 +198,8 @@ export type ThreadRow = MessageRow & {
   followUp?: boolean;
   /** Gmail labels on any of its messages. */
   labels?: string[];
+  /** New people shows a row per person: their newest conversation, with the others they started in `group`. */
+  group?: ThreadRow[];
 };
 /** Where an account's sync stands. */
 export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed" | "paused";
@@ -405,7 +409,7 @@ export interface Api {
   setSender(accountId: number, addr: string, choice: SenderState | null): Promise<void>;
   /** Every choice made about senders, newest first. */
   senderChoices(): Promise<SenderChoice[]>;
-  /** How many conversations wait in New people (the screener). */
+  /** How many people wait in New people (the screener). */
   newPeople(): Promise<number>;
   /** Queues the one-click unsubscribe this message offers, with the usual undo. Null when it offers none. */
   unsubscribe(id: number): Promise<number[] | null>;
@@ -1304,6 +1308,7 @@ function fake(): Api {
         state: chosen(m) ?? (isOther(m) ? "other" : "important"),
         addressChoice: senderStates.get(addr)?.state ?? null,
         domainChoice: senderStates.get(domainOf(addr))?.state ?? null,
+        waiting: screened(m),
       };
     },
     setSender: async (_account, addr, choice) => {
@@ -1311,7 +1316,7 @@ function fake(): Api {
       else senderStates.delete(addr.toLowerCase());
       changed();
     },
-    newPeople: async () => new Set(messages.filter((m) => inTarget(m, { role: "new_people" })).map((m) => m.threadId)).size,
+    newPeople: async () => new Set(messages.filter((m) => inTarget(m, { role: "new_people" })).map((m) => m.fromAddr.toLowerCase())).size,
     senderChoices: async () =>
       [...senderStates].map(([addr, c]) => ({
         accountId: 1,

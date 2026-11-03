@@ -9,6 +9,8 @@ import {
   openRow,
   partial,
   query,
+  newPeople,
+  role,
   rows,
   searchBox,
   target,
@@ -30,6 +32,8 @@ import { InboxZero } from "./InboxZero";
 import { rowId } from "../motion";
 import { StatusStrip } from "./StatusStrip";
 import { VirtualList } from "./VirtualList";
+
+const NOBODY_NEW = "Nobody new. First mail from someone you haven't written to waits here until you let them in.";
 
 /** The conversation list with its header (splits, search) and the status strip under it. */
 export function ListPane(props: {
@@ -121,13 +125,26 @@ export function ListPane(props: {
       <Show when={searching() && partial()}>
         <div class="search-note">{coverage()}</div>
       </Show>
+      {/* While someone waits, the inbox says so: New people is a place of its own, not a tab to notice. */}
+      <Show when={settings.screener && newPeople() && !searching() && ["inbox", "important"].includes(role()) ? newPeople() : 0}>
+        {(n) => (
+          <button type="button" class="waiting-line" onClick={() => go({ role: "new_people" })}>
+            <Icon name="user-plus" size={14} />
+            <span>
+              {n() === 1 ? "1 new person wants" : `${n()} new people want`} to write to you
+            </span>
+            <span class="go">Screen them</span>
+            <kbd>G N</kbd>
+          </button>
+        )}
+      </Show>
       <Show
         when={rows().length}
         fallback={
           <Show
             when={inboxZero()}
             fallback={
-              <Show when={searching()} fallback={<div class="empty">{listedHere() ? "Nothing here." : ""}</div>}>
+              <Show when={searching()} fallback={<div class="empty">{listedHere() ? (role() === "new_people" ? NOBODY_NEW : "Nothing here.") : ""}</div>}>
                 <div class="empty search-help">
                   <p>Nothing found.</p>
                   <p>

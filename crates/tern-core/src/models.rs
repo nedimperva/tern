@@ -212,6 +212,8 @@ pub struct Sender {
     /// What the person chose for the address itself, and for its whole domain; None where nothing was chosen.
     pub address_choice: Option<String>,
     pub domain_choice: Option<String>,
+    /// Their mail waits in New people: the screener is on and nothing was chosen about them yet.
+    pub waiting: bool,
 }
 
 /// A choice the person made about a sender, for Settings → Senders.

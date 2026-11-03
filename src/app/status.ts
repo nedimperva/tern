@@ -105,7 +105,9 @@ export const syncSentence = () => {
 export const hints = () =>
   context() === "conversation"
     ? [["R", "reply"], ["E", "done"], ["Esc", "back"]]
-    : rows().length
+    : rows().length && role() === "new_people"
+      ? [["Y", "let in"], ["Shift O", "Other"], ["Shift X", "block"]]
+      : rows().length
       ? [["Enter", "open"], ["E", "done"], ["Ctrl K", "commands"]]
       : [["C", "compose"], ["?", "shortcuts"], ["Ctrl K", "commands"]];
 

@@ -14,9 +14,10 @@ every release needs one here before it is tagged.
   open their page or start their mail, as before.
 - Block a sender, or everyone at their domain, from the companion, the conversation menu or the palette. Their
   later mail is read and archived as it comes, and can still be found. Nothing tells them.
-- New people (off by default, Settings → Senders): first mail from someone you haven't written to waits in its own
-  tab until you let them in (`y`), send them to Other (`Shift+O`) or block them (`Shift+X`). List the domains whose
-  people you know.
+- New people (off by default, Settings → Senders): first mail from someone you haven't written to waits in a place of
+  its own in the sidebar (`g n`), a row per person with their address, until you let them in (`y`), send them to
+  Other (`Shift+O`) or block them (`Shift+X`); the choice covers all they sent. A line above Important says when
+  someone waits. List the domains whose people you know.
 - Settings → Senders lists every choice you made about a sender (blocked, sent to Other, kept in Important), each
   with a way back.
 - Updates: a Beta channel in Settings → About, for test versions of what comes next.

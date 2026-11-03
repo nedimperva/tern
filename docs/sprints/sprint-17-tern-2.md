@@ -56,9 +56,12 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
   you, they are at one of the domains the person lists, or you let them in before. Decided at insert, like splits.
   `messages.screen` (in v32), set only while the screener is on, so turning it on later leaves old mail alone;
   turning it off shows what waited in Important. No notifications for mail waiting there.
-- [x] New people tab next to Important and Other while it has mail (canvas board "Screener"): Let in `y`, Other
-  `Shift+O`, Block `Shift+X` (`x` selects), Enter reads first. The choice applies to everything they sent and to
-  later mail.
+- [x] New people (canvas board "Screener"): Let in `y`, Other `Shift+O`, Block `Shift+X` (`x` selects), Enter reads
+  first. The choice applies to everything they sent and to later mail. After the owner's first try (2026-11-03) it
+  moved from a tab that came and went to a place of its own, as HEY's Screener: always in the sidebar while the
+  screener is on (`g n`), a row per person (name, address, how many conversations wait; `people()` in
+  `src/app/rows.ts`), a line above Important while someone waits, and the companion's drop-down says "Waiting"
+  (`Sender::waiting`). Its count is people, not conversations.
 - [x] Block sender (by address or domain), from the conversation menu, the palette and the companion's drop-down:
   mail from them dated after the block is marked read and archived on arrival through the outbox
   (`archive_blocked`), and still searchable; the conversation goes to Done, one undo for both. Nothing tells the

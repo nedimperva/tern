@@ -6,6 +6,22 @@ import type { MessageRow, ThreadRow } from "../api";
 /** A conversation's identity across reloads: its newest message, and so the row's id, changes as mail arrives. */
 export const keyOf = (r: MessageRow) => `${r.accountId}:${r.threadId}`;
 
+/** New people decides about people, not conversations: a row per sender, their newest conversation first and the
+ * rest in `group`, so a choice reaches all they sent. */
+export function people(rows: ThreadRow[]): ThreadRow[] {
+  const by = new Map<string, ThreadRow>();
+  for (const r of rows) {
+    const who = `${r.accountId}:${r.fromAddr.toLowerCase()}`;
+    const first = by.get(who);
+    if (first) first.group = [...(first.group ?? []), r];
+    else by.set(who, { ...r, group: [] });
+  }
+  return [...by.values()];
+}
+
+/** The rows and every conversation grouped under them. */
+export const withGroups = (rows: ThreadRow[]) => rows.flatMap((r) => [r, ...(r.group ?? [])]);
+
 /** `next`, with each row that did not change kept as the very object it was, so the list's <For> keeps its
  * element instead of making it again: during a backfill the list reloads many times a second. */
 export function keepRows<T extends MessageRow>(old: T[], next: T[]): T[] {

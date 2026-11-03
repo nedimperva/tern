@@ -1326,9 +1326,16 @@ fn the_screener_holds_first_mail_from_people_not_known_yet() {
         "no notification while they wait"
     );
 
+    // A second conversation from them: still one person waiting.
+    store.insert_messages(account, inbox, &[from(9, "stranger@new.example")]).unwrap();
+    assert_eq!(subjects(&store, NEW_PEOPLE).len(), 2);
+    assert_eq!(store.new_people().unwrap(), 1, "people, not conversations");
+
     // Let in: Important from now on, and their later mail too.
     let stranger = store.list_threads(&ListTarget::Role(NEW_PEOPLE.into()), None, 5).unwrap()[0].latest.id;
+    assert!(store.sender_of(stranger).unwrap().unwrap().waiting);
     store.set_split(&[stranger], false).unwrap();
+    assert!(!store.sender_of(stranger).unwrap().unwrap().waiting);
     assert!(subjects(&store, NEW_PEOPLE).is_empty());
     assert!(subjects(&store, IMPORTANT).contains(&"mail 2".to_string()));
     store.insert_messages(account, inbox, &[from(7, "stranger@new.example")]).unwrap();

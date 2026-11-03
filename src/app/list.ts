@@ -8,7 +8,7 @@ import { timeQuery } from "../perf";
 import { wingBeat } from "../sound";
 import { quietNow, setSetting, settings } from "../settings";
 import { ROLE_NAMES } from "../components/Rail";
-import { asRow, keepRows, keyOf } from "./rows";
+import { asRow, keepRows, keyOf, people } from "./rows";
 import { close, open } from "./conversation";
 import {
   current,
@@ -17,7 +17,6 @@ import {
   home,
   listKey,
   messages,
-  newPeople,
   openRow,
   query,
   role,
@@ -70,12 +69,15 @@ export async function load() {
   const key = listKey();
   const q = query().trim();
   const found = q ? await api.search(q, 500) : null;
-  const page = found
+  // New people is read whole (it is short) and shown a row per person.
+  const screening = !found && role() === "new_people";
+  const read = found
     ? found.rows.map(asRow)
-    : await timeQuery(() => api.listThreads(target(), null, Math.max(PAGE, rows().length)));
+    : await timeQuery(() => api.listThreads(target(), null, screening ? 1000 : Math.max(PAGE, rows().length)));
   if (ticket !== generation) return;
+  const page = screening ? people(read) : read;
   setPartial(found?.partial ?? false);
-  exhausted = q !== "" || page.length < PAGE;
+  exhausted = q !== "" || screening || page.length < PAGE;
   // Focus stays on the same conversation if it is still there, else on the same place in the list.
   const focusedKey = current() && keyOf(current()!);
   batch(() => {
@@ -173,15 +175,12 @@ export const go = (t: Target) => {
   else if ("label" in t) void api.checkFolder(t.label);
 };
 
-/** The inbox splits, shown as tabs over the unified inbox. New people shows while someone waits there (or while
- * it is open, so deciding about the last one does not pull the tab away). */
+/** The inbox splits, shown as tabs over the unified inbox. New people is a place of its own in the sidebar, with a
+ * line above Important while someone waits. */
 export const SPLITS = (): { name: string; target: Target }[] =>
   settings.splitInbox
     ? [
         { name: "Important", target: { role: "important" } },
-        ...(settings.screener && (newPeople() > 0 || role() === "new_people")
-          ? [{ name: "New people", target: { role: "new_people" } }]
-          : []),
         { name: "Other", target: { role: "bulk" } },
         { name: "Starred", target: { role: "starred" } },
       ]
@@ -277,7 +276,6 @@ const inboxUnread = () => folders().filter((f) => f.role === "inbox").reduce((n,
 /** The unread count a split's tab shows; Starred shows none. */
 export const tabUnread = (t: Target) => {
   const role = "role" in t ? t.role : "";
-  if (role === "new_people") return newPeople();
   return role === "important" ? splitUnread()[0] : role === "bulk" ? splitUnread()[1] : role === "inbox" ? inboxUnread() : 0;
 };
 

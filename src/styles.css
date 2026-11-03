@@ -411,6 +411,43 @@ button.primary kbd {
   font-size: var(--t-sm);
   border-bottom: 1px solid var(--line);
 }
+/* Above Important while someone waits in New people. */
+.waiting-line {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--accent-soft);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+}
+.waiting-line > span:first-of-type {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.waiting-line .go {
+  margin-left: auto;
+  flex: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+.waiting-line kbd {
+  flex: none;
+}
+.waiting-line:hover .go {
+  text-decoration: underline;
+}
+.split .waiting-line kbd {
+  display: none;
+}
 
 /* Tern's right-click menu on a link in a message. */
 .link-menu {
@@ -955,6 +992,24 @@ button.primary kbd {
 .crow .names {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* New people: a person's row is wider on the left, room for the name and the address beside it. */
+.crow .who.person {
+  width: calc(var(--participants-w) * 1.6);
+}
+.crow .who.person .names {
+  flex: none;
+  max-width: 60%;
+}
+.crow .who.person .addr {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.crow.two .who.person {
+  width: auto;
 }
 .crow .count {
   flex: none;

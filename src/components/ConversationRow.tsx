@@ -89,12 +89,33 @@ export function ConversationRow(props: {
           ""
         )}
       </span>
-      <span class="who">
-        <span class="names">{lit(participants(props.row))}</span>
-        <Show when={props.row.count > 1}>
-          <span class="count">{props.row.count}</span>
-        </Show>
-      </span>
+      {/* New people: a row is a person, by name and address (the address is what tells a stranger from a fake), with
+          how many conversations of theirs wait. */}
+      <Show
+        when={props.row.group}
+        fallback={
+          <span class="who">
+            <span class="names">{lit(participants(props.row))}</span>
+            <Show when={props.row.count > 1}>
+              <span class="count">{props.row.count}</span>
+            </Show>
+          </span>
+        }
+      >
+        {(group) => (
+          <span class="who person" title={props.row.fromAddr}>
+            <span class="names">{props.row.fromName || props.row.fromAddr}</span>
+            <Show when={props.row.fromName}>
+              <span class="addr">{props.row.fromAddr}</span>
+            </Show>
+            <Show when={group().length}>
+              <span class="count" title={`${group().length + 1} conversations waiting`}>
+                {group().length + 1}
+              </span>
+            </Show>
+          </span>
+        )}
+      </Show>
       <span class="what">
         <span class="subject">{lit(props.row.subject || "(no subject)")}</span>
         <Show when={props.row.labels?.length}>

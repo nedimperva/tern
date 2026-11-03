@@ -34,7 +34,7 @@ import {
 import { moveMessage, open, toggleMessage, unmute, viewFiles } from "./conversation";
 import { newMessage, reply, respond } from "./composing";
 import { escape, extend, go, isSaved, move, nextSplit, runSearch, toggleSaved, toggleSelected } from "./list";
-import { keyOf } from "./rows";
+import { keyOf, withGroups } from "./rows";
 import {
   accounts,
   choose,
@@ -114,7 +114,8 @@ export const bindings = (): Binding[] => [
     ? [
         { keys: "y", name: "Let them in (Important)", context: "list" as const, run: () => void screen(false) },
         { keys: "O", name: "Send them to Other", context: "list" as const, run: () => void screen(true) },
-        { keys: "X", name: "Block them", context: "list" as const, run: () => void blockSender(false) },
+        // Blocking takes all they sent to Done, not only the row's newest conversation.
+        { keys: "X", name: "Block them", context: "list" as const, run: () => void blockSender(false, senderHere(), withGroups(targets())) },
       ]
     : []),
   ...(aiOn("summaries", messages[0]?.accountId)
@@ -142,6 +143,7 @@ export const bindings = (): Binding[] => [
   { keys: "Shift+Tab", name: "Previous split", context: "list", run: () => nextSplit(-1) },
   { keys: "g i", name: "Go to Inbox", run: () => go(home()) },
   { keys: "g o", name: "Start of the day: what waits on you", run: () => void openScreen() },
+  ...(settings.screener ? [{ keys: "g n", name: "Go to New people", run: () => go({ role: "new_people" }) }] : []),
   { keys: "g h", name: "Go to Snoozed", run: () => go({ role: "snoozed" }) },
   { keys: "g r", name: "Go to Read later", run: () => go({ role: "later" }) },
   { keys: "g m", name: "Go to Marks (what you marked and noted)", run: () => go({ role: "marked" }) },
