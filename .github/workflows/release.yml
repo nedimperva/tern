@@ -108,6 +108,17 @@ jobs:
 
       - run: npm ci
 
+      # RPM refuses a hyphen in a version, and every pre-release has one (2.0.0-1), so a beta has no .rpm; the
+      # AppImage and .deb take it as it is. (The MSI wants the part after the hyphen to be a number.)
+      - name: What to build
+        id: bundles
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$RUNNER_OS" = Linux ] && [[ "$version" == *-* ]]; then
+            echo 'args=--bundles appimage,deb' >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -119,7 +130,7 @@ jobs:
           # Empty outside a tag, so the build only builds.
           releaseId: ${{ needs.release.outputs.id }}
           # Only release builds sign updates, so a local `tauri build` needs no key.
-          args: '--config {"bundle":{"createUpdaterArtifacts":true}}'
+          args: '--config {"bundle":{"createUpdaterArtifacts":true}} ${{ steps.bundles.outputs.args }}'
           # Windows updates through the NSIS installer, which the updater runs without questions.
           updaterJsonPreferNsis: true
 
@@ -153,7 +164,10 @@ jobs:
           [ -n "$json_id" ] || { echo "::error::the draft has no latest.json"; exit 1; }
           gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$json_id" > latest.json
           status=0
-          for p in linux-x86_64 linux-x86_64-appimage linux-x86_64-deb linux-x86_64-rpm \
+          # A pre-release has no .rpm (see "What to build").
+          rpm=linux-x86_64-rpm
+          case "$GITHUB_REF_NAME" in *-*) rpm= ;; esac
+          for p in linux-x86_64 linux-x86_64-appimage linux-x86_64-deb $rpm \
                    windows-x86_64 windows-x86_64-nsis windows-x86_64-msi; do
             url=$(jq -r --arg p "$p" '.platforms[$p].url // empty' latest.json)
             if [ -z "$url" ]; then
