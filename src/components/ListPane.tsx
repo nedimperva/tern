@@ -9,7 +9,6 @@ import {
   openRow,
   partial,
   query,
-  ready,
   rows,
   searchBox,
   target,
@@ -21,7 +20,7 @@ import {
   ownTitleBar,
   toggleSidebar,
 } from "../app/state";
-import { coverage, inboxZero } from "../app/status";
+import { coverage, inboxZero, listedHere } from "../app/status";
 import { ROW_HEIGHTS, settings, SPLIT_ROW_EXTRA } from "../settings";
 import { colourOf } from "../colours";
 import type { ThreadRow } from "../api";
@@ -128,7 +127,7 @@ export function ListPane(props: {
           <Show
             when={inboxZero()}
             fallback={
-              <Show when={searching()} fallback={<div class="empty">{ready() ? "Nothing here." : ""}</div>}>
+              <Show when={searching()} fallback={<div class="empty">{listedHere() ? "Nothing here." : ""}</div>}>
                 <div class="empty search-help">
                   <p>Nothing found.</p>
                   <p>

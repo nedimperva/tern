@@ -41,6 +41,10 @@ export const home = (): Target => ({ role: settings.splitInbox ? "important" : "
 export const [target, setTarget] = createSignal<Target>(home());
 export const [query, setQuery] = createSignal("");
 export const [rows, setRows] = createSignal<ThreadRow[]>([]);
+/** Which list `rows` were read for: a switch keeps the old rows until the new ones come, so an empty list waits for
+ * its own (an empty tab before the inbox flashed Inbox Zero). */
+export const listKey = () => JSON.stringify([target(), query().trim()]);
+export const [listed, setListed] = createSignal("");
 export const [focus, setFocus] = createSignal(0);
 export const [selection, setSelection] = createSignal<ReadonlySet<string>>(new Set());
 // Some mail has headers only, so words in its body were not searched.

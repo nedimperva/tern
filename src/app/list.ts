@@ -15,6 +15,7 @@ import {
   focus,
   folders,
   home,
+  listKey,
   messages,
   newPeople,
   openRow,
@@ -26,6 +27,7 @@ import {
   setAccounts,
   setFocus,
   setFolders,
+  setListed,
   setMessages,
   setNewPeople,
   setOpenRow,
@@ -65,6 +67,7 @@ export const readProgress = () => {
 /** Reloads the list. Keeps as many rows as are loaded, so a change from sync never makes the list jump. */
 export async function load() {
   const ticket = ++generation;
+  const key = listKey();
   const q = query().trim();
   const found = q ? await api.search(q, 500) : null;
   const page = found
@@ -77,6 +80,7 @@ export async function load() {
   const focusedKey = current() && keyOf(current()!);
   batch(() => {
     setRows(keepRows(rows(), page));
+    setListed(key);
     const at = focusedKey ? page.findIndex((r) => keyOf(r) === focusedKey) : -1;
     setFocus(at >= 0 ? at : Math.min(focus(), Math.max(0, page.length - 1)));
     const keys = new Set(page.map(keyOf));

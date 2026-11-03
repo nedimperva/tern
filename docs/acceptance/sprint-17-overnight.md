@@ -88,6 +88,11 @@ webhook.site address of your own to see exactly what arrives.
       `latest-beta.json`. If the Windows build fails on the MSI version, see Decisions in the sprint file.
 - [ ] An installed 1.9.0 AppImage switched to Beta updates to the beta; one on Stable doesn't.
 
+## Found while testing
+
+- [ ] From an empty list (an empty New people tab, an empty folder) back to the inbox: no flash of Inbox Zero
+      before the conversations show.
+
 ## Upgrade
 
 - [ ] Copy the installed database to the dev path (SQLite backup), start the branch: it opens at schema 32, your
