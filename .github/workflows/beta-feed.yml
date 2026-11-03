@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "The release to point the beta feed at, such as v2.0.0-beta.1"
+        description: "The release to point the beta feed at, such as v2.0.0-1"
         required: true
 
 permissions:
@@ -44,7 +44,7 @@ jobs:
               --notes "Holds latest-beta.json for Tern's beta channel. Install from the versions' own releases."
           fi
           gh release download beta -R "$REPO" -p latest-beta.json -O old.json 2>/dev/null || echo '{"version":"0.0.0"}' > old.json
-          # Semver order, pre-releases before their release: 2.0.0-beta.2 < 2.0.0-beta.10 < 2.0.0.
+          # Semver order, pre-releases before their release: 2.0.0-2 < 2.0.0-10 < 2.0.0.
           newer=$(node -e '
             const fs = require("fs");
             const v = (f) => String(JSON.parse(fs.readFileSync(f, "utf8")).version).replace(/^v/, "");

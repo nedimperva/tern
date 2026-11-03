@@ -87,7 +87,7 @@ webhook.site address of your own to see exactly what arrives.
 
 - [ ] Settings → About shows "Updates: Stable / Beta" only in the AppImage and on Windows, not in a dev build
       (dev builds never update; check the row is missing there).
-- [ ] Not testable until a beta is tagged: push a `v2.0.0-beta.1` tag (with its CHANGELOG section) from a test
+- [ ] Not testable until a beta is tagged: push a `v2.0.0-1` tag (with its CHANGELOG section) from a test
       branch, publish the draft, and check the `beta feed` workflow made a `beta` release holding
       `latest-beta.json`. If the Windows build fails on the MSI version, see Decisions in the sprint file.
 - [ ] An installed 1.9.0 AppImage switched to Beta updates to the beta; one on Stable doesn't.

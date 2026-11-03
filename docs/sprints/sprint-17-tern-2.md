@@ -170,6 +170,7 @@ Open, for the owner:
 - **Beta version numbers:** WiX (the `.msi`) takes only numeric pre-release parts, so `2.0.0-beta.1` may fail the
   Windows build where `2.0.0-1` works. Try a beta tag on a branch first (a PR that touches release.yml builds
   without releasing); if the MSI refuses, number betas `2.0.0-1`, `2.0.0-2`, or drop the MSI for betas.
+  The first beta (2026-11-03) is `2.0.0-1`, numbered that way so the MSI can't refuse it.
 - **Block's key:** `B` in a conversation switches reading view, so block has no key there; in New people it takes
   `X`? Proposed: menu and palette only in a conversation, `X` in New people. Built that way, as `Shift+X` (`x`
   selects) and `Shift+O` for Other (`o` opens); the owner can still change it.

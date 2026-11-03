@@ -7,6 +7,8 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [2.0.0-1] - 2026-11-03
+
 ### Added
 
 - One-click unsubscribe: `Ctrl+U` (or the Unsubscribe button) on a list that offers it (RFC 8058) unsubscribes
