@@ -103,9 +103,10 @@ export function Companion(props: {
         <Show when={who()}>
           {(m) => (
             <div class="person-do">
-              <button type="button" onClick={() => props.person.write(m().fromAddr)}>
+              {/* "Write", not "Write to {name}": a long name pushed the split choice onto a line of its own. */}
+              <button type="button" onClick={() => props.person.write(m().fromAddr)} title={`Write to ${m().fromAddr}`}>
                 <Icon name="pen-line" size={13} />
-                Write to {firstName()}
+                Write
               </button>
               <button type="button" onClick={() => void copy(m().fromAddr)} title={m().fromAddr}>
                 {copied() ? "Copied" : "Copy address"}

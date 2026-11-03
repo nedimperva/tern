@@ -6372,7 +6372,6 @@ button.link.danger {
 .companion .person-do {
   flex: 1 0 100%;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--s-2);
 }

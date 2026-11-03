@@ -23,9 +23,9 @@ webhook.site address of your own to see exactly what arrives.
 
 ## Companion (H)
 
-- [ ] Open a conversation with `i`. Under the name: Write to {name}, Copy address, and a drop-down (Important,
+- [ ] Open a conversation with `i`. Under the name, on one row: Write, Copy address, and a drop-down (Important,
       Other, Blocked). The buttons have a thin edge; the drop-down sits on the right.
-- [ ] Write to opens compose to them. Copy address says "Copied" and the address is on the clipboard.
+- [ ] Write opens compose to them. Copy address says "Copied" and the address is on the clipboard.
 - [ ] "Recent with {name}" is a card. The open conversation isn't in it. Unread ones have a dot and a bold subject.
       Each row shows a line of its newest text.
 - [ ] Clicking a row opens that conversation, scrolled to that message.
