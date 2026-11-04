@@ -9,7 +9,7 @@ import { api, type AiAnswer, type ContactCard, type Sender, type SenderState, ty
 import { filesOf } from "../files";
 import { promisesIn } from "../promises";
 import { blockSender, splitSenders } from "../app/actions";
-import { setDetailsSlot } from "../app/state";
+import { setDetailsSlot, setViewing } from "../app/state";
 import { aiOn, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
 import { Avatar } from "./ConversationView";
@@ -423,7 +423,8 @@ function Files(props: { messages: ThreadMessage[]; sender: (m: ThreadMessage) =>
             {(f) => {
               const [tag, tint] = kindOf(f.a.name, f.a.mime);
               return (
-                <button type="button" class="file" onClick={() => void api.openAttachment(f.m.id, f.index)} title="Open it">
+                // The same viewer as a file in the conversation; it has Open with the system for what it can't show.
+                <button type="button" class="file" onClick={() => setViewing({ message: f.m, index: f.index })} title="Show it">
                   <span class={`tile ${tint}`}>{tag}</span>
                   <span class="what">
                     <span class="name">{f.a.name}</span>

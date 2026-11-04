@@ -13,7 +13,7 @@ export function StatusStrip() {
     <footer class="status">
       <span class={`sync ${syncSentence().tone}`}>
         <span class="dot" />
-        {syncSentence().text}
+        <span class="text">{syncSentence().text}</span>
       </span>
       <Show when={paused()}>
         <button class="link waiting-link" onClick={() => void api.setSyncPaused(false)}>

@@ -1026,6 +1026,12 @@ button.primary kbd {
   color: var(--fg-2);
   margin-left: var(--s-2);
 }
+.crow .more {
+  margin-left: var(--s-2);
+  font-size: var(--t-sm);
+  font-weight: 400;
+  color: var(--fg-2);
+}
 .conversation-head .labels {
   display: flex;
   flex-wrap: wrap;
@@ -1143,8 +1149,23 @@ button.primary kbd {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+/* Beside an open conversation the strip is only as wide as the list: what doesn't fit shortens instead of being cut
+   off at the edge, and the keys go (the conversation shows its own). */
+.status .sync .text,
+.status .toast > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status .toast {
+  min-width: 0;
+}
+.split .status .hints {
+  display: none;
 }
 .status .dot {
+  flex: none;
   width: 6px;
   height: 6px;
   border-radius: 50%;
