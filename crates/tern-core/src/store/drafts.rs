@@ -546,6 +546,42 @@ impl Store {
         }))
     }
 
+    /// Every message in a folder that is on the server, oldest first: what an mbox export of the folder holds.
+    pub fn folder_message_ids(&self, folder_id: i64) -> Result<Vec<i64>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id FROM messages WHERE folder_id = ?1 AND uid IS NOT NULL ORDER BY date, id",
+        )?;
+        let ids = stmt.query_map([folder_id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+        Ok(ids)
+    }
+
+    /// Where each of these messages is on the server, with its sender and date for an mbox "From " line, as
+    /// (account, place, from, date). Messages not on the server yet are left out.
+    pub fn export_places(&self, ids: &[i64]) -> Result<Vec<(i64, ForwardOf, String, i64)>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(
+            "SELECT m.account_id, f.name, m.uid, f.uid_validity, m.message_id, m.from_addr, m.date FROM messages m
+             JOIN folders f ON f.id = m.folder_id WHERE m.id = ?1 AND m.uid IS NOT NULL",
+        )?;
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            let found = stmt
+                .query_row([id], |r| {
+                    let at = ForwardOf {
+                        folder: r.get(1)?,
+                        uid: r.get(2)?,
+                        validity: r.get(3)?,
+                        message_id: r.get(4)?,
+                    };
+                    Ok((r.get(0)?, at, r.get(5)?, r.get(6)?))
+                })
+                .optional()?;
+            out.extend(found);
+        }
+        Ok(out)
+    }
+
     pub fn thread(&self, id: i64) -> Result<Vec<ThreadMessage>> {
         let conn = self.reader();
         let mut stmt = conn.prepare_cached(&format!(

@@ -25,6 +25,8 @@ export type AiFact = { kind: "due" | "asked" | "decided"; text: string };
 export type AiAnswer = { text: string; messages: number[]; sentChars: number; route: { provider: AiProvider; model: string } };
 /** A line of a summary over many conversations, with the newest message of each it rests on. */
 export type AiPoint = { text: string; messages: number[] };
+/** How an mbox export went. */
+export type Exported = { written: number; missing: number; stopped: boolean; path: string };
 /** What came in overnight, in a few lines, and what was sent to get it. */
 export type AiOvernight = { points: AiPoint[]; conversations: number; sentChars: number; route: { provider: AiProvider; model: string } };
 /** One suggested reply: a few words on what it does, and the reply. */
@@ -409,6 +411,13 @@ export interface Api {
   search(query: string, limit: number): Promise<{ rows: MessageRow[]; partial: boolean }>;
   /** Each account's server searched for the query's words where mail isn't all here; what it found, newest first. */
   searchServer(query: string): Promise<MessageRow[]>;
+  /** A message's source from the server, saved where the person picks; false if they cancelled. */
+  saveEml(id: number): Promise<boolean>;
+  /** A folder or a search's results as one mbox file; null if the person cancelled the save dialog. */
+  exportMbox(folder: number | null, query: string | null, name: string): Promise<Exported | null>;
+  exportStop(): Promise<void>;
+  /** How far an export is; returns a function that stops listening. */
+  onExportProgress(f: (p: { done: number; total: number }) => void): () => void;
   apply(ids: number[], action: Action): Promise<Applied>;
   undo(token: number[]): Promise<boolean>;
   /** Queues a send; `delay` is the undo window in seconds; `draftId` when it was a saved draft. */
@@ -672,6 +681,15 @@ const tauri: Api = {
   thread: (id) => invoke("thread", { id }),
   search: (query, limit) => invoke("search", { query, limit }),
   searchServer: (query) => invoke("search_server", { query }),
+  saveEml: (id) => invoke("save_eml", { id }),
+  exportMbox: (folder, query, name) => invoke("export_mbox", { folder, query, name }),
+  exportStop: () => invoke("export_stop"),
+  onExportProgress: (f) => {
+    let stop: (() => void) | null = null;
+    let stopped = false;
+    void listen<{ done: number; total: number }>("export-progress", (e) => f(e.payload)).then((u) => (stopped ? u() : (stop = u)));
+    return () => ((stopped = true), stop?.());
+  },
   apply: (ids, action) => invoke("apply", { ids, action }),
   problems: () => invoke("problems"),
   retryProblem: (id) => invoke("retry_problem", { id }),
@@ -995,6 +1013,8 @@ function fake(): Api {
   });
   const listeners: (() => void)[] = [];
   const personNotes = new Map<string, string>();
+  const exportListeners: ((p: { done: number; total: number }) => void)[] = [];
+  let exportStopped = false;
   // #todoist: start connected, to see the Tasks section and the task box.
   let todoistToken = location.hash === "#todoist" ? "fake" : "";
   const TODOIST_PROJECTS: TodoistProject[] = [
@@ -1213,6 +1233,23 @@ function fake(): Api {
       return api.apply(chosen, action);
     },
     markAllRead: async (target) => api.apply(messages.filter((m) => inTarget(m, target) && !m.seen).map((m) => m.id), "markRead"),
+    saveEml: async () => true,
+    // A slow export of up to 40 messages, to see the progress and Stop.
+    async exportMbox(folder: number | null, query: string | null) {
+      const total = folder != null ? messages.filter((m) => m.folderId === folder).length : query ? 40 : 0;
+      let done = 0;
+      exportStopped = false;
+      for (; done < Math.min(total, 40) && !exportStopped; done++) {
+        await new Promise((r) => setTimeout(r, 60));
+        for (const f of exportListeners) f({ done: done + 1, total });
+      }
+      return { written: done, missing: 0, stopped: exportStopped, path: "C:\\Users\\you\\Documents\\Mail.mbox" };
+    },
+    exportStop: async () => void (exportStopped = true),
+    onExportProgress: (f) => {
+      exportListeners.push(f);
+      return () => exportListeners.splice(exportListeners.indexOf(f), 1);
+    },
     // The fake's "server" finds the first word in snippets, as if their text weren't here.
     searchServer: async (query) => {
       await new Promise((r) => setTimeout(r, 900));

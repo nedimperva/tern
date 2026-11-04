@@ -38,6 +38,7 @@ import { newMessage, reply, respond } from "./composing";
 import { escape, extend, go, isSaved, move, nextSplit, runSearch, toggleSaved, toggleSelected } from "./list";
 import { keyOf, withGroups } from "./rows";
 import { startTask, suggestTask, todoistOn } from "./tasks";
+import { exportable, exportList, exportName, saveEml } from "./files";
 import {
   accounts,
   choose,
@@ -207,6 +208,9 @@ export const menu = (all: Binding[]) => {
   });
   const spam = items.findIndex((i) => i.name === "Mark as spam");
   items.splice(spam, 0, { name: "Move to …", run: () => void choose("Move to …") }, ...blocking());
+  // The message the keys are on, else the newest: its source from the server, as a file.
+  const m = messages[messageFocus()] ?? messages[messages.length - 1];
+  if (m) items.push({ name: "Save as .eml", run: () => void saveEml(m.id) });
   return items;
 };
 
@@ -240,6 +244,7 @@ export const commands = (all: Binding[]): Command[] => [
       ]
     : []),
   ...blocking().map((b) => ({ ...b, group: "Actions" })),
+  ...(exportable() ? [{ name: `Export ${exportName()} as mbox`, group: "Actions", run: () => void exportList() }] : []),
   {
     name: "Move to …",
     group: "Actions",

@@ -7,6 +7,7 @@ pub mod backup;
 pub mod imap;
 pub mod logo;
 pub mod mailto;
+pub mod mbox;
 pub mod mime;
 pub mod models;
 pub mod oauth;

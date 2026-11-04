@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js";
 import { api } from "../api";
 import { restartToUpdate } from "../app/actions";
+import { exporting, stopExport } from "../app/files";
 import { idle, problems, selection, setReviewing, update } from "../app/state";
 import { held, hints, late, paused, scheduled, syncSentence } from "../app/status";
 import { toast, undo } from "../app/toast";
@@ -46,6 +47,16 @@ export function StatusStrip() {
             <Icon name="download" size={12} />
             Update ready · Restart
           </button>
+        )}
+      </Show>
+      <Show when={exporting()}>
+        {(x) => (
+          <span class="exporting" role="status">
+            Exporting {x().done.toLocaleString()} of {x().total.toLocaleString()}
+            <button class="link waiting-link" onClick={() => void stopExport()}>
+              Stop
+            </button>
+          </span>
         )}
       </Show>
       <Show when={selection().size}>

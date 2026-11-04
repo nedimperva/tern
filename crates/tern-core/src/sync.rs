@@ -1318,6 +1318,34 @@ pub async fn download(
     raw
 }
 
+/// The sources of many messages of one account, one after another on a connection of its own (an mbox export,
+/// package 17 I). `each` gets every message's place in `places` and its source (None when it's gone from the server)
+/// and returns false to stop. A read: nothing changes on the server.
+pub async fn sources(
+    config: &AccountConfig,
+    login: &Login,
+    places: &[crate::models::ForwardOf],
+    each: &mut (dyn FnMut(usize, Option<Vec<u8>>) -> bool + Send),
+) -> Result<()> {
+    let mut s = within(connect(config, login)).await?;
+    let mut result = Ok(());
+    for (i, at) in places.iter().enumerate() {
+        let raw = match message_source(&mut s, at).await {
+            Ok(raw) => Some(raw),
+            Err(e) if e.is::<Gone>() => None,
+            Err(e) => {
+                result = Err(e);
+                break;
+            }
+        };
+        if !each(i, raw) {
+            break;
+        }
+    }
+    let _ = within(s.logout()).await;
+    result
+}
+
 /// How long one folder's server search may take: a large folder's TEXT search reads every message there.
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(90);
 
