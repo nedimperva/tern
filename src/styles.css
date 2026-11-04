@@ -230,10 +230,31 @@ button.primary kbd {
 .window:has(.app.full) .titlebar-slot {
   display: none;
 }
-/* An open conversation's subject and tools, after the list's column (canvas "Tern title bar ideas", 1). */
+/* An open conversation's subject and tools, after the list's column (canvas "Tern title bar ideas", 1). With
+   both sidebars open in a smaller window it is narrow, and things give way in order so the subject keeps its room:
+   the people and count, then the keys on Done, then the quieter tools (their keys and the ⋯ menu still reach them),
+   then the sync button's words. */
 .titlebar-conv {
   display: flex;
   min-width: 0;
+  container: conv-bar / inline-size;
+}
+@container conv-bar (max-width: 720px) {
+  .conv-meta,
+  .conv-bar .tools .primary kbd {
+    display: none;
+  }
+}
+@container conv-bar (max-width: 560px) {
+  .conv-bar .tools .extra,
+  .conv-bar .tools .vsep {
+    display: none;
+  }
+}
+@media (max-width: 1440px) {
+  .titlebar:has(.conv-bar) .sync-label {
+    display: none;
+  }
 }
 .titlebar-conv:has(.conv-bar) {
   flex: 1;

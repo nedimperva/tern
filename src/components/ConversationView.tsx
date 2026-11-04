@@ -1035,19 +1035,19 @@ export function ConversationView(props: {
   const tools = () => (
     <div class="tools">
       <Show when={privacy().trackers || privacy().blocked}>
-        <button class="tool safe" data-tip={shieldTip()} aria-label={shieldTip()} onClick={() => privacy().blocked && setAsked(true)}>
+        <button class="tool safe extra" data-tip={shieldTip()} aria-label={shieldTip()} onClick={() => privacy().blocked && setAsked(true)}>
           <Icon name="shield-check" size={15} />
           <Show when={privacy().trackers}>{privacy().trackers}</Show>
         </button>
       </Show>
       <Show when={minutes() >= 2 && !reader()}>
-        <span class="tool" role="img" data-tip={`${minutes()} min read`} aria-label={`${minutes()} min read`}>
+        <span class="tool extra" role="img" data-tip={`${minutes()} min read`} aria-label={`${minutes()} min read`}>
           <Icon name="clock" size={15} />
         </span>
       </Show>
       <Show when={designed().size && !reader()}>
         <button
-          class="tool"
+          class="tool extra"
           classList={{ on: reading() }}
           aria-pressed={reading()}
           data-tip={reading() ? "Show the original" : "Reading view: the words and pictures in Tern's type"}
@@ -1068,7 +1068,7 @@ export function ConversationView(props: {
         <Icon name="panel-right" size={15} />
       </button>
       <Show when={listMail()}>
-        <button class="tool" data-tip={left() || "Unsubscribe from this list (Ctrl+U)"} aria-label={left() || "Unsubscribe"} onClick={() => void unsubscribe()}>
+        <button class="tool extra" data-tip={left() || "Unsubscribe from this list (Ctrl+U)"} aria-label={left() || "Unsubscribe"} onClick={() => void unsubscribe()}>
           <Icon name={left() ? "check" : "mail-x"} size={15} />
         </button>
       </Show>
