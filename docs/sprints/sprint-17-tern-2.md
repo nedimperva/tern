@@ -133,9 +133,10 @@ column, at rest" and "A — Adding a task from the mail").
   and the Tasks section lists them. Not yet: asking Todoist for a task's state when the conversation opens.
 - [ ] Ask and promise rows: "Owed to you" and "You owe" rows get **+ Task**; a row already in Todoist shows its task
   instead, so nothing is listed twice.
-- [ ] With AI (behind `ai::allowed`, its own switch for tasks): Suggest with AI in the task box fills the title, due
-  day and project from the mail as a proposal. Nothing is created until the person presses Enter. Mail goes to the AI provider,
-  never to Todoist.
+- [x] With AI (behind `ai::allowed`): Fill in the task box proposes the title, the day and a note from the mail
+  (`ai::suggest_task`, `prompts/task.md`). Nothing is created until the person presses Enter. Mail goes to the AI
+  provider, never to Todoist. Owner, 2026-11-04: the project is the one chosen in Settings, not asked in the box.
+  Behind the summaries switch for now, not a switch of its own.
 - [x] Tests: the Todoist client against a canned HTTP server (`todoist::tests`); the queued task, its undo and its
   id (`store::tests`). Retry runs through the same outbox path as every op.
 

@@ -192,7 +192,9 @@ export type PersonFacts = {
 };
 export type TodoistProject = { id: string; name: string; inbox: boolean };
 /** What the task box sends. */
-export type TaskInput = { title: string; due?: string | null; projectId?: string | null; label?: string | null };
+export type TaskInput = { title: string; due?: string | null; projectId?: string | null; label?: string | null; note?: string | null };
+/** A task the AI proposes for the task box; `due` as Todoist reads it, empty when none. */
+export type TaskSuggestion = { title: string; due: string; note: string; sentChars: number; route: { provider: AiProvider; model: string } };
 /** A task made from a conversation; `url` once Todoist has it. */
 export type TaskRow = { id: number; title: string; due: string | null; url: string | null };
 /** A file exchanged with a person, from any conversation. */
@@ -423,6 +425,8 @@ export interface Api {
   /** Queues a task from the conversation of message `id`, with the usual undo; the undo token. */
   queueTask(id: number, task: TaskInput): Promise<number[]>;
   tasksOf(id: number): Promise<TaskRow[]>;
+  /** A task proposed by AI from the conversation (behind the summaries switch); nothing is created. */
+  aiTask(id: number): Promise<TaskSuggestion>;
   /** The system file picker; paths chosen (none if cancelled). */
   pickFiles(): Promise<string[]>;
   /** Copies files into Tern's attachment folder, for a draft. */
@@ -680,6 +684,7 @@ const tauri: Api = {
   todoistForget: () => invoke("todoist_forget"),
   queueTask: (id, task) => invoke("queue_task", { id, task }),
   tasksOf: (id) => invoke("tasks_of", { id }),
+  aiTask: (id) => invoke("ai_task", { id }),
   onFilesDropped: (f, hover) => {
     const stops: (() => void)[] = [];
     let stopped = false;
@@ -1311,6 +1316,17 @@ function fake(): Api {
       const timer = window.setTimeout(() => (row.url = `https://app.todoist.com/app/task/${row.id}`), 6000);
       pending.set(-row.id, () => (window.clearTimeout(timer), fakeTasks.splice(fakeTasks.indexOf(row), 1)));
       return [-row.id];
+    },
+    aiTask: async (id) => {
+      await new Promise((r) => setTimeout(r, 700));
+      const m = messages.find((x) => x.id === id);
+      return {
+        title: `Bring the Q3 deck for ${m?.fromName.split(" ")[0] ?? "them"}`,
+        due: "sat 10am",
+        note: "Studio 4, Keizersgracht 120 · 20 minutes",
+        sentChars: 2140,
+        route: { provider: "anthropic", model: "claude-sonnet-5-5" },
+      };
     },
     tasksOf: async (id) => {
       const thread = messages.find((m) => m.id === id)?.threadId;

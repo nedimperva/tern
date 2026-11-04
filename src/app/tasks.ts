@@ -48,11 +48,13 @@ export function startTask(message: number, title: string, due = "") {
   setTaskBox({ message, title, due });
 }
 
-export async function addTask(draft: TaskDraft, projectId: string, title: string, due: string) {
+/** Adds the task to the project chosen in Settings → Todoist (its Inbox when none is). */
+export async function addTask(draft: TaskDraft, title: string, due: string, note: string) {
   setTaskBox(null);
   try {
     const label = settings.todoist.label.trim();
-    const token = await api.queueTask(draft.message, { title, due, projectId: projectId || null, label: label || null });
+    const projectId = settings.todoist.project || null;
+    const token = await api.queueTask(draft.message, { title, due, projectId, label: label || null, note: note || null });
     loadTasks(draft.message);
     showToast(`Added to Todoist: ${title}`, token, () => loadTasks(draft.message));
   } catch (e) {

@@ -183,10 +183,16 @@ impl Store {
         let who = if name.is_empty() { addr } else { name };
         let task = crate::todoist::NewTask {
             content: title.to_string(),
-            description: if subject.is_empty() {
-                format!("From {who}")
-            } else {
-                format!("From {who} · {subject}")
+            description: {
+                let from = if subject.is_empty() {
+                    format!("From {who}")
+                } else {
+                    format!("From {who} · {subject}")
+                };
+                match input.note.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+                    Some(note) => format!("{note}\n\n{from}"),
+                    None => from,
+                }
             },
             due_string: due,
             project_id: input.project_id.clone().filter(|p| !p.is_empty()),

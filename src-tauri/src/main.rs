@@ -281,6 +281,7 @@ fn main() {
             commands::todoist_projects,
             commands::todoist_forget,
             commands::queue_task,
+            commands::ai_task,
             commands::tasks_of,
             commands::muted,
             commands::take_mailto,

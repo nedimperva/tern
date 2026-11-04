@@ -110,9 +110,9 @@ export function TodoistSettings() {
           <For
             each={[
               "Only when you add a task: T, or Add task beside something asked or due.",
-              "The title and day as you typed them, the project and the label.",
+              "The title, the day and the note as they are in the box, the project and the label.",
               "One line naming the mail: who sent it and its subject.",
-              "Never the mail's text or its files.",
+              "Never the mail's text or its files. Fill with AI sends the conversation to your AI provider, not to Todoist.",
             ]}
           >
             {(line) => <li>{line}</li>}

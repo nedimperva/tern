@@ -1495,6 +1495,13 @@ pub async fn ai_ask(
     .await
 }
 
+/// A task the AI proposes from the conversation of message `id`, for the task box; nothing is created.
+#[tauri::command]
+pub async fn ai_task(state: State<'_, AppState>, id: i64) -> Reply<ai::TaskSuggestion> {
+    let store = state.store.clone();
+    blocking(move || ai::suggest_task(&store, &providers::Router, id, &mut |_| {})).await
+}
+
 /// Three replies the person could send to the conversation of message `id`.
 #[tauri::command]
 pub async fn ai_replies(

@@ -1643,6 +1643,7 @@ fn a_task_from_mail_shows_at_once_goes_on_undo_and_keeps_its_todoist_id() {
         due: Some("fri".into()),
         project_id: Some(String::new()),
         label: Some("@mail".into()),
+        note: None,
     };
     let (owner, token) = store.queue_task(id, &input, 5).unwrap();
     assert_eq!(owner, account);
@@ -1668,6 +1669,13 @@ fn a_task_from_mail_shows_at_once_goes_on_undo_and_keeps_its_todoist_id() {
         Some("https://app.todoist.com/app/task/6X7rM8997g3RQmvh")
     );
     assert!(store.queue_task(id, &TaskInput { title: "  ".into(), ..Default::default() }, 5).is_err());
+    let noted =
+        TaskInput { title: "Pay".into(), note: Some(" IBAN in the mail ".into()), ..Default::default() };
+    store.queue_task(id, &noted, 5).unwrap();
+    let last: String =
+        store.conn().query_row("SELECT payload FROM outbox ORDER BY id DESC", [], |r| r.get(0)).unwrap();
+    let OutboxOp::Task { task, .. } = serde_json::from_str(&last).unwrap() else { panic!("{last}") };
+    assert_eq!(task.description, "IBAN in the mail\n\nFrom Ada · Q3 offsite", "the kept note, then the mail");
 }
 
 #[test]

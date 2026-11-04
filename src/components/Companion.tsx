@@ -544,27 +544,52 @@ function Tasks(props: { message: ThreadMessage; messages: ThreadMessage[]; mine:
             </button>
           }
         >
-          {(d) => <TaskBox draft={d()} />}
+          {(d) => <TaskBox draft={d()} accountId={props.message.accountId} />}
         </Show>
       </div>
     </section>
   );
 }
 
-/** The task box: the title, the day as Todoist reads it ("fri", "tomorrow 9am"), the project. Enter adds, Esc drops
- * it. Under it, exactly what goes to Todoist. */
-function TaskBox(props: { draft: TaskDraft }) {
+// The project's name, read once a session for the box's "To Work" line (the choice itself is in Settings).
+let projectNames: Promise<TodoistProject[]> | null = null;
+
+/** The task box: the title, the day as Todoist reads it ("fri", "tomorrow 9am") and a note, going to the project
+ * chosen in Settings → Todoist. With AI on, Fill with AI proposes all three from the conversation. Enter adds, Esc
+ * drops it. Under it, exactly what goes to Todoist. */
+function TaskBox(props: { draft: TaskDraft; accountId: number }) {
   const [title, setTitle] = createSignal(props.draft.title);
   const [due, setDue] = createSignal(props.draft.due);
-  const [project, setProject] = createSignal(settings.todoist.project);
-  const [projects, setProjects] = createSignal<TodoistProject[]>([]);
+  const [note, setNote] = createSignal("");
+  const [project, setProject] = createSignal("");
   const [problem, setProblem] = createSignal("");
-  void api.todoistProjects().then(setProjects, (e) => setProblem(String(e)));
+  const [filling, setFilling] = createSignal(false);
+  const [filled, setFilled] = createSignal("");
+  const chosen = settings.todoist.project;
+  if (chosen) {
+    projectNames ??= api.todoistProjects();
+    void projectNames.then((all) => setProject(all.find((p) => p.id === chosen)?.name ?? ""), () => (projectNames = null));
+  }
   let field: HTMLInputElement | undefined;
   requestAnimationFrame(() => field?.select());
   const keys = (e: KeyboardEvent) => {
     e.stopPropagation();
     if (e.key === "Escape") setTaskBox(null);
+  };
+  const fill = async () => {
+    setFilling(true);
+    setProblem("");
+    try {
+      const s = await api.aiTask(props.draft.message);
+      setTitle(s.title);
+      setDue(s.due);
+      setNote(s.note);
+      setFilled(`Filled in by ${PROVIDERS[s.route.provider] ?? s.route.provider} from this conversation (${s.sentChars.toLocaleString()} characters sent). Check it before adding.`);
+    } catch (e) {
+      setProblem(String(e));
+    } finally {
+      setFilling(false);
+    }
   };
   const label = () => settings.todoist.label.trim().replace(/^@/, "");
   return (
@@ -572,32 +597,43 @@ function TaskBox(props: { draft: TaskDraft }) {
       class="task-box"
       onSubmit={(e) => {
         e.preventDefault();
-        if (title().trim()) void addTask(props.draft, project(), title().trim(), due().trim());
+        if (title().trim()) void addTask(props.draft, title().trim(), due().trim(), note().trim());
       }}
     >
-      <label class="visually-hidden" for="task-title">
-        Task
-      </label>
-      <input id="task-title" ref={field} value={title()} onInput={(e) => setTitle(e.currentTarget.value)} onKeyDown={keys} placeholder="What to do" />
+      <div class="task-top">
+        <label class="visually-hidden" for="task-title">
+          Task
+        </label>
+        <input id="task-title" ref={field} value={title()} onInput={(e) => setTitle(e.currentTarget.value)} onKeyDown={keys} placeholder="What to do" />
+        <Show when={aiOn("summaries", props.accountId)}>
+          <button type="button" class="ai-fill" onClick={() => void fill()} disabled={filling()} title="Propose the title, the day and a note from this conversation. Sends it to your AI provider.">
+            <kbd class="ai-mark">AI</kbd>
+            {filling() ? "Filling…" : "Fill"}
+          </button>
+        </Show>
+      </div>
       <div class="task-fields">
         <label class="visually-hidden" for="task-due">
           When
         </label>
         <input id="task-due" value={due()} onInput={(e) => setDue(e.currentTarget.value)} onKeyDown={keys} placeholder="Day: fri, tomorrow 9am" />
-        <label class="visually-hidden" for="task-project">
-          Project
-        </label>
-        <select id="task-project" value={project()} onChange={(e) => setProject(e.currentTarget.value)} onKeyDown={keys}>
-          <option value="">Inbox</option>
-          <For each={projects().filter((p) => !p.inbox)}>{(p) => <option value={p.id}>{p.name}</option>}</For>
-        </select>
+        <span class="task-project" title="Change it in Settings → Todoist">
+          To {project() || "Inbox"}
+        </span>
       </div>
+      <label class="visually-hidden" for="task-note">
+        Note
+      </label>
+      <textarea id="task-note" rows="1" value={note()} onInput={(e) => setNote(e.currentTarget.value)} onKeyDown={keys} placeholder="Note (optional)" />
       <Show when={problem()}>
         <p class="quiet error">{problem()}</p>
       </Show>
+      <Show when={filled()}>
+        <p class="quiet">{filled()}</p>
+      </Show>
       <p class="quiet">
-        To Todoist: the title, the day, the project{label() ? `, @${label()}` : ""} and who sent the mail with its subject. No
-        mail text.
+        To Todoist: the title, the day{note().trim() ? ", the note" : ""}{label() ? `, @${label()}` : ""} and who sent the mail
+        with its subject. No other mail text.
       </p>
       <div class="task-do">
         <button type="button" onClick={() => setTaskBox(null)}>

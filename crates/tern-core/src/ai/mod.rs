@@ -778,6 +778,65 @@ pub fn ask_about(
     })
 }
 
+// MARK: A task from the mail
+
+const TASK_PROMPT: &str = include_str!("prompts/task.md");
+
+/// A task the AI proposes from a conversation, for the task box to show; nothing is created from it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskSuggestion {
+    pub title: String,
+    /// As a to-do app reads it ("fri 10am"); empty when the mail names no day.
+    pub due: String,
+    pub note: String,
+    pub sent_chars: usize,
+    pub route: Route,
+}
+
+/// Proposes a title, a day and a note for a task from the conversation holding message `id`. Behind the summaries
+/// switch, like Ask: proposing a task is reading the conversation. The mail goes to the AI provider; what goes to
+/// Todoist is what the person keeps in the box. Never kept.
+pub fn suggest_task(
+    store: &Store,
+    model: &dyn Model,
+    id: i64,
+    on_text: &mut dyn FnMut(&str),
+) -> Result<TaskSuggestion> {
+    let s = settings(store)?;
+    let messages: Vec<ThreadMessage> =
+        store.thread(id)?.into_iter().filter(|m| m.draft_id.is_none()).collect();
+    let Some(first) = messages.first() else { bail!("That conversation is gone.") };
+    let account = first.row.account_id;
+    let r = allowed(&s, Feature::Summaries, account)?;
+    let mut user = transcript(&messages, s.redact, &own_address(store, account)?);
+    user.push_str(&format!("\n\n<today>{}</today>", chrono::Local::now().format("%A %-d %B %Y")));
+    if user.len() > MAX_CHARS {
+        bail!("This conversation is too long to make a task from.");
+    }
+    let req = Request { provider: r.provider, model: r.model.clone(), system: TASK_PROMPT, user };
+    let text = ask(store, &s, model, &req, on_text)?;
+    let (title, due, note) = task_lines(&text);
+    if title.is_empty() {
+        bail!("The AI sent back no task. Try again.");
+    }
+    Ok(TaskSuggestion { title, due, note, sent_chars: req.user.len(), route: r })
+}
+
+/// The three lines of a task answer. "none" and anything missing are empty.
+fn task_lines(text: &str) -> (String, String, String) {
+    let field = |name: &str| {
+        text.lines()
+            .find_map(|l| {
+                let (k, v) = l.split_once(':')?;
+                k.trim().eq_ignore_ascii_case(name).then(|| v.trim().trim_matches('"').to_string())
+            })
+            .filter(|v| !v.eq_ignore_ascii_case("none"))
+            .unwrap_or_default()
+    };
+    (field("Title"), field("Due"), field("Note"))
+}
+
 // MARK: Suggested replies
 
 /// Three short replies the person could send to the conversation holding message `id`, kept like summaries so
@@ -1045,6 +1104,27 @@ mod tests {
         assert!(req.user.ends_with("<question>When does Tom send it?</question>"));
         assert_eq!(answer.sent_chars, req.user.len());
         assert!(!req.user.contains("+387"), "redacted like a summary");
+    }
+
+    #[test]
+    fn a_task_is_proposed_from_three_lines() {
+        let (store, account, id) = mailbox();
+        let model = Scripted::new("Title: Send Ana the Q3 deck\nDue: thu\nNote: none");
+        assert!(suggest_task(&store, &model, id, &mut |_| {}).is_err(), "not while AI is off");
+        turn_on(&store, account);
+        let task = suggest_task(&store, &model, id, &mut |_| {}).unwrap();
+        assert_eq!(
+            (task.title.as_str(), task.due.as_str(), task.note.as_str()),
+            ("Send Ana the Q3 deck", "thu", "")
+        );
+        let req = model.asked.borrow()[0].clone();
+        assert_eq!(req.system, TASK_PROMPT);
+        assert!(req.user.contains("<today>"), "today's date, to work out the day");
+        assert!(!req.user.contains("+387"), "redacted like a summary");
+        assert_eq!(
+            task_lines("title: \"Pay it\"\nDUE: none\nnote: IBAN in the mail"),
+            ("Pay it".into(), String::new(), "IBAN in the mail".into())
+        );
     }
 
     #[test]

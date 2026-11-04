@@ -499,6 +499,10 @@ the header's panel icon; a Note from the selection bar opens it with the note's 
     card with the conversation's tasks (a round tick in the priority's colour, the title, "day · project · from
     this mail" in `--fg-2`, Open) and a last row "Add a task from this mail" with its keycap `T`. The conversation
     shows an `--accent-soft` pill "In Todoist · due Fri" under its subject.
+  - Built 2026-11-04: the task box holds the title (with `AI` Fill at its right when AI is on), the day on
+    `--accent-soft` beside "To {project}" (the project from Settings → Todoist, never asked here, owner), a note
+    field, and under them what goes to Todoist. Fill puts in a title, a day and a note and says which provider and
+    how many characters it was sent. The planned box below is what it grows towards.
   - `T` turns the card into the task box: a `--bg-0` card with an `--accent` edge and `--shadow`; the title as a
     plain field, then chips (the day on `--accent-soft`, project, priority, label on `--bg-2`), the description
     line ("From Ana Kovač · subject · Open in Tern"), a `--soft` row saying where the fields came from with Suggest

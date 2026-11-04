@@ -29,7 +29,8 @@ Only when the person adds a task (`t`, the Tasks row, or Add task beside somethi
 
 - the title and the day as typed (`due_string`, which Todoist reads itself);
 - the project and the label (`@mail` by default, set in Settings);
-- one description line: "From {sender} · {subject}".
+- one description line: "From {sender} · {subject}", under the note if the person kept one in the box (Fill with AI
+  proposes it from the mail; it goes only if it is still there when they press Enter).
 
 Never the mail's text, its files or addresses beyond the sender's name.
 

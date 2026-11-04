@@ -6796,24 +6796,68 @@ button.link.danger {
   box-shadow: var(--shadow);
 }
 .companion .task-box input,
-.companion .task-box select {
+.companion .task-box textarea {
   min-width: 0;
   font: inherit;
 }
+.companion .task-top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
 .companion .task-box #task-title {
+  flex: 1;
   padding: var(--s-1) 0;
   border: none;
   background: none;
   font-weight: 600;
   outline: none;
 }
+.companion .ai-fill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.companion .ai-fill:hover {
+  background: var(--bg-2);
+}
+.companion .ai-fill kbd.ai-mark {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.companion .task-project {
+  align-self: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.companion .task-box #task-note {
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  font-size: var(--t-sm);
+  resize: none;
+  field-sizing: content;
+  max-height: 120px;
+}
 .companion .task-fields {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--s-2);
 }
-.companion .task-fields input,
-.companion .task-fields select {
+.companion .task-fields input {
   height: 30px;
   padding: 0 var(--s-2);
   border: 1px solid var(--line);

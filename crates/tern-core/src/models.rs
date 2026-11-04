@@ -505,6 +505,9 @@ pub struct TaskInput {
     pub project_id: Option<String>,
     #[serde(default)]
     pub label: Option<String>,
+    /// A line the person kept in the box (a place, a code, an amount), above the line naming the mail.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// A task made from a conversation, as the conversation shows it.

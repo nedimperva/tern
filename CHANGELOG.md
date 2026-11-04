@@ -19,7 +19,8 @@ every release needs one here before it is tagged.
 - Todoist: connect your own API token in Settings → Todoist, then press T in a conversation (or Add task beside
   something asked or due) to make a task. It goes out after the usual 5-second undo and carries the title, the day,
   the project, a label and who sent the mail. Never the mail's text. The conversation shows "In Todoist" and its
-  tasks in the companion.
+  tasks in the companion. Tasks go to the project chosen in Settings; with AI on, Fill in the task box writes the
+  title, the day and a note for you to check.
 - The brief under a conversation's subject: what came since you last read it, then what was asked of you, the day
   and the place, each with a button (Answer, Snooze till then, Add task, Map). With AI on, Explain it adds a sentence
   on top.
