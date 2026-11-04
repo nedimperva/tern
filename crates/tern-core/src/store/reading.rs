@@ -164,6 +164,19 @@ impl Store {
         Ok(())
     }
 
+    /// Every muted conversation, newest first, by its newest message: for Settings → Senders, with Unmute.
+    pub fn muted_conversations(&self) -> Result<Vec<MessageRow>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(&format!(
+            "SELECT {ROW} FROM muted u JOIN messages m ON m.id = (
+                 SELECT id FROM messages x WHERE x.account_id = u.account_id AND x.thread_id = u.thread_id
+                 ORDER BY x.date DESC, x.id DESC LIMIT 1)
+             ORDER BY m.date DESC"
+        ))?;
+        let rows = stmt.query_map([], row)?.collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+
     /// Whether the conversation of this message is muted.
     pub fn muted(&self, id: i64) -> Result<bool> {
         Ok(self.conn().query_row(

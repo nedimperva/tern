@@ -541,6 +541,8 @@ export interface Api {
   onChange(f: (threads: string[] | null) => void): void;
   /** Mutes (or unmutes) the conversations of these messages: later replies skip the inbox. */
   mute(ids: number[], mute: boolean): Promise<void>;
+  /** Every muted conversation, newest first, by its newest message. */
+  mutedConversations(): Promise<MessageRow[]>;
   muted(id: number): Promise<boolean>;
   /** Settings the person changed, by name; the UI holds the defaults. */
   settings(): Promise<Record<string, unknown>>;
@@ -767,6 +769,7 @@ const tauri: Api = {
   syncStates: () => invoke("sync_states"),
   syncProgress: () => invoke("sync_progress"),
   mute: (ids, mute) => invoke("mute", { ids, mute }),
+  mutedConversations: () => invoke("muted_conversations"),
   muted: (id) => invoke("muted", { id }),
   settings: () => invoke("settings"),
   setSetting: (key, value) => invoke("set_setting", { key, value }),
@@ -1416,6 +1419,12 @@ function fake(): Api {
       }
     },
     muted: async (id) => mutedThreads.has(messages.find((m) => m.id === id)?.threadId ?? ""),
+    mutedConversations: async () =>
+      [...mutedThreads]
+        .map((t) => messages.filter((m) => m.threadId === t).sort((a, b) => b.date - a.date)[0])
+        .filter((m): m is ThreadMessage => !!m)
+        .sort((a, b) => b.date - a.date)
+        .map(row),
     // The browser fake keeps settings in this window's storage.
     settings: async () => {
       try {

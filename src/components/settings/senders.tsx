@@ -4,7 +4,7 @@
 // asks for, and nothing is sent without the person.
 
 import { createSignal, For, onMount, Show } from "solid-js";
-import { api, type SenderChoice, type SenderState, type SenderVolume } from "../../api";
+import { api, type MessageRow, type SenderChoice, type SenderState, type SenderVolume } from "../../api";
 import { fromLink } from "../../app/composing";
 import { setSettingsOpen } from "../../app/state";
 import { setSetting, settings } from "../../settings";
@@ -71,6 +71,7 @@ export function SendersSettings() {
       </Show>
       <div class="senders">
       <Choices />
+      <Muted />
       <h2 class="group-title senders-title">Who writes most</h2>
       <p class="help">
         Who sent you the most in the last {DAYS} days, most first. Unsubscribe opens the sender's own page, or starts the mail
@@ -120,6 +121,45 @@ const GROUPS: [SenderState, string, string][] = [
   ["important", "Kept in Important", "Their mail stays in Important, even when it looks like a list."],
 ];
 const BACK: Record<SenderState, string> = { blocked: "Unblock", other: "To Important", important: "Forget" };
+
+/** Muted conversations (`m`): replies to them skip the inbox. Unmute lets the next reply in again. */
+function Muted() {
+  const [rows, setRows] = createSignal<MessageRow[]>([]);
+  const read = () => void api.mutedConversations().then(setRows, () => setRows([]));
+  onMount(read);
+  const unmute = async (r: MessageRow) => {
+    await api.mute([r.id], false);
+    read();
+  };
+  return (
+    <Show when={rows().length}>
+      <section class="sender-choices">
+        <h4>
+          Muted <span class="count">{rows().length}</span>
+        </h4>
+        <p class="help">Replies in these conversations skip the inbox. They can still be found.</p>
+        <ul class="sender-list">
+          <For each={rows()}>
+            {(r) => (
+              <li>
+                <span class="who">
+                  <strong>{r.subject || "(no subject)"}</strong>
+                  <span class="addr">{r.fromName || r.fromAddr}</span>
+                </span>
+                <span />
+                <span class="actions">
+                  <button type="button" onClick={() => void unmute(r)}>
+                    Unmute
+                  </button>
+                </span>
+              </li>
+            )}
+          </For>
+        </ul>
+      </section>
+    </Show>
+  );
+}
 
 /** What the person chose about senders, a list per choice, each with a way back. */
 function Choices() {

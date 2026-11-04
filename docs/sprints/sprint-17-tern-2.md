@@ -70,10 +70,11 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
   mail from them dated after the block is marked read and archived on arrival through the outbox
   (`archive_blocked`), and still searchable; the conversation goes to Done, one undo for both. Nothing tells the
   sender. (From New people with C's screener.)
-- [ ] Settings → Senders (canvas board "Senders"): the screener switch, known domains, and Blocked, Muted, To Other
+- [x] Settings → Senders (canvas board "Senders"): the screener switch, known domains, and Blocked, Muted, To Other
   and Let in lists, each with a way back (Unblock, Unmute, To Important). Who writes most moves here. Done so far:
   the screener switch, "People you know at" (known domains), "Your choices" (Blocked, To Other, Kept in
-  Important, each with its way back; Let in shows as Kept in Important) above Who writes most. Muted is still to do.
+  Important, each with its way back; Let in shows as Kept in Important) above Who writes most, then Muted (each
+  conversation, Unmute; `muted_conversations`, 2026-11-04).
 - [x] Tests: a fixture of senders with the expected place for each, screener on and off
   (`the_screener_holds_first_mail_from_people_not_known_yet`, `blocking_a_sender_or_their_domain`).
 

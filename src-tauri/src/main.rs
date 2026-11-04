@@ -325,6 +325,7 @@ fn main() {
             commands::ai_task,
             commands::tasks_of,
             commands::muted,
+            commands::muted_conversations,
             commands::take_mailto,
             commands::quit,
             commands::set_sync_paused,

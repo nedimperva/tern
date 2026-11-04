@@ -1026,6 +1026,8 @@ fn muted_conversations_skip_the_inbox() {
         store.list(&ListTarget::Folder(inbox), None, 9).unwrap().into_iter().map(|r| r.subject).collect();
     assert_eq!(left, ["other"]);
     assert_eq!(store.list(&ListTarget::Folder(archive), None, 9).unwrap().len(), 2);
+    let muted: Vec<String> = store.muted_conversations().unwrap().into_iter().map(|r| r.subject).collect();
+    assert_eq!(muted, ["re a"], "one row a conversation, by its newest message");
     store.mute(&[id], false).unwrap();
     assert!(!store.muted(id).unwrap());
 }

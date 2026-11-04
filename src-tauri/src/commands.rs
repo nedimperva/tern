@@ -562,6 +562,12 @@ pub async fn mute(state: State<'_, AppState>, ids: Vec<i64>, mute: bool) -> Repl
     state.store.mute(&ids, mute).map_err(text)
 }
 
+/// Every muted conversation, newest first, for Settings → Senders.
+#[tauri::command]
+pub async fn muted_conversations(state: State<'_, AppState>) -> Reply<Vec<MessageRow>> {
+    state.store.muted_conversations().map_err(text)
+}
+
 #[tauri::command]
 pub async fn muted(state: State<'_, AppState>, id: i64) -> Reply<bool> {
     state.store.muted(id).map_err(text)
