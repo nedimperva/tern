@@ -142,7 +142,7 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   subject and labels under them, no snippet. Its search is a "/" key after the tabs that spreads over the header
   when focused; `Ctrl K` is not shown there (the key still works).
 - **Conversation pane**: opens with `Enter`, closes with `Esc`. Mode setting: `split` (beside the list) or `full` (over it). Default `split` ≥ 1200 px, else `full`.
-- **Status strip**: left = sync state sentence with a dot (`--ok/--warn/--danger`), right = the current undo toast or the three most useful keys for the current context, shown after 2 s of inactivity and hidden on the next keypress.
+- **Sync button** (since 2.1, canvas "Tern toolbar and status bar", A; it replaced the status strip): at the right of the title bar (at the end of the list header where Tern draws no title bar, on Linux). Arrows and a dot (`--ok`, `--accent` while syncing, `--warn`, `--danger`); a word or two only when something needs a look ("2 problems", "3 waiting", "Paused", "Offline", a download's percent, "Restart to update"). A click opens each account's state, what waits, an export's progress, Sync now and Pause. No key hints: `?` and the palette hold them.
   A downloaded update shows as a filled `--accent` pill ("Update ready · Restart"), the one control in the strip
   that is a button; a toast says so once when it arrives.
 
@@ -392,7 +392,7 @@ none).
 
 ### 4.6 Toasts
 
-- Bottom-right of the list, inside the status strip height, `--bg-3`, `--r-md`. One at a time; newer replaces older. Text + action with keycap (`Undo  Z`). Lives 5 s or until the next action. Sync errors use `--danger` text and persist until dismissed.
+- A pill floating at the foot of the window, centred, dark (`--fg-0` on `--bg-0`); "N selected" takes the same place when nothing else is said. One at a time; newer replaces older. Text + action with keycap (`Undo  Z`). Lives 5 s or until the next action. Sync errors use `--danger` text and persist until dismissed.
 
 ### 4.7 Empty state
 
@@ -596,7 +596,7 @@ the header's panel icon; a Note from the selection bar opens it with the note's 
 - Scroll keeps the focused row inside the middle 60 % of the viewport; `j`/`k` never cause a jump of more than one row.
 - Text selection inside a message does not trigger single-key shortcuts, except `r`: with text selected, the reply
   quotes just that (quick quote) and shows the quote unfolded. Typing in any input never triggers them.
-- Long operations (initial sync) show progress in the status strip, never a modal.
+- Long operations (initial sync, an export) show progress on the sync button and in its panel, never a modal.
 
 ## 6. Accessibility
 

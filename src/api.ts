@@ -552,6 +552,8 @@ export interface Api {
   }): void;
   /** Pauses or resumes sync for every account (also in the tray); `onSyncState` reports "paused" per account. */
   setSyncPaused(on: boolean): Promise<void>;
+  /** Every account looks for new mail now. */
+  syncNow(): Promise<void>;
   /** The `mailto:` link Tern was started with, if any (once). */
   takeMailto(): Promise<Mailto | null>;
   autostart(): Promise<boolean>;
@@ -791,6 +793,7 @@ const tauri: Api = {
   },
   takeMailto: () => invoke("take_mailto"),
   setSyncPaused: (on) => invoke("set_sync_paused", { on }),
+  syncNow: () => invoke("sync_now"),
   setSplit: (ids, other) => invoke("set_split", { ids, other }),
   senderOf: (id) => invoke("sender_of", { id }),
   setSender: (accountId, addr, choice) => invoke("set_sender", { accountId, addr, choice }),
@@ -1511,6 +1514,11 @@ function fake(): Api {
     ],
     onSyncState: (f) => void stateListeners.push(f),
     setSyncPaused: async (on) => stateListeners.forEach((f) => f(1, on ? "paused" : "idle")),
+    // A short pass, so the button's turning arrows can be seen.
+    async syncNow() {
+      for (const f of stateListeners) f(1, "syncing");
+      setTimeout(() => stateListeners.forEach((f) => f(1, "idle")), 1200);
+    },
     checkFolder: async () => {},
     mute: async (ids, mute) => {
       for (const m of messages.filter((m) => ids.includes(m.id))) {

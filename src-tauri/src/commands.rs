@@ -590,6 +590,12 @@ pub async fn reply_init(state: State<'_, AppState>, id: i64, kind: ReplyKind) ->
     state.store.reply_init(id, kind).map_err(text)
 }
 
+/// Sync now, from the title bar's sync button: every account looks at once rather than at its next round.
+#[tauri::command]
+pub fn sync_now(state: State<'_, AppState>) {
+    state.wake_all();
+}
+
 /// The person opened a folder: check it now rather than on its five-minute round.
 #[tauri::command]
 pub async fn check_folder(state: State<'_, AppState>, id: i64) -> Reply<()> {

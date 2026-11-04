@@ -30,9 +30,9 @@ import { colourOf } from "../colours";
 import type { ThreadRow } from "../api";
 import { ConversationRow, participants } from "./ConversationRow";
 import { Icon } from "./Icon";
+import { SyncButton } from "./SyncButton";
 import { InboxZero } from "./InboxZero";
 import { rowId } from "../motion";
-import { StatusStrip } from "./StatusStrip";
 import { VirtualList } from "./VirtualList";
 
 const NOBODY_NEW = "Nobody new. First mail from someone you haven't written to waits here until you let them in.";
@@ -137,6 +137,10 @@ export function ListPane(props: {
               </button>
             </Show>
             <Head />
+            {/* Without Tern's own title bar (Linux), sync sits at the end of the list's header. */}
+            <Show when={!ownTitleBar}>
+              <SyncButton />
+            </Show>
           </header>
         }
       >
@@ -242,7 +246,6 @@ export function ListPane(props: {
           )}
         </VirtualList>
       </Show>
-      <StatusStrip />
     </main>
   );
 }

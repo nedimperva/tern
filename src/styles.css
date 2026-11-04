@@ -1201,101 +1201,248 @@ button.primary kbd {
   font-variant-numeric: tabular-nums;
 }
 
-/* MARK: Status strip (§3) */
+/* MARK: Sync button and toasts (§3) */
 
-.status {
+/* The title bar's word on sync (canvas "Tern toolbar and status bar", A): the strip under the list is gone, and the
+   keys it showed with it. Quiet arrows and a dot; a label only when something needs a look. */
+.sync-box {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--s-3);
-  height: 28px;
-  padding: 0 var(--s-3);
-  border-top: 1px solid var(--line);
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-  white-space: nowrap;
-  overflow: hidden;
+  margin: 0 var(--s-2);
 }
-.status .sync {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-/* Beside an open conversation the strip is only as wide as the list: what doesn't fit shortens instead of being cut
-   off at the edge, and the keys go (the conversation shows its own). */
-.status .sync .text,
-.status .toast > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.status .toast {
-  min-width: 0;
-}
-.split .status .hints {
-  display: none;
-}
-.status .dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ok);
-}
-.status .sync.warn .dot {
-  background: var(--warn);
-}
-.status .sync.danger {
-  color: var(--danger);
-}
-.status .sync.danger .dot {
-  background: var(--danger);
-}
-.status .spacer {
-  flex: 1;
-}
-.status .problems-link {
-  color: var(--danger);
-  text-decoration: underline;
-  font-size: inherit;
-}
-.status .waiting-link {
-  color: var(--fg-2);
-  text-decoration: underline;
-  font-size: inherit;
-}
-/* A waiting update is a button, not one more link: it is the one thing in the strip that asks for a click. */
-.status .update-link {
+.sync-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 20px;
-  padding: 0 var(--s-2);
-  border: none;
-  border-radius: 10px;
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-size: inherit;
+  height: 28px;
+  padding: 0 9px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+.sync-button:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.sync-button .sync-label {
   font-weight: 600;
 }
-.status .update-link:hover {
+.sync-box .dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.sync-button.busy,
+.sync-accounts .busy {
+  color: var(--accent);
+}
+.sync-box .busy .dot,
+.sync-button.busy .dot {
+  background: var(--accent);
+}
+.sync-box .warn .dot,
+.sync-button.warn .dot {
+  background: var(--warn);
+}
+.sync-box .waiting .dot,
+.sync-button.waiting .dot {
+  background: var(--fg-2);
+}
+.sync-button.danger,
+.sync-accounts .danger {
+  color: var(--danger);
+}
+.sync-box .danger .dot,
+.sync-button.danger .dot {
+  background: var(--danger);
+}
+.sync-button.turning svg {
+  animation: sync-turn 1.2s linear infinite;
+}
+@keyframes sync-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sync-button.turning svg {
+    animation: none;
+  }
+}
+.sync-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: 300px;
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-0);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+/* Beside the list on Linux the button is at the list's right edge; the panel opens under it all the same. */
+.list-header .sync-box {
+  margin-left: auto;
+}
+.sync-head strong {
+  color: var(--fg-0);
+  font-size: var(--t-md, 14px);
+  font-weight: 600;
+}
+.sync-accounts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sync-accounts li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--fg-1);
+}
+.sync-accounts .email {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sync-accounts .word {
+  color: var(--fg-2);
+}
+.sync-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--line);
+}
+.sync-waiting .link {
+  font-size: inherit;
+  color: var(--fg-1);
+  text-decoration: underline;
+}
+.sync-waiting .link.danger {
+  color: var(--danger);
+}
+.sync-export {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.sync-export .bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.sync-export .bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.sync-export .link {
+  font-size: inherit;
+  color: var(--accent);
+}
+.sync-actions {
+  display: flex;
+  gap: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--line);
+}
+.sync-actions button {
+  flex: 1;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.sync-actions button:hover {
+  background: var(--bg-2);
+}
+.sync-actions .primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+.sync-actions .primary:hover {
+  background: var(--accent);
   filter: brightness(1.1);
 }
-.status .hints {
-  display: flex;
-  gap: var(--s-3);
+.sync-actions .primary:disabled {
+  opacity: 0.5;
 }
-.status .hints kbd {
-  margin-left: 0;
+
+/* The latest change and its Undo, floating at the foot of the window instead of in a strip. */
+.float-pills {
+  position: fixed;
+  left: 50%;
+  bottom: var(--s-4);
+  transform: translateX(-50%);
+  z-index: 30;
+  pointer-events: none;
 }
-.status .toast {
+.float-pills .pill {
+  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  color: var(--fg-0);
+  max-width: min(560px, calc(100vw - 32px));
+  height: 36px;
+  padding: 0 var(--s-2) 0 var(--s-4);
+  border-radius: 18px;
+  background: var(--fg-0);
+  color: var(--bg-0);
+  font-size: var(--t-sm);
+  box-shadow: var(--shadow);
+  white-space: nowrap;
 }
-.status .toast button {
+.float-pills .pill:not(:has(button)) {
+  padding-right: var(--s-4);
+}
+.float-pills .text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.float-pills button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bg-0) 16%, transparent);
+  color: var(--bg-0);
   font-size: inherit;
-  color: var(--accent);
+  font-weight: 600;
+}
+.float-pills kbd {
+  margin: 0;
+  border-color: color-mix(in srgb, var(--bg-0) 35%, transparent);
+  background: none;
+  color: inherit;
 }
 
 /* MARK: Rail (§3) */

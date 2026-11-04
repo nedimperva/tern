@@ -1,14 +1,14 @@
-// What the status strip says: how sync is doing, changes waiting to go out, and the keys worth knowing.
+// What the sync button says: how sync is doing and changes waiting to go out.
 
 import { createEffect, createSignal, onCleanup } from "solid-js";
 import type { SyncState } from "../api";
 import { markZero } from "../zero";
 import {
   accounts,
-  context,
   listed,
   listKey,
   online,
+  problems,
   progress,
   ready,
   role,
@@ -101,15 +101,42 @@ export const syncSentence = () => {
   return { text: entries.length ? "Up to date" : "", tone: "ok" };
 };
 
-/** The three most useful keys where the keyboard is now. */
-export const hints = () =>
-  context() === "conversation"
-    ? [["R", "reply"], ["E", "done"], ["Esc", "back"]]
-    : rows().length && role() === "new_people"
-      ? [["Y", "let in"], ["Shift O", "Other"], ["Shift X", "block"]]
-      : rows().length
-      ? [["Enter", "open"], ["E", "done"], ["Ctrl K", "commands"]]
-      : [["C", "compose"], ["?", "shortcuts"], ["Ctrl K", "commands"]];
+/** What the title bar's sync button shows: an icon, a word or two when something needs a look, and a tone for its
+ * dot. Most of the time it is the arrows and a green dot; it turns while mail comes in. */
+export const syncButton = (): { icon: "refresh" | "alert" | "pause" | "wifi-off"; label: string; tone: string; turning: boolean } => {
+  const sentence = syncSentence();
+  const n = (x: number, one: string, many: string) => (x === 1 ? `1 ${one}` : `${x} ${many}`);
+  if (sentence.tone === "danger") return { icon: "alert", label: "Sign in", tone: "danger", turning: false };
+  if (problems().length) return { icon: "alert", label: n(problems().length, "problem", "problems"), tone: "danger", turning: false };
+  if (held().length) return { icon: "alert", label: n(held().length, "to confirm", "to confirm"), tone: "danger", turning: false };
+  if (sentence.text.startsWith("Offline")) return { icon: "wifi-off", label: "Offline", tone: "warn", turning: false };
+  if (sentence.text.startsWith("Can't reach")) return { icon: "wifi-off", label: "Can't connect", tone: "warn", turning: false };
+  if (paused()) return { icon: "pause", label: "Paused", tone: "warn", turning: false };
+  const down = downloadShare();
+  const busy = Object.values(syncStates()).some((s) => s === "syncing" || s === "connecting");
+  if (down !== null) return { icon: "refresh", label: `${down}%`, tone: "busy", turning: true };
+  if (late().length) return { icon: "refresh", label: n(late().length, "waiting", "waiting"), tone: "waiting", turning: busy };
+  return { icon: "refresh", label: "", tone: busy ? "busy" : "ok", turning: busy };
+};
+
+/** How far a backlog download is, in percent; null when there is none worth showing. */
+const downloadShare = () => {
+  if (!downloading()) return null;
+  const busy = progress().filter((p) => ["syncing", "connecting"].includes(syncStates()[p.accountId]));
+  const have = busy.reduce((n, p) => n + p.have, 0);
+  const total = busy.reduce((n, p) => n + p.total, 0);
+  return total ? Math.min(99, Math.floor((have / total) * 100)) : 0;
+};
+
+/** Each account's state in a few words, for the sync panel. */
+export const accountStates = () =>
+  accounts().map((a) => {
+    const s = syncStates()[a.id];
+    const word =
+      s === "auth-failed" ? "Sign-in refused" : s === "offline" ? "Can't connect" : s === "paused" ? "Paused" : s === "connecting" ? "Connecting" : s === "syncing" ? "Syncing" : "Up to date";
+    const tone = s === "auth-failed" ? "danger" : s === "offline" || s === "paused" ? "warn" : s === "syncing" || s === "connecting" ? "busy" : "ok";
+    return { id: a.id, email: a.email, word, tone };
+  });
 
 /** The inbox empty, or its Important split (what Tern opens on); Other has its own tab count. */
 export const inboxZero = () => listedHere() && !searching() && rows().length === 0 && ["inbox", "important"].includes(role());

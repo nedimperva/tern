@@ -5,6 +5,7 @@ import { CommandBar } from "./components/CommandBar";
 import { Compose } from "./components/Compose";
 import { ConversationView } from "./components/ConversationView";
 import { ListPane } from "./components/ListPane";
+import { Toast } from "./components/Toast";
 import { ProblemsDialog } from "./components/Problems";
 import { Rail } from "./components/Rail";
 import { TitleBar } from "./components/TitleBar";
@@ -133,6 +134,7 @@ export default function App() {
         </Show>
         <Main />
       </div>
+      <Toast />
     </div>
   );
 }

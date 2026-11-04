@@ -2,6 +2,7 @@ import { createSignal, onCleanup, Show } from "solid-js";
 import { api } from "../api";
 import { setTitleSlot } from "../app/state";
 import { Icon } from "./Icon";
+import { SyncButton } from "./SyncButton";
 
 /** Tern's own title bar (§3): the system draws none. The sidebar button on the left, the window's buttons on the
  * right, and the rest of it drags the window (a double click maximizes). */
@@ -44,6 +45,7 @@ export function TitleBar(props: {
       {/* The list's tabs and search (ListPane portals them here); the fill after it still drags the window. */}
       <div class="titlebar-slot" classList={{ hidden: !props.list }} ref={setTitleSlot} />
       <div class="titlebar-fill" />
+      <SyncButton />
       <div class="window-buttons">
         <button type="button" onClick={() => api.windowButton("minimize")} title="Minimize" aria-label="Minimize">
           <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">

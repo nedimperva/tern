@@ -22,6 +22,9 @@ every release needs one here before it is tagged.
 
 ### Changed
 
+- The strip under the list is gone, and its key hints with it. Sync is one button at the right of the title bar
+  (at the end of the list's header on Linux): a dot when all is well, a word when something needs a look, and a
+  click for each account, what waits, Sync now and Pause. Undo floats at the foot of the window.
 - The list changes only the conversations sync touched instead of reading the page again, and lists read on their
   own connections, so sync no longer holds them up.
 

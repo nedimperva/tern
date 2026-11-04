@@ -317,6 +317,7 @@ fn main() {
             commands::export_mbox,
             commands::export_stop,
             commands::import_mbox,
+            commands::sync_now,
             commands::contacts,
             commands::contact_card,
             commands::person,
