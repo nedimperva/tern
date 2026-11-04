@@ -129,6 +129,26 @@ impl Store {
         Ok(rows)
     }
 
+    /// The rows these conversations (`account_id:thread_id`) have in `target`, to patch a list in place after
+    /// sync changed them: one for each with a message there; one that has none there now is left out.
+    pub fn threads_in(&self, target: &ListTarget, keys: &[String]) -> Result<Vec<ThreadRow>> {
+        let (filter, key) = target_filter(target, 1);
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(&format!(
+            "SELECT {ROW} FROM messages m WHERE {filter} AND m.account_id = ?2 AND m.thread_id = ?3
+             ORDER BY m.date DESC, m.id DESC LIMIT 1"
+        ))?;
+        let mut latests = Vec::new();
+        for k in keys {
+            let Some((account, thread)) = k.split_once(':') else { continue };
+            let Ok(account) = account.parse::<i64>() else { continue };
+            if let Some(m) = stmt.query_row(params![key, account, thread], row).optional()? {
+                latests.push(m);
+            }
+        }
+        conversations(&conn, latests)
+    }
+
     /// Mutes the conversations of these messages: they leave the inbox now (see `apply`), and mail that arrives in
     /// them later skips it (`archive_muted`).
     pub fn mute(&self, ids: &[i64], mute: bool) -> Result<()> {

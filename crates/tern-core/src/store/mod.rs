@@ -10,6 +10,7 @@ use rusqlite::types::Value;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
+use serde::Serialize;
 use schema::{backup_before_migrating, migrate};
 
 mod accounts;
@@ -354,26 +355,60 @@ fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
     (filter, Value::Text("inbox".into()))
 }
 
+/// Read-only connections beside the writer: the list, a conversation, the companion and the counts can all read at
+/// once while a sync batch writes (package 17 B).
+const READERS: usize = 3;
+/// `PRAGMA optimize` at most this often while Tern runs (seconds); it also runs at quit.
+const OPTIMIZE_EVERY: i64 = 7 * 86_400;
+
 pub struct Store {
     conn: Mutex<Connection>,
-    /// A second, read-only connection for what the window reads (lists, search, a conversation), so a sync batch
-    /// writing on `conn` never makes a keypress wait. WAL lets it read while the writer writes. None in memory,
-    /// where a second connection would be a different database.
-    reader: Option<Mutex<Connection>>,
+    /// Read-only connections for what the window reads (lists, search, a conversation), so a sync batch writing on
+    /// `conn` never makes a keypress wait. WAL lets them read while the writer writes. Empty in memory, where
+    /// another connection would be a different database.
+    readers: Vec<Mutex<Connection>>,
+    /// Where the next read starts looking for a free reader.
+    next_reader: std::sync::atomic::AtomicUsize,
+    /// What the writer changed since the window last asked (`take_changes`).
+    touched: std::sync::Arc<Mutex<Touched>>,
 }
+
+/// The writer's changes, as SQLite's update hook reports them: the messages written, and whether anything changed
+/// that moves conversations in or out of lists in ways a message row doesn't show.
+#[derive(Default)]
+struct Touched {
+    messages: HashSet<i64>,
+    everything: bool,
+}
+
+/// What changed since the last ask: the conversations to read again, or None to read the whole list again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Changes {
+    /// `account_id:thread_id` of each conversation with a written message.
+    pub threads: Option<Vec<String>>,
+}
+
+/// Past this many messages a batch reads the whole list again: one page is cheaper than finding them all.
+const MAX_PATCH: usize = 200;
+/// Tables whose rows move conversations between lists or change how a row looks, outside `messages`.
+const LIST_TABLES: &[&str] =
+    &["reminders", "read_later", "sender_state", "message_labels", "muted", "marks", "tasks", "accounts"];
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
         backup_before_migrating(&conn, path)?;
         let mut store = Self::init(conn)?;
-        // Opened after migrating, so it never sees an older schema.
-        let reader = Connection::open_with_flags(
-            path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )?;
-        reader.execute_batch("PRAGMA temp_store = MEMORY; PRAGMA mmap_size = 268435456;")?;
-        store.reader = Some(Mutex::new(reader));
+        // Opened after migrating, so they never see an older schema.
+        for _ in 0..READERS {
+            let reader = Connection::open_with_flags(
+                path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )?;
+            reader.execute_batch("PRAGMA temp_store = MEMORY; PRAGMA mmap_size = 268435456;")?;
+            store.readers.push(Mutex::new(reader));
+        }
         Ok(store)
     }
 
@@ -399,7 +434,77 @@ impl Store {
              WHERE claimed = 2",
             [now()],
         )?;
-        Ok(Self { conn: Mutex::new(conn), reader: None })
+        // Every write on the writer says which row of which table it touched; that is how sync's changes reach the
+        // window as conversations rather than as "something changed".
+        let touched = std::sync::Arc::new(Mutex::new(Touched::default()));
+        let hooked = touched.clone();
+        conn.update_hook(Some(move |action: rusqlite::hooks::Action, _db: &str, table: &str, row: i64| {
+            let mut t = hooked.lock().unwrap_or_else(|e| e.into_inner());
+            if t.everything {
+                return;
+            }
+            match (table, action) {
+                // A deleted row can't be read back to find its conversation.
+                ("messages", rusqlite::hooks::Action::SQLITE_DELETE) => t.everything = true,
+                ("messages", _) => {
+                    t.messages.insert(row);
+                    if t.messages.len() > MAX_PATCH {
+                        t.everything = true;
+                    }
+                }
+                (table, _) if LIST_TABLES.contains(&table) => t.everything = true,
+                _ => {}
+            }
+        }))?;
+        Ok(Self {
+            conn: Mutex::new(conn),
+            readers: Vec::new(),
+            next_reader: Default::default(),
+            touched,
+        })
+    }
+
+    /// What the writer changed since the last call, and forgets it: the conversations of the messages written, or
+    /// None when a list should be read again whole (a deletion, a big batch, a change outside messages).
+    pub fn take_changes(&self) -> Result<Changes> {
+        let taken = std::mem::take(&mut *self.touched.lock().unwrap_or_else(|e| e.into_inner()));
+        if taken.everything {
+            return Ok(Changes { threads: None });
+        }
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached("SELECT account_id || ':' || thread_id FROM messages WHERE id = ?1")?;
+        let mut threads = BTreeSet::new();
+        for id in taken.messages {
+            // Gone already (moved and claimed by another row): read everything again rather than miss it.
+            match stmt.query_row([id], |r| r.get::<_, String>(0)).optional()? {
+                Some(t) => {
+                    threads.insert(t);
+                }
+                None => return Ok(Changes { threads: None }),
+            }
+        }
+        Ok(Changes { threads: Some(threads.into_iter().collect()) })
+    }
+
+    /// `PRAGMA optimize` when a week has passed since it last ran: SQLite refreshes the query planner's statistics
+    /// where they went stale. Cheap, and Tern may run for weeks without a quit.
+    pub fn optimize_if_due(&self, now: i64) -> Result<bool> {
+        let conn = self.conn();
+        let last: i64 = conn
+            .query_row("SELECT value FROM settings WHERE key = 'storeOptimizedAt'", [], |r| r.get::<_, String>(0))
+            .optional()?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        if now - last < OPTIMIZE_EVERY {
+            return Ok(false);
+        }
+        conn.execute_batch("PRAGMA optimize;")?;
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('storeOptimizedAt', ?1)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            [now.to_string()],
+        )?;
+        Ok(true)
     }
 
     fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -415,12 +520,20 @@ impl Store {
         Ok(())
     }
 
-    /// The connection for reads the window waits on (see `reader`).
+    /// A connection for reads the window waits on (see `readers`): the first free one, else the next in turn.
     fn reader(&self) -> std::sync::MutexGuard<'_, Connection> {
-        match &self.reader {
-            Some(reader) => reader.lock().unwrap_or_else(|e| e.into_inner()),
-            None => self.conn(),
+        if self.readers.is_empty() {
+            return self.conn();
         }
+        let start = self.next_reader.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        for i in 0..self.readers.len() {
+            match self.readers[(start + i) % self.readers.len()].try_lock() {
+                Ok(guard) => return guard,
+                Err(std::sync::TryLockError::Poisoned(e)) => return e.into_inner(),
+                Err(std::sync::TryLockError::WouldBlock) => {}
+            }
+        }
+        self.readers[start % self.readers.len()].lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 

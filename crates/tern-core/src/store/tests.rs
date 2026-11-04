@@ -746,17 +746,69 @@ fn mail_without_references_joins_by_subject_and_people() {
 fn a_store_on_disk_reads_what_it_wrote_on_its_second_connection() {
     let dir = std::env::temp_dir().join(format!("tern-reader-{}-{}", std::process::id(), now()));
     std::fs::create_dir_all(&dir).unwrap();
-    let store = Store::open(&dir.join("mail.db")).unwrap();
-    assert!(store.reader.is_some());
+    let store = std::sync::Arc::new(Store::open(&dir.join("mail.db")).unwrap());
+    assert_eq!(store.readers.len(), READERS);
     let account = store.add_account(&config()).unwrap().id;
     let inbox = store.upsert_folder(account, "INBOX", "inbox").unwrap();
     store.insert_messages(account, inbox, &[message(1, "zeppelin", 100)]).unwrap();
     assert_eq!(store.folders().unwrap().len(), 1);
     assert_eq!(store.list_threads(&ListTarget::Folder(inbox), None, 10).unwrap().len(), 1);
     assert_eq!(store.search("zeppelin", 10).unwrap().rows.len(), 1);
+    // Reads from several threads at once, each on a reader of its own, while the writer writes.
+    let readers: Vec<_> = (0..4)
+        .map(|_| {
+            let s = store.clone();
+            std::thread::spawn(move || {
+                for _ in 0..50 {
+                    assert_eq!(s.list_threads(&ListTarget::Folder(inbox), None, 10).unwrap().len(), 1);
+                }
+            })
+        })
+        .collect();
+    for i in 0..20 {
+        store.update_flags(inbox, &[(1, i % 2 == 0, false)]).unwrap();
+    }
+    for r in readers {
+        r.join().unwrap();
+    }
     store.tidy_on_exit().unwrap();
     drop(store);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn changes_name_the_conversations_sync_wrote_or_ask_for_everything() {
+    let (store, account, inbox, _) = setup();
+    assert_eq!(store.take_changes().unwrap().threads, None, "a new account: read it all");
+    store.insert_messages(account, inbox, &[message(1, "one", 100), message(2, "two", 200)]).unwrap();
+    let threads = |c: Changes| c.threads.expect("conversations, not everything");
+    let first = threads(store.take_changes().unwrap());
+    assert_eq!(first.len(), 2);
+    assert_eq!(store.take_changes().unwrap(), Changes { threads: Some(vec![]) }, "taken once");
+
+    store.update_flags(inbox, &[(2, true, true)]).unwrap();
+    let two: (i64, String) = store
+        .conn()
+        .query_row("SELECT account_id, thread_id FROM messages WHERE uid = 2", [], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap();
+    let key = format!("{}:{}", two.0, two.1);
+    assert_eq!(threads(store.take_changes().unwrap()), [key.clone()]);
+    let rows = store.threads_in(&ListTarget::Folder(inbox), &[key.clone(), "9:nope".into()]).unwrap();
+    assert_eq!(rows.len(), 1, "only what is in the list");
+    assert!(rows[0].flagged);
+
+    store.set_sender(account, "ada@example.com", Some("blocked")).unwrap();
+    assert_eq!(store.take_changes().unwrap().threads, None, "a sender choice moves conversations: read it all");
+    store.conn().execute("DELETE FROM messages WHERE uid = 1", []).unwrap();
+    assert_eq!(store.take_changes().unwrap().threads, None, "a deletion reads it all");
+}
+
+#[test]
+fn optimize_runs_once_a_week() {
+    let (store, _, _, _) = setup();
+    assert!(store.optimize_if_due(1_000_000).unwrap());
+    assert!(!store.optimize_if_due(1_000_000 + 86_400).unwrap());
+    assert!(store.optimize_if_due(1_000_000 + 8 * 86_400).unwrap());
 }
 
 #[test]
