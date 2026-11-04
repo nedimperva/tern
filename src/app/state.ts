@@ -113,6 +113,8 @@ export const [idle, setIdle] = createSignal(false);
 /** Tern draws its own title bar on Windows only. On Linux the window manager handles the window (Hyprland draws no
  * frame and ignores minimize and maximize), so the bar's buttons would do nothing there. */
 export const ownTitleBar = !navigator.userAgent.includes("Linux");
+/** Where the list's tabs and search go in Tern's own title bar (the list keeps them itself without one). */
+export const [titleSlot, setTitleSlot] = createSignal<HTMLElement | null>(null);
 
 /** The sidebar sits beside the list now: turned on, room for it, and not in focus mode. */
 export const docked = () => settings.sidebar && width() >= SIDEBAR_WIDTH && !focusMode();

@@ -1,4 +1,5 @@
 import { createMemo, For, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import { go, isSaved, loadMore, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
 import { open } from "../app/conversation";
 import { keyOf } from "../app/rows";
@@ -20,6 +21,7 @@ import {
   setPalette,
   setQuery,
   ownTitleBar,
+  titleSlot,
   toggleSidebar,
 } from "../app/state";
 import { coverage, inboxZero, listedHere } from "../app/status";
@@ -72,21 +74,10 @@ export function ListPane(props: {
     }
   };
 
-  return (
-    <main class="list-pane">
-      <header class="list-header">
-        <Show when={!ownTitleBar}>
-          <button
-            type="button"
-            class="icon-button"
-            onClick={toggleSidebar}
-            title={`${docked() ? "Hide" : "Show"} the sidebar (Ctrl+\\)`}
-            aria-label={docked() ? "Hide the sidebar" : "Show the sidebar"}
-          >
-            <Icon name="panel-left" size={17} />
-          </button>
-        </Show>
-        <Show when={splitIndex() >= 0 && !searching()} fallback={<h2>{title()}</h2>}>
+  /** Which list this is and searching it: in Tern's own title bar when there is one, else a row of its own. */
+  const head = () => (
+    <>
+      <Show when={splitIndex() >= 0 && !searching()} fallback={<h2>{title()}</h2>}>
           <div class="splits" role="tablist" aria-label="Inbox views">
             <For each={SPLITS()}>
               {(s, i) => (
@@ -121,7 +112,39 @@ export function ListPane(props: {
         <button class="link" title="Command palette" onClick={() => setPalette(true)}>
           <kbd>Ctrl K</kbd>
         </button>
-      </header>
+    </>
+  );
+
+  return (
+    <main class="list-pane">
+      <Show
+        when={ownTitleBar && titleSlot()}
+        fallback={
+          <header class="list-header">
+            <Show when={!ownTitleBar}>
+              <button
+                type="button"
+                class="icon-button"
+                onClick={toggleSidebar}
+                title={`${docked() ? "Hide" : "Show"} the sidebar (Ctrl+\\)`}
+                aria-label={docked() ? "Hide the sidebar" : "Show the sidebar"}
+              >
+                <Icon name="panel-left" size={17} />
+              </button>
+            </Show>
+            {head()}
+          </header>
+        }
+      >
+        {(slot) => (
+          <Portal mount={slot()}>
+            {/* Over the narrow list beside a conversation, the row is the list's width: the rest drags the window. */}
+            <div class="list-header in-titlebar" classList={{ split: props.split }}>
+              {head()}
+            </div>
+          </Portal>
+        )}
+      </Show>
       <Show when={searching() && partial()}>
         <div class="search-note">{coverage()}</div>
       </Show>
