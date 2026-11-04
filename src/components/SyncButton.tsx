@@ -1,8 +1,8 @@
-import { createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { api } from "../api";
 import { restartToUpdate } from "../app/actions";
 import { exporting, stopExport } from "../app/files";
-import { problems, setReviewing, update } from "../app/state";
+import { problems, setReviewing, syncStates, update } from "../app/state";
 import { accountStates, held, late, paused, scheduled, syncButton, syncSentence } from "../app/status";
 import { Icon } from "./Icon";
 
@@ -37,6 +37,30 @@ export function SyncButton() {
   };
   const count = (n: number, one: string, many: string) => (n === 1 ? one : `${n} ${many}`);
   const state = () => syncButton();
+  // Sync now turns the arrows until every account has been through a pass (or 20 s, for a server that is slow to
+  // say so). A turn always finishes: stopping mid-turn, or starting again on each short pass, looked jerky.
+  const [asked, setAsked] = createSignal(false);
+  const [seenBusy, setSeenBusy] = createSignal(false);
+  const busy = () => Object.values(syncStates()).some((s) => s === "syncing" || s === "connecting");
+  createEffect(() => {
+    if (!asked()) return;
+    if (busy()) setSeenBusy(true);
+    else if (seenBusy()) setAsked(false);
+  });
+  const syncNow = () => {
+    setSeenBusy(false);
+    setAsked(true);
+    window.setTimeout(() => setAsked(false), 20_000);
+    void api.syncNow();
+  };
+  const want = () => state().turning || asked();
+  const [spinning, setSpinning] = createSignal(false);
+  createEffect(() => {
+    if (want()) return setSpinning(true);
+    // The turn's end stops it; this catches a window that draws no frames (hidden) and so never ends a turn.
+    const late = window.setTimeout(() => setSpinning(false), 1100);
+    onCleanup(() => clearTimeout(late));
+  });
   // An update or an export says so on the button too: those are the things worth a click.
   const label = () => (update() && !state().label ? "Restart to update" : exporting() && !state().label ? `Exporting ${exportShare()}%` : state().label);
   const exportShare = () => {
@@ -49,13 +73,15 @@ export function SyncButton() {
       <button
         type="button"
         class={`sync-button ${state().tone}`}
-        classList={{ turning: state().turning, labelled: !!label() }}
+        classList={{ turning: spinning(), labelled: !!label() }}
         aria-expanded={open()}
         aria-label={`${syncSentence().text || "Sync"}. Sync options`}
         title={syncSentence().text}
         onClick={() => setOpen(!open())}
       >
-        <Icon name={update() && !state().label ? "download" : state().icon} size={15} />
+        <span class="sync-icon" onAnimationIteration={() => !want() && setSpinning(false)}>
+          <Icon name={update() && !state().label ? "download" : state().icon} size={15} />
+        </span>
         <Show when={label()}>
           <span class="sync-label">{label()}</span>
         </Show>
@@ -125,7 +151,7 @@ export function SyncButton() {
                   class="primary"
                   disabled={paused()}
                   onClick={() => {
-                    void api.syncNow();
+                    syncNow();
                     setOpen(false);
                   }}
                 >

@@ -1262,8 +1262,12 @@ button.primary kbd {
 .sync-button.danger .dot {
   background: var(--danger);
 }
-.sync-button.turning svg {
-  animation: sync-turn 1.2s linear infinite;
+.sync-icon {
+  display: inline-flex;
+  transform-origin: 50% 50%;
+}
+.sync-button.turning .sync-icon {
+  animation: sync-turn 1s linear infinite;
 }
 @keyframes sync-turn {
   to {
@@ -1271,7 +1275,7 @@ button.primary kbd {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sync-button.turning svg {
+  .sync-button.turning .sync-icon {
     animation: none;
   }
 }

@@ -18,7 +18,6 @@ import {
   searching,
   selection,
   setFocus,
-  setPalette,
   setQuery,
   ownTitleBar,
   titleSlot,
@@ -113,9 +112,6 @@ export function ListPane(props: {
             {isSaved() ? "Saved" : "Save search"}
           </button>
         </Show>
-        <button class="link" title="Command palette" onClick={() => setPalette(true)}>
-          <kbd>Ctrl K</kbd>
-        </button>
     </div>
   );
 

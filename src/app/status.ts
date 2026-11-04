@@ -102,7 +102,9 @@ export const syncSentence = () => {
 };
 
 /** What the title bar's sync button shows: an icon, a word or two when something needs a look, and a tone for its
- * dot. Most of the time it is the arrows and a green dot; it turns while mail comes in. */
+ * dot. Most of the time it is the arrows and a green dot. The arrows turn only for a download worth a percent:
+ * a server without IDLE is checked every minute and bodies come down in the background, and arrows turning for
+ * that read as "always syncing". (Sync now turns them too, in the button.) */
 export const syncButton = (): { icon: "refresh" | "alert" | "pause" | "wifi-off"; label: string; tone: string; turning: boolean } => {
   const sentence = syncSentence();
   const n = (x: number, one: string, many: string) => (x === 1 ? `1 ${one}` : `${x} ${many}`);
@@ -115,8 +117,8 @@ export const syncButton = (): { icon: "refresh" | "alert" | "pause" | "wifi-off"
   const down = downloadShare();
   const busy = Object.values(syncStates()).some((s) => s === "syncing" || s === "connecting");
   if (down !== null) return { icon: "refresh", label: `${down}%`, tone: "busy", turning: true };
-  if (late().length) return { icon: "refresh", label: n(late().length, "waiting", "waiting"), tone: "waiting", turning: busy };
-  return { icon: "refresh", label: "", tone: busy ? "busy" : "ok", turning: busy };
+  if (late().length) return { icon: "refresh", label: n(late().length, "waiting", "waiting"), tone: "waiting", turning: false };
+  return { icon: "refresh", label: "", tone: busy ? "busy" : "ok", turning: false };
 };
 
 /** How far a backlog download is, in percent; null when there is none worth showing. */
