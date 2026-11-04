@@ -23,6 +23,10 @@ export type AiFact = { kind: "due" | "asked" | "decided"; text: string };
 /** An answer about a conversation: `messages` are the ids its [n] count by, oldest first; what was sent, for the
  * receipt under it. */
 export type AiAnswer = { text: string; messages: number[]; sentChars: number; route: { provider: AiProvider; model: string } };
+/** A line of a summary over many conversations, with the newest message of each it rests on. */
+export type AiPoint = { text: string; messages: number[] };
+/** What came in overnight, in a few lines, and what was sent to get it. */
+export type AiOvernight = { points: AiPoint[]; conversations: number; sentChars: number; route: { provider: AiProvider; model: string } };
 /** One suggested reply: a few words on what it does, and the reply. */
 export type AiSuggestion = { label: string; text: string };
 /** A style just learned, with made-up notes written plainly and in that style, shown once. */
@@ -606,6 +610,10 @@ export interface Api {
   aiReplies(id: number, fresh: boolean, onText: (text: string) => void): Promise<AiSuggestion[]>;
   /** Answers a question about the conversation of message `id`, with the chat so far as [question, answer]. */
   aiAsk(id: number, question: string, earlier: [string, string][], onText: (text: string) => void): Promise<AiAnswer>;
+  /** The tide's Summarise: what came in since `since`, from the accounts the AI may read. */
+  aiOvernight(since: number, onText: (text: string) => void): Promise<AiOvernight>;
+  /** Ask your mail: a question over all the mail the AI may read; `messages` are the ids its [n] count by. */
+  aiAskMail(question: string, earlier: [string, string][], onText: (text: string) => void): Promise<AiAnswer>;
   aiWrite(input: AiWriteInput, onText: (text: string) => void): Promise<AiWritten>;
   aiClearCache(): Promise<number>;
   aiStats(): Promise<AiStats>;
@@ -832,6 +840,8 @@ const tauri: Api = {
   aiSummarize: (id, fresh, onText) => invoke("ai_summarize", { id, fresh, onText: channel(onText) }),
   aiReplies: (id, fresh, onText) => invoke("ai_replies", { id, fresh, onText: channel(onText) }),
   aiAsk: (id, question, earlier, onText) => invoke("ai_ask", { id, question, earlier, onText: channel(onText) }),
+  aiOvernight: (since, onText) => invoke("ai_overnight", { since, onText: channel(onText) }),
+  aiAskMail: (question, earlier, onText) => invoke("ai_ask_mail", { question, earlier, onText: channel(onText) }),
   aiWrite: (input, onText) => invoke("ai_write", { input, onText: channel(onText) }),
   aiClearCache: () => invoke("ai_clear_cache"),
   aiStats: () => invoke("ai_stats"),
@@ -1712,6 +1722,31 @@ function fake(): Api {
         onText(word);
       }
       return { text, messages: ids, sentChars: 4210, route: { provider: "anthropic", model: "claude-sonnet-5-5" } };
+    },
+    aiOvernight: async (since, onText) => {
+      const recent = messages.filter((m) => m.date > since && !m.seen).sort((a, b) => b.date - a.date);
+      const ids = [...new Map(recent.map((m) => [m.threadId, m.id])).values()].slice(0, 40);
+      const text = "- Ana wants the Q3 deck by Saturday and asks you to present it [1]\n- Grace booked lunch for 12; she needs a head count by Friday [2]\n- Also: 4 newsletters and 2 receipts [3][4]";
+      await stream(text, onText);
+      return {
+        points: [
+          { text: "Ana wants the Q3 deck by Saturday and asks you to present it", messages: ids.slice(0, 1) },
+          { text: "Grace booked lunch for 12; she needs a head count by Friday", messages: ids.slice(1, 2) },
+          { text: "Also: 4 newsletters and 2 receipts", messages: ids.slice(2, 4) },
+        ],
+        conversations: ids.length,
+        sentChars: 18_420,
+        route: { provider: "anthropic", model: "claude-haiku-5-5" },
+      };
+    },
+    aiAskMail: async (question, _earlier, onText) => {
+      const word = question.toLowerCase().split(/\W+/).find((w) => w.length > 3) ?? "";
+      const ids = messages.filter((m) => `${m.subject} ${m.bodyText}`.toLowerCase().includes(word)).slice(0, 3).map((m) => m.id);
+      const text = ids.length
+        ? `The latest is from yesterday: Ana asked for the totals [1]; Tom answered with a draft [2].`
+        : "Nothing in your mail says, as far as the search found.";
+      await stream(text, onText);
+      return { text, messages: ids, sentChars: 6_120, route: { provider: "anthropic", model: "claude-haiku-5-5" } };
     },
     aiSummarize: async (id, fresh, onText) => {
       if (!fresh && fakeSummaries.has(id)) return fakeSummaries.get(id)!;

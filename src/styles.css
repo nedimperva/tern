@@ -7340,12 +7340,16 @@ button.link.danger {
 .companion .turns {
   gap: var(--s-4);
 }
-.companion .turn {
+.companion .turn,
+.ask-mail .turn,
+.tide-ai .turn {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
 }
-.companion .question {
+.companion .question,
+.ask-mail .question,
+.tide-ai .question {
   align-self: flex-end;
   max-width: 85%;
   padding: var(--s-2) var(--s-3);
@@ -7353,14 +7357,20 @@ button.link.danger {
   background: var(--bg-2);
   line-height: 1.5;
 }
-.companion .answer {
+.companion .answer,
+.ask-mail .answer,
+.tide-ai .answer {
   line-height: 1.6;
   white-space: pre-wrap;
 }
-.companion .error {
+.companion .error,
+.ask-mail .error,
+.tide-ai .error {
   color: var(--danger);
 }
-.companion .cite {
+.companion .cite,
+.ask-mail .cite,
+.tide-ai .cite {
   margin: 0 2px;
   padding: 0 6px;
   border: none;
@@ -7371,7 +7381,9 @@ button.link.danger {
   font-size: var(--t-xs);
   white-space: nowrap;
 }
-.companion .receipt {
+.companion .receipt,
+.ask-mail .receipt,
+.tide-ai .receipt {
   font-size: var(--t-xs);
   color: var(--fg-2);
 }
@@ -8419,4 +8431,121 @@ button.link.danger {
   .dropdown-list {
     animation: none;
   }
+}
+
+/* Ask your mail (`A`, package 17 F): a panel over the window, the chat in it and the box at its foot. */
+.ask-mail-scrim {
+  position: fixed;
+  inset: var(--titlebar-h) 0 0;
+  z-index: 20;
+  display: grid;
+  place-items: start center;
+  padding-top: 10vh;
+  background: var(--scrim);
+}
+.ask-mail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  width: min(640px, 92vw);
+  max-height: 76vh;
+  padding: var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--bg-0);
+  box-shadow: var(--shadow);
+}
+.ask-mail header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+.ask-mail header h2 {
+  margin: 0;
+  font-size: var(--t-lg);
+}
+.ask-mail header .quiet {
+  margin-left: auto;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.ask-mail kbd.ai-mark,
+.tide-ai kbd.ai-mark {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.ask-mail-turns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-height: 0;
+  overflow-y: auto;
+}
+.ask-mail-turns > .quiet {
+  margin: 0;
+  color: var(--fg-2);
+}
+.ask-mail .ask-box {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-1) var(--s-1) var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+}
+.ask-mail .ask-box:focus-within {
+  border-color: var(--accent);
+}
+.ask-mail textarea {
+  flex: 1;
+  min-width: 0;
+  padding: var(--s-2) 0;
+  border: none;
+  background: none;
+  font: inherit;
+  resize: none;
+  outline: none;
+  field-sizing: content;
+  max-height: 140px;
+}
+.ask-mail .send {
+  height: 32px;
+  padding: 0 var(--s-3);
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.ask-mail .send:disabled {
+  opacity: 0.45;
+}
+/* The tide's Summarise: one quiet line until pressed, then the points with their conversations. */
+.tide-ai {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: var(--s-3) var(--s-6) 0;
+  font-size: var(--t-rd);
+}
+.tide-ai .ai-ask {
+  margin-left: 0;
+}
+.tide-ai-line {
+  margin: 0;
+  color: var(--fg-1);
+}
+.tide-ai-line.error {
+  color: var(--danger);
+}
+.tide-points {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: 0;
+  padding-left: var(--s-5);
+  line-height: 1.55;
+}
+.tide-receipt {
+  margin: var(--s-2) 0 0;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
 }

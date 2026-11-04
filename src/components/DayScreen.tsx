@@ -1,7 +1,81 @@
-import { For, onCleanup, onMount, Show } from "solid-js";
-import type { ThreadRow } from "../api";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { api, type AiOvernight, type ThreadRow } from "../api";
+import { asRow } from "../app/rows";
 import { closeScreen, start, waitingSince } from "../day";
 import { typing } from "../keys";
+import { settings } from "../settings";
+
+const PROVIDER_NAMES: Record<string, string> = { anthropic: "Claude", openai: "OpenAI", gemini: "Gemini" };
+
+/** The tide's Summarise (package 17 F): with AI on, a few lines on what came in since the person was last here,
+ * each with the conversations it rests on. Only when pressed; a receipt says what was sent; nothing is kept. */
+function Overnight(props: { since: number; onOpen: (row: ThreadRow) => void }) {
+  const on = () => settings.ai.enabled && settings.ai.summaries && settings.ai.accounts.length > 0;
+  const [state, setState] = createSignal<"idle" | "busy" | "done" | "error">("idle");
+  const [got, setGot] = createSignal<AiOvernight | null>(null);
+  const [streamed, setStreamed] = createSignal("");
+  const [error, setError] = createSignal("");
+  const run = async () => {
+    setState("busy");
+    setStreamed("");
+    try {
+      setGot(await api.aiOvernight(props.since, (t) => setStreamed((s) => s + t)));
+      setState("done");
+    } catch (e) {
+      setError(String(e));
+      setState("error");
+    }
+  };
+  const open = async (id: number) => {
+    const thread = await api.thread(id);
+    const m = thread.find((x) => x.id === id) ?? thread[thread.length - 1];
+    if (m) props.onOpen(asRow(m));
+  };
+  return (
+    <Show when={on()}>
+      <section class="tide-ai" aria-live="polite">
+        <Show when={state() !== "idle"} fallback={
+          <button type="button" class="ai-ask" onClick={() => void run()} title="Sends what came in to your AI provider">
+            <kbd class="ai-mark">AI</kbd>
+            Summarise what came in
+          </button>
+        }>
+          <Show when={state() === "done" && got()} fallback={
+            <p class="tide-ai-line" classList={{ error: state() === "error" }}>
+              <kbd class="ai-mark">AI</kbd> {state() === "error" ? error() : streamed().split("\n")[0]?.replace(/^- /, "") || "Reading what came in…"}
+            </p>
+          }>
+            {(o) => (
+              <>
+                <ul class="tide-points">
+                  <For each={o().points}>
+                    {(p) => (
+                      <li>
+                        {p.text}
+                        <For each={p.messages}>
+                          {(id, i) => (
+                            <button type="button" class="cite" onClick={() => void open(id)} title="Open this conversation">
+                              {p.messages.length > 1 ? i() + 1 : "Open"}
+                            </button>
+                          )}
+                        </For>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+                <p class="tide-receipt">
+                  {PROVIDER_NAMES[o().route.provider] ?? o().route.provider} · {o().conversations}{" "}
+                  {o().conversations === 1 ? "conversation" : "conversations"}, {o().sentChars.toLocaleString()} characters sent ·
+                  nothing kept
+                </p>
+              </>
+            )}
+          </Show>
+        </Show>
+      </section>
+    </Show>
+  );
+}
 
 const sender = (t: ThreadRow) => t.fromName || t.fromAddr;
 
@@ -86,6 +160,8 @@ export function DayScreen(props: {
           <h1>{greeting()}</h1>
         </div>
       </div>
+
+      <Overnight since={s().since} onOpen={props.onOpen} />
 
       <div class="tide-columns">
         <section aria-labelledby="tide-need">

@@ -65,6 +65,7 @@ import {
   setSelection,
   setSettingsOpen,
   setSetup,
+  setAskingMail,
   setSheet,
   setSnoozing,
   searching,
@@ -183,6 +184,9 @@ export const bindings = (): Binding[] => [
   })),
   { keys: "g ;", name: "Edit snippets", run: () => setSettingsOpen("Snippets") },
   { keys: "?", name: "Keyboard shortcuts", run: () => setSheet(true) },
+  ...(settings.ai.enabled && settings.ai.summaries && settings.ai.accounts.length
+    ? [{ keys: "A", name: "Ask your mail: a question about all of it, with AI", run: () => setAskingMail(true) }]
+    : []),
   { keys: "Ctrl+,", name: "Settings", run: () => setSettingsOpen("Appearance") },
   { keys: "Ctrl+q", name: "Quit Tern", run: () => void api.quit() },
   { keys: "", name: paused() ? "Resume sync" : "Pause sync", run: () => void api.setSyncPaused(!paused()) },

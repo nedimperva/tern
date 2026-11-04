@@ -148,8 +148,10 @@ const replyFocused = () => !!document.activeElement?.closest(".inline-reply, .ai
 /** Something is over the list and takes the keys. */
 export const dialog = () =>
   screen() || deck() !== null || reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin() && (!compose()!.inline || replyFocused())) || setup() || rail() || snoozing() !== null || labeling() !== null ||
-  viewing() !== null;
+  viewing() !== null || askingMail();
 export const searching = () => query().trim() !== "";
+/** Ask your mail is open (`A`, package 17 F). */
+export const [askingMail, setAskingMail] = createSignal(false);
 /** The role of the list on show ("" for a folder or label). */
 export const role = () => {
   const t = target();

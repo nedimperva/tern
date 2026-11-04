@@ -109,12 +109,16 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
   box with its words selected (Esc there clears the search).
 
 ### F. AI, on request
-- [ ] Overnight summary on the tide (canvas board "The tide"): a Summarise button over what came in since the person
+- [x] Overnight summary on the tide (canvas board "The tide"): a Summarise button over what came in since the person
   was last here. Behind `ai::allowed` (summaries switch). Points cite their messages as chips; a receipt says what
   was sent; nothing runs until pressed and nothing is kept.
-- [ ] Ask your mail: a question over all mail the AI may read (palette, and a key, see Decisions). Retrieval is local:
+- [x] Ask your mail: a question over all mail the AI may read (palette, and a key, see Decisions). Retrieval is local:
   the model picks search words, local FTS finds the top 20 messages, the answer cites them. It reuses the
   companion's Ask turns, chips and receipt. No embeddings.
+  Built 2026-11-04: Summarise on the tide (`ai::overnight`, `prompts/overnight.md`: the Important inbox's unread
+  conversations since then, up to 40, each line citing its conversations) and Ask your mail (`A`, `ai::ask_mail`: the
+  model picks the words, `Store::search` finds up to 20 conversations, `prompts/ask_mail.md` answers citing them; two
+  requests, both on the receipt). Both behind the summaries switch for now, and only the accounts it may read.
 
 ### G. Todoist
 - [x] **Decision gate.** `docs/research/todoist.md` (2026-11-04: API v1, a personal token in the keyring): the API to use (Todoist API v1 at `api.todoist.com/api/v1`;

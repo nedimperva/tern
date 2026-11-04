@@ -490,7 +490,11 @@ fn mark_all_read_takes_every_unread_message_in_the_list_and_undoes() {
 #[test]
 fn a_search_result_previews_the_text_around_the_words() {
     let (store, account, inbox, _) = setup();
-    let long = format!("{} The invoice for March is attached, paid by Friday. {}", "Hello there. ".repeat(20), "Bye.");
+    let long = format!(
+        "{} The invoice for March is attached, paid by Friday. {}",
+        "Hello there. ".repeat(20),
+        "Bye."
+    );
     let m = NewMessage { body_text: Some(long), ..message(1, "Numbers", 100) };
     store.insert_messages(account, inbox, &[m, message(2, "Invoice early", 200)]).unwrap();
     let found = store.search("invoice", 10).unwrap();
@@ -504,7 +508,10 @@ fn a_search_result_previews_the_text_around_the_words() {
     assert_eq!(snippet_around("short text", &["text".into()]), None);
     assert_eq!(snippet_around(&"x ".repeat(200), &["invoice".into()]), None);
     let words = format!("{} reinvoiced later invoice", "word ".repeat(40));
-    assert!(snippet_around(&words, &["invoice".into()]).unwrap().contains("later invoice"), "only where a word starts");
+    assert!(
+        snippet_around(&words, &["invoice".into()]).unwrap().contains("later invoice"),
+        "only where a word starts"
+    );
 }
 
 #[test]

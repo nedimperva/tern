@@ -1575,6 +1575,37 @@ pub async fn ai_ask(
     .await
 }
 
+/// The tide's Summarise: a few lines on what came in since `since`, from the accounts the AI may read.
+#[tauri::command]
+pub async fn ai_overnight(
+    state: State<'_, AppState>,
+    since: i64,
+    on_text: tauri::ipc::Channel<String>,
+) -> Reply<ai::Overnight> {
+    let store = state.store.clone();
+    blocking(move || {
+        ai::overnight(&store, &providers::Router, since, &mut |t| drop(on_text.send(t.to_string())))
+    })
+    .await
+}
+
+/// Ask your mail: a question over all the mail the AI may read, answered from what this computer's search finds.
+#[tauri::command]
+pub async fn ai_ask_mail(
+    state: State<'_, AppState>,
+    question: String,
+    earlier: Vec<(String, String)>,
+    on_text: tauri::ipc::Channel<String>,
+) -> Reply<ai::Answer> {
+    let store = state.store.clone();
+    blocking(move || {
+        ai::ask_mail(&store, &providers::Router, &question, &earlier, &mut |t| {
+            drop(on_text.send(t.to_string()))
+        })
+    })
+    .await
+}
+
 /// A task the AI proposes from the conversation of message `id`, for the task box; nothing is created.
 #[tauri::command]
 pub async fn ai_task(state: State<'_, AppState>, id: i64) -> Reply<ai::TaskSuggestion> {

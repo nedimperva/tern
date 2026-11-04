@@ -324,6 +324,8 @@ fn main() {
             commands::todoist_forget,
             commands::queue_task,
             commands::ai_task,
+            commands::ai_overnight,
+            commands::ai_ask_mail,
             commands::tasks_of,
             commands::task_done,
             commands::check_tasks,

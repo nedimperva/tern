@@ -778,6 +778,228 @@ pub fn ask_about(
     })
 }
 
+// MARK: Across mail
+
+const OVERNIGHT_PROMPT: &str = include_str!("prompts/overnight.md");
+const MAIL_WORDS_PROMPT: &str = include_str!("prompts/mail_words.md");
+const ASK_MAIL_PROMPT: &str = include_str!("prompts/ask_mail.md");
+/// Conversations an overnight summary covers at most, and messages an answer about all mail reads.
+const OVERNIGHT_MAX: usize = 40;
+const ASK_MAIL_MAX: usize = 20;
+/// Characters of a message's own words sent for each, so many fit in one request.
+const PER_MESSAGE: usize = 1_500;
+
+/// One line of a summary over many conversations, with the messages it rests on (the newest of each).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Point {
+    pub text: String,
+    pub messages: Vec<i64>,
+}
+
+/// What came in overnight, in a few lines, and what was sent to get it (the receipt).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Overnight {
+    pub points: Vec<Point>,
+    pub conversations: usize,
+    pub sent_chars: usize,
+    pub route: Route,
+}
+
+/// The route for reading across accounts: the summaries switch on, and at least one account the AI may read. Each
+/// account's mail is then included only if `allowed` passes for it.
+fn across(s: &AiSettings, accounts: &[i64]) -> Result<Route> {
+    let mut last = None;
+    for a in accounts {
+        match allowed(s, Feature::Summaries, *a) {
+            Ok(r) => return Ok(r),
+            Err(e) => last = Some(e),
+        }
+    }
+    Err(last.unwrap_or_else(|| anyhow::anyhow!("No mail to read.")))
+}
+
+/// A message's own words for a request across mail: its text, else its snippet, cut to `PER_MESSAGE`.
+fn words_of(m: &ThreadMessage, redact_it: bool) -> String {
+    let words = match (&m.body_text, &m.body_html) {
+        (Some(text), _) if !text.trim().is_empty() => own_words(text),
+        (_, Some(html)) => own_words(&html_text(html)),
+        _ => m.row.snippet.clone(),
+    };
+    let mut words: String = words.chars().take(PER_MESSAGE).collect();
+    if redact_it {
+        words = redact(&words);
+    }
+    fence(&words)
+}
+
+/// "- line [1][3]" lines as points, the numbers turned into message ids (out of range ones dropped).
+fn points_of(text: &str, ids: &[i64]) -> Vec<Point> {
+    text.lines()
+        .map(str::trim)
+        .filter_map(|l| l.strip_prefix("- ").or_else(|| l.strip_prefix("* ")))
+        .map(|l| {
+            let mut messages = Vec::new();
+            let mut plain = String::new();
+            let mut rest = l;
+            while let Some(open) = rest.find('[') {
+                plain.push_str(&rest[..open]);
+                let after = &rest[open + 1..];
+                match after
+                    .find(']')
+                    .and_then(|close| after[..close].parse::<usize>().ok().map(|n| (n, close)))
+                {
+                    Some((n, close)) => {
+                        if let Some(id) = n.checked_sub(1).and_then(|i| ids.get(i)) {
+                            if !messages.contains(id) {
+                                messages.push(*id);
+                            }
+                        }
+                        rest = &after[close + 1..];
+                    }
+                    None => {
+                        plain.push('[');
+                        rest = after;
+                    }
+                }
+            }
+            plain.push_str(rest);
+            Point { text: plain.trim().to_string(), messages }
+        })
+        .filter(|p| !p.text.is_empty())
+        .collect()
+}
+
+/// A few lines on the mail that came in since `since` (the tide's Summarise, package 17 F): the Important inbox's
+/// unread conversations, newest message of each, from the accounts the AI may read. On request only, never kept.
+pub fn overnight(
+    store: &Store,
+    model: &dyn Model,
+    since: i64,
+    on_text: &mut dyn FnMut(&str),
+) -> Result<Overnight> {
+    let s = settings(store)?;
+    let (_, mail) = store.new_mail(0, since, false)?;
+    // The newest message of each conversation, newest conversations first.
+    let mut seen = std::collections::HashSet::new();
+    let mut newest: Vec<_> =
+        mail.into_iter().rev().filter(|m| seen.insert((m.account_id, m.thread_id.clone()))).collect();
+    newest.retain(|m| allowed(&s, Feature::Summaries, m.account_id).is_ok());
+    let accounts: Vec<i64> = store.accounts()?.iter().map(|a| a.id).collect();
+    let r = across(&s, &accounts)?;
+    if newest.is_empty() {
+        bail!("Nothing new came in since then.");
+    }
+    newest.truncate(OVERNIGHT_MAX);
+    let mut user = String::from("<mail>\n");
+    let mut ids = Vec::new();
+    for (i, n) in newest.iter().enumerate() {
+        let Some(m) = store.thread(n.id)?.into_iter().find(|x| x.row.id == n.id) else { continue };
+        let from = if s.redact || m.row.from_name.trim().is_empty() {
+            m.row.from_name.trim().to_string()
+        } else {
+            format!("{} <{}>", m.row.from_name.trim(), m.row.from_addr)
+        };
+        user.push_str(&format!(
+            "<conversation n=\"{}\" from=\"{}\" subject=\"{}\">\n{}\n</conversation>\n",
+            i + 1,
+            fence(&from).replace('"', "'"),
+            fence(&m.row.subject).replace('"', "'"),
+            words_of(&m, s.redact)
+        ));
+        ids.push(m.row.id);
+    }
+    user.push_str("</mail>");
+    let req = Request { provider: r.provider, model: r.model.clone(), system: OVERNIGHT_PROMPT, user };
+    let text = ask(store, &s, model, &req, on_text)?;
+    let points = points_of(&text, &ids);
+    if points.is_empty() {
+        bail!("The AI sent back no summary. Try again.");
+    }
+    Ok(Overnight { points, conversations: ids.len(), sent_chars: req.user.len(), route: r })
+}
+
+/// Answers a question about all the mail the AI may read (package 17 F, Ask your mail). Retrieval is local: the model
+/// turns the question into search words, this computer's search finds the messages, and the answer cites them.
+/// Behind the summaries switch, for every account it reads. Never kept.
+pub fn ask_mail(
+    store: &Store,
+    model: &dyn Model,
+    question: &str,
+    earlier: &[(String, String)],
+    on_text: &mut dyn FnMut(&str),
+) -> Result<Answer> {
+    let s = settings(store)?;
+    let question = question.trim();
+    if question.is_empty() {
+        bail!("Ask something first.");
+    }
+    let accounts: Vec<i64> = store.accounts()?.iter().map(|a| a.id).collect();
+    let r = across(&s, &accounts)?;
+    let asked = if s.redact { redact(question) } else { question.to_string() };
+    // Step one: what to search for. The question alone goes; no mail yet.
+    let words_req = Request {
+        provider: r.provider,
+        model: r.model.clone(),
+        system: MAIL_WORDS_PROMPT,
+        user: format!("<question>{}</question>", fence(&asked)),
+    };
+    let words = ask(store, &s, model, &words_req, &mut |_| {})?;
+    let words = words.lines().next().unwrap_or_default().replace(['"', ':', '-'], " ");
+    // Step two: this computer's search, the accounts the AI may read, a message per conversation.
+    let found = store.search(&words, 200)?;
+    let mut seen = std::collections::HashSet::new();
+    let rows: Vec<_> = found
+        .rows
+        .into_iter()
+        .filter(|m| allowed(&s, Feature::Summaries, m.account_id).is_ok())
+        .filter(|m| seen.insert((m.account_id, m.thread_id.clone())))
+        .take(ASK_MAIL_MAX)
+        .collect();
+    let mut user = String::from("<mail>\n");
+    let mut ids = Vec::new();
+    for (i, row) in rows.iter().enumerate() {
+        let Some(m) = store.thread(row.id)?.into_iter().find(|x| x.row.id == row.id) else { continue };
+        let mine =
+            own_address(store, m.row.account_id)?.iter().any(|a| m.row.from_addr.eq_ignore_ascii_case(a));
+        let from = if mine {
+            "you".to_string()
+        } else if s.redact || m.row.from_name.trim().is_empty() {
+            m.row.from_name.trim().to_string()
+        } else {
+            format!("{} <{}>", m.row.from_name.trim(), m.row.from_addr)
+        };
+        user.push_str(&format!(
+            "<message n=\"{}\" from=\"{}\" date=\"{}\" subject=\"{}\">\n{}\n</message>\n",
+            i + 1,
+            fence(&from).replace('"', "'"),
+            date(m.row.date),
+            fence(&m.row.subject).replace('"', "'"),
+            words_of(&m, s.redact)
+        ));
+        ids.push(m.row.id);
+    }
+    user.push_str("</mail>");
+    if !earlier.is_empty() {
+        user.push_str("\n\n<earlier>\n");
+        for (q, a) in earlier {
+            user.push_str(&format!("<question>{}</question>\n<answer>{}</answer>\n", fence(q), fence(a)));
+        }
+        user.push_str("</earlier>");
+    }
+    user.push_str(&format!("\n\n<question>{}</question>", fence(&asked)));
+    if user.len() > MAX_CHARS {
+        bail!("Too much mail matched to send. Ask about something narrower.");
+    }
+    let req = Request { provider: r.provider, model: r.model.clone(), system: ASK_MAIL_PROMPT, user };
+    let text = ask(store, &s, model, &req, on_text)?;
+    if text.is_empty() {
+        bail!("The AI sent back nothing. Try again.");
+    }
+    Ok(Answer { text, messages: ids, sent_chars: words_req.user.len() + req.user.len(), route: r })
+}
+
 // MARK: A task from the mail
 
 const TASK_PROMPT: &str = include_str!("prompts/task.md");
@@ -1104,6 +1326,64 @@ mod tests {
         assert!(req.user.ends_with("<question>When does Tom send it?</question>"));
         assert_eq!(answer.sent_chars, req.user.len());
         assert!(!req.user.contains("+387"), "redacted like a summary");
+    }
+
+    /// Answers each request with the next of `answers`, and remembers them.
+    struct Seq {
+        answers: RefCell<Vec<&'static str>>,
+        asked: RefCell<Vec<Request>>,
+    }
+
+    impl Model for Seq {
+        fn complete(&self, req: &Request, on_text: &mut dyn FnMut(&str)) -> Result<Completion> {
+            self.asked.borrow_mut().push(req.clone());
+            let text = self.answers.borrow_mut().remove(0);
+            on_text(text);
+            Ok(Completion { text: text.into(), tokens: 100 })
+        }
+    }
+
+    #[test]
+    fn overnight_sums_up_what_came_in_with_its_conversations() {
+        let (store, account, _) = mailbox();
+        let model =
+            Scripted::new("- Ana wants the deck, Tom sends it Thursday [1]\n- Also: nothing else [9]");
+        assert!(overnight(&store, &model, 0, &mut |_| {}).is_err(), "not while AI is off");
+        turn_on(&store, account);
+        let o = overnight(&store, &model, 0, &mut |_| {}).unwrap();
+        assert_eq!(o.conversations, 1, "one conversation, its newest message");
+        assert_eq!(o.points[0].text, "Ana wants the deck, Tom sends it Thursday");
+        assert_eq!(o.points[0].messages.len(), 1);
+        assert!(o.points[1].messages.is_empty(), "a number past the list is dropped");
+        let req = model.asked.borrow()[0].clone();
+        assert_eq!(req.system, OVERNIGHT_PROMPT);
+        assert!(!req.user.contains("+387"), "redacted like a summary");
+        assert!(
+            overnight(&store, &model, crate::store::now() + 10, &mut |_| {}).is_err(),
+            "nothing new since then"
+        );
+    }
+
+    #[test]
+    fn asking_your_mail_searches_here_then_answers_from_what_it_found() {
+        let (store, account, _) = mailbox();
+        turn_on(&store, account);
+        let model = Seq {
+            answers: RefCell::new(vec!["deck", "Tom sends the deck on Thursday [1]."]),
+            asked: RefCell::new(Vec::new()),
+        };
+        let a = ask_mail(&store, &model, "When does the deck come?", &[], &mut |_| {}).unwrap();
+        assert_eq!(a.text, "Tom sends the deck on Thursday [1].");
+        assert_eq!(a.messages.len(), 1, "one conversation found by the local search");
+        let asked = model.asked.borrow();
+        assert_eq!(asked[0].system, MAIL_WORDS_PROMPT);
+        assert!(!asked[0].user.contains("<mail>"), "the first request carries the question alone");
+        assert_eq!(asked[1].system, ASK_MAIL_PROMPT);
+        assert!(
+            asked[1].user.contains("<mail>")
+                && asked[1].user.ends_with("<question>When does the deck come?</question>")
+        );
+        assert_eq!(a.sent_chars, asked[0].user.len() + asked[1].user.len());
     }
 
     #[test]

@@ -11,6 +11,7 @@ import { TitleBar } from "./components/TitleBar";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { LabelPicker } from "./components/LabelPicker";
 import { SnoozePicker } from "./components/SnoozePicker";
+import { AskMail } from "./components/AskMail";
 import { AttachmentViewer } from "./components/AttachmentViewer";
 import { PerfOverlay } from "./components/PerfOverlay";
 import { DayDeck } from "./components/DayDeck";
@@ -40,7 +41,7 @@ import {
 import { closeDeck, deckRows, doneUpdates, firstName, runDeck } from "./app/deck";
 import { forgetSearch, isTarget, go, loadSignatures, onChange, readProgress, refresh, runSearch, watchList } from "./app/list";
 import { checkTodoist } from "./app/tasks";
-import { keyOf } from "./app/rows";
+import { asRow, keyOf } from "./app/rows";
 import {
   accounts,
   compose,
@@ -96,6 +97,7 @@ import {
   ownTitleBar,
   toggleSidebar,
   viewing,
+  askingMail,
   width,
 } from "./app/state";
 import { clock, held, late, scheduled, watchStatus } from "./app/status";
@@ -366,6 +368,16 @@ function Main() {
       </Show>
       <Show when={viewing()}>
         {(v) => <AttachmentViewer message={v().message} index={v().index} onClose={() => setViewing(null)} />}
+      </Show>
+      <Show when={askingMail()}>
+        <AskMail
+          onOpen={(id) =>
+            void api.thread(id).then((t) => {
+              const m = t.find((x) => x.id === id) ?? t[t.length - 1];
+              if (m) void openConversation(asRow(m));
+            })
+          }
+        />
       </Show>
       <Show when={snoozing()}>
         {(hit) => <SnoozePicker count={hit().length} onPick={(due) => void snoozeUntil(due)} onClose={() => (snoozeThen(null), setSnoozing(null))} />}
