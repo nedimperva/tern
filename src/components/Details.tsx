@@ -9,7 +9,7 @@ const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-di
 const month = new Intl.DateTimeFormat(undefined, { month: "short" });
 
 /** "Thu 6 Nov · 10:00–16:00". */
-function whenSaid(w: NonNullable<Facts["when"]>): string {
+export function whenSaid(w: NonNullable<Facts["when"]>): string {
   const at = new Date(w.at * 1000);
   const d = (at.getFullYear() === new Date().getFullYear() ? day : dayYear).format(at);
   if (w.allDay) return d;

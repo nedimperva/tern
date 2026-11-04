@@ -1148,7 +1148,9 @@ fn failure(e: &anyhow::Error) -> Failure {
     if smtp::maybe_sent(e) {
         Failure::MaybeSent
     } else if smtp::is_permanent(e)
-        || e.chain().any(|c| c.is::<Unworkable>() || c.is::<crate::unsubscribe::Refused>())
+        || e.chain().any(|c| {
+            c.is::<Unworkable>() || c.is::<crate::unsubscribe::Refused>() || c.is::<crate::todoist::Refused>()
+        })
     {
         Failure::Permanent
     } else {
@@ -1228,6 +1230,15 @@ async fn run_op<S: Stream>(
         OutboxOp::Unsubscribe { url, .. } => {
             let url = url.clone();
             tokio::task::spawn_blocking(move || crate::unsubscribe::post(&url)).await??;
+        }
+        // Not the mail server's work, but it waits out the undo window and retries like the rest.
+        OutboxOp::Task { local, task } => {
+            let token = crate::secrets::password(crate::todoist::KEY).map_err(|_| {
+                Unworkable("Todoist isn't connected. Connect it in Settings → Todoist".into())
+            })?;
+            let task = task.clone();
+            let id = tokio::task::spawn_blocking(move || crate::todoist::create(&token, &task)).await??;
+            store.task_created(*local, &id)?;
         }
         OutboxOp::Append { folder, message, .. } => {
             // Sent may have changed since the copy was queued (a duplicate removed, a folder renamed).

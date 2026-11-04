@@ -10,6 +10,7 @@ import { SnippetSettings } from "./settings/snippets";
 import { SignatureSettings } from "./settings/signatures";
 import { AccountPage } from "./settings/account";
 import { BackupSettings } from "./settings/backup";
+import { TodoistSettings } from "./settings/todoist";
 
 type Section = {
   /** Unique: a section name, or "account:<id>". */
@@ -69,6 +70,14 @@ export function SettingsPage(props: {
       group: "General",
       words: "ai claude anthropic openai gpt gemini google api key summary summarize replies suggest write rewrite style voice model privacy",
       body: () => <AiSettingsPage accounts={props.accounts} onStyles={() => setSection("Writing style")} />,
+    },
+    {
+      id: "Todoist",
+      name: "Todoist",
+      icon: "check",
+      group: "General",
+      words: "todoist tasks to do todo task integration token project label",
+      body: () => <TodoistSettings />,
     },
     {
       id: "Backup",

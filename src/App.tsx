@@ -39,6 +39,7 @@ import {
 } from "./app/composing";
 import { closeDeck, deckRows, doneUpdates, firstName, runDeck } from "./app/deck";
 import { forgetSearch, isTarget, go, loadSignatures, onChange, readProgress, refresh, runSearch, watchList } from "./app/list";
+import { checkTodoist } from "./app/tasks";
 import { keyOf } from "./app/rows";
 import {
   accounts,
@@ -190,6 +191,7 @@ function Main() {
     onCleanup(() => (window.removeEventListener("online", onOnline), window.removeEventListener("offline", onOffline)));
     void loadSettings().then(startDay);
     void refresh();
+    checkTodoist();
     // The tray, the system's links and notifications. Closing the window leaves Tern in the tray unless turned off.
     api.keepRunningWhen(() => settings.background);
     api.onDesktop({
@@ -327,7 +329,7 @@ function Main() {
             <SettingsPage
               accounts={accounts()}
               section={section()}
-              onClose={() => (setSettingsOpen(null), loadSignatures())}
+              onClose={() => (setSettingsOpen(null), loadSignatures(), checkTodoist())}
               onAccountsChanged={() => void api.accounts().then(setAccounts)}
             />
           </Suspense>

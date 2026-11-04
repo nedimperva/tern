@@ -16,6 +16,7 @@ import {
   act,
   blockSender,
   folderName,
+  isMine,
   markAllRead,
   moveToSplit,
   mute,
@@ -35,6 +36,7 @@ import { moveMessage, open, toggleMessage, unmute, viewFiles } from "./conversat
 import { newMessage, reply, respond } from "./composing";
 import { escape, extend, go, isSaved, move, nextSplit, runSearch, toggleSaved, toggleSelected } from "./list";
 import { keyOf, withGroups } from "./rows";
+import { startTask, suggestTask, todoistOn } from "./tasks";
 import {
   accounts,
   choose,
@@ -104,6 +106,20 @@ export const bindings = (): Binding[] => [
   { keys: "B", name: "Reading view or the original look", context: "conversation", run: switchReading },
   { keys: "Ctrl+u", name: "Unsubscribe from this list", context: "conversation", run: () => void unsubscribe() },
   { keys: "i", name: "The companion: the person, what's in the mail, promises and files", context: "conversation", run: toggleCompanion },
+  ...(todoistOn()
+    ? [
+        {
+          keys: "t",
+          name: "Add a task to Todoist from this conversation",
+          context: "conversation" as const,
+          run: () => {
+            const s = suggestTask(messages, isMine);
+            const last = messages[messages.length - 1];
+            if (last) startTask(last.id, s.title, s.due);
+          },
+        },
+      ]
+    : []),
   { keys: "I", name: "Fold or open the person card in the companion", context: "conversation", run: () => setSetting("companionFolded", !settings.companionFolded) },
   { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1), repeat: true },
   { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },

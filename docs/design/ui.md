@@ -216,19 +216,26 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   `src/fold.ts`: up to three short lines, no phone numbers, addresses or links). Plain text folds a signature from
   "-- ", or from a bare "--" or a sign-off line ("Srdačan pozdrav", "S poštovanjem", "Best regards"…) when only a
   few short lines follow; HTML from a "--" paragraph or Gmail's signature block.
-- Only what's new (owner, 2026-10-29): coming back to a conversation that had unread mail as it opened, and was read
-  before, a line on `--accent-soft` says "Since you last read: 3 new · a question for you" (a question: a `?` in a
-  new message's own words, quote and links aside; `src/catchup.ts`) with Jump to it. Past five earlier messages,
+- **The brief** (2026-11-04, canvas "Tern summary directions", A + C with actionable facts; `Brief` in
+  `AiSummary.tsx`): one `--soft` card under the header, shown only when it has something.
+  - Its first line: coming back to a conversation that had unread mail as it opened and was read before, "3 new
+    since you read it" in `--accent` 600, then "· a question for you" (a `?` in a new message's own words;
+    `src/catchup.ts`) and Jump to it. On the right, with AI on, Explain it (`AI` keycap, `Shift S`).
+  - Asked, the AI's sentence in `--t-read` / `--fg-0`; the right side becomes More, Redo, Hide.
+  - Then a row each, on `--bg-0`: a tag (Asked of you on `--warn-soft`, Day / Due on `--accent-soft`, Place on
+    `--bg-2`, Decided on `--ok-soft`), the text, and what to do: Answer (`--accent`, opens a reply), Add task (when
+    Todoist is connected), Show; Snooze till then for a day; Map for a place. Without AI the rows are what this
+    computer found (`promises.ts`, `facts.ts`); once explained, the AI's facts take the place of the asks.
+  - Nothing found and nothing new: only Explain it, with no card.
+  - An "In Todoist · fri" pill (`--accent-soft`) under the subject once a task was made from the conversation.
+- Long conversations: past five earlier messages,
   the older read, closed lines (all but the last two, never an unread, open or focused one) wait behind
   "Earlier in this conversation · N messages" between two rules; a click, or `k` into them, brings them all out.
 - Attachments strip: file cards on `--soft`, with a type badge (PDF, XLSX…, coloured `--file-*`) or a picture preview once the file is on this computer, name, size and Save; clicking opens it.
 - Inline reply box at the bottom when replying (see Compose); `Esc` collapses it and keeps the draft.
 - AI (package 10, on request only, shown only when AI is on for the account; redesigned 2026-10-26 from the canvas
   "Tern AI redesign ideas", the owner's picks):
-  - Summary, "lede and facts": a quiet "Summarize" (`AI` keycap on `--accent-soft`, `Shift S` on hover) under the
-    subject; asked, a lede of one or two sentences in `--t-read` / `--fg-1` with the `AI` keycap inline, then up to
-    three chips: Due (`--warn-soft`, clock), Asked of you (`--accent-soft`), Decided (`--ok-soft`, check), and More
-    (the 3–5 points), Regenerate and Dismiss at the end of the row. A kept summary shows at once.
+  - Summary: in the brief (above). A kept summary shows at once; the points open under More.
   - Suggested replies, "intents first": above the reply row "Suggest replies" with `Q`; asked, "ANSWER WITH" and
     three cards in a row (`--soft`; the pointed one `--bg-0` with a 2 px `--accent` border): a `1`–`3` keycap, a label
     of a few words (Accept, Another time) and the reply's start; under them the pointed reply in full, then Others

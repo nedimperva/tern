@@ -190,6 +190,11 @@ export type PersonFacts = {
   /** Your note on them, kept only here. */
   note: string;
 };
+export type TodoistProject = { id: string; name: string; inbox: boolean };
+/** What the task box sends. */
+export type TaskInput = { title: string; due?: string | null; projectId?: string | null; label?: string | null };
+/** A task made from a conversation; `url` once Todoist has it. */
+export type TaskRow = { id: number; title: string; due: string | null; url: string | null };
 /** A file exchanged with a person, from any conversation. */
 export type PersonFile = {
   messageId: number;
@@ -409,6 +414,15 @@ export interface Api {
   setPersonNote(email: string, body: string): Promise<void>;
   /** The files exchanged with a person, every conversation, newest first. */
   personFiles(email: string): Promise<PersonFile[]>;
+  /** Whether a Todoist token is saved (nothing is asked of Todoist). */
+  todoistConnected(): Promise<boolean>;
+  /** Checks the token with Todoist and keeps it in the keyring; the projects it found. */
+  todoistConnect(token: string): Promise<TodoistProject[]>;
+  todoistProjects(): Promise<TodoistProject[]>;
+  todoistForget(): Promise<void>;
+  /** Queues a task from the conversation of message `id`, with the usual undo; the undo token. */
+  queueTask(id: number, task: TaskInput): Promise<number[]>;
+  tasksOf(id: number): Promise<TaskRow[]>;
   /** The system file picker; paths chosen (none if cancelled). */
   pickFiles(): Promise<string[]>;
   /** Copies files into Tern's attachment folder, for a draft. */
@@ -660,6 +674,12 @@ const tauri: Api = {
   person: (accountId, email) => invoke("person", { accountId, email }),
   setPersonNote: (email, body) => invoke("set_person_note", { email, body }),
   personFiles: (email) => invoke("person_files", { email }),
+  todoistConnected: () => invoke("todoist_connected"),
+  todoistConnect: (token) => invoke("todoist_connect", { token }),
+  todoistProjects: () => invoke("todoist_projects"),
+  todoistForget: () => invoke("todoist_forget"),
+  queueTask: (id, task) => invoke("queue_task", { id, task }),
+  tasksOf: (id) => invoke("tasks_of", { id }),
   onFilesDropped: (f, hover) => {
     const stops: (() => void)[] = [];
     let stopped = false;
@@ -933,6 +953,15 @@ function fake(): Api {
   });
   const listeners: (() => void)[] = [];
   const personNotes = new Map<string, string>();
+  // #todoist: start connected, to see the Tasks section and the task box.
+  let todoistToken = location.hash === "#todoist" ? "fake" : "";
+  const TODOIST_PROJECTS: TodoistProject[] = [
+    { id: "1", name: "Inbox", inbox: true },
+    { id: "2", name: "Work", inbox: false },
+    { id: "3", name: "Home", inbox: false },
+  ];
+  const fakeTasks: (TaskRow & { thread: string })[] = [];
+  let nextTask = 1;
   const stateListeners: ((accountId: number, state: SyncState) => void)[] = [];
   let waiting: OutboxWaiting[] =
     location.hash === "#offline"
@@ -1261,6 +1290,31 @@ function fake(): Api {
     setPersonNote: async (email, body) => {
       if (body.trim()) personNotes.set(email.toLowerCase(), body);
       else personNotes.delete(email.toLowerCase());
+    },
+    todoistConnected: async () => todoistToken !== "",
+    todoistConnect: async (token) => {
+      if (!token.trim()) throw "Paste the API token from Todoist's settings";
+      todoistToken = token.trim();
+      return TODOIST_PROJECTS;
+    },
+    todoistProjects: async () => {
+      if (!todoistToken) throw "Todoist isn't connected";
+      return TODOIST_PROJECTS;
+    },
+    todoistForget: async () => void (todoistToken = ""),
+    queueTask: async (id, task) => {
+      const thread = messages.find((m) => m.id === id)?.threadId ?? "";
+      const row = { id: nextTask++, thread, title: task.title.trim(), due: task.due?.trim() || null, url: null as string | null };
+      if (!row.title) throw "A task needs a title";
+      fakeTasks.push(row);
+      // After the undo window it "reaches Todoist".
+      const timer = window.setTimeout(() => (row.url = `https://app.todoist.com/app/task/${row.id}`), 6000);
+      pending.set(-row.id, () => (window.clearTimeout(timer), fakeTasks.splice(fakeTasks.indexOf(row), 1)));
+      return [-row.id];
+    },
+    tasksOf: async (id) => {
+      const thread = messages.find((m) => m.id === id)?.threadId;
+      return fakeTasks.filter((t) => t.thread === thread).map(({ thread: _, ...t }) => t);
     },
     personFiles: async (email) => {
       const e = email.toLowerCase();

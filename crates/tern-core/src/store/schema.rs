@@ -348,6 +348,15 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
                                             updated INTEGER NOT NULL);
                  CREATE INDEX messages_from ON messages (from_addr COLLATE NOCASE, date);"
             }
+            // Todoist tasks made from mail (package 17 G): what the conversation shows ("In Todoist · fri"), and the
+            // task's id once Todoist has made it.
+            33 => {
+                "CREATE TABLE tasks (id INTEGER PRIMARY KEY,
+                                     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                     thread_id TEXT NOT NULL, title TEXT NOT NULL, due TEXT,
+                                     todoist_id TEXT, created INTEGER NOT NULL);
+                 CREATE INDEX tasks_thread ON tasks (account_id, thread_id);"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),

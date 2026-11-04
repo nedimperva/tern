@@ -30,7 +30,8 @@ import { aiOn, isDark, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
 import { ActionMenu, type MenuItem } from "./ActionMenu";
 import { AiReplies } from "./AiReplies";
-import { AiSummary } from "./AiSummary";
+import { Brief } from "./AiSummary";
+import { taskRows } from "../app/tasks";
 import { Icon } from "./Icon";
 import { Original } from "./Original";
 import { PersonCard, type PersonActions } from "./PersonCard";
@@ -1139,24 +1140,30 @@ export function ConversationView(props: {
                 </span>
               </div>
             </Show>
-            <Show when={last() && aiOn("summaries", last().accountId) && last()}>{(m) => <AiSummary id={m().id} />}</Show>
+            <Show when={taskRows().length ? taskRows() : null}>
+              {(t) => (
+                <div class="in-todoist">
+                  <span>
+                    In Todoist{t()[t().length - 1].due ? ` · ${t()[t().length - 1].due}` : ""}
+                    {t().length > 1 ? ` · ${t().length} tasks` : ""}
+                  </span>
+                </div>
+              )}
+            </Show>
           </div>
           <Show when={!reader()}>{tools()}</Show>
         </header>
-        <Show when={back()}>
-          {(b) => (
-            <div class="catch-up">
-              <Icon name="activity" size={15} />
-              <span>
-                <strong>Since you last read:</strong> {b().count} new
-                {b().questions ? ` · ${b().questions === 1 ? "a question" : `${b().questions} questions`} for you` : ""}
-              </span>
-              <span class="spacer" />
-              <button type="button" class="link" onClick={() => jumpTo(b().first)}>
-                Jump to it
-              </button>
-            </div>
-          )}
+        <Show when={last()}>
+          <Brief
+            messages={props.messages}
+            mine={props.mine}
+            facts={facts()}
+            back={back()}
+            ai={aiOn("summaries", last().accountId)}
+            onJump={jumpTo}
+            onReply={(m) => props.onReply(m, "reply")}
+            onSnooze={props.onSnoozeUntil}
+          />
         </Show>
         {/* The thread, oldest first: every message one line that opens in place, and the newest open at the end, the
             same size as the rest (owner, 2026-10-29). A long conversation's older read lines wait behind "Earlier in

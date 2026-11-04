@@ -5,12 +5,23 @@
 // AI switch.
 
 import { batch, createEffect, createMemo, createSignal, For, type JSX, on, onCleanup, Show } from "solid-js";
-import { api, type AiAnswer, type ContactCard, type PersonFacts, type PersonFile, type Sender, type SenderState, type ThreadMessage } from "../api";
+import {
+  api,
+  type AiAnswer,
+  type ContactCard,
+  type PersonFacts,
+  type PersonFile,
+  type Sender,
+  type SenderState,
+  type ThreadMessage,
+  type TodoistProject,
+} from "../api";
 import { filesOf } from "../files";
 import { promisesIn } from "../promises";
 import { blockSender, splitSenders, unsubscribe } from "../app/actions";
 import { go, move } from "../app/list";
 import { newPeople, role, setDetailsSlot, setViewing } from "../app/state";
+import { addTask, loadTasks, setTaskBox, startTask, suggestTask, taskBox, taskRows, todoistOn, type TaskDraft } from "../app/tasks";
 import { showToast } from "../app/toast";
 import { aiOn, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
@@ -133,6 +144,7 @@ export function Companion(props: {
         </Show>
         <Promises messages={props.messages} mine={props.mine} onJump={props.onJump} />
         <DetailsSlot />
+        <Show when={todoistOn() && newest()}>{(m) => <Tasks message={m()} messages={props.messages} mine={props.mine} />}</Show>
         <Files messages={props.messages} sender={sender} email={who() && !isList() ? who()!.fromAddr : null} first={firstName()} />
         <Show when={card() && who() && (recent().length || card()!.received > 0) ? card() : null}>
           {(c) => (
@@ -473,6 +485,129 @@ function Note(props: { email: string; first: string; note: string }) {
         />
       </section>
     </Show>
+  );
+}
+
+/** Tasks (ui.md §4.2b), once Todoist is connected: what this conversation already put in Todoist, then the row that
+ * adds one (`t`), which becomes the task box. */
+function Tasks(props: { message: ThreadMessage; messages: ThreadMessage[]; mine: (addr: string) => boolean }) {
+  createEffect(
+    on(
+      () => props.messages.map((m) => m.id).join(","),
+      () => {
+        loadTasks(props.message.id);
+        // The box belongs to the conversation it was opened in.
+        const d = taskBox();
+        if (d && !props.messages.some((m) => m.id === d.message)) setTaskBox(null);
+      },
+    ),
+  );
+  const start = () => {
+    const s = suggestTask(props.messages, props.mine);
+    startTask(props.message.id, s.title, s.due);
+  };
+  return (
+    <section class="tasks">
+      <div class="files-head">
+        <h2>Tasks</h2>
+        <span class="count">Todoist</span>
+      </div>
+      <div class="rows">
+        <For each={taskRows()}>
+          {(t) => (
+            <div class="task">
+              <span class="ring" aria-hidden="true" />
+              <span class="what">
+                <span class="name">{t.title}</span>
+                <span class="quiet">
+                  {t.due ? `${t.due} · ` : ""}
+                  {t.url ? "in Todoist" : "going to Todoist…"}
+                </span>
+              </span>
+              <Show when={t.url}>
+                {(url) => (
+                  <button type="button" class="link" onClick={() => api.openUrl(url())}>
+                    Open
+                  </button>
+                )}
+              </Show>
+            </div>
+          )}
+        </For>
+        <Show
+          when={taskBox()}
+          fallback={
+            <button type="button" class="task-add" onClick={start}>
+              <Icon name="plus" size={14} />
+              <span>Add a task from this mail</span>
+              <kbd>T</kbd>
+            </button>
+          }
+        >
+          {(d) => <TaskBox draft={d()} />}
+        </Show>
+      </div>
+    </section>
+  );
+}
+
+/** The task box: the title, the day as Todoist reads it ("fri", "tomorrow 9am"), the project. Enter adds, Esc drops
+ * it. Under it, exactly what goes to Todoist. */
+function TaskBox(props: { draft: TaskDraft }) {
+  const [title, setTitle] = createSignal(props.draft.title);
+  const [due, setDue] = createSignal(props.draft.due);
+  const [project, setProject] = createSignal(settings.todoist.project);
+  const [projects, setProjects] = createSignal<TodoistProject[]>([]);
+  const [problem, setProblem] = createSignal("");
+  void api.todoistProjects().then(setProjects, (e) => setProblem(String(e)));
+  let field: HTMLInputElement | undefined;
+  requestAnimationFrame(() => field?.select());
+  const keys = (e: KeyboardEvent) => {
+    e.stopPropagation();
+    if (e.key === "Escape") setTaskBox(null);
+  };
+  const label = () => settings.todoist.label.trim().replace(/^@/, "");
+  return (
+    <form
+      class="task-box"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (title().trim()) void addTask(props.draft, project(), title().trim(), due().trim());
+      }}
+    >
+      <label class="visually-hidden" for="task-title">
+        Task
+      </label>
+      <input id="task-title" ref={field} value={title()} onInput={(e) => setTitle(e.currentTarget.value)} onKeyDown={keys} placeholder="What to do" />
+      <div class="task-fields">
+        <label class="visually-hidden" for="task-due">
+          When
+        </label>
+        <input id="task-due" value={due()} onInput={(e) => setDue(e.currentTarget.value)} onKeyDown={keys} placeholder="Day: fri, tomorrow 9am" />
+        <label class="visually-hidden" for="task-project">
+          Project
+        </label>
+        <select id="task-project" value={project()} onChange={(e) => setProject(e.currentTarget.value)} onKeyDown={keys}>
+          <option value="">Inbox</option>
+          <For each={projects().filter((p) => !p.inbox)}>{(p) => <option value={p.id}>{p.name}</option>}</For>
+        </select>
+      </div>
+      <Show when={problem()}>
+        <p class="quiet error">{problem()}</p>
+      </Show>
+      <p class="quiet">
+        To Todoist: the title, the day, the project{label() ? `, @${label()}` : ""} and who sent the mail with its subject. No
+        mail text.
+      </p>
+      <div class="task-do">
+        <button type="button" onClick={() => setTaskBox(null)}>
+          Cancel <kbd>Esc</kbd>
+        </button>
+        <button type="submit" class="primary" disabled={!title().trim()}>
+          Add task <kbd>Enter</kbd>
+        </button>
+      </div>
+    </form>
   );
 }
 

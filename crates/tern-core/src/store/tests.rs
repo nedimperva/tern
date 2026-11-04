@@ -1632,6 +1632,45 @@ fn a_person_has_months_a_note_and_the_files_both_ways() {
 }
 
 #[test]
+fn a_task_from_mail_shows_at_once_goes_on_undo_and_keeps_its_todoist_id() {
+    let (store, account, inbox, _) = setup();
+    store
+        .insert_messages(account, inbox, &[message(1, "Q3 offsite", 100), message(2, "Other", 200)])
+        .unwrap();
+    let id: i64 = store.conn().query_row("SELECT id FROM messages WHERE uid = 1", [], |r| r.get(0)).unwrap();
+    let input = TaskInput {
+        title: " Bring the Q3 deck ".into(),
+        due: Some("fri".into()),
+        project_id: Some(String::new()),
+        label: Some("@mail".into()),
+    };
+    let (owner, token) = store.queue_task(id, &input, 5).unwrap();
+    assert_eq!(owner, account);
+    let tasks = store.tasks_of(id).unwrap();
+    assert_eq!(
+        (tasks[0].title.as_str(), tasks[0].due.as_deref(), tasks[0].url.is_none()),
+        ("Bring the Q3 deck", Some("fri"), true)
+    );
+    let payload: String = store.conn().query_row("SELECT payload FROM outbox", [], |r| r.get(0)).unwrap();
+    let OutboxOp::Task { task, .. } = serde_json::from_str(&payload).unwrap() else { panic!("{payload}") };
+    assert_eq!(task.description, "From Ada · Q3 offsite", "who and what, never the text");
+    assert_eq!((task.project_id, task.labels), (None, vec!["mail".to_string()]));
+
+    assert!(store.undo(&token).unwrap());
+    assert!(store.tasks_of(id).unwrap().is_empty(), "undo takes it off the conversation");
+
+    let (_, _) = store.queue_task(id, &input, 5).unwrap();
+    let local: i64 = store.conn().query_row("SELECT id FROM tasks", [], |r| r.get(0)).unwrap();
+    assert_ne!(local, 0);
+    store.task_created(local, "6X7rM8997g3RQmvh").unwrap();
+    assert_eq!(
+        store.tasks_of(id).unwrap()[0].url.as_deref(),
+        Some("https://app.todoist.com/app/task/6X7rM8997g3RQmvh")
+    );
+    assert!(store.queue_task(id, &TaskInput { title: "  ".into(), ..Default::default() }, 5).is_err());
+}
+
+#[test]
 fn settings_keep_their_json() {
     let store = Store::open_in_memory().unwrap();
     store.set_setting("theme", &serde_json::json!("dark")).unwrap();
@@ -1789,6 +1828,7 @@ fn renumbering_keeps_messages_queued_work_is_about_to_change() {
 fn wind_back(conn: &Connection, version: i64) {
     for from in (version..SCHEMA_VERSION).rev() {
         let undo = match from {
+            33 => "DROP TABLE tasks;",
             32 => "DROP TABLE person_notes; DROP INDEX messages_from;",
             31 => {
                 "CREATE TABLE sender_splits (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,

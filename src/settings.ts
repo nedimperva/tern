@@ -80,6 +80,8 @@ export type Settings = {
   /** What each account notifies for, by address (lowercase); one not here follows `notify` and `notifyOther`
    * (read by the engine). */
   notifyAccounts: Record<string, NotifyMode>;
+  /** Todoist (Settings → Todoist): the project new tasks go to (empty: Todoist's Inbox) and their label. */
+  todoist: { project: string; label: string };
   /** Optional AI, read by the engine too, which refuses what it does not allow (tern_core::ai::AiSettings). */
   ai: AiSettings;
 };
@@ -146,6 +148,7 @@ export const DEFAULTS: Settings = {
   savedSearches: [],
   accountColours: {},
   notifyAccounts: {},
+  todoist: { project: "", label: "mail" },
   ai: {
     enabled: false,
     provider: "anthropic",

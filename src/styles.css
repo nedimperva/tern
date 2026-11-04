@@ -1926,23 +1926,148 @@ span.tool {
 }
 
 /* Every earlier message, one line each on a soft panel above the stage; all there, none folded away. */
-/* Coming back to a conversation: what is new since it was last read. */
-.catch-up {
+/* The brief (§4.2, canvas "Tern summary directions" A + C): one soft card under the subject with what came since you
+   last read, the AI's sentence when asked, and what was found, each with what to do about it. */
+.brief {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--s-2);
   margin-bottom: var(--s-3);
-  padding: var(--s-2) var(--s-4);
+  padding: var(--s-3) var(--s-4);
   border-radius: var(--r-lg);
-  background: var(--accent-soft);
-  color: var(--fg-0);
+  background: var(--soft);
   font-size: var(--t-md);
 }
-.catch-up svg {
+/* Nothing found and nothing new: only the AI button, as quiet as a line. */
+.brief.bare {
+  padding: 0;
+  background: none;
+}
+.brief-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 24px;
+  color: var(--fg-1);
+}
+.brief-head .spacer {
+  flex: 1;
+}
+.brief-head .since strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+.brief-head .since .link {
+  margin-left: var(--s-2);
+  font-size: inherit;
+}
+.brief kbd.ai-mark {
+  flex: none;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.brief .ai-by {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.brief .ai-by .link {
+  font-size: inherit;
+  color: var(--fg-1);
+}
+.brief-line {
+  margin: 0;
+  max-width: 680px;
+  font-size: var(--t-read);
+  line-height: 1.55;
+  color: var(--fg-0);
+}
+.brief-line.error {
+  font-size: var(--t-md);
+  color: var(--danger);
+}
+.brief-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.brief-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 36px;
+  padding: var(--s-1) var(--s-1) var(--s-1) var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+}
+.brief-row .tag {
+  flex: none;
+  min-width: 84px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  text-align: center;
+}
+.brief-row .tag.ask {
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+}
+.brief-row .tag.day {
+  background: var(--accent-soft);
   color: var(--accent);
 }
-.catch-up .spacer {
+.brief-row .tag.done {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.brief-row .text {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.brief-row .do {
+  display: flex;
+  flex: none;
+  gap: var(--s-1);
+}
+.brief-row .do button {
+  height: 28px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--fg-0);
+  font-size: var(--t-sm);
+}
+.brief-row .do button:hover {
+  background: var(--bg-2);
+}
+.brief-row .do button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+/* Under the subject, once a task was made from it. */
+.in-todoist {
+  margin-top: var(--s-2);
+}
+.in-todoist span {
+  display: inline-block;
+  padding: 2px var(--s-2);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 500;
 }
 /* The older read lines of a long conversation, behind one line that brings them out. */
 .tucked {
@@ -4607,18 +4732,6 @@ button.place.muted {
   margin-top: var(--s-4);
 }
 
-/* The AI summary under a conversation's subject. */
-.ai-summary {
-  margin-top: var(--s-3);
-  font-size: var(--t-rd);
-  color: var(--fg-1);
-}
-.ai-summary kbd.ai-mark {
-  flex: none;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
-}
 .ai-ask,
 .ai-line {
   display: inline-flex;
@@ -4767,51 +4880,6 @@ button.ai-line:hover {
   opacity: 1;
 }
 
-/* The summary as the subject's lede, its facts as chips. */
-.ai-lede {
-  margin: 0;
-  max-width: 640px;
-  font-size: var(--t-read);
-  line-height: 1.55;
-  color: var(--fg-1);
-}
-.ai-lede kbd.ai-mark {
-  vertical-align: 2px;
-  margin-right: var(--s-1);
-}
-.ai-facts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-1) var(--s-2);
-  margin-top: var(--s-2);
-}
-.ai-fact {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-  padding: 3px var(--s-2);
-  border-radius: 999px;
-  font-size: var(--t-sm);
-  background: var(--accent-soft);
-  color: var(--fg-0);
-}
-.ai-fact .label {
-  font-weight: 600;
-}
-.ai-fact.due {
-  background: var(--warn-soft);
-}
-.ai-fact.decided {
-  background: var(--ok-soft, var(--bg-2));
-}
-.ai-facts .spacer {
-  flex: 1;
-}
-.ai-facts button.link {
-  font-size: var(--t-sm);
-  color: var(--fg-1);
-}
 .ai-note {
   margin: var(--s-2) 0 0;
   padding-left: calc(var(--s-6) + var(--s-1));
@@ -6682,6 +6750,117 @@ button.link.danger {
 .companion .tidy .name {
   font-weight: 600;
   color: var(--fg-0);
+}
+/* Tasks in Todoist (§4.2b): a ring and the title per task, then the row that adds one, which turns into the box. */
+.companion .task {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+}
+.companion .task .ring {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--fg-2);
+  border-radius: 50%;
+}
+.companion .task .link {
+  font-size: var(--t-sm);
+}
+.companion .task-add {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  text-align: left;
+}
+.companion .task-add span {
+  flex: 1;
+}
+.companion .task-add:hover {
+  background: var(--bg-2);
+}
+/* Over the card's own lines between rows. */
+.companion .rows .task-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+}
+.companion .task-box input,
+.companion .task-box select {
+  min-width: 0;
+  font: inherit;
+}
+.companion .task-box #task-title {
+  padding: var(--s-1) 0;
+  border: none;
+  background: none;
+  font-weight: 600;
+  outline: none;
+}
+.companion .task-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s-2);
+}
+.companion .task-fields input,
+.companion .task-fields select {
+  height: 30px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  font-size: var(--t-sm);
+}
+.companion .task-box p {
+  margin: 0;
+  font-size: var(--t-xs);
+}
+.companion .task-do {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+.companion .task-do button {
+  height: 30px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  font-size: var(--t-sm);
+}
+.companion .task-do button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.companion .task-do button:disabled {
+  opacity: 0.5;
+}
+/* Settings → Todoist. */
+.todoist-connect {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.todoist-connect input {
+  flex: 1;
+  min-width: 0;
+}
+.todoist-what {
+  margin: 0;
+  padding-left: var(--s-4);
+  color: var(--fg-1);
+  line-height: 1.6;
 }
 /* Files: this conversation's, or every file with the person, by kind and month. */
 .companion fieldset {

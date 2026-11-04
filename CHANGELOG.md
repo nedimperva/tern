@@ -16,9 +16,17 @@ every release needs one here before it is tagged.
 - A note on a person, kept only on this computer and shown on every conversation with them.
 - Files with a person: switch from this conversation's files to every file you exchanged, by kind and month.
 - A newsletter's card says how many issues you open, and can archive the unopened ones or unsubscribe.
+- Todoist: connect your own API token in Settings → Todoist, then press T in a conversation (or Add task beside
+  something asked or due) to make a task. It goes out after the usual 5-second undo and carries the title, the day,
+  the project, a label and who sent the mail. Never the mail's text. The conversation shows "In Todoist" and its
+  tasks in the companion.
+- The brief under a conversation's subject: what came since you last read it, then what was asked of you, the day
+  and the place, each with a button (Answer, Snooze till then, Add task, Map). With AI on, Explain it adds a sentence
+  on top.
 
 ### Changed
 
+- The "Since you last read" bar and the AI summary's chips are now one brief.
 - Clicking a file in the companion opens it in Tern's viewer, as in the conversation.
 
 ## [2.0.0-1] - 2026-11-03

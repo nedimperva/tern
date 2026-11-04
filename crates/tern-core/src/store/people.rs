@@ -155,6 +155,82 @@ impl Store {
     }
 }
 
+impl Store {
+    // MARK: Todoist tasks
+
+    /// Queues a Todoist task made from the conversation of message `id`, with the usual undo: it shows in the
+    /// conversation at once and goes out after the undo window. The description names the mail (who sent it, its
+    /// subject); no mail text. Returns the account (whose worker sends it) and the undo token.
+    pub fn queue_task(&self, id: i64, input: &TaskInput, delay: i64) -> Result<(i64, Vec<i64>)> {
+        let title = input.title.trim();
+        if title.is_empty() {
+            bail!("A task needs a title");
+        }
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let (account_id, thread_id, name, addr, subject): (i64, String, String, String, String) = tx
+            .query_row(
+                "SELECT account_id, thread_id, from_name, from_addr, subject FROM messages WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )?;
+        let due = input.due.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(str::to_string);
+        tx.execute(
+            "INSERT INTO tasks (account_id, thread_id, title, due, created) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![account_id, thread_id, title, due, now()],
+        )?;
+        let local = tx.last_insert_rowid();
+        let who = if name.is_empty() { addr } else { name };
+        let task = crate::todoist::NewTask {
+            content: title.to_string(),
+            description: if subject.is_empty() {
+                format!("From {who}")
+            } else {
+                format!("From {who} · {subject}")
+            },
+            due_string: due,
+            project_id: input.project_id.clone().filter(|p| !p.is_empty()),
+            labels: input
+                .label
+                .iter()
+                .map(|l| l.trim().trim_start_matches('@').to_string())
+                .filter(|l| !l.is_empty())
+                .collect(),
+        };
+        let token = vec![enqueue(&tx, account_id, &OutboxOp::Task { local, task }, delay)?];
+        tx.commit()?;
+        Ok((account_id, token))
+    }
+
+    /// Todoist made the task: its id goes on the row, for the link to it.
+    pub fn task_created(&self, local: i64, todoist_id: &str) -> Result<()> {
+        self.conn().execute("UPDATE tasks SET todoist_id = ?2 WHERE id = ?1", params![local, todoist_id])?;
+        Ok(())
+    }
+
+    /// The tasks made from the conversation of message `id`, oldest first.
+    pub fn tasks_of(&self, id: i64) -> Result<Vec<TaskRow>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(
+            "SELECT t.id, t.title, t.due, t.todoist_id FROM tasks t JOIN messages m
+               ON m.account_id = t.account_id AND m.thread_id = t.thread_id
+             WHERE m.id = ?1 ORDER BY t.created, t.id",
+        )?;
+        let rows = stmt
+            .query_map([id], |r| {
+                let todoist_id: Option<String> = r.get(3)?;
+                Ok(TaskRow {
+                    id: r.get(0)?,
+                    title: r.get(1)?,
+                    due: r.get(2)?,
+                    url: todoist_id.as_deref().map(crate::todoist::task_url),
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+}
+
 /// Domains anyone can have an address at.
 const WEBMAIL: &[&str] = &[
     "gmail.com",

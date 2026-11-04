@@ -323,6 +323,63 @@ pub async fn unsubscribe(app: AppHandle, state: State<'_, AppState>, id: i64) ->
     Ok(Some(token))
 }
 
+/// Whether a Todoist token is in the keyring. Reads nothing from Todoist.
+#[tauri::command]
+pub async fn todoist_connected() -> Reply<bool> {
+    Ok(secrets::password(tern_core::todoist::KEY).is_ok())
+}
+
+/// Checks the token with Todoist (it lists the projects), then keeps it in the keyring. Returns the projects.
+#[tauri::command]
+pub async fn todoist_connect(token: String) -> Reply<Vec<tern_core::todoist::Project>> {
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        return Err("Paste the API token from Todoist's settings".into());
+    }
+    let projects = blocking({
+        let token = token.clone();
+        move || tern_core::todoist::projects(&token)
+    })
+    .await?;
+    secrets::set_password(tern_core::todoist::KEY, &token).map_err(text)?;
+    Ok(projects)
+}
+
+/// The projects to choose from, asked of Todoist when Settings or the task box opens.
+#[tauri::command]
+pub async fn todoist_projects() -> Reply<Vec<tern_core::todoist::Project>> {
+    let token =
+        secrets::password(tern_core::todoist::KEY).map_err(|_| "Todoist isn't connected".to_string())?;
+    blocking(move || tern_core::todoist::projects(&token)).await
+}
+
+/// Forgets the token. Tasks already made stay in Todoist.
+#[tauri::command]
+pub async fn todoist_forget() -> Reply<()> {
+    let _ = secrets::delete_password(tern_core::todoist::KEY);
+    Ok(())
+}
+
+/// Queues a Todoist task from the conversation of message `id`, with the usual undo.
+#[tauri::command]
+pub async fn queue_task(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    task: tern_core::TaskInput,
+) -> Reply<Vec<i64>> {
+    let (account, token) = state.store.queue_task(id, &task, UNDO_SECONDS).map_err(text)?;
+    state.wake(account);
+    let _ = app.emit("mail-changed", ());
+    Ok(token)
+}
+
+/// The tasks made from a conversation, for its Tasks section and the pill under its subject.
+#[tauri::command]
+pub async fn tasks_of(state: State<'_, AppState>, id: i64) -> Reply<Vec<tern_core::TaskRow>> {
+    state.store.tasks_of(id).map_err(text)
+}
+
 #[tauri::command]
 pub async fn undo(app: AppHandle, state: State<'_, AppState>, token: Vec<i64>) -> Reply<bool> {
     let undone = state.store.undo(&token).map_err(text)?;

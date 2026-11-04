@@ -494,6 +494,30 @@ pub struct PersonFacts {
     pub note: String,
 }
 
+/// What the task box sends: the title, the day as typed, the project and a label (none: Todoist's Inbox, no label).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskInput {
+    pub title: String,
+    #[serde(default)]
+    pub due: Option<String>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+/// A task made from a conversation, as the conversation shows it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskRow {
+    pub id: i64,
+    pub title: String,
+    pub due: Option<String>,
+    /// The task in Todoist, once it was made there; None while it waits in the outbox.
+    pub url: Option<String>,
+}
+
 /// A file exchanged with a person, from any conversation.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -656,6 +680,12 @@ pub enum OutboxOp {
         url: String,
         /// Who it unsubscribes from, for the problems list.
         sender: String,
+    },
+    /// A Todoist task made from a conversation. `local` is its row in `tasks`, shown at once and gone on undo; the
+    /// task's id is written there once Todoist has it.
+    Task {
+        local: i64,
+        task: crate::todoist::NewTask,
     },
     /// A copy of a sent message for the Sent folder, exactly as it went out.
     Append {

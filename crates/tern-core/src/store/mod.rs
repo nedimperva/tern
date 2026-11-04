@@ -23,7 +23,7 @@ mod settings;
 mod syncing;
 mod writing;
 
-const SCHEMA_VERSION: i64 = 33;
+const SCHEMA_VERSION: i64 = 34;
 
 /// What a mark is kept by: the message's Message-ID, or its row for mail without one.
 const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
@@ -621,6 +621,10 @@ fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
                 )?;
             }
         }
+        // The task was only ever here: it goes from the conversation's list.
+        OutboxOp::Task { local, .. } => {
+            conn.execute("DELETE FROM tasks WHERE id = ?1", [local])?;
+        }
         OutboxOp::Send(_) | OutboxOp::Append { .. } | OutboxOp::Unsubscribe { .. } => {}
     }
     Ok(())
@@ -648,6 +652,7 @@ fn describe(op: &OutboxOp) -> String {
             format!("Remove the label {label} from {}", count(uids.len()))
         }
         OutboxOp::Unsubscribe { sender, .. } => format!("Unsubscribe from {sender}"),
+        OutboxOp::Task { task, .. } => format!("Add “{}” to Todoist", task.content),
         OutboxOp::Flags { flag, add, uids, .. } => {
             let verb = match (flag.as_str(), add) {
                 ("\\Seen", true) => "Mark read",

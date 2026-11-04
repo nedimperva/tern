@@ -105,33 +105,39 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
   companion's Ask turns, chips and receipt. No embeddings.
 
 ### G. Todoist
-- [ ] **Decision gate.** `docs/research/todoist.md`: the API to use (Todoist API v1 at `api.todoist.com/api/v1`;
+- [x] **Decision gate.** `docs/research/todoist.md` (2026-11-04: API v1, a personal token in the keyring): the API to use (Todoist API v1 at `api.todoist.com/api/v1`;
   check what's current), how to sign in (a personal API token in the keyring as `todoist`, or OAuth if it works for
   a desktop app without a shipped secret), the endpoints (create task, projects, labels), limits, and exactly what
   leaves the computer. The owner explored this before and leans to the API: record that and the evidence.
 Todoist lives in the companion column (owner, 2026-11-02: direction A on the canvas, boards "A — Tasks in the
 column, at rest" and "A — Adding a task from the mail").
 
-- [ ] Settings → Integrations → Todoist (board "Settings → Todoist"): connect (token or sign-in), Test, Forget; the
-  default project; a label for tasks from mail (`@mail`); Show tasks in the companion; Suggest tasks with AI (off);
-  a "What goes to Todoist" card.
-- [ ] A **Tasks** section in the companion, after the details: the conversation's tasks (a tick completes it, Open
-  goes to Todoist), then "Add a task from this mail" with its key `t`. Shown only once Todoist is connected.
-- [ ] `t` (or the row, the `…` menu, the palette) opens the task box in place of that row: the title from what was
+- [x] Settings → Todoist (its own page, 2026-11-04): connect with the token (checked by listing projects), Forget;
+  the default project; the label (`mail`); a "What goes to Todoist" list. Not yet: Show tasks in the companion
+  (it shows once connected), Suggest tasks with AI.
+- [x] A **Tasks** section in the companion, after the details: the conversation's tasks (Open goes to Todoist),
+  then "Add a task from this mail" with its key `t`. Shown only once Todoist is connected. Not yet: a tick that
+  completes the task.
+- [x] `t` (or the row, or Add task in the brief) opens the task box in place of that row (title, day, project;
+  Enter adds, Esc cancels). Not yet: priority, the lit words, starting from a selection, "Also in this mail". The
+  title comes from what was
   asked or promised (`src/promises.ts`), else the subject; the day from the sentence (`src/facts.ts`); project,
   priority and label as chips. The words it came from stay lit in the mail; with words selected, `t` starts from
   those. "Also in this mail" lists the other asks and dates to use instead. Enter adds, Esc cancels.
-- [ ] The task is created through the outbox with the 5-second undo, like every other change, and retried on failure.
+- [x] The task is created through the outbox with the 5-second undo, like every other change, and retried on failure
+  (`OutboxOp::Task`; a 4xx or a missing token waits in the problems list).
 - [ ] A link back: the task's description carries the sender, the subject and a `tern://` link (registered beside
   `mailto`) that opens the conversation by Message-ID. No mail text goes to Todoist unless the person adds it.
-- [ ] The conversation remembers its tasks (schema): the conversation shows an "In Todoist · due Fri" pill, and the
-  Tasks section lists them. Opening a conversation with a task asks Todoist for its state then, never in the background.
+  Built: the sender and subject ("From Ada · Q3 offsite"). Not yet: the `tern://` link.
+- [x] The conversation remembers its tasks (`tasks`, schema v34): the conversation shows an "In Todoist · fri" pill,
+  and the Tasks section lists them. Not yet: asking Todoist for a task's state when the conversation opens.
 - [ ] Ask and promise rows: "Owed to you" and "You owe" rows get **+ Task**; a row already in Todoist shows its task
   instead, so nothing is listed twice.
 - [ ] With AI (behind `ai::allowed`, its own switch for tasks): Suggest with AI in the task box fills the title, due
   day and project from the mail as a proposal. Nothing is created until the person presses Enter. Mail goes to the AI provider,
   never to Todoist.
-- [ ] Tests: the Todoist client against a canned HTTP server; the outbox op, undo and retry.
+- [x] Tests: the Todoist client against a canned HTTP server (`todoist::tests`); the queued task, its undo and its
+  id (`store::tests`). Retry runs through the same outbox path as every op.
 
 ### H. The companion column
 Direction A on the canvas (owner, 2026-11-02). Can go before G: it needs no Todoist.
@@ -206,3 +212,6 @@ Open, for the owner:
   yet. store_bench on the Windows machine, main → branch: Important 1.70 → 1.91 ms, Other 4.60 → 4.76 ms; main
   itself misses four targets there (unified/Important conversations, conversation pages), as before.
   Owner checklist: `docs/acceptance/sprint-17-overnight.md`.
+- 2026-11-04: owner picked A + C with actionable facts on the canvas "Tern summary directions": the brief under the
+  subject (catch-up, what was found, Explain it with AI) replaced the catch-up bar and the summary chips. G's first
+  slice built with it: token, Tasks, the task box, the outbox op and the pill. Not tried with a real Todoist token yet.
