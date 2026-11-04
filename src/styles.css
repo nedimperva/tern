@@ -221,7 +221,9 @@ button.primary kbd {
 .titlebar-slot:has(.in-titlebar:not(.split)) {
   flex: 1;
 }
-.titlebar-slot:has(.in-titlebar:not(.split)) + .titlebar-fill {
+/* Only while the tabs show: in settings, the morning screen or a full-window conversation they are hidden, and the
+   fill takes the width again so the sync and window buttons stay at the right. */
+.window:not(:has(.app.full)) .titlebar-slot:not(.hidden):has(.in-titlebar:not(.split)) + .titlebar-fill {
   flex: 0 0 var(--s-2);
 }
 .titlebar-slot.hidden,
@@ -250,6 +252,7 @@ button.primary kbd {
 /* A line under the bar, except over the docked sidebar. */
 .titlebar-slot,
 .titlebar-fill,
+.titlebar > .sync-box,
 .window-buttons,
 .titlebar:not(.side-tone) .titlebar-side {
   border-bottom: 1px solid var(--line);
@@ -1209,7 +1212,7 @@ button.primary kbd {
   position: relative;
   display: flex;
   align-items: center;
-  margin: 0 var(--s-2);
+  padding: 0 var(--s-2);
 }
 .sync-button {
   display: inline-flex;
@@ -1282,7 +1285,7 @@ button.primary kbd {
 .sync-panel {
   position: absolute;
   top: calc(100% + 6px);
-  right: 0;
+  right: var(--s-2);
   z-index: 40;
   width: 300px;
   padding: var(--s-3);
