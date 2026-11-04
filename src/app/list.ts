@@ -12,6 +12,7 @@ import { asRow, keepRows, keyOf, people } from "./rows";
 import { close, open } from "./conversation";
 import {
   current,
+  docked,
   focus,
   folders,
   home,
@@ -246,12 +247,13 @@ export const go = (t: Target) => {
   else if ("label" in t) void api.checkFolder(t.label);
 };
 
-/** The inbox splits, shown as tabs over the unified inbox. New people joins them as a tab only while someone waits
- * there (or while it is the list on show), in place of the line that used to sit above Important (canvas "Tern title
- * bar ideas", 4); it is in the sidebar too. */
+/** The inbox splits, shown as tabs over the unified inbox. New people joins them as a quiet tab (its icon and count)
+ * while someone waits there and the sidebar, which lists it, is closed; and while it is the list on show (canvas
+ * "Tern title bar ideas", 4). */
 export const SPLITS = (): { name: string; target: Target }[] => {
+  const showing = "role" in target() && (target() as { role: string }).role === "new_people";
   const screening =
-    settings.screener && (newPeople() > 0 || ("role" in target() && (target() as { role: string }).role === "new_people"))
+    settings.screener && (showing || (newPeople() > 0 && !docked()))
       ? [{ name: "New people", target: { role: "new_people" } }]
       : [];
   return settings.splitInbox

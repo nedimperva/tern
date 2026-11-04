@@ -1158,24 +1158,36 @@ button.primary kbd {
   color: var(--fg-2);
   font-weight: 400;
 }
-/* Beside a conversation the list's column is narrow: New people is its icon and count. */
-.split .splits button.people .name,
-.in-titlebar.split .splits button.people .name {
+/* New people: no name, just the icon and how many wait, in the tabs' own quiet grey with a small dot. It is a tab
+   only while the sidebar is closed; open, the sidebar says it. */
+.splits button.people {
+  position: relative;
+  gap: 4px;
+  color: var(--fg-2);
+}
+.splits button.people .name {
   display: none;
 }
-/* New people, a tab only while someone waits: its count is a pill so the wait is seen without a line of its own. */
 .splits button.people .count {
-  min-width: 18px;
-  height: 18px;
-  box-sizing: border-box;
-  padding: 0 6px;
-  border-radius: 9px;
+  color: inherit;
+  font-weight: 500;
+}
+.splits button.people::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   background: var(--accent);
-  color: var(--accent-fg);
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  box-shadow: 0 0 0 2px var(--bg-0);
+}
+.splits button.people.active::after {
+  display: none;
+}
+.splits button.people:hover {
+  color: var(--fg-0);
 }
 
 /* MARK: Conversation rows (§4.1) */
