@@ -1179,6 +1179,16 @@ button.primary kbd {
   color: var(--fg-2);
   font-weight: 400;
 }
+/* Each tab has its icon. Where the tabs run short of room (beside a conversation, or a narrow window) only the open
+   tab keeps its name; the others are icons, and their names stay in aria-label and the tooltip. */
+.splits {
+  container: tabs / inline-size;
+}
+@container tabs (max-width: 300px) {
+  .splits button:not(.active) .name {
+    display: none;
+  }
+}
 /* Beside a conversation the list's column is 340 px: the unread counts go, so every tab's name fits (Starred was cut
    to "Starre"). New people keeps its count, which is all it shows. */
 .app.split .splits button:not(.people) .count,

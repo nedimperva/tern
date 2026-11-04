@@ -1035,7 +1035,12 @@ export function ConversationView(props: {
   const tools = () => (
     <div class="tools">
       <Show when={privacy().trackers || privacy().blocked}>
-        <button class="tool safe extra" data-tip={shieldTip()} aria-label={shieldTip()} onClick={() => privacy().blocked && setAsked(true)}>
+        <button class="tool safe extra" data-tip={shieldTip()} aria-label={shieldTip()} onClick={() => {
+          if (!privacy().blocked) return;
+          setAsked(true);
+          // Reading view keeps only the largest pictures, so asking for the images shows the mail as its sender made it.
+          setReading(false);
+        }}>
           <Icon name="shield-check" size={15} />
           <Show when={privacy().trackers}>{privacy().trackers}</Show>
         </button>

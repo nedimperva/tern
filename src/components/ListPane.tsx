@@ -25,9 +25,9 @@ import {
 import { coverage, inboxZero, listedHere } from "../app/status";
 import { ROW_HEIGHTS, settings, SPLIT_ROW_EXTRA } from "../settings";
 import { colourOf } from "../colours";
-import type { ThreadRow } from "../api";
+import type { Target, ThreadRow } from "../api";
 import { ConversationRow, participants } from "./ConversationRow";
-import { Icon } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 import { SelectionBar } from "./SelectionBar";
 import { SyncButton } from "./SyncButton";
 import { InboxZero } from "./InboxZero";
@@ -35,6 +35,16 @@ import { rowId } from "../motion";
 import { VirtualList } from "./VirtualList";
 
 const NOBODY_NEW = "Nobody new. First mail from someone you haven't written to waits here until you let them in.";
+
+/** The icon each split tab shows (Lucide, see Icon.tsx). */
+const TAB_ICON: Record<string, IconName> = {
+  important: "circle-alert",
+  bulk: "mail",
+  starred: "star",
+  new_people: "user-plus",
+  inbox: "inbox",
+};
+const tabRole = (t: Target) => ("role" in t ? t.role : "");
 
 /** The conversation list with its header (splits, search) and the status strip under it. */
 export function ListPane(props: {
@@ -129,12 +139,11 @@ export function ListPane(props: {
                   aria-selected={i() === splitIndex()}
                   classList={{ active: i() === splitIndex(), people: "role" in s.target && s.target.role === "new_people" }}
                   onClick={() => go(s.target)}
-                  title={"role" in s.target && s.target.role === "new_people" ? "First mail from people you haven't written to (G N)" : undefined}
-                  aria-label={"role" in s.target && s.target.role === "new_people" ? `New people, ${tabUnread(s.target)} waiting` : undefined}
+                  title={"role" in s.target && s.target.role === "new_people" ? "First mail from people you haven't written to (G N)" : s.name}
+                  aria-label={"role" in s.target && s.target.role === "new_people" ? `New people, ${tabUnread(s.target)} waiting` : s.name}
                 >
-                  <Show when={"role" in s.target && s.target.role === "new_people"}>
-                    <Icon name="user-plus" size={13} />
-                  </Show>
+                  {/* Each tab has its icon; beside a narrow list only the open tab keeps its name (styles.css). */}
+                  <Icon name={TAB_ICON[tabRole(s.target)] ?? "inbox"} size={13} />
                   <span class="name">{s.name}</span>
                   <Show when={tabUnread(s.target)}>
                     <span class="count">{tabUnread(s.target)}</span>
