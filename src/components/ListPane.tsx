@@ -76,9 +76,11 @@ export function ListPane(props: {
     }
   };
 
-  /** Which list this is and searching it: in Tern's own title bar when there is one, else a row of its own. */
-  const head = () => (
-    <>
+  /** Which list this is and searching it: in Tern's own title bar when there is one, else a row of its own. One
+   * element (`display: contents`, so the row's layout holds), not loose parts: loose, swapping the tabs for
+   * "Search: …" on the first letter took the search field out and put it back, and it lost the focus. */
+  const Head = () => (
+    <div class="list-head">
       <Show when={splitIndex() >= 0 && !searching()} fallback={<h2>{title()}</h2>}>
           <div class="splits" role="tablist" aria-label="Inbox views">
             <For each={SPLITS()}>
@@ -114,7 +116,7 @@ export function ListPane(props: {
         <button class="link" title="Command palette" onClick={() => setPalette(true)}>
           <kbd>Ctrl K</kbd>
         </button>
-    </>
+    </div>
   );
 
   return (
@@ -134,7 +136,7 @@ export function ListPane(props: {
                 <Icon name="panel-left" size={17} />
               </button>
             </Show>
-            {head()}
+            <Head />
           </header>
         }
       >
@@ -142,7 +144,7 @@ export function ListPane(props: {
           <Portal mount={slot()}>
             {/* Over the narrow list beside a conversation, the row is the list's width: the rest drags the window. */}
             <div class="list-header in-titlebar" classList={{ split: props.split }}>
-              {head()}
+              <Head />
             </div>
           </Portal>
         )}

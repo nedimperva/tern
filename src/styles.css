@@ -361,6 +361,10 @@ button.primary kbd {
   height: 48px;
   padding: 0 var(--s-3);
 }
+/* The header's parts in one element for the DOM's sake; for layout they are the row's own children. */
+.list-head {
+  display: contents;
+}
 .list-header h2 {
   font-size: var(--t-lg);
   font-weight: 600;
@@ -411,8 +415,8 @@ button.primary kbd {
   width: auto;
   z-index: 1;
 }
-.app.split .list-header > .link,
-.in-titlebar.split > .link {
+.app.split .list-head > .link,
+.in-titlebar.split .list-head > .link {
   display: none;
 }
 
