@@ -41,6 +41,44 @@ export function litPieces(text: string, words: string[]): (string | { hit: strin
 
 type Highlights = { set(name: string, h: unknown): void; delete(name: string): void };
 
+/** Every hit drawn, in reading order, and the one `N` / `P` (Shift+n / Shift+p) is on (-1 before the first step). */
+let drawn: Range[] = [];
+let at = -1;
+
+/** The current hit stands out from the rest (`tern-hit-now`), in the window or frame it is in. */
+function markNow() {
+  for (const r of drawn) {
+    try {
+      const w = r.startContainer.ownerDocument?.defaultView as unknown as { CSS?: { highlights?: Highlights } } | null;
+      w?.CSS?.highlights?.delete("tern-hit-now");
+    } catch {}
+  }
+  const now = drawn[at];
+  if (!now) return;
+  try {
+    const w = now.startContainer.ownerDocument?.defaultView as unknown as {
+      CSS?: { highlights?: Highlights };
+      Highlight?: new (...r: Range[]) => unknown;
+    } | null;
+    if (w?.CSS?.highlights && w.Highlight) {
+      // Above the plain hits it overlaps.
+      const h = new w.Highlight(now) as { priority?: number };
+      h.priority = 1;
+      w.CSS.highlights.set("tern-hit-now", h);
+    }
+  } catch {}
+}
+
+/** Steps to the next (or previous) word searched for in the open conversation and scrolls it into view; false when
+ * none are lit. Wraps at the ends. */
+export function jumpHit(step: 1 | -1, show: (r: Range) => void): boolean {
+  if (!drawn.length) return false;
+  at = (at + step + drawn.length) % drawn.length;
+  markNow();
+  show(drawn[at]);
+  return true;
+}
+
 /** Lights up `words` in every open message: a word where a word starts (search matches prefixes), a phrase as
  * written. An empty list clears them. */
 export function drawHits(words: string[]) {
@@ -74,6 +112,12 @@ export function drawHits(words: string[]) {
     }
     } catch {}
   }
+  // Reading order: the frames come in the conversation's order, and each one's ranges in its text's order.
+  const next = [...byWindow.values()].flat();
+  // Drawn again for the same words (a frame loaded, a message opened): the step keeps its place if it can.
+  at = drawn.length && next.length === drawn.length ? at : -1;
+  drawn = next;
+  markNow();
   for (const [w, ranges] of byWindow) {
     // A mail's frame on its way out (the conversation closing) refuses access and throws; thrown here, in the
     // middle of an update, it stopped the window drawing the next conversation. It needs no clearing anyway.

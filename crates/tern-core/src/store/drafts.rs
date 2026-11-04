@@ -2,6 +2,46 @@
 
 use super::*;
 
+/// Search results whose preview is cut around the words: about what fills the window. At 50, reading the bodies
+/// took a one-word search's p95 from 13 to 32 ms on 100k messages (store_bench).
+const SNIPPET_ROWS: usize = 25;
+/// Characters of text kept before the first word found, and in all.
+const SNIPPET_BEFORE: usize = 40;
+const SNIPPET_LEN: usize = 160;
+
+/// The text around the first of `words` that starts a word (as search matches prefixes), on one line, with "…"
+/// where it was cut; None when none of them is in the text, or when the first is near the start anyway (the usual
+/// preview shows it). Quoted replies are text too: the first match wins wherever it is.
+pub(super) fn snippet_around(text: &str, words: &[String]) -> Option<String> {
+    let flat: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let lower = flat.to_lowercase();
+    let starts_word = |i: usize| i == 0 || !lower[..i].chars().next_back().is_some_and(char::is_alphanumeric);
+    let at = words
+        .iter()
+        .filter_map(|w| {
+            let w = w.trim_matches('"').to_lowercase();
+            lower.match_indices(&w).map(|(i, _)| i).find(|&i| starts_word(i))
+        })
+        .min()?;
+    if at < SNIPPET_LEN - SNIPPET_BEFORE {
+        return None;
+    }
+    // Back to a char boundary, then on to the start of a word.
+    let mut start = at.saturating_sub(SNIPPET_BEFORE);
+    while !flat.is_char_boundary(start) {
+        start -= 1;
+    }
+    if let Some(space) = flat[start..at].find(' ') {
+        start += space + 1;
+    }
+    let mut end = (start + SNIPPET_LEN).min(flat.len());
+    while !flat.is_char_boundary(end) {
+        end -= 1;
+    }
+    let tail = if end < flat.len() { "…" } else { "" };
+    Some(format!("…{}{tail}", &flat[start..end]))
+}
+
 impl Store {
     // MARK: Drafts
 
@@ -610,6 +650,17 @@ impl Store {
             let message_id: Option<String> = ids.query_row([r.id], |x| x.get(0))?;
             if message_id.is_none_or(|m| seen.insert((r.account_id, m))) {
                 kept.push(r);
+            }
+        }
+        // The preview shows where the words are, not how the mail starts (package 17 E). The index keeps no text
+        // (contentless), so the top results' bodies are read here; past them the usual preview stays.
+        if !q.words.is_empty() {
+            let mut body = conn.prepare_cached("SELECT text FROM bodies WHERE message_id = ?1")?;
+            for r in kept.iter_mut().take(SNIPPET_ROWS) {
+                let text: Option<String> = body.query_row([r.id], |x| x.get(0)).optional()?.flatten();
+                if let Some(around) = text.as_deref().and_then(|t| snippet_around(t, &q.words)) {
+                    r.snippet = around;
+                }
             }
         }
         Ok(SearchResult { rows: kept, partial })

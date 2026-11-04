@@ -6331,6 +6331,11 @@ button.link.danger {
   background-color: rgba(47, 158, 110, 0.26);
   color: inherit;
 }
+/* The hit N / P is on. */
+::highlight(tern-hit-now) {
+  background-color: rgba(47, 158, 110, 0.6);
+  color: inherit;
+}
 
 .senders-title {
   margin-top: var(--s-5);

@@ -9,7 +9,8 @@ import { switchReading } from "../components/ConversationView";
 import { ROLE_NAMES, targetOf } from "../components/Rail";
 import { openScreen } from "../day";
 import { keyLabel, type Binding } from "../keys";
-import { jumpMark } from "../marks";
+import { jumpHit } from "../hits";
+import { jumpMark, showRange } from "../marks";
 import { aiOn, omarchyAvailable, setSetting, settings, type Settings } from "../settings";
 import {
   accountOf,
@@ -103,6 +104,9 @@ export const bindings = (): Binding[] => [
   { keys: "p", name: "Previous message", context: "conversation", run: () => moveMessage(-1), repeat: true },
   { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
   { keys: "]", name: "Next mark", context: "conversation", run: () => jumpMark(1), repeat: true },
+  // Beside n and p, which step through messages.
+  { keys: "N", name: "Next word searched for", context: "conversation", run: () => jumpHit(1, (r) => showRange(r)), repeat: true },
+  { keys: "P", name: "Previous word searched for", context: "conversation", run: () => jumpHit(-1, (r) => showRange(r)), repeat: true },
   { keys: "B", name: "Reading view or the original look", context: "conversation", run: switchReading },
   { keys: "Ctrl+u", name: "Unsubscribe from this list", context: "conversation", run: () => void unsubscribe() },
   { keys: "i", name: "The companion: the person, what's in the mail, promises and files", context: "conversation", run: toggleCompanion },

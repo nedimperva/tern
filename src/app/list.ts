@@ -21,6 +21,7 @@ import {
   query,
   role,
   rows,
+  searchBox,
   searching,
   selection,
   setAccounts,
@@ -321,11 +322,12 @@ export function extend(by: number) {
   setSelection(next);
 }
 
-/** Esc goes one level up, never two: conversation → list → selection → search. */
+/** Esc goes one level up, never two: conversation → list → selection → the search box (with its words, to change
+ * them; Esc there clears the search). */
 export function escape() {
   if (openRow()) close();
   else if (selection().size) setSelection(new Set<string>());
-  else if (query()) setQuery("");
+  else if (query()) searchBox.input?.select();
 }
 
 // MARK: What the header shows

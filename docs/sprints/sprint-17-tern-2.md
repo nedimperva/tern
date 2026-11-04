@@ -98,11 +98,15 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
   note's "Search the server" runs `UID SEARCH TEXT` (the words, ANDed) in each account's folders whose mail isn't all
   here; finds go under the local results with a "From the server" tag and their bodies are fetched first. Headers are
   all local already, so no header fetch was needed. Not yet: `X-GM-RAW` on Gmail (TEXT works there too).
-- [ ] Highlights and snippets: matched words lit in the list and in the open message (CSS Custom Highlight API,
+- [x] Highlights and snippets: matched words lit in the list and in the open message (CSS Custom Highlight API,
   a colour apart from marks), `N` / `Shift+N` step through matches. Contentless FTS can't rebuild snippets: try
   reading the top results' text from `bodies` at query time first, measure, and only then consider changing the index.
-- [ ] Results as a split: results as you type, `↓` enters them, Enter opens, Esc goes back to the query, and `e`,
-  `s`, `#` work on results like on the inbox.
+  Built 2026-11-04: the lit words were there already (`hits.ts`); `N` / `P` (Shift+n / Shift+p, beside `n` and `p`)
+  step through them with the current one darker (`tern-hit-now`); the top 50 results' previews are cut around the
+  first word from `bodies` (`snippet_around`), timed in the Log.
+- [x] Results as a split: results as you type, `↓` enters them, Enter opens, Esc goes back to the query, and `e`,
+  `s`, `#` work on results like on the inbox. All but Esc were there; Esc in the results now goes back to the search
+  box with its words selected (Esc there clears the search).
 
 ### F. AI, on request
 - [ ] Overnight summary on the tide (canvas board "The tide"): a Summarise button over what came in since the person
