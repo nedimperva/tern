@@ -563,6 +563,18 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
         Ok(found.into_iter().map(|u| u.get()).collect())
     }
 
+    /// UIDs in the selected folder whose text holds every one of `words` (SEARCH TEXT, ANDed): the server's own
+    /// search, for mail whose text isn't on this computer yet.
+    pub async fn search_text(&mut self, words: &[String]) -> Result<Vec<u32>> {
+        let keys = words
+            .iter()
+            .map(|w| Ok(SearchKey::Text(AString::try_from(w.clone())?)))
+            .collect::<Result<Vec<_>>>()?;
+        let Ok(keys) = Vec1::try_from(keys) else { return Ok(Vec::new()) };
+        let found = self.conn.search(keys, ImapMessageSearchOptions { uid: true }).await?;
+        Ok(found.into_iter().map(|u| u.get()).collect())
+    }
+
     /// (uid, Message-ID without angle brackets) of the messages in `uids` that have one.
     pub async fn message_ids(&mut self, uids: &str) -> Result<Vec<(u32, String)>> {
         let field = MessageDataItemName::BodyExt {

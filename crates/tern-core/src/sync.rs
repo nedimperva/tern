@@ -1240,6 +1240,13 @@ async fn run_op<S: Stream>(
             let id = tokio::task::spawn_blocking(move || crate::todoist::create(&token, &task)).await??;
             store.task_created(*local, &id)?;
         }
+        OutboxOp::TaskDone { todoist_id, done, .. } => {
+            let token = crate::secrets::password(crate::todoist::KEY).map_err(|_| {
+                Unworkable("Todoist isn't connected. Connect it in Settings → Todoist".into())
+            })?;
+            let (id, done) = (todoist_id.clone(), *done);
+            tokio::task::spawn_blocking(move || crate::todoist::set_done(&token, &id, done)).await??;
+        }
         OutboxOp::Append { folder, message, .. } => {
             // Sent may have changed since the copy was queued (a duplicate removed, a folder renamed).
             let sent = sent_folders(store, account.id)?;
@@ -1309,6 +1316,53 @@ pub async fn download(
     let raw = message_source(&mut s, at).await;
     let _ = within(s.logout()).await;
     raw
+}
+
+/// How long one folder's server search may take: a large folder's TEXT search reads every message there.
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// Searches the account's server for `query`'s words in the folders whose mail isn't all here (package 17 E), on a
+/// connection of its own like `download`. Returns the local messages it found; their bodies are marked wanted, so
+/// sync fetches them first and the next local search finds them too. Headers are all here already (sync fetches
+/// them first), so a uid not here is mail sync hasn't reached yet, and is left for it. A read, nothing changes on
+/// the server.
+pub async fn search_server(
+    store: &Store,
+    account_id: i64,
+    config: &AccountConfig,
+    login: &Login,
+    query: &str,
+) -> Result<Vec<i64>> {
+    let words = crate::query::parse(query, now()).words;
+    let folders = store.bodyless_folders(account_id)?;
+    if words.is_empty() || folders.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut s = within(connect(config, login)).await?;
+    let ids = search_folders(&mut s, store, &folders, &words).await;
+    let _ = within(s.logout()).await;
+    let ids = ids?;
+    store.want_bodies(&ids)?;
+    Ok(ids)
+}
+
+/// `search_server` on an open session: each folder's SEARCH TEXT, as local message ids. A folder the server won't
+/// open is skipped.
+async fn search_folders<S: Stream>(
+    s: &mut Imap<S>,
+    store: &Store,
+    folders: &[(i64, String)],
+    words: &[String],
+) -> Result<Vec<i64>> {
+    let mut ids = Vec::new();
+    for (folder_id, name) in folders {
+        if within(s.select(name)).await.is_err() {
+            continue;
+        }
+        let uids = within_for(SEARCH_TIMEOUT, s.search_text(words)).await?;
+        ids.extend(store.ids_for_uids(*folder_id, &uids)?);
+    }
+    Ok(ids)
 }
 
 /// Opens `folder` and works out which uids queued work should act on, as uid → message id (when known).
@@ -2281,6 +2335,30 @@ mod tests {
             fetch_bodies(&mut s, store, account.id, (inbox, "INBOX"), since, deadline, &|| {}).await.unwrap();
             let sent = sent.lock().unwrap()[2..].to_vec();
             sent
+        }
+
+        #[tokio::test]
+        async fn a_server_search_finds_mail_whose_text_isnt_here_and_asks_for_it() {
+            let (store, account, inbox) = mailbox();
+            assert_eq!(store.bodyless_folders(account.id).unwrap(), [(inbox, "INBOX".to_string())]);
+            let (stream, sent) = signed_in(
+                SIGNED_IN,
+                vec![
+                    ("SELECT INBOX", "* 2 EXISTS\r\n* OK [UIDVALIDITY 1] v\r\n{tag} OK [READ-WRITE] s\r\n"),
+                    ("UID SEARCH TEXT invoice TEXT march", "* SEARCH 9 77\r\n{tag} OK done\r\n"),
+                ],
+            );
+            let mut s = Imap::open(stream, "ada", "x").await.unwrap();
+            let words = vec!["invoice".to_string(), "march".to_string()];
+            let ids = super::super::search_folders(&mut s, &store, &[(inbox, "INBOX".into())], &words)
+                .await
+                .unwrap();
+            assert_eq!(ids.len(), 1, "uid 77 isn't here yet: sync reaches it");
+            let rows = store.message_rows(&ids).unwrap();
+            assert_eq!(rows[0].subject, "m9");
+            assert!(sent.lock().unwrap().iter().any(|c| c.contains("UID SEARCH TEXT invoice TEXT march")));
+            store.want_bodies(&ids).unwrap();
+            assert_eq!(store.body_state_of(inbox, 9).as_deref(), Some("wanted"), "its text comes next");
         }
 
         #[tokio::test]

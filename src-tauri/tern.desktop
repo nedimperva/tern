@@ -9,7 +9,7 @@ Icon={{icon}}
 Terminal=false
 Categories=Network;Email;
 Keywords=mail;email;imap;inbox;
-MimeType=x-scheme-handler/mailto;
+MimeType=x-scheme-handler/mailto;x-scheme-handler/tern;
 Actions=compose;
 
 [Desktop Action compose]

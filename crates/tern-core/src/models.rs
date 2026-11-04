@@ -508,6 +508,9 @@ pub struct TaskInput {
     /// A line the person kept in the box (a place, a code, an amount), above the line naming the mail.
     #[serde(default)]
     pub note: Option<String>,
+    /// The ask or promise it was made from (its `promises.ts` key), so that row shows the task.
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 /// A task made from a conversation, as the conversation shows it.
@@ -519,6 +522,8 @@ pub struct TaskRow {
     pub due: Option<String>,
     /// The task in Todoist, once it was made there; None while it waits in the outbox.
     pub url: Option<String>,
+    pub done: bool,
+    pub source: Option<String>,
 }
 
 /// A file exchanged with a person, from any conversation.
@@ -689,6 +694,12 @@ pub enum OutboxOp {
     Task {
         local: i64,
         task: crate::todoist::NewTask,
+    },
+    /// A task ticked off (or opened again) from the conversation; the row shows it at once, undo puts it back.
+    TaskDone {
+        local: i64,
+        todoist_id: String,
+        done: bool,
     },
     /// A copy of a sent message for the Sent folder, exactly as it went out.
     Append {

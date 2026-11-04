@@ -1,8 +1,8 @@
 // The conversation list: loading it, reading it again as sync changes mail, moving around and selecting in it,
 // and which list is on show.
 
-import { batch, createEffect, on } from "solid-js";
-import { api, type Target } from "../api";
+import { batch, createEffect, createSignal, on } from "solid-js";
+import { api, type Target, type ThreadRow } from "../api";
 import { refreshStart } from "../day";
 import { timeQuery } from "../perf";
 import { wingBeat } from "../sound";
@@ -63,6 +63,29 @@ export const readProgress = () => {
   }, 1000);
 };
 
+/** "Search the server" for the search on show: idle, asking, or what it found (package 17 E). */
+export const [serverFound, setServerFound] = createSignal<{ query: string; state: "busy" | "done" | "error"; rows: ThreadRow[]; error?: string }>({
+  query: "",
+  state: "done",
+  rows: [],
+});
+
+/** Asks each account's server for the words of the search on show, where mail isn't all here; what it finds goes
+ * under the local results. */
+export async function searchServer() {
+  const q = query().trim();
+  if (!q || serverFound().state === "busy") return;
+  setServerFound({ query: q, state: "busy", rows: [] });
+  try {
+    const rows = (await api.searchServer(q)).map((m) => ({ ...asRow(m), fromServer: true }));
+    if (query().trim() !== q) return;
+    setServerFound({ query: q, state: "done", rows });
+    await load();
+  } catch (e) {
+    if (query().trim() === q) setServerFound({ query: q, state: "error", rows: [], error: String(e) });
+  }
+}
+
 /** Reloads the list. Keeps as many rows as are loaded, so a change from sync never makes the list jump. */
 export async function load() {
   const ticket = ++generation;
@@ -75,7 +98,11 @@ export async function load() {
     ? found.rows.map(asRow)
     : await timeQuery(() => api.listThreads(target(), null, screening ? 1000 : Math.max(PAGE, rows().length)));
   if (ticket !== generation) return;
-  const page = screening ? people(read) : read;
+  // What the server found for this search stays under the local results, until its text is here and they are
+  // found locally too.
+  const local = new Set(read.map(keyOf));
+  const fromServer = found && serverFound().query === q ? serverFound().rows.filter((r) => !local.has(keyOf(r))) : [];
+  const page = screening ? people(read) : [...read, ...fromServer];
   setPartial(found?.partial ?? false);
   exhausted = q !== "" || screening || page.length < PAGE;
   // Focus stays on the same conversation if it is still there, else on the same place in the list.

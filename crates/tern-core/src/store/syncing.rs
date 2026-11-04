@@ -245,6 +245,45 @@ impl Store {
         })
     }
 
+    /// The account's folders holding mail whose text isn't here yet (what a server search can add to a local one),
+    /// as (id, name on the server). Trash, junk and drafts are left out, as a local search leaves them.
+    pub fn bodyless_folders(&self, account_id: i64) -> Result<Vec<(i64, String)>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(
+            "SELECT f.id, f.name FROM folders f
+             WHERE f.account_id = ?1 AND f.role NOT IN ('trash', 'junk', 'drafts')
+               AND EXISTS (SELECT 1 FROM messages m WHERE m.folder_id = f.id AND m.body_state != 'full'
+                           AND m.uid IS NOT NULL)
+             ORDER BY f.id",
+        )?;
+        let rows =
+            stmt.query_map([account_id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+
+    /// The message rows for these uids in a folder; uids not here yet are left out.
+    pub fn ids_for_uids(&self, folder_id: i64, uids: &[u32]) -> Result<Vec<i64>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached("SELECT id FROM messages WHERE folder_id = ?1 AND uid = ?2")?;
+        let mut ids = Vec::new();
+        for uid in uids {
+            ids.extend(stmt.query_row(params![folder_id, uid], |r| r.get::<_, i64>(0)).optional()?);
+        }
+        Ok(ids)
+    }
+
+    /// These messages as list rows, newest first (a server search's finds).
+    pub fn message_rows(&self, ids: &[i64]) -> Result<Vec<MessageRow>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(&format!("SELECT {ROW} FROM messages m WHERE m.id = ?1"))?;
+        let mut rows = Vec::new();
+        for id in ids {
+            rows.extend(stmt.query_row([id], row).optional()?);
+        }
+        rows.sort_by(|a, b| b.date.cmp(&a.date).then(b.id.cmp(&a.id)));
+        Ok(rows)
+    }
+
     /// Marks bodyless messages as wanted, so the sync worker fetches them before anything else. Returns the
     /// accounts to wake.
     pub fn want_bodies(&self, ids: &[i64]) -> Result<Vec<i64>> {

@@ -18,13 +18,14 @@ mod drafts;
 mod marks;
 mod outbox;
 mod people;
+pub use people::{open_link, parse_open_link};
 mod reading;
 mod schema;
 mod settings;
 mod syncing;
 mod writing;
 
-const SCHEMA_VERSION: i64 = 34;
+const SCHEMA_VERSION: i64 = 35;
 
 /// What a mark is kept by: the message's Message-ID, or its row for mail without one.
 const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
@@ -736,6 +737,9 @@ fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
         OutboxOp::Task { local, .. } => {
             conn.execute("DELETE FROM tasks WHERE id = ?1", [local])?;
         }
+        OutboxOp::TaskDone { local, done, .. } => {
+            conn.execute("UPDATE tasks SET done = ?2 WHERE id = ?1", params![local, !done])?;
+        }
         OutboxOp::Send(_) | OutboxOp::Append { .. } | OutboxOp::Unsubscribe { .. } => {}
     }
     Ok(())
@@ -764,6 +768,8 @@ fn describe(op: &OutboxOp) -> String {
         }
         OutboxOp::Unsubscribe { sender, .. } => format!("Unsubscribe from {sender}"),
         OutboxOp::Task { task, .. } => format!("Add “{}” to Todoist", task.content),
+        OutboxOp::TaskDone { done: true, .. } => "Tick off a Todoist task".to_string(),
+        OutboxOp::TaskDone { done: false, .. } => "Open a Todoist task again".to_string(),
         OutboxOp::Flags { flag, add, uids, .. } => {
             let verb = match (flag.as_str(), add) {
                 ("\\Seen", true) => "Mark read",

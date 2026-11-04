@@ -1,6 +1,6 @@
 import { createMemo, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { go, isSaved, loadMore, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
+import { go, isSaved, loadMore, searchServer, serverFound, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
 import { open } from "../app/conversation";
 import { keyOf } from "../app/rows";
 import {
@@ -64,6 +64,8 @@ export function ListPane(props: {
     if (!row || document.activeElement?.classList.contains("vlist")) return "";
     return `${participants(row)}, ${row.subject || "no subject"}${row.unread ? ", unread" : ""}, ${focus() + 1} of ${rows().length}`;
   });
+  /** Rows the server's search added beyond what was found here. */
+  const added = () => rows().filter((r) => r.fromServer).length;
   const onSearchKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
       setQuery("");
@@ -146,7 +148,29 @@ export function ListPane(props: {
         )}
       </Show>
       <Show when={searching() && partial()}>
-        <div class="search-note">{coverage()}</div>
+        <div class="search-note">
+          {coverage()}{" "}
+          <Show
+            when={serverFound().query === query().trim() ? serverFound() : null}
+            fallback={
+              <button type="button" class="link" onClick={() => void searchServer()}>
+                Search the server
+              </button>
+            }
+          >
+            {(s) => (
+              <span class="server-said" role="status">
+                {s().state === "busy"
+                  ? "Searching the server…"
+                  : s().state === "error"
+                    ? `The server search didn't work: ${s().error}`
+                    : added()
+                      ? `The server found ${added() === 1 ? "1 more" : `${added()} more`}, below; their text is on its way.`
+                      : "The server found nothing more."}
+              </span>
+            )}
+          </Show>
+        </div>
       </Show>
       {/* While someone waits, the inbox says so: New people is a place of its own, not a tab to notice. */}
       <Show when={settings.screener && newPeople() && !searching() && ["inbox", "important"].includes(role()) ? newPeople() : 0}>

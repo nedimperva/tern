@@ -239,6 +239,34 @@ pub async fn thread(state: State<'_, AppState>, id: i64) -> Reply<Vec<ThreadMess
     Ok(thread)
 }
 
+/// "Search the server" (package 17 E): each account's server searched for the query's words in folders whose mail
+/// isn't all here, on a connection of its own. Returns what it found here, newest first; sync fetches their text
+/// next. An account whose server can't be reached is skipped; all of them failing is an error.
+#[tauri::command]
+pub async fn search_server(state: State<'_, AppState>, query: String) -> Reply<Vec<MessageRow>> {
+    let accounts = state.store.accounts().map_err(text)?;
+    let mut ids = Vec::new();
+    let mut failed = Vec::new();
+    for account in &accounts {
+        match sync::search_server(&state.store, account.id, &account.config, &crate::login(account), &query)
+            .await
+        {
+            Ok(found) => ids.extend(found),
+            Err(e) => {
+                log::warn!("server search on account {}: {e:#}", account.id);
+                failed.push(e.to_string());
+            }
+        }
+    }
+    if ids.is_empty() && !failed.is_empty() && failed.len() == accounts.len() {
+        return Err(failed.remove(0));
+    }
+    for account in accounts {
+        state.wake(account.id);
+    }
+    state.store.message_rows(&ids).map_err(text)
+}
+
 #[tauri::command]
 pub async fn search(state: State<'_, AppState>, query: String, limit: i64) -> Reply<SearchResult> {
     state.store.search(&query, limit).map_err(text)
@@ -382,6 +410,42 @@ pub async fn queue_task(
     state.wake(account);
     let _ = app.emit("mail-changed", ());
     Ok(token)
+}
+
+/// Ticks a task off (or opens it again) with the usual undo; Todoist hears of it after the undo window.
+#[tauri::command]
+pub async fn task_done(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    local: i64,
+    done: bool,
+) -> Reply<Vec<i64>> {
+    let (account, token) = state.store.queue_task_done(local, done, UNDO_SECONDS).map_err(text)?;
+    state.wake(account);
+    let _ = app.emit("mail-changed", ());
+    Ok(token)
+}
+
+/// Opening a conversation with tasks in Todoist asks Todoist where each stands (done there, or deleted), then
+/// returns the conversation's tasks. Only on opening, never in the background; offline, the tasks stay as they were.
+#[tauri::command]
+pub async fn check_tasks(state: State<'_, AppState>, id: i64) -> Reply<Vec<tern_core::TaskRow>> {
+    let open = state.store.open_todoist_tasks(id).map_err(text)?;
+    if let (false, Ok(token)) = (open.is_empty(), secrets::password(tern_core::todoist::KEY)) {
+        let store = state.store.clone();
+        let asked = blocking(move || {
+            for (local, todoist_id) in open {
+                let s = tern_core::todoist::state(&token, &todoist_id)?;
+                store.task_state(local, s)?;
+            }
+            Ok(())
+        })
+        .await;
+        if let Err(e) = asked {
+            log::info!("Todoist task states: {e}");
+        }
+    }
+    state.store.tasks_of(id).map_err(text)
 }
 
 /// The tasks made from a conversation, for its Tasks section and the pill under its subject.

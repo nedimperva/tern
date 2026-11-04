@@ -67,6 +67,62 @@ pub fn create(token: &str, task: &NewTask) -> Result<String> {
     create_at(&client(), API, token, task)
 }
 
+/// Ticks the task off in Todoist (`done`), or opens it again.
+pub fn set_done(token: &str, id: &str, done: bool) -> Result<()> {
+    set_done_at(&client(), API, token, id, done)
+}
+
+/// Where a task stands in Todoist now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskState {
+    Open,
+    Done,
+    /// Deleted in Todoist (or never there): the conversation drops it.
+    Gone,
+}
+
+pub fn state(token: &str, id: &str) -> Result<TaskState> {
+    state_at(&client(), API, token, id)
+}
+
+fn set_done_at(agent: &ureq::Agent, api: &str, token: &str, id: &str, done: bool) -> Result<()> {
+    let what = if done { "close" } else { "reopen" };
+    let response = agent
+        .post(&format!("{api}/tasks/{id}/{what}"))
+        .header("Authorization", &format!("Bearer {token}"))
+        .send_empty()
+        .context("Could not reach Todoist")?;
+    answer(response).map(|_| ())
+}
+
+fn state_at(agent: &ureq::Agent, api: &str, token: &str, id: &str) -> Result<TaskState> {
+    #[derive(Deserialize)]
+    struct Task {
+        #[serde(default)]
+        checked: bool,
+        #[serde(default)]
+        is_completed: bool,
+        #[serde(default)]
+        is_deleted: bool,
+    }
+    let response = agent
+        .get(&format!("{api}/tasks/{id}"))
+        .header("Authorization", &format!("Bearer {token}"))
+        .call()
+        .context("Could not reach Todoist")?;
+    if response.status().as_u16() == 404 {
+        return Ok(TaskState::Gone);
+    }
+    let task: Task = serde_json::from_str(&answer(response)?)?;
+    Ok(if task.is_deleted {
+        TaskState::Gone
+    } else if task.checked || task.is_completed {
+        TaskState::Done
+    } else {
+        TaskState::Open
+    })
+}
+
 fn client() -> ureq::Agent {
     let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
     agent().tls_config(tls).https_only(true).build().into()
@@ -235,6 +291,27 @@ mod tests {
         assert_eq!(names, [("Inbox", true), ("Work", false)]);
         let asked = server.join().unwrap();
         assert!(asked[1].starts_with("GET /api/v1/projects?limit=200&cursor=abc "), "{}", asked[1]);
+    }
+
+    #[test]
+    fn ticks_off_and_reads_back_a_task() {
+        let (api, server) = serve(vec![
+            ("204 No Content", ""),
+            ("204 No Content", ""),
+            ("200 OK", r#"{"id":"7","checked":true}"#),
+            ("200 OK", r#"{"id":"7","checked":false}"#),
+            ("404 Not Found", "{}"),
+        ]);
+        let agent: ureq::Agent = agent().build().into();
+        set_done_at(&agent, &api, "secret", "7", true).unwrap();
+        set_done_at(&agent, &api, "secret", "7", false).unwrap();
+        assert_eq!(state_at(&agent, &api, "secret", "7").unwrap(), TaskState::Done);
+        assert_eq!(state_at(&agent, &api, "secret", "7").unwrap(), TaskState::Open);
+        assert_eq!(state_at(&agent, &api, "secret", "7").unwrap(), TaskState::Gone);
+        let asked = server.join().unwrap();
+        assert!(asked[0].starts_with("POST /api/v1/tasks/7/close "), "{}", asked[0]);
+        assert!(asked[1].starts_with("POST /api/v1/tasks/7/reopen "), "{}", asked[1]);
+        assert!(asked[2].starts_with("GET /api/v1/tasks/7 "), "{}", asked[2]);
     }
 
     #[test]

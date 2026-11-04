@@ -21,7 +21,20 @@ import { promisesIn } from "../promises";
 import { blockSender, splitSenders, unsubscribe } from "../app/actions";
 import { go, move } from "../app/list";
 import { newPeople, role, setDetailsSlot, setViewing } from "../app/state";
-import { addTask, loadTasks, setTaskBox, startTask, suggestTask, taskBox, taskRows, todoistOn, type TaskDraft } from "../app/tasks";
+import {
+  addTask,
+  checkTasks,
+  dayWord,
+  loadTasks,
+  setTaskBox,
+  startTask,
+  suggestTask,
+  taskBox,
+  taskRows,
+  tickTask,
+  todoistOn,
+  type TaskDraft,
+} from "../app/tasks";
 import { showToast } from "../app/toast";
 import { aiOn, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
@@ -491,6 +504,8 @@ function Note(props: { email: string; first: string; note: string }) {
 /** Tasks (ui.md §4.2b), once Todoist is connected: what this conversation already put in Todoist, then the row that
  * adds one (`t`), which becomes the task box. */
 function Tasks(props: { message: ThreadMessage; messages: ThreadMessage[]; mine: (addr: string) => boolean }) {
+  // Opening the conversation asks Todoist once where its tasks stand; new mail in it only reads them here again.
+  createEffect(on(() => `${props.message.accountId}:${props.message.threadId}`, () => checkTasks(props.message.id)));
   createEffect(
     on(
       () => props.messages.map((m) => m.id).join(","),
@@ -500,6 +515,7 @@ function Tasks(props: { message: ThreadMessage; messages: ThreadMessage[]; mine:
         const d = taskBox();
         if (d && !props.messages.some((m) => m.id === d.message)) setTaskBox(null);
       },
+      { defer: true },
     ),
   );
   const start = () => {
@@ -515,13 +531,24 @@ function Tasks(props: { message: ThreadMessage; messages: ThreadMessage[]; mine:
       <div class="rows">
         <For each={taskRows()}>
           {(t) => (
-            <div class="task">
-              <span class="ring" aria-hidden="true" />
+            <div class="task" classList={{ done: t.done }}>
+              <button
+                type="button"
+                class="ring"
+                aria-pressed={t.done}
+                aria-label={t.done ? `Open again: ${t.title}` : `Done: ${t.title}`}
+                title={t.done ? "Open it again" : "Tick it off, here and in Todoist"}
+                onClick={() => void tickTask(t)}
+              >
+                <Show when={t.done}>
+                  <Icon name="check" size={10} />
+                </Show>
+              </button>
               <span class="what">
                 <span class="name">{t.title}</span>
                 <span class="quiet">
                   {t.due ? `${t.due} · ` : ""}
-                  {t.url ? "in Todoist" : "going to Todoist…"}
+                  {t.done ? "done" : t.url ? "in Todoist" : "going to Todoist…"}
                 </span>
               </span>
               <Show when={t.url}>
@@ -885,6 +912,24 @@ function Promises(props: { messages: ThreadMessage[]; mine: (addr: string) => bo
                       {dueDay(d())}
                     </span>
                   )}
+                </Show>
+                {/* A row already in Todoist shows its task, so nothing is listed twice. */}
+                <Show when={todoistOn() && !done(p.key)}>
+                  <Show
+                    when={taskRows().find((t) => t.source === p.key)}
+                    fallback={
+                      <button
+                        type="button"
+                        class="plus-task"
+                        title="Make a Todoist task of it"
+                        onClick={() => startTask(p.message, p.text.replace(/\s*[?.!]+$/, ""), p.due ? dayWord(p.due) : "", p.key)}
+                      >
+                        + Task
+                      </button>
+                    }
+                  >
+                    {(t) => <span class="in-task">{t().done ? "Done in Todoist" : "In Todoist"}</span>}
+                  </Show>
                 </Show>
               </div>
             )}

@@ -1704,6 +1704,7 @@ fn a_task_from_mail_shows_at_once_goes_on_undo_and_keeps_its_todoist_id() {
         project_id: Some(String::new()),
         label: Some("@mail".into()),
         note: None,
+        source: Some("ask:1".into()),
     };
     let (owner, token) = store.queue_task(id, &input, 5).unwrap();
     assert_eq!(owner, account);
@@ -1714,7 +1715,11 @@ fn a_task_from_mail_shows_at_once_goes_on_undo_and_keeps_its_todoist_id() {
     );
     let payload: String = store.conn().query_row("SELECT payload FROM outbox", [], |r| r.get(0)).unwrap();
     let OutboxOp::Task { task, .. } = serde_json::from_str(&payload).unwrap() else { panic!("{payload}") };
-    assert_eq!(task.description, "From Ada · Q3 offsite", "who and what, never the text");
+    assert_eq!(
+        task.description, "From Ada · Q3 offsite\n[Open in Tern](tern://open/1@example.com)",
+        "who and what and the way back, never the text"
+    );
+    assert_eq!(tasks[0].source.as_deref(), Some("ask:1"));
     assert_eq!((task.project_id, task.labels), (None, vec!["mail".to_string()]));
 
     assert!(store.undo(&token).unwrap());
@@ -1735,7 +1740,29 @@ fn a_task_from_mail_shows_at_once_goes_on_undo_and_keeps_its_todoist_id() {
     let last: String =
         store.conn().query_row("SELECT payload FROM outbox ORDER BY id DESC", [], |r| r.get(0)).unwrap();
     let OutboxOp::Task { task, .. } = serde_json::from_str(&last).unwrap() else { panic!("{last}") };
-    assert_eq!(task.description, "IBAN in the mail\n\nFrom Ada · Q3 offsite", "the kept note, then the mail");
+    assert_eq!(
+        task.description,
+        "IBAN in the mail\n\nFrom Ada · Q3 offsite\n[Open in Tern](tern://open/1@example.com)",
+        "the kept note, then the mail"
+    );
+
+    // Ticked off: at once here, and queued for Todoist; undo opens it again.
+    let (_, ticked) = store.queue_task_done(local, true, 5).unwrap();
+    assert!(store.tasks_of(id).unwrap().iter().find(|t| t.id == local).unwrap().done);
+    assert_eq!(ticked.len(), 1, "it is in Todoist, so Todoist hears of it");
+    assert!(store.undo(&ticked).unwrap());
+    assert!(!store.tasks_of(id).unwrap().iter().find(|t| t.id == local).unwrap().done);
+    assert_eq!(store.open_todoist_tasks(id).unwrap(), [(local, "6X7rM8997g3RQmvh".to_string())]);
+    store.task_state(local, crate::todoist::TaskState::Done).unwrap();
+    assert!(store.open_todoist_tasks(id).unwrap().is_empty(), "done in Todoist: nothing to ask about");
+    store.task_state(local, crate::todoist::TaskState::Gone).unwrap();
+    assert!(store.tasks_of(id).unwrap().iter().all(|t| t.id != local), "deleted in Todoist: gone here");
+
+    // The link back.
+    assert_eq!(super::people::open_link("<a b@x.com>"), "tern://open/a%20b@x.com");
+    assert_eq!(super::people::parse_open_link("tern://open/a%20b@x.com").as_deref(), Some("a b@x.com"));
+    assert_eq!(super::people::parse_open_link("https://x.com"), None);
+    assert_eq!(store.message_by_message_id("<1@example.com>").unwrap().map(|m| m.id), Some(id));
 }
 
 #[test]
@@ -1896,6 +1923,7 @@ fn renumbering_keeps_messages_queued_work_is_about_to_change() {
 fn wind_back(conn: &Connection, version: i64) {
     for from in (version..SCHEMA_VERSION).rev() {
         let undo = match from {
+            34 => "ALTER TABLE tasks DROP COLUMN done; ALTER TABLE tasks DROP COLUMN source;",
             33 => "DROP TABLE tasks;",
             32 => "DROP TABLE person_notes; DROP INDEX messages_from;",
             31 => {

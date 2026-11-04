@@ -91,10 +91,13 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
   op and its undo, migration 31.
 
 ### E. Search that reaches the server
-- [ ] Search on server: when local results may be partial (the search note already knows how much is downloaded),
+- [x] Search on server: when local results may be partial (the search note already knows how much is downloaded),
   Enter on "Search server" runs `UID SEARCH` per account (`X-GM-RAW` on Gmail), on its own connection like
   `sync::download`. Headers for unknown UIDs are fetched and inserted like normal mail, so they are local afterwards.
-  Results show under "From the server" (canvas board "Search").
+  Results show under "From the server" (canvas board "Search"). Built 2026-11-04 (`sync::search_server`): the search
+  note's "Search the server" runs `UID SEARCH TEXT` (the words, ANDed) in each account's folders whose mail isn't all
+  here; finds go under the local results with a "From the server" tag and their bodies are fetched first. Headers are
+  all local already, so no header fetch was needed. Not yet: `X-GM-RAW` on Gmail (TEXT works there too).
 - [ ] Highlights and snippets: matched words lit in the list and in the open message (CSS Custom Highlight API,
   a colour apart from marks), `N` / `Shift+N` step through matches. Contentless FTS can't rebuild snippets: try
   reading the top results' text from `bodies` at query time first, measure, and only then consider changing the index.
@@ -121,8 +124,8 @@ column, at rest" and "A — Adding a task from the mail").
   the default project; the label (`mail`); a "What goes to Todoist" list. Not yet: Show tasks in the companion
   (it shows once connected), Suggest tasks with AI.
 - [x] A **Tasks** section in the companion, after the details: the conversation's tasks (Open goes to Todoist),
-  then "Add a task from this mail" with its key `t`. Shown only once Todoist is connected. Not yet: a tick that
-  completes the task.
+  then "Add a task from this mail" with its key `t`. Shown only once Todoist is connected. The ring ticks a task
+  off here and in Todoist (`OutboxOp::TaskDone`, the usual undo; schema v35 `tasks.done`).
 - [x] `t` (or the row, or Add task in the brief) opens the task box in place of that row (title, day, project;
   Enter adds, Esc cancels). Not yet: priority, the lit words, starting from a selection, "Also in this mail". The
   title comes from what was
@@ -131,13 +134,15 @@ column, at rest" and "A — Adding a task from the mail").
   those. "Also in this mail" lists the other asks and dates to use instead. Enter adds, Esc cancels.
 - [x] The task is created through the outbox with the 5-second undo, like every other change, and retried on failure
   (`OutboxOp::Task`; a 4xx or a missing token waits in the problems list).
-- [ ] A link back: the task's description carries the sender, the subject and a `tern://` link (registered beside
+- [x] A link back: the task's description carries the sender, the subject and a `tern://` link (registered beside
   `mailto`) that opens the conversation by Message-ID. No mail text goes to Todoist unless the person adds it.
-  Built: the sender and subject ("From Ada · Q3 offsite"). Not yet: the `tern://` link.
+  `[Open in Tern](tern://open/<Message-ID>)`, registered beside `mailto` by the installers (`tauri.conf.json`,
+  `tern.desktop`); a dev build doesn't register it.
 - [x] The conversation remembers its tasks (`tasks`, schema v34): the conversation shows an "In Todoist · fri" pill,
-  and the Tasks section lists them. Not yet: asking Todoist for a task's state when the conversation opens.
-- [ ] Ask and promise rows: "Owed to you" and "You owe" rows get **+ Task**; a row already in Todoist shows its task
-  instead, so nothing is listed twice.
+  and the Tasks section lists them. Opening the conversation asks Todoist where each task stands (`check_tasks`):
+  done there ticks it here, deleted there drops it.
+- [x] Ask and promise rows: "Owed to you" and "You owe" rows get **+ Task**; a row already in Todoist shows its task
+  instead, so nothing is listed twice (`tasks.source`, the row's `promises.ts` key; the brief's asks too).
 - [x] With AI (behind `ai::allowed`): Fill in the task box proposes the title, the day and a note from the mail
   (`ai::suggest_task`, `prompts/task.md`). Nothing is created until the person presses Enter. Mail goes to the AI
   provider, never to Todoist. Owner, 2026-11-04: the project is the one chosen in Settings, not asked in the box.

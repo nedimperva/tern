@@ -156,7 +156,10 @@ impl Store {
                         named.insert(folder);
                     }
                     // A sent copy goes to whichever folder is Sent when it goes out (see sync::run_op).
-                    OutboxOp::Append { .. } | OutboxOp::Unsubscribe { .. } | OutboxOp::Task { .. } => {}
+                    OutboxOp::Append { .. }
+                    | OutboxOp::Unsubscribe { .. }
+                    | OutboxOp::Task { .. }
+                    | OutboxOp::TaskDone { .. } => {}
                     OutboxOp::Move { folder, dest, .. } => named.extend([folder, dest]),
                     OutboxOp::Label { folder, label, .. } => named.extend([folder, label]),
                     OutboxOp::Send(draft) => named.extend(draft.forward_of.map(|f| f.folder)),
@@ -499,7 +502,8 @@ impl Store {
                 OutboxOp::Send(_)
                 | OutboxOp::Append { .. }
                 | OutboxOp::Unsubscribe { .. }
-                | OutboxOp::Task { .. } => {}
+                | OutboxOp::Task { .. }
+                | OutboxOp::TaskDone { .. } => {}
             }
         }
         for id in &keep {

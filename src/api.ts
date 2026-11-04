@@ -192,11 +192,19 @@ export type PersonFacts = {
 };
 export type TodoistProject = { id: string; name: string; inbox: boolean };
 /** What the task box sends. */
-export type TaskInput = { title: string; due?: string | null; projectId?: string | null; label?: string | null; note?: string | null };
+export type TaskInput = {
+  title: string;
+  due?: string | null;
+  projectId?: string | null;
+  label?: string | null;
+  note?: string | null;
+  /** The ask or promise it was made from (`promises.ts` key). */
+  source?: string | null;
+};
 /** A task the AI proposes for the task box; `due` as Todoist reads it, empty when none. */
 export type TaskSuggestion = { title: string; due: string; note: string; sentChars: number; route: { provider: AiProvider; model: string } };
 /** A task made from a conversation; `url` once Todoist has it. */
-export type TaskRow = { id: number; title: string; due: string | null; url: string | null };
+export type TaskRow = { id: number; title: string; due: string | null; url: string | null; done: boolean; source: string | null };
 /** A file exchanged with a person, from any conversation. */
 export type PersonFile = {
   messageId: number;
@@ -241,6 +249,8 @@ export type ThreadRow = MessageRow & {
   labels?: string[];
   /** New people shows a row per person: their newest conversation, with the others they started in `group`. */
   group?: ThreadRow[];
+  /** Found by searching the server, its text not here yet. */
+  fromServer?: boolean;
 };
 /** Where an account's sync stands. */
 export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed" | "paused";
@@ -393,6 +403,8 @@ export interface Api {
   thread(id: number): Promise<ThreadMessage[]>;
   /** Search with filters (see crates/tern-core/src/query.rs). `partial`: words were not looked for in mail without its text. */
   search(query: string, limit: number): Promise<{ rows: MessageRow[]; partial: boolean }>;
+  /** Each account's server searched for the query's words where mail isn't all here; what it found, newest first. */
+  searchServer(query: string): Promise<MessageRow[]>;
   apply(ids: number[], action: Action): Promise<Applied>;
   undo(token: number[]): Promise<boolean>;
   /** Queues a send; `delay` is the undo window in seconds; `draftId` when it was a saved draft. */
@@ -427,6 +439,10 @@ export interface Api {
   /** Queues a task from the conversation of message `id`, with the usual undo; the undo token. */
   queueTask(id: number, task: TaskInput): Promise<number[]>;
   tasksOf(id: number): Promise<TaskRow[]>;
+  /** Ticks a task off (or opens it again), with the usual undo; the undo token. */
+  taskDone(local: number, done: boolean): Promise<number[]>;
+  /** On opening a conversation: asks Todoist where its tasks stand, then returns them. */
+  checkTasks(id: number): Promise<TaskRow[]>;
   /** A task proposed by AI from the conversation (behind the summaries switch); nothing is created. */
   aiTask(id: number): Promise<TaskSuggestion>;
   /** The system file picker; paths chosen (none if cancelled). */
@@ -647,6 +663,7 @@ const tauri: Api = {
   labelConversations: (ids, label, add) => invoke("label_conversations", { ids, label, add }),
   thread: (id) => invoke("thread", { id }),
   search: (query, limit) => invoke("search", { query, limit }),
+  searchServer: (query) => invoke("search_server", { query }),
   apply: (ids, action) => invoke("apply", { ids, action }),
   problems: () => invoke("problems"),
   retryProblem: (id) => invoke("retry_problem", { id }),
@@ -691,6 +708,8 @@ const tauri: Api = {
   todoistForget: () => invoke("todoist_forget"),
   queueTask: (id, task) => invoke("queue_task", { id, task }),
   tasksOf: (id) => invoke("tasks_of", { id }),
+  taskDone: (local, done) => invoke("task_done", { local, done }),
+  checkTasks: (id) => invoke("check_tasks", { id }),
   aiTask: (id) => invoke("ai_task", { id }),
   onFilesDropped: (f, hover) => {
     const stops: (() => void)[] = [];
@@ -1184,6 +1203,16 @@ function fake(): Api {
       return api.apply(chosen, action);
     },
     markAllRead: async (target) => api.apply(messages.filter((m) => inTarget(m, target) && !m.seen).map((m) => m.id), "markRead"),
+    // The fake's "server" finds the first word in snippets, as if their text weren't here.
+    searchServer: async (query) => {
+      await new Promise((r) => setTimeout(r, 900));
+      const word = query.toLowerCase().split(/\s+/).find((t) => t && !t.includes(":"));
+      if (!word) return [];
+      // Two the local search found too, and one it didn't (the oldest message), to see both cases.
+      const found = messages.filter((m) => m.snippet.toLowerCase().includes(word)).sort((a, b) => b.date - a.date).slice(0, 2);
+      const oldest = [...messages].sort((a, b) => a.date - b.date)[0];
+      return [...found, ...(oldest ? [oldest] : [])].map(row);
+    },
     search: async (query, limit) => {
       // Words, is:marked, has:note and is:snoozed only; the filters live in the engine. Shown as partial so the note
       // can be worked on here.
@@ -1321,7 +1350,15 @@ function fake(): Api {
     todoistForget: async () => void (todoistToken = ""),
     queueTask: async (id, task) => {
       const thread = messages.find((m) => m.id === id)?.threadId ?? "";
-      const row = { id: nextTask++, thread, title: task.title.trim(), due: task.due?.trim() || null, url: null as string | null };
+      const row = {
+        id: nextTask++,
+        thread,
+        title: task.title.trim(),
+        due: task.due?.trim() || null,
+        url: null as string | null,
+        done: false,
+        source: task.source ?? null,
+      };
       if (!row.title) throw "A task needs a title";
       fakeTasks.push(row);
       // After the undo window it "reaches Todoist".
@@ -1343,6 +1380,16 @@ function fake(): Api {
     tasksOf: async (id) => {
       const thread = messages.find((m) => m.id === id)?.threadId;
       return fakeTasks.filter((t) => t.thread === thread).map(({ thread: _, ...t }) => t);
+    },
+    async checkTasks(id: number) {
+      return this.tasksOf(id);
+    },
+    taskDone: async (local, done) => {
+      const t = fakeTasks.find((x) => x.id === local);
+      if (!t) return [];
+      t.done = done;
+      pending.set(-1000 - local, () => (t.done = !done));
+      return [-1000 - local];
     },
     personFiles: async (email) => {
       const e = email.toLowerCase();

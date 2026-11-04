@@ -143,17 +143,35 @@ pub fn quit(app: &AppHandle) {
     });
 }
 
-/// A `mailto:` link opened while Tern runs (a second start forwards its link here): compose, filled in.
+/// A `mailto:` link opened while Tern runs (a second start forwards its link here): compose, filled in. A
+/// `tern://open/<Message-ID>` link (from a Todoist task) opens that conversation, as a notification click does.
 pub fn open_links(app: &AppHandle, urls: &[String]) {
     if let Some(m) = urls.iter().find_map(|u| mailto::parse(u)) {
         show(app);
         let _ = app.emit("mailto", m);
+    } else if let Some(id) = urls.iter().find_map(|u| tern_core::store::parse_open_link(u)) {
+        show(app);
+        match app.state::<crate::AppState>().store.message_by_message_id(&id) {
+            Ok(Some(mail)) => {
+                let _ = app.emit("open-mail", mail);
+            }
+            Ok(None) => log::info!("tern:// link to a message that isn't here"),
+            Err(e) => log::warn!("tern:// link: {e:#}"),
+        }
     }
 }
 
 /// The link Tern was started with, for the window to open once it is ready.
 pub fn started_with(app: &AppHandle, urls: &[String]) {
     *app.state::<Desktop>().pending.lock().unwrap() = urls.iter().find_map(|u| mailto::parse(u));
+    // A conversation link at start: the window has to be up to open it, and it asks for nothing else.
+    if urls.iter().any(|u| tern_core::store::parse_open_link(u).is_some()) {
+        let (app, urls) = (app.clone(), urls.to_vec());
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            open_links(&app, &urls);
+        });
+    }
 }
 
 pub fn take_pending(app: &AppHandle) -> Option<Mailto> {

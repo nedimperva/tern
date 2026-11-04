@@ -1017,7 +1017,8 @@ button.primary kbd {
 .crow.two .glyphs {
   grid-area: glyphs;
 }
-.crow.two .chip.follow-up {
+.crow.two .chip.follow-up,
+.crow.two .chip.from-server {
   grid-area: chip;
 }
 .crow.two .date {
@@ -1142,6 +1143,19 @@ button.primary kbd {
 }
 .crow .clip {
   color: var(--fg-2);
+}
+/* A row the server's search found: quieter than a follow-up, it only says where it came from. */
+.crow .chip.from-server {
+  flex: none;
+  padding: 1px var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+.search-note .link {
+  font-size: inherit;
 }
 .crow .chip.follow-up {
   flex: none;
@@ -6807,11 +6821,49 @@ button.link.danger {
   padding: var(--s-2) var(--s-3);
 }
 .companion .task .ring {
+  display: grid;
+  place-items: center;
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
   border: 1.5px solid var(--fg-2);
   border-radius: 50%;
+  background: none;
+  color: var(--accent-fg);
+}
+.companion .task .ring:hover {
+  border-color: var(--accent);
+}
+.companion .task.done .ring {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.companion .task.done .name {
+  color: var(--fg-2);
+  text-decoration: line-through;
+}
+/* An ask or promise row's way into Todoist, or the task it already is. */
+.companion .pledge .plus-task {
+  flex: none;
+  align-self: center;
+  padding: 2px var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+.companion .pledge .plus-task:hover {
+  background: var(--bg-2);
+}
+.companion .pledge .in-task {
+  flex: none;
+  align-self: center;
+  font-size: var(--t-xs);
+  color: var(--accent);
+  white-space: nowrap;
 }
 .companion .task .link {
   font-size: var(--t-sm);

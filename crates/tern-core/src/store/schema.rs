@@ -357,6 +357,12 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
                                      todoist_id TEXT, created INTEGER NOT NULL);
                  CREATE INDEX tasks_thread ON tasks (account_id, thread_id);"
             }
+            // A task ticked off (here or in Todoist), and the ask or promise it was made from (`promises.ts` key), so
+            // that row shows its task instead of offering another.
+            34 => {
+                "ALTER TABLE tasks ADD COLUMN done INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE tasks ADD COLUMN source TEXT;"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),
