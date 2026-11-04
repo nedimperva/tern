@@ -258,14 +258,16 @@ function PersonCard(props: {
             <strong title={props.m.fromAddr}>{name()}</strong>
             <span>
               <Show when={props.sender}>{(s) => <span class={`state ${s().state}`}>{STATES.find((x) => x.state === s().state)?.name}</span>}</Show>
-              {props.card ? `${props.card.received} from ${list() ? "the list" : props.first} · ${props.card.sent} from you` : props.m.fromAddr}
+              {props.card ? ` · ${props.card.received.toLocaleString()} from ${list() ? "the list" : props.first}` : ""}
             </span>
           </div>
-          <button type="button" class="icon-button" onClick={props.onWrite} title={`Write to ${props.m.fromAddr}`} aria-label={`Write to ${props.first}`}>
-            <Icon name="pen-line" size={14} />
-          </button>
-          {foldButton()}
-          {props.close}
+          <div class="person-icons">
+            <button type="button" class="icon-button" onClick={props.onWrite} title={`Write to ${props.m.fromAddr}`} aria-label={`Write to ${props.first}`}>
+              <Icon name="pen-line" size={15} />
+            </button>
+            {foldButton()}
+            {props.close}
+          </div>
         </div>
       }
     >
@@ -284,8 +286,10 @@ function PersonCard(props: {
             </strong>
             <span>{props.m.fromAddr}</span>
           </div>
-          <Show when={!waiting()}>{foldButton()}</Show>
-          {props.close}
+          <div class="person-icons">
+            <Show when={!waiting()}>{foldButton()}</Show>
+            {props.close}
+          </div>
         </div>
         <Show when={waiting()} fallback={<Known {...props} list={list()} />}>
           <Waiting {...props} />
