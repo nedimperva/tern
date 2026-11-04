@@ -235,8 +235,14 @@ function Main() {
   });
   onCleanup(() => window.removeEventListener("keydown", onKeyDown));
 
+  // A conversation opened from elsewhere (the morning screen, Ask your mail) that this list doesn't hold gets the
+  // whole window: beside it the list would show nothing of it, often just its empty state.
+  const inList = () => {
+    const open = openRow();
+    return open !== null && rows().some((r) => keyOf(r) === keyOf(open));
+  };
   const roomForSplit = () =>
-    focusMode() || settings.openMode === "full"
+    focusMode() || settings.openMode === "full" || !inList()
       ? false
       : width() >= (settings.openMode === "split" ? MIN_SPLIT_WIDTH : SPLIT_WIDTH);
   const split = () => openRow() !== null && roomForSplit();
