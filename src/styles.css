@@ -7052,27 +7052,9 @@ button.link.danger {
   line-height: 1.45;
 }
 .ask-dock.off button.link {
-  align-self: flex-start;
   padding: 0;
+  font-size: inherit;
   color: var(--accent);
-}
-.ask-dock .suggest {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.ask-dock .suggest button {
-  padding: 3px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg-0);
-  color: var(--fg-1);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.ask-dock .suggest button:hover {
-  border-color: var(--line-strong);
-  color: var(--fg-0);
 }
 .ask-dock .ask-box {
   display: flex;

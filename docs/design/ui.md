@@ -479,8 +479,9 @@ the header's panel icon; a Note from the selection bar opens it with the note's 
   or Tab then Enter): an `--accent` unread dot, the subject (600 if unread), the date, and a line of the newest text;
   the hovered row on `--bg-2`. The last row, "All mail from {name} · 37 →" in `--accent`, searches `from:` them.
   No AI in any of the above.
-- **Ask**, docked at the foot under a `--line`: two suggested questions until the first is asked, then a box
-  (Enter asks). It goes through `ai::ask_about` behind the summaries switch (on request; the transcript, the chat
+- **Ask**, docked at the foot under a `--line`: one box (Enter asks) whose placeholder is a suggested
+  question, a different one every 4 s from sixteen while the box is empty; Tab takes it (2026-11-04: two buttons
+  above the box cost a row for two questions). It goes through `ai::ask_about` behind the summaries switch (on request; the transcript, the chat
   so far and the question, redacted like a summary; never kept). The chat is drawn at the end of the column, which
   scrolls to it: answers stream in, each `[n]` becomes a chip ("Ana · Tue") that shows that message, and under each
   a receipt: provider, messages and characters sent, "nothing kept". Chats stay per conversation while Tern runs.

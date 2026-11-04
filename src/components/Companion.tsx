@@ -587,8 +587,36 @@ function Turns(props: { turns: Turn[]; messages: ThreadMessage[]; sender: (m: Th
   );
 }
 
+// Questions worth asking, shown one at a time in the empty box; Tab takes the one on show.
+const HINTS = [
+  "What was decided?",
+  "What do they need from me?",
+  "Is there a deadline?",
+  "What's still open?",
+  "Summarize this in two lines",
+  "Who's waiting on whom?",
+  "What did I promise?",
+  "What changed since the last message?",
+  "Which dates or times came up?",
+  "What should my reply cover?",
+  "Is anyone unhappy here?",
+  "What are the next steps?",
+  "Who else should know about this?",
+  "What numbers were mentioned?",
+  "Did they answer my question?",
+  "What's the short version?",
+];
+const HINT_MS = 4000;
+
 function AskDock(props: { ask: Ask; on: boolean; onOpenAi: () => void }) {
   const [question, setQuestion] = createSignal("");
+  // A different question each time the column opens, then the next every few seconds while the box is empty.
+  const [hint, setHint] = createSignal(Math.floor(Math.random() * HINTS.length));
+  createEffect(() => {
+    if (question() || !props.on) return;
+    const timer = window.setInterval(() => setHint((h) => (h + 1) % HINTS.length), HINT_MS);
+    onCleanup(() => window.clearInterval(timer));
+  });
   const send = (text = question()) => {
     const q = text.trim();
     if (!q || props.ask.busy()) return;
@@ -600,10 +628,12 @@ function AskDock(props: { ask: Ask; on: boolean; onOpenAi: () => void }) {
       when={props.on}
       fallback={
         <div class="ask-dock off">
-          <span>Ask about this conversation needs AI, which is off for this account. Nothing is sent until you ask.</span>
-          <button type="button" class="link" onClick={props.onOpenAi}>
-            Settings → AI
-          </button>
+          <span>
+            Asking about this conversation needs AI, off for this account.{" "}
+            <button type="button" class="link" onClick={props.onOpenAi}>
+              Settings → AI
+            </button>
+          </span>
         </div>
       }
     >
@@ -614,17 +644,6 @@ function AskDock(props: { ask: Ask; on: boolean; onOpenAi: () => void }) {
           send();
         }}
       >
-        <Show when={!props.ask.turns().length}>
-          <div class="suggest">
-            <For each={["What was decided?", "What do they need from me?"]}>
-              {(s) => (
-                <button type="button" onClick={() => send(s)}>
-                  {s}
-                </button>
-              )}
-            </For>
-          </div>
-        </Show>
         <div class="ask-box">
           <Icon name="message" size={15} />
           <label for="companion-ask" class="visually-hidden">
@@ -633,12 +652,16 @@ function AskDock(props: { ask: Ask; on: boolean; onOpenAi: () => void }) {
           <textarea
             id="companion-ask"
             rows="1"
-            placeholder="Ask about this conversation"
+            placeholder={HINTS[hint()]}
+            title="Ask about this conversation. Tab takes the suggested question."
             value={question()}
             onInput={(e) => setQuestion(e.currentTarget.value)}
             onKeyDown={(e) => {
               e.stopPropagation();
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === "Tab" && !e.shiftKey && !question()) {
+                e.preventDefault();
+                setQuestion(HINTS[hint()]);
+              } else if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 send();
               }
