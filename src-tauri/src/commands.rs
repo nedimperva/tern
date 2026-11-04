@@ -311,6 +311,75 @@ pub async fn apply(
     Ok(applied)
 }
 
+/// One-click unsubscribe (RFC 8058) from the list this message came from, queued with the usual undo. Returns the
+/// undo token, or None when the message offers no one-click link (then its page or address is the way).
+#[tauri::command]
+pub async fn unsubscribe(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<Option<Vec<i64>>> {
+    let Some((account, token)) = state.store.queue_unsubscribe(id, UNDO_SECONDS).map_err(text)? else {
+        return Ok(None);
+    };
+    state.wake(account);
+    let _ = app.emit("mail-changed", ());
+    Ok(Some(token))
+}
+
+/// Whether a Todoist token is in the keyring. Reads nothing from Todoist.
+#[tauri::command]
+pub async fn todoist_connected() -> Reply<bool> {
+    Ok(secrets::password(tern_core::todoist::KEY).is_ok())
+}
+
+/// Checks the token with Todoist (it lists the projects), then keeps it in the keyring. Returns the projects.
+#[tauri::command]
+pub async fn todoist_connect(token: String) -> Reply<Vec<tern_core::todoist::Project>> {
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        return Err("Paste the API token from Todoist's settings".into());
+    }
+    let projects = blocking({
+        let token = token.clone();
+        move || tern_core::todoist::projects(&token)
+    })
+    .await?;
+    secrets::set_password(tern_core::todoist::KEY, &token).map_err(text)?;
+    Ok(projects)
+}
+
+/// The projects to choose from, asked of Todoist when Settings or the task box opens.
+#[tauri::command]
+pub async fn todoist_projects() -> Reply<Vec<tern_core::todoist::Project>> {
+    let token =
+        secrets::password(tern_core::todoist::KEY).map_err(|_| "Todoist isn't connected".to_string())?;
+    blocking(move || tern_core::todoist::projects(&token)).await
+}
+
+/// Forgets the token. Tasks already made stay in Todoist.
+#[tauri::command]
+pub async fn todoist_forget() -> Reply<()> {
+    let _ = secrets::delete_password(tern_core::todoist::KEY);
+    Ok(())
+}
+
+/// Queues a Todoist task from the conversation of message `id`, with the usual undo.
+#[tauri::command]
+pub async fn queue_task(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    task: tern_core::TaskInput,
+) -> Reply<Vec<i64>> {
+    let (account, token) = state.store.queue_task(id, &task, UNDO_SECONDS).map_err(text)?;
+    state.wake(account);
+    let _ = app.emit("mail-changed", ());
+    Ok(token)
+}
+
+/// The tasks made from a conversation, for its Tasks section and the pill under its subject.
+#[tauri::command]
+pub async fn tasks_of(state: State<'_, AppState>, id: i64) -> Reply<Vec<tern_core::TaskRow>> {
+    state.store.tasks_of(id).map_err(text)
+}
+
 #[tauri::command]
 pub async fn undo(app: AppHandle, state: State<'_, AppState>, token: Vec<i64>) -> Reply<bool> {
     let undone = state.store.undo(&token).map_err(text)?;
@@ -656,6 +725,28 @@ pub async fn contacts(state: State<'_, AppState>, query: String) -> Reply<Vec<Co
 #[tauri::command]
 pub async fn contact_card(state: State<'_, AppState>, email: String) -> Reply<ContactCard> {
     state.store.contact_card(&email, 5).map_err(text)
+}
+
+/// The companion's facts about a person: mail by month, who you know at their domain, your note on them.
+#[tauri::command]
+pub async fn person(
+    state: State<'_, AppState>,
+    account_id: i64,
+    email: String,
+) -> Reply<tern_core::PersonFacts> {
+    state.store.person(account_id, &email).map_err(text)
+}
+
+/// Keeps the person's own note on someone; an empty one is none.
+#[tauri::command]
+pub async fn set_person_note(state: State<'_, AppState>, email: String, body: String) -> Reply<()> {
+    state.store.set_person_note(&email, &body).map_err(text)
+}
+
+/// The files exchanged with a person, from every conversation, newest first.
+#[tauri::command]
+pub async fn person_files(state: State<'_, AppState>, email: String) -> Reply<Vec<tern_core::PersonFile>> {
+    state.store.person_files(&email, 60).map_err(text)
 }
 
 /// Where a received message's downloaded files are kept: per account, under a name only that message gets.
@@ -1106,6 +1197,12 @@ pub fn update_ready(app: AppHandle) -> Option<String> {
 }
 
 /// Installs the waiting update and restarts (the window has saved what was being written).
+/// The update channel changed: look for an update on it now.
+#[tauri::command]
+pub fn look_for_update(app: AppHandle) {
+    crate::update::look_now(&app);
+}
+
 #[tauri::command]
 pub fn restart_to_update(app: AppHandle) -> Reply<()> {
     crate::update::install(&app).map_err(|e| format!("{e:#}"))
@@ -1151,6 +1248,38 @@ pub async fn set_split(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>
     state.store.set_split(&ids, other).map_err(text)?;
     let _ = app.emit("mail-changed", ());
     Ok(())
+}
+
+/// Who sent this message and where their mail goes, for the companion's choice.
+#[tauri::command]
+pub async fn sender_of(state: State<'_, AppState>, id: i64) -> Reply<Option<tern_core::Sender>> {
+    state.store.sender_of(id).map_err(text)
+}
+
+/// Where mail from an address (or `@domain`) goes: important, other, blocked, or None to forget the choice.
+#[tauri::command]
+pub async fn set_sender(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account_id: i64,
+    addr: String,
+    choice: Option<String>,
+) -> Reply<()> {
+    state.store.set_sender(account_id, &addr, choice.as_deref()).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
+/// How many conversations wait in New people (the screener), for its tab.
+#[tauri::command]
+pub async fn new_people(state: State<'_, AppState>) -> Reply<i64> {
+    state.store.new_people().map_err(text)
+}
+
+/// Every choice made about senders, for Settings → Senders.
+#[tauri::command]
+pub async fn sender_choices(state: State<'_, AppState>) -> Reply<Vec<tern_core::SenderChoice>> {
+    state.store.sender_choices().map_err(text)
 }
 
 /// Unread messages in the Important and Other splits.
@@ -1364,6 +1493,13 @@ pub async fn ai_ask(
         })
     })
     .await
+}
+
+/// A task the AI proposes from the conversation of message `id`, for the task box; nothing is created.
+#[tauri::command]
+pub async fn ai_task(state: State<'_, AppState>, id: i64) -> Reply<ai::TaskSuggestion> {
+    let store = state.store.clone();
+    blocking(move || ai::suggest_task(&store, &providers::Router, id, &mut |_| {})).await
 }
 
 /// Three replies the person could send to the conversation of message `id`.

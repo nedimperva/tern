@@ -3,7 +3,23 @@
 import { createEffect, createSignal, onCleanup } from "solid-js";
 import type { SyncState } from "../api";
 import { markZero } from "../zero";
-import { accounts, context, online, progress, ready, role, rows, searching, syncStates, waiting } from "./state";
+import {
+  accounts,
+  context,
+  listed,
+  listKey,
+  online,
+  progress,
+  ready,
+  role,
+  rows,
+  searching,
+  syncStates,
+  waiting,
+} from "./state";
+
+/** The rows on show were read for the list on show (not the one switched away from). */
+export const listedHere = () => ready() && listed() === listKey();
 
 // Missing messages below this are new mail arriving, not a backlog worth a "Downloading mail" sentence.
 const BACKLOG = 100;
@@ -89,9 +105,11 @@ export const syncSentence = () => {
 export const hints = () =>
   context() === "conversation"
     ? [["R", "reply"], ["E", "done"], ["Esc", "back"]]
-    : rows().length
+    : rows().length && role() === "new_people"
+      ? [["Y", "let in"], ["Shift O", "Other"], ["Shift X", "block"]]
+      : rows().length
       ? [["Enter", "open"], ["E", "done"], ["Ctrl K", "commands"]]
       : [["C", "compose"], ["?", "shortcuts"], ["Ctrl K", "commands"]];
 
 /** The inbox empty, or its Important split (what Tern opens on); Other has its own tab count. */
-export const inboxZero = () => ready() && !searching() && rows().length === 0 && ["inbox", "important"].includes(role());
+export const inboxZero = () => listedHere() && !searching() && rows().length === 0 && ["inbox", "important"].includes(role());

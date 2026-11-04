@@ -70,6 +70,8 @@ pub struct About {
     /// For a bug report: the version, the system, and each account's provider and state. No addresses, no hosts
     /// of one's own server.
     pub details: String,
+    /// This copy installs its own updates (the AppImage, Windows), so the update channel means something.
+    pub updates: bool,
 }
 
 pub fn about(app: &AppHandle) -> anyhow::Result<About> {
@@ -107,7 +109,7 @@ pub fn about(app: &AppHandle) -> anyhow::Result<About> {
         let text: i64 = progress.iter().map(|p| p.with_text).sum();
         lines.push(format!("Mail here: {messages} messages, {text} with their text"));
     }
-    Ok(About { version, log_file, details: lines.join("\n") })
+    Ok(About { version, log_file, details: lines.join("\n"), updates: crate::update::self_updating() })
 }
 
 /// Which provider a server belongs to, by name for the big ones; one's own server stays unnamed.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ThreadRow } from "../api";
-import { asRow, keepRows, keyOf, sameRow } from "../app/rows";
+import { asRow, keepRows, keyOf, people, sameRow, withGroups } from "../app/rows";
 
 const row = (over: Partial<ThreadRow> = {}): ThreadRow =>
   ({
@@ -64,5 +64,20 @@ describe("asRow", () => {
   it("shows a search hit as a one-message conversation", () => {
     const hit = asRow({ ...row(), seen: true, fromName: "" });
     expect(hit).toMatchObject({ count: 1, unread: 0, snoozedUntil: null, participants: ["ada@example.com"] });
+  });
+});
+
+describe("people", () => {
+  it("makes a row per sender, newest first, the rest grouped under it", () => {
+    const rows = [
+      row({ id: 3, threadId: "t3", fromAddr: "Ada@example.com" }),
+      row({ id: 2, threadId: "t2", fromAddr: "bo@example.com" }),
+      row({ id: 1, threadId: "t1", fromAddr: "ada@example.com" }),
+      row({ id: 4, threadId: "t4", accountId: 2, fromAddr: "ada@example.com" }),
+    ];
+    const grouped = people(rows);
+    expect(grouped.map((r) => r.id)).toEqual([3, 2, 4]);
+    expect(grouped[0].group?.map((r) => r.id)).toEqual([1]);
+    expect(withGroups(grouped).map((r) => r.id)).toEqual([3, 1, 2, 4]);
   });
 });

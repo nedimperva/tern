@@ -27,6 +27,8 @@ export const [syncStates, setSyncStates] = createSignal<Record<number, SyncState
 export const [progress, setProgress] = createSignal<SyncProgress[]>([]);
 export const [folders, setFolders] = createSignal<Folder[]>([]);
 export const [splitUnread, setSplitUnread] = createSignal<[number, number]>([0, 0]);
+/** Conversations waiting in New people (the screener). */
+export const [newPeople, setNewPeople] = createSignal(0);
 export const [problems, setProblems] = createSignal<OutboxProblem[]>([]);
 export const [waiting, setWaiting] = createSignal<OutboxWaiting[]>([]);
 export const [ready, setReady] = createSignal(false);
@@ -39,6 +41,10 @@ export const home = (): Target => ({ role: settings.splitInbox ? "important" : "
 export const [target, setTarget] = createSignal<Target>(home());
 export const [query, setQuery] = createSignal("");
 export const [rows, setRows] = createSignal<ThreadRow[]>([]);
+/** Which list `rows` were read for: a switch keeps the old rows until the new ones come, so an empty list waits for
+ * its own (an empty tab before the inbox flashed Inbox Zero). */
+export const listKey = () => JSON.stringify([target(), query().trim()]);
+export const [listed, setListed] = createSignal("");
 export const [focus, setFocus] = createSignal(0);
 export const [selection, setSelection] = createSignal<ReadonlySet<string>>(new Set());
 // Some mail has headers only, so words in its body were not searched.
@@ -72,6 +78,8 @@ export const [messageFocus, setMessageFocus] = createSignal(0);
 export const [expanded, setExpanded] = createSignal<ReadonlySet<number>>(new Set());
 // Whether the open conversation is muted, for "Unmute" in the palette.
 export const [openMuted, setOpenMuted] = createSignal(false);
+/** What unsubscribing from the open conversation's list did, for its button; empty until then. */
+export const [unsubscribed, setUnsubscribed] = createSignal("");
 
 export const [width, setWidth] = createSignal(window.innerWidth);
 // The rail sliding over the list: the sidebar's place in a narrow window, or with the sidebar turned off.

@@ -1,0 +1,73 @@
+name: beta feed
+
+# The beta channel (Settings → About → Updates) reads latest-beta.json on a rolling `beta` release. When a release
+# is published, beta or stable, its latest.json becomes latest-beta.json if its version is newer than the one there:
+# beta testers get each beta, and the stable release that passes it. The `beta` release is a pre-release, so Stable's
+# `releases/latest` never lands on it. Its files are copies; the installers stay on each version's own release.
+#
+# A run by hand takes the tag to point the feed at, for a feed that missed a publish.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release to point the beta feed at, such as v2.0.0-1"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: beta-feed
+  cancel-in-progress: false
+
+jobs:
+  feed:
+    # The rolling release itself is never a version.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.tag_name != 'beta' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Point latest-beta.json at this release when it is newer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! gh release download "$TAG" -R "$REPO" -p latest.json -O new.json; then
+            echo "::error::$TAG has no latest.json"
+            exit 1
+          fi
+          if ! gh release view beta -R "$REPO" >/dev/null 2>&1; then
+            gh release create beta -R "$REPO" --prerelease --latest=false --title "Beta channel" \
+              --notes "Holds latest-beta.json for Tern's beta channel. Install from the versions' own releases."
+          fi
+          gh release download beta -R "$REPO" -p latest-beta.json -O old.json 2>/dev/null || echo '{"version":"0.0.0"}' > old.json
+          # Semver order, pre-releases before their release: 2.0.0-2 < 2.0.0-10 < 2.0.0.
+          newer=$(node -e '
+            const fs = require("fs");
+            const v = (f) => String(JSON.parse(fs.readFileSync(f, "utf8")).version).replace(/^v/, "");
+            const parse = (s) => { const [core, pre] = s.split(/-(.*)/s); return [core.split(".").map(Number), pre ? pre.split(".") : null]; };
+            const part = (a, b) => { const x = /^\d+$/.test(a), y = /^\d+$/.test(b); return x && y ? Number(a) - Number(b) : x ? -1 : y ? 1 : a < b ? -1 : a > b ? 1 : 0; };
+            const cmp = (a, b) => {
+              const [ca, pa] = parse(a), [cb, pb] = parse(b);
+              for (let i = 0; i < 3; i++) if (ca[i] !== cb[i]) return ca[i] - cb[i];
+              if (!pa || !pb) return pa ? -1 : pb ? 1 : 0;
+              for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+                if (pa[i] === undefined) return -1;
+                if (pb[i] === undefined) return 1;
+                const d = part(pa[i], pb[i]);
+                if (d) return d;
+              }
+              return 0;
+            };
+            console.log(cmp(v("new.json"), v("old.json")) > 0 ? "yes" : "no");
+          ')
+          if [ "$newer" != "yes" ]; then
+            echo "The beta feed already has a version at or past $TAG; left as it is."
+            exit 0
+          fi
+          cp new.json latest-beta.json
+          gh release upload beta -R "$REPO" latest-beta.json --clobber
+          echo "The beta feed now points at $TAG."

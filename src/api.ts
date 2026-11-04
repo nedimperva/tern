@@ -142,6 +142,21 @@ export type MessageRow = {
   hasAttachments: boolean;
 };
 
+/** Where a sender's mail goes: what the person chose for the address or its domain, else what the headers give. */
+export type SenderState = "important" | "other" | "blocked";
+/** Who sent a message, and where their mail goes. `addressChoice` and `domainChoice` are null where nothing was chosen. */
+export type Sender = {
+  accountId: number;
+  addr: string;
+  domain: string;
+  state: SenderState;
+  addressChoice: SenderState | null;
+  domainChoice: SenderState | null;
+  /** Their mail waits in New people: nothing was chosen about them yet. */
+  waiting: boolean;
+};
+/** A choice made about a sender: `addr` is an address, or `@domain` for everyone there. `since` is 0 for old ones. */
+export type SenderChoice = { accountId: number; addr: string; name: string; state: SenderState; since: number };
 /** A sender and how much they wrote lately. `newest` is their newest message, for `setSplit`. */
 export type SenderVolume = {
   accountId: number;
@@ -155,6 +170,47 @@ export type SenderVolume = {
 /** Someone to write to, from the mail on this computer. */
 export type Contact = { email: string; name: string };
 export type ContactCard = { email: string; name: string; sent: number; received: number; recent: MessageRow[] };
+/** The companion's facts about a person, from this computer. */
+export type PersonFacts = {
+  email: string;
+  /** Messages from them in each of the last 12 months, oldest first. */
+  months: number[];
+  /** Their first message here (Unix seconds); 0 when none is. */
+  since: number;
+  conversations: number;
+  /** Someone else at their domain you've written to. */
+  knownAtDomain: string | null;
+  /** Their newest message came through a mailing list. */
+  list: boolean;
+  /** Of their latest messages (up to 10), how many there are and how many were opened. */
+  latest: number;
+  opened: number;
+  /** One message of each of their unread conversations in an inbox. */
+  unopened: number[];
+  /** Your note on them, kept only here. */
+  note: string;
+};
+export type TodoistProject = { id: string; name: string; inbox: boolean };
+/** What the task box sends. */
+export type TaskInput = { title: string; due?: string | null; projectId?: string | null; label?: string | null; note?: string | null };
+/** A task the AI proposes for the task box; `due` as Todoist reads it, empty when none. */
+export type TaskSuggestion = { title: string; due: string; note: string; sentChars: number; route: { provider: AiProvider; model: string } };
+/** A task made from a conversation; `url` once Todoist has it. */
+export type TaskRow = { id: number; title: string; due: string | null; url: string | null };
+/** A file exchanged with a person, from any conversation. */
+export type PersonFile = {
+  messageId: number;
+  accountId: number;
+  threadId: string;
+  subject: string;
+  date: number;
+  /** You sent it to them. */
+  mine: boolean;
+  index: number;
+  name: string;
+  mime: string;
+  size: number;
+};
 export type ThreadMessage = MessageRow & {
   messageId: string | null;
   toAddrs: string;
@@ -167,6 +223,8 @@ export type ThreadMessage = MessageRow & {
   draftId: number | null;
   /** The List-Unsubscribe header, raw: `<mailto:…>, <https://…>`. */
   listUnsubscribe: string | null;
+  /** The list offers one-click unsubscribe (RFC 8058): `unsubscribe` queues it. */
+  oneClick: boolean;
 };
 /** One conversation in a list: its newest message in the listed folder(s), and the whole conversation's totals. */
 export type ThreadRow = MessageRow & {
@@ -181,6 +239,8 @@ export type ThreadRow = MessageRow & {
   followUp?: boolean;
   /** Gmail labels on any of its messages. */
   labels?: string[];
+  /** New people shows a row per person: their newest conversation, with the others they started in `group`. */
+  group?: ThreadRow[];
 };
 /** Where an account's sync stands. */
 export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed" | "paused";
@@ -261,7 +321,8 @@ export type Preset = {
 };
 export type Applied = { token: number[]; accounts: number[]; drafts: number[] };
 /** Settings → About. */
-export type About = { version: string; logFile: string; details: string };
+/** `updates`: this copy installs its own updates (the AppImage, Windows), so the update channel applies. */
+export type About = { version: string; logFile: string; details: string; updates: boolean };
 /** Queued work Tern stopped retrying: it waits for the person to retry or discard it. */
 export type OutboxProblem = {
   id: number;
@@ -349,6 +410,23 @@ export interface Api {
   contacts(query: string): Promise<{ email: string; name: string }[]>;
   /** A person's card: counts, and your latest conversations with them. */
   contactCard(email: string): Promise<ContactCard>;
+  /** The companion's facts about a person, as mail to that account sees them. */
+  person(accountId: number, email: string): Promise<PersonFacts>;
+  /** Keeps your note on someone; an empty one is none. */
+  setPersonNote(email: string, body: string): Promise<void>;
+  /** The files exchanged with a person, every conversation, newest first. */
+  personFiles(email: string): Promise<PersonFile[]>;
+  /** Whether a Todoist token is saved (nothing is asked of Todoist). */
+  todoistConnected(): Promise<boolean>;
+  /** Checks the token with Todoist and keeps it in the keyring; the projects it found. */
+  todoistConnect(token: string): Promise<TodoistProject[]>;
+  todoistProjects(): Promise<TodoistProject[]>;
+  todoistForget(): Promise<void>;
+  /** Queues a task from the conversation of message `id`, with the usual undo; the undo token. */
+  queueTask(id: number, task: TaskInput): Promise<number[]>;
+  tasksOf(id: number): Promise<TaskRow[]>;
+  /** A task proposed by AI from the conversation (behind the summaries switch); nothing is created. */
+  aiTask(id: number): Promise<TaskSuggestion>;
   /** The system file picker; paths chosen (none if cancelled). */
   pickFiles(): Promise<string[]>;
   /** Copies files into Tern's attachment folder, for a draft. */
@@ -383,6 +461,16 @@ export interface Api {
   onCloseRequested(f: () => Promise<void>): () => void;
   /** Moves the senders of these messages to the inbox's Other split, or back to Important. */
   setSplit(ids: number[], other: boolean): Promise<void>;
+  /** Who sent this message and where their mail goes. */
+  senderOf(id: number): Promise<Sender | null>;
+  /** Where mail from `addr` (an address, or `@domain`) goes; null forgets the choice. Mail already here stays put. */
+  setSender(accountId: number, addr: string, choice: SenderState | null): Promise<void>;
+  /** Every choice made about senders, newest first. */
+  senderChoices(): Promise<SenderChoice[]>;
+  /** How many people wait in New people (the screener). */
+  newPeople(): Promise<number>;
+  /** Queues the one-click unsubscribe this message offers, with the usual undo. Null when it offers none. */
+  unsubscribe(id: number): Promise<number[] | null>;
   /** Unread messages in [Important, Other]. */
   splitUnread(): Promise<[number, number]>;
   /** Snoozes these conversations until `due` (Unix seconds); they come back unread. */
@@ -415,6 +503,8 @@ export interface Api {
   onUpdateReady(f: (version: string) => void): void;
   /** Saves what is being written, installs the waiting update and starts the new version. */
   restartToUpdate(): Promise<void>;
+  /** Looks for an update now, on the channel just chosen. */
+  lookForUpdate(): Promise<void>;
   /** The tray and the system: Compose from the tray menu, a `mailto:` link, a clicked notification, Quit. */
   onDesktop(handlers: {
     compose: () => void;
@@ -585,6 +675,16 @@ const tauri: Api = {
   saveAttachment: (id, index) => invoke("save_attachment", { id, index }),
   contacts: (query) => invoke("contacts", { query }),
   contactCard: (email) => invoke("contact_card", { email }),
+  person: (accountId, email) => invoke("person", { accountId, email }),
+  setPersonNote: (email, body) => invoke("set_person_note", { email, body }),
+  personFiles: (email) => invoke("person_files", { email }),
+  todoistConnected: () => invoke("todoist_connected"),
+  todoistConnect: (token) => invoke("todoist_connect", { token }),
+  todoistProjects: () => invoke("todoist_projects"),
+  todoistForget: () => invoke("todoist_forget"),
+  queueTask: (id, task) => invoke("queue_task", { id, task }),
+  tasksOf: (id) => invoke("tasks_of", { id }),
+  aiTask: (id) => invoke("ai_task", { id }),
   onFilesDropped: (f, hover) => {
     const stops: (() => void)[] = [];
     let stopped = false;
@@ -623,6 +723,7 @@ const tauri: Api = {
     await flush();
     await invoke("restart_to_update");
   },
+  lookForUpdate: () => invoke("look_for_update"),
   onDesktop: (h) => {
     void listen("compose", () => h.compose());
     void listen<Mailto>("mailto", (e) => h.mailto(e.payload));
@@ -634,6 +735,11 @@ const tauri: Api = {
   takeMailto: () => invoke("take_mailto"),
   setSyncPaused: (on) => invoke("set_sync_paused", { on }),
   setSplit: (ids, other) => invoke("set_split", { ids, other }),
+  senderOf: (id) => invoke("sender_of", { id }),
+  setSender: (accountId, addr, choice) => invoke("set_sender", { accountId, addr, choice }),
+  senderChoices: () => invoke("sender_choices"),
+  newPeople: () => invoke("new_people"),
+  unsubscribe: (id) => invoke("unsubscribe", { id }),
   splitUnread: () => invoke("split_unread"),
   snooze: (ids, due) => invoke("snooze", { ids, due }),
   unsnooze: (ids) => invoke("unsnooze", { ids }),
@@ -838,6 +944,7 @@ function fake(): Api {
       bodyLoaded: true,
       draftId: null,
       listUnsubscribe: i % 7 === 1 ? "<mailto:leave@fieldnotes.example?subject=unsubscribe>, <https://example.com/u>" : null,
+      oneClick: i % 14 === 1,
       attachments:
         i % 11 === 0
           ? [
@@ -850,6 +957,16 @@ function fake(): Api {
     };
   });
   const listeners: (() => void)[] = [];
+  const personNotes = new Map<string, string>();
+  // #todoist: start connected, to see the Tasks section and the task box.
+  let todoistToken = location.hash === "#todoist" ? "fake" : "";
+  const TODOIST_PROJECTS: TodoistProject[] = [
+    { id: "1", name: "Inbox", inbox: true },
+    { id: "2", name: "Work", inbox: false },
+    { id: "3", name: "Home", inbox: false },
+  ];
+  const fakeTasks: (TaskRow & { thread: string })[] = [];
+  let nextTask = 1;
   const stateListeners: ((accountId: number, state: SyncState) => void)[] = [];
   let waiting: OutboxWaiting[] =
     location.hash === "#offline"
@@ -888,10 +1005,26 @@ function fake(): Api {
   const changed = () => listeners.forEach((f) => f());
   const pending = new Map<number, () => void>();
   let nextToken = 1;
-  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, draftId, listUnsubscribe, ...r }: ThreadMessage): MessageRow => r;
+  const row = ({ messageId, toAddrs, bodyText, bodyHtml, bodyLoaded, attachments, draftId, listUnsubscribe, oneClick, ...r }: ThreadMessage): MessageRow => r;
   // Every seventh conversation is a newsletter, for the Other split.
-  const otherSenders = new Map<string, boolean>();
-  const isOther = (m: ThreadMessage) => otherSenders.get(m.fromAddr) ?? Number(m.threadId.slice(1)) % 7 === 3;
+  // What the person chose, by address or `@domain`: as the engine's sender_state.
+  const senderStates = new Map<string, { state: SenderState; since: number }>();
+  const domainOf = (addr: string) => addr.slice(addr.indexOf("@"));
+  const chosen = (m: ThreadMessage) =>
+    (senderStates.get(m.fromAddr.toLowerCase()) ?? senderStates.get(domainOf(m.fromAddr.toLowerCase())))?.state;
+  // With the screener on, a few conversations from people not known yet wait in New people.
+  const screenerOn = () => {
+    try {
+      return JSON.parse(localStorage.getItem("tern.fake.settings") ?? "{}").screener === true;
+    } catch {
+      return false;
+    }
+  };
+  const screened = (m: ThreadMessage) => screenerOn() && Number(m.threadId.slice(1)) % 13 === 5 && !chosen(m);
+  const isOther = (m: ThreadMessage) => {
+    const state = chosen(m);
+    return state ? state !== "important" : Number(m.threadId.slice(1)) % 7 === 3;
+  };
   const snoozed = new Map<string, number>();
   const shelved = new Set<string>();
   // Pictures pasted into compose, by their made-up path, for their previews.
@@ -913,9 +1046,11 @@ function fake(): Api {
       case "starred":
         return m.flagged && inInbox(m) && !away;
       case "important":
-        return inInbox(m) && !away && !isOther(m);
+        return inInbox(m) && !away && !isOther(m) && !screened(m);
       case "bulk":
-        return inInbox(m) && !away && isOther(m);
+        return inInbox(m) && !away && isOther(m) && !screened(m);
+      case "new_people":
+        return inInbox(m) && !away && screened(m);
       case "snoozed":
         return inInbox(m) && asleep;
       case "later":
@@ -1074,10 +1209,10 @@ function fake(): Api {
       return { token: [token], accounts: [1], drafts: [] };
     },
     undo: async (token) => {
-      const revert = pending.get(token[0]);
-      if (!revert) return false;
-      revert();
-      pending.delete(token[0]);
+      const reverts = token.map((t) => pending.get(t)).filter((r) => r !== undefined);
+      if (!reverts.length) return false;
+      for (const revert of reverts) revert();
+      for (const t of token) pending.delete(t);
       changed();
       return true;
     },
@@ -1135,6 +1270,77 @@ function fake(): Api {
       const theirs = messages.filter((m) => m.fromAddr.toLowerCase() === e).sort((a, b) => b.date - a.date);
       const recent = theirs.filter((m, i) => theirs.findIndex((o) => o.threadId === m.threadId) === i).slice(0, 5);
       return { email, name: theirs[0]?.fromName ?? "", sent: 3, received: theirs.length, recent };
+    },
+    person: async (accountId, email) => {
+      const e = email.toLowerCase();
+      const theirs = messages.filter((m) => m.fromAddr.toLowerCase() === e).sort((a, b) => b.date - a.date);
+      const months = Array.from({ length: 12 }, (_, i) => theirs.filter((m) => Math.floor((now - m.date) / 2_629_800) === 11 - i).length);
+      const domain = e.split("@")[1] ?? "";
+      const known = messages.find((m) => m.fromAddr.toLowerCase() !== e && m.fromAddr.toLowerCase().endsWith(`@${domain}`));
+      const latest = theirs.slice(0, 10);
+      return {
+        email: e,
+        // The fake's mail is a few days old: spread it over the year so the bars have a shape.
+        months: months.map((n, i) => (i === 11 ? n : ((e.length + i * 7) % 9) * 2)),
+        since: theirs[theirs.length - 1]?.date ?? 0,
+        conversations: new Set(theirs.map((m) => m.threadId)).size,
+        knownAtDomain: known?.fromName ?? null,
+        list: Boolean(theirs[0]?.listUnsubscribe),
+        latest: latest.length,
+        opened: latest.filter((m) => m.seen).length,
+        unopened: [...new Map(theirs.filter((m) => !m.seen && m.accountId === accountId && m.folderId === 1).map((m) => [m.threadId, m.id])).values()],
+        note: personNotes.get(e) ?? "",
+      };
+    },
+    setPersonNote: async (email, body) => {
+      if (body.trim()) personNotes.set(email.toLowerCase(), body);
+      else personNotes.delete(email.toLowerCase());
+    },
+    todoistConnected: async () => todoistToken !== "",
+    todoistConnect: async (token) => {
+      if (!token.trim()) throw "Paste the API token from Todoist's settings";
+      todoistToken = token.trim();
+      return TODOIST_PROJECTS;
+    },
+    todoistProjects: async () => {
+      if (!todoistToken) throw "Todoist isn't connected";
+      return TODOIST_PROJECTS;
+    },
+    todoistForget: async () => void (todoistToken = ""),
+    queueTask: async (id, task) => {
+      const thread = messages.find((m) => m.id === id)?.threadId ?? "";
+      const row = { id: nextTask++, thread, title: task.title.trim(), due: task.due?.trim() || null, url: null as string | null };
+      if (!row.title) throw "A task needs a title";
+      fakeTasks.push(row);
+      // After the undo window it "reaches Todoist".
+      const timer = window.setTimeout(() => (row.url = `https://app.todoist.com/app/task/${row.id}`), 6000);
+      pending.set(-row.id, () => (window.clearTimeout(timer), fakeTasks.splice(fakeTasks.indexOf(row), 1)));
+      return [-row.id];
+    },
+    aiTask: async (id) => {
+      await new Promise((r) => setTimeout(r, 700));
+      const m = messages.find((x) => x.id === id);
+      return {
+        title: `Bring the Q3 deck for ${m?.fromName.split(" ")[0] ?? "them"}`,
+        due: "sat 10am",
+        note: "Studio 4, Keizersgracht 120 · 20 minutes",
+        sentChars: 2140,
+        route: { provider: "anthropic", model: "claude-sonnet-5-5" },
+      };
+    },
+    tasksOf: async (id) => {
+      const thread = messages.find((m) => m.id === id)?.threadId;
+      return fakeTasks.filter((t) => t.thread === thread).map(({ thread: _, ...t }) => t);
+    },
+    personFiles: async (email) => {
+      const e = email.toLowerCase();
+      return messages
+        .filter((m) => m.fromAddr.toLowerCase() === e && m.attachments.length)
+        .sort((a, b) => b.date - a.date)
+        .flatMap((m) =>
+          m.attachments.map((a, index) => ({ messageId: m.id, accountId: m.accountId, threadId: m.threadId, subject: m.subject, date: m.date, mine: false, index, ...a })),
+        )
+        .slice(0, 60);
     },
     problemToDraft: async (id) => {
       problems = problems.filter((p) => p.id !== id);
@@ -1225,11 +1431,49 @@ function fake(): Api {
     updateReady: async () => (location.hash === "#update" ? "0.4.0" : null),
     onUpdateReady: () => {},
     restartToUpdate: async () => location.reload(),
+    lookForUpdate: async () => {},
     onDesktop: () => {},
     takeMailto: async () => null,
     setSplit: async (ids, other) => {
-      for (const m of messages.filter((m) => ids.includes(m.id))) otherSenders.set(m.fromAddr, other);
+      for (const m of messages.filter((m) => ids.includes(m.id)))
+        senderStates.set(m.fromAddr.toLowerCase(), { state: other ? "other" : "important", since: Date.now() / 1000 });
+      changed();
     },
+    unsubscribe: async (id) => {
+      const m = messages.find((m) => m.id === id);
+      if (!m?.oneClick) return null;
+      const token = nextToken++;
+      pending.set(token, () => {});
+      return [token];
+    },
+    senderOf: async (id) => {
+      const m = messages.find((m) => m.id === id);
+      if (!m) return null;
+      const addr = m.fromAddr.toLowerCase();
+      return {
+        accountId: m.accountId,
+        addr,
+        domain: domainOf(addr).slice(1),
+        state: chosen(m) ?? (isOther(m) ? "other" : "important"),
+        addressChoice: senderStates.get(addr)?.state ?? null,
+        domainChoice: senderStates.get(domainOf(addr))?.state ?? null,
+        waiting: screened(m),
+      };
+    },
+    setSender: async (_account, addr, choice) => {
+      if (choice) senderStates.set(addr.toLowerCase(), { state: choice, since: Date.now() / 1000 });
+      else senderStates.delete(addr.toLowerCase());
+      changed();
+    },
+    newPeople: async () => new Set(messages.filter((m) => inTarget(m, { role: "new_people" })).map((m) => m.fromAddr.toLowerCase())).size,
+    senderChoices: async () =>
+      [...senderStates].map(([addr, c]) => ({
+        accountId: 1,
+        addr,
+        name: messages.find((m) => m.fromAddr.toLowerCase() === addr)?.fromName ?? "",
+        state: c.state,
+        since: c.since,
+      })).sort((a, b) => b.since - a.since),
     splitUnread: async () => {
       const unread = messages.filter((m) => !m.seen && inInbox(m) && !snoozed.has(m.threadId) && !shelved.has(m.threadId));
       const other = unread.filter(isOther).length;
@@ -1327,6 +1571,7 @@ function fake(): Api {
       version: "0.3.6",
       logFile: "/home/you/.local/share/app.tern.mail/logs/tern.log",
       details: "Tern 0.3.6 (release build, AppImage)\nSystem: linux x86_64, Arch Linux, Hyprland, Wayland\nAccount 1: Gmail, password sign-in, up to date\nMail here: 5000 messages, 5000 with their text",
+      updates: true,
     }),
     openLogs: async () => {},
     setWindowTheme: () => {},

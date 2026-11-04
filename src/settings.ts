@@ -32,6 +32,8 @@ export type Settings = {
   notifyOther: boolean;
   /** The companion column is open beside a conversation (`Ctrl+.`, `i`). */
   companion: boolean;
+  /** The companion's person card folded to one row (`Shift+I`), for every conversation. */
+  companionFolded: boolean;
   /** Promises ticked off in the companion, by key (`src/promises.ts`). */
   promisesDone: string[];
   /** A soft wing beat when mail leaves the outbox. */
@@ -41,6 +43,12 @@ export type Settings = {
   quietTo: string;
   /** The inbox in two splits, Important and Other, rather than one list. */
   splitInbox: boolean;
+  /** Which releases update this copy: stable ones, or betas too (read by the engine's updater). */
+  updateChannel: "stable" | "beta";
+  /** First mail from people not known yet waits in New people (read by the engine at insert and in its lists). */
+  screener: boolean;
+  /** Domains whose people count as known to the screener, without the @ ("work.example"). */
+  knownDomains: string[];
   /** Details in the companion: when, where, codes and links found in the newest message. */
   readingFacts: boolean;
   /** Newsletters (designed mail from a list) open in reading view. */
@@ -72,6 +80,8 @@ export type Settings = {
   /** What each account notifies for, by address (lowercase); one not here follows `notify` and `notifyOther`
    * (read by the engine). */
   notifyAccounts: Record<string, NotifyMode>;
+  /** Todoist (Settings → Todoist): the project new tasks go to (empty: Todoist's Inbox) and their label. */
+  todoist: { project: string; label: string };
   /** Optional AI, read by the engine too, which refuses what it does not allow (tern_core::ai::AiSettings). */
   ai: AiSettings;
 };
@@ -115,11 +125,15 @@ export const DEFAULTS: Settings = {
   notify: true,
   wingBeat: false,
   companion: false,
+  companionFolded: false,
   promisesDone: [],
   notifyOther: false,
   quietFrom: "",
   quietTo: "",
   splitInbox: true,
+  screener: false,
+  updateChannel: "stable",
+  knownDomains: [],
   darkMail: "darken",
   readingFacts: true,
   newsletterReading: true,
@@ -134,6 +148,7 @@ export const DEFAULTS: Settings = {
   savedSearches: [],
   accountColours: {},
   notifyAccounts: {},
+  todoist: { project: "", label: "mail" },
   ai: {
     enabled: false,
     provider: "anthropic",

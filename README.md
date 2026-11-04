@@ -21,9 +21,9 @@ Linux and Windows · Rust · Tauri 2 · SolidJS · SQLite
 | ![Writing a message in the dark theme](docs/images/compose.png) | ![Inbox Zero: the tern's migration from pole to pole](docs/images/inbox-zero.png) |
 
 > [!WARNING]
-> **Tern is young software (1.x).** It syncs and sends real mail and its author uses it every day on Linux and
-> Windows, but expect rough edges. Try it with a test account, or keep another mail client around. Installers are
-> not code-signed yet.
+> **Tern is young software (2.0 is in beta).** It syncs and sends real mail and its author uses it every day on
+> Linux and Windows, but expect rough edges. Try it with a test account, or keep another mail client around.
+> Installers are not code-signed yet.
 
 ## Why Tern
 
@@ -39,13 +39,37 @@ a 5-second undo window. If you're offline, it goes once you're back.
 - **Undo everything.** Archive, move, star and send wait 5 seconds before reaching the server; `z` takes them back.
   A send that may already have gone out is never retried on its own.
 - **Gmail labels.** All Mail is the archive, labels show as coloured chips, and `l` puts one on or takes it off.
-- **Triage.** Important / Other splits, local snooze, send later, "remind me if no reply", and fast full-text
-  search with filters.
-- **Compose.** Drafts, attachments, address autocomplete, snippets (`;`), quoting a selection, checks before
-  sending (a mentioned attachment that isn't there, in twelve languages), and signatures, including HTML ones
-  pasted from Gmail or Outlook.
-- **Desktop integration.** Tray icon, notifications with Archive and Reply, background running, start at login and
-  `mailto:` links.
+- **Triage.** Important / Other splits, local snooze, Read later, send later, "remind me if no reply", and fast
+  full-text search with filters. A morning screen (`g o`) shows what needs you, what you wait on and what to read.
+- **Your inbox, your rules.** New people (off by default): first mail from someone you haven't written to waits in
+  its own place in the sidebar (`g n`), one row per person, until you let them in (`y`), send them to Other
+  (`Shift O`) or block them (`Shift X`). Block a sender or a whole domain, and unsubscribe in one click from lists
+  that offer it (`Ctrl U`), with the usual undo. Settings → Senders lists every choice, each with a way back.
+- **The brief.** Under a conversation's subject: what came since you last read it, then what was asked of you, the
+  day and the place, each with a button (Answer, Snooze till then, Add task, Map). Found on your computer; with AI
+  on, Explain it adds a sentence on top.
+- **The companion** (`Ctrl .` or `i`), a column beside the conversation:
+  - the person card: how much they write, month by month, how fast you answer, and Important / Other / Blocked in
+    one control. It folds to one row (`Shift I`).
+  - for someone new, what helps decide (how long they've written, whether you know anyone at their domain, whether
+    it came through a list), and for a newsletter, how many issues you open, with Archive the unopened.
+  - your private note on a person, kept only on this computer;
+  - what you owe and are owed, the day, place and codes in the newest mail, and your marks;
+  - every file you exchanged with them, by kind and month, opening in Tern's own viewer;
+  - recent conversations with them.
+- **Todoist.** Connect your own API token, then `t` (or Add task in the brief) makes a task from the mail, going to
+  the project you chose, through the same 5-second undo. Only the title, the day, a note you keep and who sent the
+  mail go to Todoist. With AI on, Fill proposes the title, the day and a note.
+- **Reading.** Newsletters open in a calm reading view, quotes, signatures and legal notices fold away, marks and
+  notes on any passage, and pictures, PDFs, text and tables open in Tern's own viewer.
+- **Compose.** Drafts, attachments, address autocomplete, snippets (`;`), quoting a selection, more than one From
+  address per account, focus mode with an outline for long mails, checks before sending (a mentioned attachment
+  that isn't there, in twelve languages), and signatures, including HTML ones pasted from Gmail or Outlook.
+- **Optional AI, off by default.** With your own Claude, OpenAI or Gemini key: Explain a conversation, Ask about it,
+  suggested replies (`q`), and writing help beside compose (`Ctrl J`). Each feature and account is opted in, every
+  request says what it sent, and nothing runs in the background.
+- **Desktop integration.** Tray icon, notifications with Archive and Reply, quiet hours, background running, start
+  at login, `mailto:` links, and updates from signed releases (a Beta channel in Settings → About).
 - **Inbox Zero** gets a tern scene a day: its migration, a flock for what you cleared, your streak.
 - **Private by default.** Remote images are blocked until you load them, mail HTML runs without scripts, sender
   logos are off unless you turn them on, and there is no telemetry.
@@ -56,7 +80,7 @@ Download the latest build from [Releases](https://github.com/nedimperva/tern/rel
 
 | System | File |
 |---|---|
-| Linux | `.AppImage` (any distro), `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE) |
+| Linux | `.AppImage` (any distro), `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE; stable releases only) |
 | Windows 10/11 | `-setup.exe` or `.msi` |
 
 Trying the beta? Start with the [tester guide](docs/beta.md): installing, adding Gmail and other accounts, what
@@ -104,8 +128,10 @@ in [docs/gmail.md](docs/gmail.md).
 - IMAP and SMTP use TLS (rustls with the platform's certificate verifier). Nothing links OpenSSL.
 - Mail HTML is untrusted: it renders in a sandboxed frame with no scripts, under a content security policy that
   blocks remote content until you choose "Load images". Links open in your browser.
-- Unless you load a message's images or turn on sender logos, Tern talks only to your mail servers. It sends no
-  analytics or crash reports.
+- Unless you load a message's images, turn on sender logos, ask the AI something or add a task to Todoist, Tern
+  talks only to your mail servers. It sends no analytics or crash reports.
+- AI keys and the Todoist token live in the keyring too. AI requests go only to the provider you chose, with your
+  key, only when you ask; Todoist gets a task's title, day and note, never the mail's text.
 
 Found a vulnerability? Please report it privately; see [SECURITY.md](SECURITY.md).
 
@@ -196,11 +222,19 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 | `c` | compose |
 | `r` | reply (with text selected in the message, quote just that) |
 | `v` | view the conversation's attachments (`←` / `→` between them) |
+| `i` / `Ctrl .` | show or hide the companion |
+| `Shift I` | fold or open the person card |
+| `t` | add a task to Todoist (once connected) |
+| `Shift S` | explain the conversation with AI (when on) |
+| `Ctrl U` | unsubscribe from a list |
+| `y` / `Shift O` / `Shift X` | in New people: let them in / send to Other / block |
 | `Ctrl Enter` | send |
 | `;` | insert a snippet while writing (`;shortcut` then `Space`) |
 | `/` | search |
 | `g i` | Inbox (Important) |
 | `g h` | Snoozed |
+| `g n` | New people |
+| `g o` | the morning screen |
 | `g ;` | edit snippets |
 | `Ctrl Q` | quit (closing the window keeps Tern in the tray) |
 
@@ -226,6 +260,9 @@ crates/tern-core/        the engine (Rust, no UI)
   src/smtp.rs            sending
   src/secrets.rs         passwords in Credential Manager / Secret Service / Keychain
   src/presets.rs         server settings for well-known providers
+  src/ai/                optional AI: the gate every request passes, prompts, Claude / OpenAI / Gemini
+  src/todoist.rs         the Todoist client (tasks go through the outbox)
+  src/unsubscribe.rs     one-click unsubscribe (RFC 8058)
   examples/store_bench.rs  timings on a 50,000-message mailbox
 src-tauri/               the desktop shell: commands the UI calls, one sync worker per account
 src/                     the UI (SolidJS): virtualized list, thread view, compose, command bar
@@ -235,8 +272,9 @@ src/                     the UI (SolidJS): virtualized list, thread view, compos
 ## Roadmap
 
 Delivery follows milestones: safe foundation → Linux private alpha → focused Linux beta → Windows release (1.0) →
-expansion. Tern 1.x is out for Linux and Windows and in the expansion stage now: optional AI (off by default)
-is in, calendar and more providers come later. See [docs/PLAN.md](docs/PLAN.md).
+expansion. Tern 1.x is out for Linux and Windows; 2.0 ("your inbox, your rules": New people, blocking, one-click
+unsubscribe, the companion, the brief and Todoist) is in beta. Calendar and more providers come later. See
+[docs/PLAN.md](docs/PLAN.md).
 
 ## Contributing
 

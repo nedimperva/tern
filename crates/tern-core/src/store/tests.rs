@@ -1152,6 +1152,203 @@ fn migration_30_adds_aliases() {
     assert_eq!(store.account(account).unwrap().unwrap().config.aliases.len(), 1);
 }
 
+#[test]
+fn migration_31_keeps_old_mail_off_one_click() {
+    let (store, account, inbox, _) = setup();
+    let list =
+        NewMessage { list_unsubscribe: Some("<https://list.example/u/1>".into()), ..message(1, "news", 1) };
+    store.insert_messages(account, inbox, &[list]).unwrap();
+    let conn = store.conn.into_inner().unwrap();
+    wind_back(&conn, 30);
+    let store = Store::init(conn).unwrap();
+    let id = store.list_threads(&ListTarget::Folder(inbox), None, 1).unwrap()[0].latest.id;
+    assert!(!store.thread(id).unwrap()[0].one_click);
+    assert_eq!(store.queue_unsubscribe(id, 5).unwrap(), None, "its page is still the way");
+}
+
+#[test]
+fn one_click_unsubscribe_is_queued_with_undo() {
+    let (store, account, inbox, _) = setup();
+    let offers = |n, header: &str, post| NewMessage {
+        message_id: Some(format!("{n}@list")),
+        from_name: "Weekly".into(),
+        list_unsubscribe: Some(header.into()),
+        unsubscribe_post: post,
+        ..message(n, &format!("issue {n}"), n as i64)
+    };
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[
+                offers(1, "<mailto:u@list.example>, <https://list.example/u/1>", true),
+                offers(2, "<mailto:u@list.example>", true),
+                offers(3, "<https://list.example/u/3>", false),
+            ],
+        )
+        .unwrap();
+    let id = |n: u32| -> i64 {
+        store.conn().query_row("SELECT id FROM messages WHERE uid = ?1", [n], |r| r.get(0)).unwrap()
+    };
+    let threads: Vec<bool> = (1..=3).map(|n| store.thread(id(n)).unwrap()[0].one_click).collect();
+    assert_eq!(threads, [true, false, false], "https link and the Post header, both");
+    assert_eq!(store.queue_unsubscribe(id(2), 5).unwrap(), None, "mailto only");
+    assert_eq!(store.queue_unsubscribe(id(3), 5).unwrap(), None, "web only");
+    let (queued_for, token) = store.queue_unsubscribe(id(1), 5).unwrap().unwrap();
+    assert_eq!(queued_for, account);
+    let waiting = store.outbox_waiting().unwrap();
+    assert_eq!(waiting.len(), 1);
+    assert_eq!(waiting[0].what, "Unsubscribe from Weekly");
+    match store.outbox_op(token[0]).unwrap().unwrap() {
+        OutboxOp::Unsubscribe { url, .. } => assert_eq!(url, "https://list.example/u/1"),
+        other => panic!("queued {other:?}"),
+    }
+    assert!(store.undo(&token).unwrap());
+    assert!(store.outbox_waiting().unwrap().is_empty());
+}
+
+#[test]
+fn migration_32_keeps_split_choices() {
+    let (store, account, inbox, _) = setup();
+    let news =
+        NewMessage { precedence_bulk: true, from_addr: "news@shop.example".into(), ..message(1, "sale", 1) };
+    store.insert_messages(account, inbox, &[news, message(2, "hello", 2)]).unwrap();
+    let id = |n: u32| -> i64 {
+        store.conn().query_row("SELECT id FROM messages WHERE uid = ?1", [n], |r| r.get(0)).unwrap()
+    };
+    let (sale, hello) = (id(1), id(2));
+    store.set_split(&[sale], false).unwrap();
+    store.set_split(&[hello], true).unwrap();
+    let conn = store.conn.into_inner().unwrap();
+    wind_back(&conn, 31);
+    let store = Store::init(conn).unwrap();
+    assert_eq!(subjects(&store, IMPORTANT), ["sale"]);
+    assert_eq!(subjects(&store, OTHER), ["hello"]);
+}
+
+#[test]
+fn blocking_a_sender_or_their_domain() {
+    let (store, account, inbox, _) = setup();
+    let from = |n: u32, addr: &str| NewMessage {
+        message_id: Some(format!("{n}@x")),
+        from_addr: addr.into(),
+        ..message(n, &format!("mail {n}"), n as i64)
+    };
+    store
+        .insert_messages(account, inbox, &[from(1, "Pest@Spam.example"), from(2, "friend@spam.example")])
+        .unwrap();
+    let id = |n: u32| -> i64 {
+        store.conn().query_row("SELECT id FROM messages WHERE uid = ?1", [n], |r| r.get(0)).unwrap()
+    };
+    let (one, two) = (id(1), id(2));
+    let id = |n: u32| if n == 1 { one } else { two };
+    let pest = store.sender_of(id(1)).unwrap().unwrap();
+    assert_eq!(
+        (pest.addr.as_str(), pest.domain.as_str(), pest.state.as_str()),
+        ("pest@spam.example", "spam.example", "important")
+    );
+    store.set_sender(account, &pest.addr, Some("blocked")).unwrap();
+    assert_eq!(store.sender_of(id(1)).unwrap().unwrap().state, "blocked");
+    assert_eq!(store.sender_of(id(2)).unwrap().unwrap().state, "important", "only that address");
+    assert_eq!(subjects(&store, IMPORTANT), ["mail 2"], "blocked mail leaves the inbox's splits");
+
+    // New mail from them is read and archived through the outbox, and can still be found.
+    let later = NewMessage { date: now() + 60, ..from(3, "pest@spam.example") };
+    store.insert_messages(account, inbox, &[later]).unwrap();
+    assert!(store.archive_blocked(inbox).unwrap());
+    let left: Vec<(String, i64, bool)> = store
+        .conn()
+        .prepare("SELECT subject, folder_id, seen FROM messages WHERE lower(from_addr) = 'pest@spam.example'")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert_eq!(left.len(), 2);
+    let moved: Vec<&str> =
+        left.iter().filter(|(_, folder, seen)| *folder != inbox && *seen).map(|l| l.0.as_str()).collect();
+    assert_eq!(moved, ["mail 3"], "what was there before stays where it was");
+    assert_eq!(store.outbox_waiting().unwrap().len(), 2, "mark read, then archive");
+    assert_eq!(store.search("mail 3", 5).unwrap().rows.len(), 1);
+
+    // A choice for the address wins over one for the domain.
+    store.set_sender(account, "@spam.example", Some("blocked")).unwrap();
+    assert_eq!(store.sender_of(id(2)).unwrap().unwrap().state, "blocked");
+    assert_eq!(store.sender_of(id(2)).unwrap().unwrap().domain_choice.as_deref(), Some("blocked"));
+    assert_eq!(store.sender_of(id(1)).unwrap().unwrap().address_choice.as_deref(), Some("blocked"));
+    store.set_sender(account, "friend@spam.example", Some("important")).unwrap();
+    assert_eq!(store.sender_of(id(2)).unwrap().unwrap().state, "important");
+    let choices: Vec<(String, String)> =
+        store.sender_choices().unwrap().into_iter().map(|c| (c.addr, c.state)).collect();
+    assert_eq!(choices.len(), 3);
+    assert!(choices.contains(&("@spam.example".into(), "blocked".into())));
+
+    // Unblocking forgets the choice: the headers decide again.
+    store.set_sender(account, &pest.addr, None).unwrap();
+    store.set_sender(account, "@spam.example", None).unwrap();
+    assert_eq!(store.sender_of(id(1)).unwrap().unwrap().state, "important");
+    assert!(store.set_sender(account, "x@y", Some("sometimes")).is_err());
+}
+
+#[test]
+fn the_screener_holds_first_mail_from_people_not_known_yet() {
+    let (store, account, inbox, _) = setup();
+    let from = |n: u32, addr: &str| NewMessage {
+        message_id: Some(format!("{n}@x")),
+        from_addr: addr.into(),
+        ..message(n, &format!("mail {n}"), n as i64)
+    };
+    // Off: nothing is screened, and turning it on later leaves that mail where it is.
+    store.insert_messages(account, inbox, &[from(1, "early@new.example")]).unwrap();
+    store.set_setting("screener", &serde_json::json!(true)).unwrap();
+    store.set_setting("knownDomains", &serde_json::json!(["@work.example"])).unwrap();
+    store.queue_send(account, Draft { to: vec!["friend@x.example".into()], ..draft_to("hi") }, 0).unwrap();
+    let news = NewMessage { precedence_bulk: true, ..from(6, "news@shop.example") };
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[
+                from(2, "stranger@new.example"),
+                from(3, "colleague@work.example"),
+                from(4, "friend@x.example"),
+                from(5, "me@example.com"),
+                news,
+            ],
+        )
+        .unwrap();
+    assert_eq!(subjects(&store, NEW_PEOPLE), ["mail 2"], "the stranger only");
+    assert_eq!(store.new_people().unwrap(), 1);
+    assert!(!subjects(&store, IMPORTANT).contains(&"mail 2".to_string()));
+    assert_eq!(subjects(&store, OTHER), ["mail 6"], "bulk keeps its own split");
+    assert!(
+        store.new_mail(0, 0, true).unwrap().1.iter().all(|m| m.subject != "mail 2"),
+        "no notification while they wait"
+    );
+
+    // A second conversation from them: still one person waiting.
+    store.insert_messages(account, inbox, &[from(9, "stranger@new.example")]).unwrap();
+    assert_eq!(subjects(&store, NEW_PEOPLE).len(), 2);
+    assert_eq!(store.new_people().unwrap(), 1, "people, not conversations");
+
+    // Let in: Important from now on, and their later mail too.
+    let stranger = store.list_threads(&ListTarget::Role(NEW_PEOPLE.into()), None, 5).unwrap()[0].latest.id;
+    assert!(store.sender_of(stranger).unwrap().unwrap().waiting);
+    store.set_split(&[stranger], false).unwrap();
+    assert!(!store.sender_of(stranger).unwrap().unwrap().waiting);
+    assert!(subjects(&store, NEW_PEOPLE).is_empty());
+    assert!(subjects(&store, IMPORTANT).contains(&"mail 2".to_string()));
+    store.insert_messages(account, inbox, &[from(7, "stranger@new.example")]).unwrap();
+    assert!(subjects(&store, NEW_PEOPLE).is_empty());
+
+    // Off again: what waited shows in Important.
+    store.insert_messages(account, inbox, &[from(8, "other@new.example")]).unwrap();
+    assert_eq!(subjects(&store, NEW_PEOPLE), ["mail 8"]);
+    store.set_setting("screener", &serde_json::json!(false)).unwrap();
+    assert!(subjects(&store, NEW_PEOPLE).is_empty());
+    assert!(subjects(&store, IMPORTANT).contains(&"mail 8".to_string()));
+}
+
 fn draft_to(subject: &str) -> Draft {
     Draft {
         from: None,
@@ -1376,6 +1573,112 @@ fn a_contact_card_holds_their_latest_conversations_once_each() {
 }
 
 #[test]
+fn a_person_has_months_a_note_and_the_files_both_ways() {
+    let (store, account, inbox, archive) = setup();
+    let me = "me@example.com";
+    let day = 86_400;
+    let t = now();
+    let file = |name: &str| Part {
+        section: "2".into(),
+        mime: "application/pdf".into(),
+        encoding: "base64".into(),
+        charset: None,
+        size: 1000,
+        name: Some(name.into()),
+        attachment: true,
+    };
+    let with =
+        |m: NewMessage, name: &str| NewMessage { has_attachments: true, parts: Some(vec![file(name)]), ..m };
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[
+                with(mail(1, "Contract", t - day, "Anna@x.com", me), "contract.pdf"),
+                mail(2, "Old", t - 100 * day, "anna@x.com", me),
+                mail(3, "Hi", t - 2 * day, "bob@x.com", me),
+            ],
+        )
+        .unwrap();
+    store
+        .insert_messages(
+            account,
+            archive,
+            &[with(mail(4, "Terms", t - 3 * day, me, "anna@x.com"), "terms.pdf")],
+        )
+        .unwrap();
+    store.queue_send(account, Draft { to: vec!["carl@x.com".into()], ..draft_to("hi") }, 5).unwrap();
+
+    let anna = store.person(account, "ANNA@x.com").unwrap();
+    assert_eq!(anna.months.len(), 12);
+    assert_eq!(anna.months[11], 1, "this month's mail is last");
+    assert_eq!(anna.months.iter().sum::<i64>(), 2);
+    assert_eq!(anna.since, t - 100 * day);
+    assert_eq!(anna.conversations, 2);
+    assert_eq!(anna.known_at_domain.as_deref(), Some("carl@x.com"), "someone you wrote to at x.com");
+    assert_eq!(anna.unopened.len(), 2, "her unread conversations in the inbox");
+    assert!(!anna.list);
+    assert_eq!(anna.note, "");
+
+    store.set_person_note("anna@x.com", "Prefers a call").unwrap();
+    assert_eq!(store.person(account, "Anna@X.com").unwrap().note, "Prefers a call");
+    store.set_person_note("anna@x.com", "  ").unwrap();
+    assert_eq!(store.person(account, "anna@x.com").unwrap().note, "", "an empty note is none");
+
+    let files = store.person_files("anna@x.com", 10).unwrap();
+    let names: Vec<_> = files.iter().map(|f| (f.name.as_str(), f.mine)).collect();
+    assert_eq!(names, [("contract.pdf", false), ("terms.pdf", true)], "newest first, hers and yours");
+    assert!(store.person_files("bob@x.com", 10).unwrap().is_empty());
+}
+
+#[test]
+fn a_task_from_mail_shows_at_once_goes_on_undo_and_keeps_its_todoist_id() {
+    let (store, account, inbox, _) = setup();
+    store
+        .insert_messages(account, inbox, &[message(1, "Q3 offsite", 100), message(2, "Other", 200)])
+        .unwrap();
+    let id: i64 = store.conn().query_row("SELECT id FROM messages WHERE uid = 1", [], |r| r.get(0)).unwrap();
+    let input = TaskInput {
+        title: " Bring the Q3 deck ".into(),
+        due: Some("fri".into()),
+        project_id: Some(String::new()),
+        label: Some("@mail".into()),
+        note: None,
+    };
+    let (owner, token) = store.queue_task(id, &input, 5).unwrap();
+    assert_eq!(owner, account);
+    let tasks = store.tasks_of(id).unwrap();
+    assert_eq!(
+        (tasks[0].title.as_str(), tasks[0].due.as_deref(), tasks[0].url.is_none()),
+        ("Bring the Q3 deck", Some("fri"), true)
+    );
+    let payload: String = store.conn().query_row("SELECT payload FROM outbox", [], |r| r.get(0)).unwrap();
+    let OutboxOp::Task { task, .. } = serde_json::from_str(&payload).unwrap() else { panic!("{payload}") };
+    assert_eq!(task.description, "From Ada · Q3 offsite", "who and what, never the text");
+    assert_eq!((task.project_id, task.labels), (None, vec!["mail".to_string()]));
+
+    assert!(store.undo(&token).unwrap());
+    assert!(store.tasks_of(id).unwrap().is_empty(), "undo takes it off the conversation");
+
+    let (_, _) = store.queue_task(id, &input, 5).unwrap();
+    let local: i64 = store.conn().query_row("SELECT id FROM tasks", [], |r| r.get(0)).unwrap();
+    assert_ne!(local, 0);
+    store.task_created(local, "6X7rM8997g3RQmvh").unwrap();
+    assert_eq!(
+        store.tasks_of(id).unwrap()[0].url.as_deref(),
+        Some("https://app.todoist.com/app/task/6X7rM8997g3RQmvh")
+    );
+    assert!(store.queue_task(id, &TaskInput { title: "  ".into(), ..Default::default() }, 5).is_err());
+    let noted =
+        TaskInput { title: "Pay".into(), note: Some(" IBAN in the mail ".into()), ..Default::default() };
+    store.queue_task(id, &noted, 5).unwrap();
+    let last: String =
+        store.conn().query_row("SELECT payload FROM outbox ORDER BY id DESC", [], |r| r.get(0)).unwrap();
+    let OutboxOp::Task { task, .. } = serde_json::from_str(&last).unwrap() else { panic!("{last}") };
+    assert_eq!(task.description, "IBAN in the mail\n\nFrom Ada · Q3 offsite", "the kept note, then the mail");
+}
+
+#[test]
 fn settings_keep_their_json() {
     let store = Store::open_in_memory().unwrap();
     store.set_setting("theme", &serde_json::json!("dark")).unwrap();
@@ -1533,6 +1836,18 @@ fn renumbering_keeps_messages_queued_work_is_about_to_change() {
 fn wind_back(conn: &Connection, version: i64) {
     for from in (version..SCHEMA_VERSION).rev() {
         let undo = match from {
+            33 => "DROP TABLE tasks;",
+            32 => "DROP TABLE person_notes; DROP INDEX messages_from;",
+            31 => {
+                "CREATE TABLE sender_splits (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                             addr TEXT NOT NULL, other INTEGER NOT NULL,
+                                             PRIMARY KEY (account_id, addr));
+                 INSERT INTO sender_splits SELECT account_id, addr, state = 'other' FROM sender_state
+                   WHERE substr(addr, 1, 1) <> '@' AND state <> 'blocked';
+                 DROP TABLE sender_state;
+                 DROP INDEX messages_screen; ALTER TABLE messages DROP COLUMN screen;"
+            }
+            30 => "ALTER TABLE messages DROP COLUMN unsubscribe_post;",
             29 => "DROP TABLE account_aliases;",
             28 => "",
             27 => "DROP TABLE read_later;",
@@ -1930,7 +2245,10 @@ fn moving_a_sender_changes_its_split() {
     assert_eq!(subjects(&store, OTHER), ["sale"]);
     assert_eq!(store.split_unread().unwrap(), (1, 1));
     let sale = store.list_threads(&ListTarget::Role(OTHER.into()), None, 1).unwrap()[0].latest.id;
+    let state = |id| store.sender_of(id).unwrap().unwrap().state;
+    assert_eq!(state(sale), "other", "bulk goes to Other until the person says otherwise");
     store.set_split(&[sale], false).unwrap();
+    assert_eq!(state(sale), "important");
     assert_eq!(subjects(&store, IMPORTANT), ["hello", "sale"]);
     let later = NewMessage {
         from_addr: "news@shop.example".into(),

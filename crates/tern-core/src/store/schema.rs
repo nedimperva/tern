@@ -325,6 +325,38 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
                                                name TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0,
                                                PRIMARY KEY (account_id, email));"
             }
+            // One-click unsubscribe (RFC 8058, package 17 D): the message carried List-Unsubscribe-Post. Older mail
+            // keeps 0 and unsubscribes through its page or address, as before.
+            30 => "ALTER TABLE messages ADD COLUMN unsubscribe_post INTEGER NOT NULL DEFAULT 0;",
+            // Senders (package 17 C): the split choice becomes a state, for an address or a whole domain
+            // (`@domain`): important, other or blocked. Today's choices keep their meaning. `screen` marks mail
+            // from someone unknown that came while the screener was on: it waits in New people.
+            31 => {
+                "CREATE TABLE sender_state (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                            addr TEXT NOT NULL, state TEXT NOT NULL, since INTEGER NOT NULL DEFAULT 0,
+                                            PRIMARY KEY (account_id, addr));
+                 INSERT INTO sender_state (account_id, addr, state)
+                   SELECT account_id, addr, CASE WHEN other THEN 'other' ELSE 'important' END FROM sender_splits;
+                 DROP TABLE sender_splits;
+                 ALTER TABLE messages ADD COLUMN screen INTEGER NOT NULL DEFAULT 0;
+                 CREATE INDEX messages_screen ON messages (folder_id) WHERE screen = 1;"
+            }
+            // The companion's person (package 17): the person's own note on someone, kept only here, and an index
+            // by sender, so their monthly counts and files don't walk all mail.
+            32 => {
+                "CREATE TABLE person_notes (email TEXT PRIMARY KEY COLLATE NOCASE, body TEXT NOT NULL,
+                                            updated INTEGER NOT NULL);
+                 CREATE INDEX messages_from ON messages (from_addr COLLATE NOCASE, date);"
+            }
+            // Todoist tasks made from mail (package 17 G): what the conversation shows ("In Todoist · fri"), and the
+            // task's id once Todoist has made it.
+            33 => {
+                "CREATE TABLE tasks (id INTEGER PRIMARY KEY,
+                                     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                     thread_id TEXT NOT NULL, title TEXT NOT NULL, due TEXT,
+                                     todoist_id TEXT, created INTEGER NOT NULL);
+                 CREATE INDEX tasks_thread ON tasks (account_id, thread_id);"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),

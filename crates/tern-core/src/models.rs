@@ -174,6 +174,8 @@ pub struct ThreadMessage {
     pub draft_id: Option<i64>,
     /// The List-Unsubscribe header, raw (`<mailto:…>, <https://…>`), for the Unsubscribe button.
     pub list_unsubscribe: Option<String>,
+    /// List-Unsubscribe-Post offered one-click unsubscribe, and List-Unsubscribe has an https link for it.
+    pub one_click: bool,
 }
 
 /// The start of the day (what Tern shows on the first open of a day, and the line above the inbox): counts since
@@ -195,6 +197,37 @@ pub struct DayStart {
     pub rest: i64,
     /// What there is to read when there's time: the Read later shelf, then lists that wrote since then.
     pub to_read: Vec<ToRead>,
+}
+
+/// Who sent a message, and where their mail goes (the companion's choice).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Sender {
+    pub account_id: i64,
+    /// Lowercase.
+    pub addr: String,
+    pub domain: String,
+    /// important, other or blocked: what the person chose, else what the headers give.
+    pub state: String,
+    /// What the person chose for the address itself, and for its whole domain; None where nothing was chosen.
+    pub address_choice: Option<String>,
+    pub domain_choice: Option<String>,
+    /// Their mail waits in New people: the screener is on and nothing was chosen about them yet.
+    pub waiting: bool,
+}
+
+/// A choice the person made about a sender, for Settings → Senders.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SenderChoice {
+    pub account_id: i64,
+    /// An address, or `@domain` for everyone there.
+    pub addr: String,
+    pub name: String,
+    /// important, other or blocked.
+    pub state: String,
+    /// When it was chosen (Unix seconds); 0 for choices from before 2.0.
+    pub since: i64,
 }
 
 /// A sender and how much they wrote lately ("Who fills your inbox").
@@ -283,6 +316,8 @@ pub struct NewMessage {
     /// List-Id and List-Unsubscribe, raw, for mailing-list handling later.
     pub list_id: Option<String>,
     pub list_unsubscribe: Option<String>,
+    /// `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058).
+    pub unsubscribe_post: bool,
     /// `Precedence: bulk` (or list, junk): sent to many at once.
     pub precedence_bulk: bool,
     /// Addresses only, comma-separated, as `to_addrs`. Kept for reply-all.
@@ -434,6 +469,76 @@ pub struct ContactCard {
     pub recent: Vec<MessageRow>,
 }
 
+/// The companion's facts about a person, beyond the card: all from this computer.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonFacts {
+    /// Lowercase.
+    pub email: String,
+    /// Messages from them in each of the last 12 months, oldest first.
+    pub months: Vec<i64>,
+    /// Their first message here (Unix seconds); 0 when none is.
+    pub since: i64,
+    /// Conversations they wrote in.
+    pub conversations: i64,
+    /// Someone else at their domain the person has written to (a name, else the address).
+    pub known_at_domain: Option<String>,
+    /// Their newest message came through a mailing list.
+    pub list: bool,
+    /// Of their latest messages (up to 10), how many there are and how many were opened.
+    pub latest: i64,
+    pub opened: i64,
+    /// One message of each of their unread conversations still in an inbox.
+    pub unopened: Vec<i64>,
+    /// The person's own note on them, kept only here.
+    pub note: String,
+}
+
+/// What the task box sends: the title, the day as typed, the project and a label (none: Todoist's Inbox, no label).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskInput {
+    pub title: String,
+    #[serde(default)]
+    pub due: Option<String>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub label: Option<String>,
+    /// A line the person kept in the box (a place, a code, an amount), above the line naming the mail.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// A task made from a conversation, as the conversation shows it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskRow {
+    pub id: i64,
+    pub title: String,
+    pub due: Option<String>,
+    /// The task in Todoist, once it was made there; None while it waits in the outbox.
+    pub url: Option<String>,
+}
+
+/// A file exchanged with a person, from any conversation.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonFile {
+    pub message_id: i64,
+    pub account_id: i64,
+    pub thread_id: String,
+    pub subject: String,
+    pub date: i64,
+    /// The account sent it to them.
+    pub mine: bool,
+    /// Its place in the message's attachments, which is how it is opened.
+    pub index: usize,
+    pub name: String,
+    pub mime: String,
+    pub size: u32,
+}
+
 /// A file attached to a draft, as Tern keeps it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -572,6 +677,18 @@ pub enum OutboxOp {
         ids: Vec<i64>,
         #[serde(default)]
         validity: Option<u32>,
+    },
+    /// One-click unsubscribe (RFC 8058): a POST to the list's https link. Nothing local to put back on undo.
+    Unsubscribe {
+        url: String,
+        /// Who it unsubscribes from, for the problems list.
+        sender: String,
+    },
+    /// A Todoist task made from a conversation. `local` is its row in `tasks`, shown at once and gone on undo; the
+    /// task's id is written there once Todoist has it.
+    Task {
+        local: i64,
+        task: crate::todoist::NewTask,
     },
     /// A copy of a sent message for the Sent folder, exactly as it went out.
     Append {

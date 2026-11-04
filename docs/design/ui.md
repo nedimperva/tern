@@ -216,19 +216,26 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   `src/fold.ts`: up to three short lines, no phone numbers, addresses or links). Plain text folds a signature from
   "-- ", or from a bare "--" or a sign-off line ("Srdačan pozdrav", "S poštovanjem", "Best regards"…) when only a
   few short lines follow; HTML from a "--" paragraph or Gmail's signature block.
-- Only what's new (owner, 2026-10-29): coming back to a conversation that had unread mail as it opened, and was read
-  before, a line on `--accent-soft` says "Since you last read: 3 new · a question for you" (a question: a `?` in a
-  new message's own words, quote and links aside; `src/catchup.ts`) with Jump to it. Past five earlier messages,
+- **The brief** (2026-11-04, canvas "Tern summary directions", A + C with actionable facts; `Brief` in
+  `AiSummary.tsx`): one `--soft` card under the header, shown only when it has something.
+  - Its first line: coming back to a conversation that had unread mail as it opened and was read before, "3 new
+    since you read it" in `--accent` 600, then "· a question for you" (a `?` in a new message's own words;
+    `src/catchup.ts`) and Jump to it. On the right, with AI on, Explain it (`AI` keycap, `Shift S`).
+  - Asked, the AI's sentence in `--t-read` / `--fg-0`; the right side becomes More, Redo, Hide.
+  - Then a row each, on `--bg-0`: a tag (Asked of you on `--warn-soft`, Day / Due on `--accent-soft`, Place on
+    `--bg-2`, Decided on `--ok-soft`), the text, and what to do: Answer (`--accent`, opens a reply), Add task (when
+    Todoist is connected), Show; Snooze till then for a day; Map for a place. Without AI the rows are what this
+    computer found (`promises.ts`, `facts.ts`); once explained, the AI's facts take the place of the asks.
+  - Nothing found and nothing new: only Explain it, with no card.
+  - An "In Todoist · fri" pill (`--accent-soft`) under the subject once a task was made from the conversation.
+- Long conversations: past five earlier messages,
   the older read, closed lines (all but the last two, never an unread, open or focused one) wait behind
   "Earlier in this conversation · N messages" between two rules; a click, or `k` into them, brings them all out.
 - Attachments strip: file cards on `--soft`, with a type badge (PDF, XLSX…, coloured `--file-*`) or a picture preview once the file is on this computer, name, size and Save; clicking opens it.
 - Inline reply box at the bottom when replying (see Compose); `Esc` collapses it and keeps the draft.
 - AI (package 10, on request only, shown only when AI is on for the account; redesigned 2026-10-26 from the canvas
   "Tern AI redesign ideas", the owner's picks):
-  - Summary, "lede and facts": a quiet "Summarize" (`AI` keycap on `--accent-soft`, `Shift S` on hover) under the
-    subject; asked, a lede of one or two sentences in `--t-read` / `--fg-1` with the `AI` keycap inline, then up to
-    three chips: Due (`--warn-soft`, clock), Asked of you (`--accent-soft`), Decided (`--ok-soft`, check), and More
-    (the 3–5 points), Regenerate and Dismiss at the end of the row. A kept summary shows at once.
+  - Summary: in the brief (above). A kept summary shows at once; the points open under More.
   - Suggested replies, "intents first": above the reply row "Suggest replies" with `Q`; asked, "ANSWER WITH" and
     three cards in a row (`--soft`; the pointed one `--bg-0` with a 2 px `--accent` border): a `1`–`3` keycap, a label
     of a few words (Accept, Another time) and the reply's start; under them the pointed reply in full, then Others
@@ -448,8 +455,23 @@ Built 2026-10-29 from the design board "Tern design ideas" (owner's pick); one c
 conversation with `--shadow`), open until closed (`companion` setting). It opens and closes with `Ctrl+.`, `i` or
 the header's panel icon; a Note from the selection bar opens it with the note's field focused.
 
-- **Header**: the newest sender who isn't you, as a 40 px avatar, their name, and one line from `contact_card` and
-  this conversation: "12 from them · 9 from you · you answer in ~3 h". Then ×.
+- **The person card** (2026-11-04, canvas "Tern sidebar directions", the combined row): the newest sender who isn't
+  you, on a `--bg-0` card at the top of the column (`Store::person`, from this computer).
+  - Open: avatar, name and address, a fold chevron and ×; three tiles on `--bg-1` (from them, from you, how fast you
+    answer here, else their first mail); twelve month bars, this month in `--accent`; Important / Other / Blocked as
+    one control with the choice raised; "Write to {name}" (`--accent`) and Copy address.
+  - Folded (`Shift+I` or the chevron, the `companionFolded` setting, for every conversation): one row, the avatar,
+    the name, where their mail goes as a small tag before the counts, write, the chevron and ×.
+  - Waiting in New people (never folded): an amber edge and a New tag, then what helps decide, a dot each (`--ok`
+    for what speaks for them, `--warn` for what doesn't): conversations since when and whether you answered,
+    someone at their domain you write to (not webmail), a list or not. Then "Let {name} in", To Other and Block,
+    each for all their mail; under a line, how many more wait and Next.
+  - A list (List-Id or List-Unsubscribe on their newest mail): a List tag, "You open 7 of the last 10" with a meter,
+    and the three-way control. No note and no files; "Tidy it" follows with "Archive the N unopened" (their unread
+    conversations in an inbox, one undo) and Unsubscribe when the mail offers it. Recent becomes "Earlier issues".
+- **Your note** (people, not lists): "Add a note on {name}" as a dashed row until there is one, then a yellow card
+  with "only on this computer"; saved as it is typed (`person_notes`, schema v33), shown on every conversation with
+  them.
 - **Details**: §4.2a–c, what the newest message holds, links, a newsletter's parts and the person's marks.
 - **You owe / Owed to you** (the only place asks are listed), each shown only when it has something: what you were
   asked (`findAsks`) and what you said you'd do ("I'll…"), and the reverse. A card with a row each: a tick
@@ -457,14 +479,37 @@ the header's panel icon; a Note from the selection bar opens it with the note's 
   sentence names one. From the words, on this computer (`src/promises.ts`).
 - **Files**: every attachment in the conversation, newest first, in a card: a tile with its kind (PDF on
   `--danger`, sheets on `--ok`, documents and pictures on `--accent-soft`), its name, who, when and its size; a click
-  opens it.
-- **Recent with them**: four of your latest conversations with the person. No AI in any of the above.
-- **Ask**, docked at the foot under a `--line`: two suggested questions until the first is asked, then a box
-  (Enter asks). It goes through `ai::ask_about` behind the summaries switch (on request; the transcript, the chat
+  opens it in Tern's viewer. When the person has more, "Here · 4 / With {name} · 23" switches to every file
+  exchanged with them (`Store::person_files`): kind chips, month headings, the first eight then "Show all". A file
+  from another conversation reads that message, then opens the same way.
+- **Recent with {name}**: up to four other conversations with the person in a card, each row opening it (click,
+  or Tab then Enter): an `--accent` unread dot, the subject (600 if unread), the date, and a line of the newest text;
+  the hovered row on `--bg-2`. The last row, "All mail from {name} · 37 →" in `--accent`, searches `from:` them.
+  No AI in any of the above.
+- **Ask**, docked at the foot under a `--line`: one box (Enter asks) whose placeholder is a suggested
+  question, a different one every 4 s from sixteen while the box is empty; Tab takes it (2026-11-04: two buttons
+  above the box cost a row for two questions). It goes through `ai::ask_about` behind the summaries switch (on request; the transcript, the chat
   so far and the question, redacted like a summary; never kept). The chat is drawn at the end of the column, which
   scrolls to it: answers stream in, each `[n]` becomes a chip ("Ana · Tue") that shows that message, and under each
   a receipt: provider, messages and characters sent, "nothing kept". Chats stay per conversation while Tern runs.
   With AI off the foot says what Ask needs and links to Settings → AI; nothing is sent.
+- **Planned for 2.0** (package 17, owner's pick 2026-11-02: canvas "Tern 2.0 screens", direction A):
+  - The drop-down gains Blocked (section C).
+  - **Tasks**, after the details, with "Todoist" at the right of its heading, only once Todoist is connected: a
+    card with the conversation's tasks (a round tick in the priority's colour, the title, "day · project · from
+    this mail" in `--fg-2`, Open) and a last row "Add a task from this mail" with its keycap `T`. The conversation
+    shows an `--accent-soft` pill "In Todoist · due Fri" under its subject.
+  - Built 2026-11-04: the task box holds the title (with `AI` Fill at its right when AI is on), the day on
+    `--accent-soft` beside "To {project}" (the project from Settings → Todoist, never asked here, owner), a note
+    field, and under them what goes to Todoist. Fill puts in a title, a day and a note and says which provider and
+    how many characters it was sent. The planned box below is what it grows towards.
+  - `T` turns the card into the task box: a `--bg-0` card with an `--accent` edge and `--shadow`; the title as a
+    plain field, then chips (the day on `--accent-soft`, project, priority, label on `--bg-2`), the description
+    line ("From Ana Kovač · subject · Open in Tern"), a `--soft` row saying where the fields came from with Suggest
+    with AI, and Cancel `Esc` / Add task `Enter`. Under the card, in `--t-sm` `--fg-2`, exactly what goes to Todoist.
+    The sentence it came from is lit in the mail (`--accent-soft` with a 2 px `--accent` underline) while the box is
+    open. Under it, "Also in this mail": the other asks and dates, each with Use.
+  - Ask and promise rows get **+ Task** (a small `--card` button); a row already in Todoist shows its task instead.
 
 ### 4.8 Settings (`Ctrl+,`)
 

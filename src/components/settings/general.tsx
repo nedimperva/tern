@@ -232,6 +232,28 @@ export function AboutSettings() {
             </button>
             <span class="help">What works, what doesn't yet, and how to go back to an earlier version.</span>
           </div>
+          <Show when={a().updates}>
+            <div class="setting">
+              <span class="title">Updates</span>
+              <Dropdown
+                label="Updates"
+                value={settings.updateChannel}
+                choices={[
+                  { value: "stable", label: "Stable" },
+                  { value: "beta", label: "Beta" },
+                ]}
+                onChange={(v) => {
+                  setSetting("updateChannel", v === "beta" ? "beta" : "stable");
+                  void api.lookForUpdate();
+                }}
+              />
+              <span class="help">
+                Beta gets what comes next a week or two early, and may have rough edges. Back on Stable, Tern keeps the beta until
+                a stable version newer than it comes out: it never installs an older version, as your mail database only moves
+                forward.
+              </span>
+            </div>
+          </Show>
           <div class="setting">
             <span class="title">Report a problem</span>
             <button onClick={() => api.openUrl(`${ISSUES}&version=${encodeURIComponent(a().version)}`)}>Open the form</button>

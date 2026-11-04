@@ -747,6 +747,8 @@ async fn sync_folder<S: Stream>(
         store.insert_messages(account_id, folder_id, &batch)?;
         // New replies in muted conversations go straight to the archive.
         store.archive_muted(folder_id)?;
+        // So does mail from blocked senders, read.
+        store.archive_blocked(folder_id)?;
         on_change();
     }
     // Phase B: a snippet for headers-only rows from the start of their text part, so the list reads well before
@@ -1145,7 +1147,11 @@ impl std::error::Error for Unworkable {}
 fn failure(e: &anyhow::Error) -> Failure {
     if smtp::maybe_sent(e) {
         Failure::MaybeSent
-    } else if smtp::is_permanent(e) || e.chain().any(|c| c.is::<Unworkable>()) {
+    } else if smtp::is_permanent(e)
+        || e.chain().any(|c| {
+            c.is::<Unworkable>() || c.is::<crate::unsubscribe::Refused>() || c.is::<crate::todoist::Refused>()
+        })
+    {
         Failure::Permanent
     } else {
         Failure::Retry
@@ -1220,6 +1226,19 @@ async fn run_op<S: Stream>(
                 None => Vec::new(),
             };
             return smtp::send(&account.config, &login.credential().await?, draft, &extra).await;
+        }
+        OutboxOp::Unsubscribe { url, .. } => {
+            let url = url.clone();
+            tokio::task::spawn_blocking(move || crate::unsubscribe::post(&url)).await??;
+        }
+        // Not the mail server's work, but it waits out the undo window and retries like the rest.
+        OutboxOp::Task { local, task } => {
+            let token = crate::secrets::password(crate::todoist::KEY).map_err(|_| {
+                Unworkable("Todoist isn't connected. Connect it in Settings → Todoist".into())
+            })?;
+            let task = task.clone();
+            let id = tokio::task::spawn_blocking(move || crate::todoist::create(&token, &task)).await??;
+            store.task_created(*local, &id)?;
         }
         OutboxOp::Append { folder, message, .. } => {
             // Sent may have changed since the copy was queued (a duplicate removed, a folder renamed).

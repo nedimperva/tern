@@ -6,7 +6,9 @@ name: release
 #
 # The updater artifacts (signed AppImage and NSIS installer, latest.json) need the TAURI_SIGNING_PRIVATE_KEY and
 # TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets. Installed copies look for latest.json on the newest release that
-# is neither a draft nor a pre-release, so a release reaches them when it is published.
+# is neither a draft nor a pre-release, so a release reaches them when it is published. A tag with a hyphen
+# (v2.0.0-1) makes a pre-release: Stable never sees it, and beta-feed.yml hands it to the beta channel when
+# it is published.
 # "Continue with Google" needs the TERN_GOOGLE_CLIENT_ID and TERN_GOOGLE_CLIENT_SECRET secrets (the Google Cloud
 # desktop client; see src-tauri/build.rs). Without them the build still works and Gmail takes an app password.
 #
@@ -65,8 +67,10 @@ jobs:
         # The id comes from the call that makes the draft. Looking the draft up in the list of releases straight
         # after found nothing for v1.5.0, and the builds, given no id, skipped every upload.
         run: |
+          pre=false
+          case "$GITHUB_REF_NAME" in *-*) pre=true ;; esac
           id=$(gh api "repos/$GITHUB_REPOSITORY/releases" -f tag_name="$GITHUB_REF_NAME" -f name="Tern $GITHUB_REF_NAME" \
-            -F draft=true -F body=@"$RUNNER_TEMP/notes.md" --jq .id)
+            -F draft=true -F prerelease=$pre -F body=@"$RUNNER_TEMP/notes.md" --jq .id)
           [ -n "$id" ] || { echo "::error::no id for the draft release"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
@@ -104,6 +108,17 @@ jobs:
 
       - run: npm ci
 
+      # RPM refuses a hyphen in a version, and every pre-release has one (2.0.0-1), so a beta has no .rpm; the
+      # AppImage and .deb take it as it is. (The MSI wants the part after the hyphen to be a number.)
+      - name: What to build
+        id: bundles
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$RUNNER_OS" = Linux ] && [[ "$version" == *-* ]]; then
+            echo 'args=--bundles appimage,deb' >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -115,7 +130,7 @@ jobs:
           # Empty outside a tag, so the build only builds.
           releaseId: ${{ needs.release.outputs.id }}
           # Only release builds sign updates, so a local `tauri build` needs no key.
-          args: '--config {"bundle":{"createUpdaterArtifacts":true}}'
+          args: '--config {"bundle":{"createUpdaterArtifacts":true}} ${{ steps.bundles.outputs.args }}'
           # Windows updates through the NSIS installer, which the updater runs without questions.
           updaterJsonPreferNsis: true
 
@@ -149,7 +164,10 @@ jobs:
           [ -n "$json_id" ] || { echo "::error::the draft has no latest.json"; exit 1; }
           gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$json_id" > latest.json
           status=0
-          for p in linux-x86_64 linux-x86_64-appimage linux-x86_64-deb linux-x86_64-rpm \
+          # A pre-release has no .rpm (see "What to build").
+          rpm=linux-x86_64-rpm
+          case "$GITHUB_REF_NAME" in *-*) rpm= ;; esac
+          for p in linux-x86_64 linux-x86_64-appimage linux-x86_64-deb $rpm \
                    windows-x86_64 windows-x86_64-nsis windows-x86_64-msi; do
             url=$(jq -r --arg p "$p" '.platforms[$p].url // empty' latest.json)
             if [ -z "$url" ]; then

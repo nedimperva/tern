@@ -2,6 +2,8 @@ import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js"
 import type { Account, Folder, SyncState, Target } from "../api";
 import { labelColour } from "../colours";
 import { folderTree, holds, type TreeNode, unreadUnder } from "../folderTree";
+import { newPeople } from "../app/state";
+import { settings } from "../settings";
 import { AccountAvatar } from "./AccountAvatar";
 import { Icon } from "./Icon";
 
@@ -15,11 +17,19 @@ export const ROLE_NAMES: Record<string, string> = {
   trash: "Trash",
   important: "Important",
   bulk: "Other",
+  new_people: "New people",
   snoozed: "Snoozed",
   later: "Read later",
   marked: "Marks",
   starred: "Starred",
 };
+
+// Ctrl held: each account shows the number that opens its inbox (Ctrl+1 … Ctrl+9). One listener for the window;
+// losing focus lets go, as the keyup goes elsewhere.
+const [ctrlHeld, setCtrlHeld] = createSignal(false);
+window.addEventListener("keydown", (e) => setCtrlHeld(e.key === "Control" || (e.ctrlKey && ctrlHeld())), true);
+window.addEventListener("keyup", (e) => e.key === "Control" && setCtrlHeld(false), true);
+window.addEventListener("blur", () => setCtrlHeld(false));
 
 /** Where a folder in the rail or the palette goes: a Gmail label lists All Mail's messages with it. */
 export const targetOf = (f: Folder): Target => (f.role === "label" ? { label: f.id } : { folder: f.id });
@@ -115,6 +125,18 @@ export function Rail(props: {
           <span class="name">{single() ? "Inbox" : "All Inboxes"}</span>
           <Count n={inboxUnread()} />
         </Item>
+        {/* Always there while the screener is on, so a person waiting is never one tab-switch from being seen. */}
+        <Show when={settings.screener}>
+          <Item active={props.isTarget({ role: "new_people" })} onClick={() => go({ role: "new_people" })} icon="user-plus">
+            <span class="name">New people</span>
+            <Show when={newPeople()}>
+              <span class="count">
+                {newPeople()}
+                <span class="visually-hidden"> waiting</span>
+              </span>
+            </Show>
+          </Item>
+        </Show>
         <Item active={props.isTarget({ role: "snoozed" })} onClick={() => go({ role: "snoozed" })} icon="clock">
           <span class="name">Snoozed</span>
         </Item>
@@ -148,7 +170,7 @@ export function Rail(props: {
         </Fold>
       </Show>
       <For each={props.accounts}>
-        {(account) => {
+        {(account, at) => {
           const mine = () => props.folders.filter((f) => f.accountId === account.id);
           const main = () =>
             MAIN_ROLES.flatMap((r) => mine().filter((f) => f.role === r)).filter((f) => !(single() && f.role === "inbox"));
@@ -178,6 +200,11 @@ export function Rail(props: {
                   </span>
                   <Show when={SYNC_LABELS[props.syncStates[account.id]]}>
                     {(label) => <span class={`sync-state ${props.syncStates[account.id]}`}>{label()}</span>}
+                  </Show>
+                  <Show when={ctrlHeld() && !single() && at() < 9}>
+                    <kbd class="account-key">
+                      Ctrl {at() + 1}
+                    </kbd>
                   </Show>
                 </>
               }
@@ -330,7 +357,7 @@ function Count(props: { n: number }) {
 function Item(props: {
   active: boolean;
   onClick: () => void;
-  icon?: "inbox" | "clock" | "book-open" | "highlighter";
+  icon?: "inbox" | "clock" | "book-open" | "highlighter" | "user-plus";
   /** Drawn where the icon goes (a label's dot). */
   lead?: JSX.Element;
   children: JSX.Element;

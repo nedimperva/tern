@@ -16,13 +16,14 @@ mod accounts;
 mod drafts;
 mod marks;
 mod outbox;
+mod people;
 mod reading;
 mod schema;
 mod settings;
 mod syncing;
 mod writing;
 
-const SCHEMA_VERSION: i64 = 30;
+const SCHEMA_VERSION: i64 = 34;
 
 /// What a mark is kept by: the message's Message-ID, or its row for mail without one.
 const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
@@ -241,18 +242,46 @@ pub const STARRED: &str = "starred";
 pub const IMPORTANT: &str = "important";
 /// The Other split. Not "other": that is the role of every folder without a special one.
 pub const OTHER: &str = "bulk";
+/// The inbox's New people: first mail from people not known yet, while the screener is on.
+pub const NEW_PEOPLE: &str = "new_people";
 pub const SNOOZED: &str = "snoozed";
 /// The Read later shelf.
 pub const LATER: &str = "later";
 /// Conversations with something marked in them, in any folder.
 pub const MARKED: &str = "marked";
 
-/// The message goes to Other: its sender was moved there, or (with no choice made) it is bulk mail.
 /// The account `a` sent message `m`: its sender is the account's own address or one of its aliases.
 const MINE_M: &str = "(lower(m.from_addr) = lower(a.email)
                        OR lower(m.from_addr) IN (SELECT email FROM account_aliases WHERE account_id = a.id))";
-const IS_OTHER: &str = "COALESCE((SELECT s.other FROM sender_splits s
-                                  WHERE s.account_id = m.account_id AND s.addr = lower(m.from_addr)), m.bulk)";
+/// What the person chose for the sender of message `m` (important, other, blocked), NULL if nothing: a choice for
+/// the address wins over one for its whole domain (`@domain`). Key lookups, and the domain's only when a domain
+/// was chosen at all (an uncorrelated check, run once per query): an `IN` with an ORDER BY doubled the Other split's
+/// time. `@…` sorts between digits and letters, so `[@, A)` holds exactly the domains. A macro so IS_OTHER can be
+/// built from it with `concat!`.
+macro_rules! state_m {
+    () => {
+        "COALESCE((SELECT s.state FROM sender_state s WHERE s.account_id = m.account_id AND s.addr = lower(m.from_addr)),
+                  CASE WHEN (SELECT 1 FROM sender_state WHERE addr >= '@' AND addr < 'A' LIMIT 1) THEN
+                    (SELECT s.state FROM sender_state s WHERE s.account_id = m.account_id
+                       AND s.addr = substr(lower(m.from_addr), instr(m.from_addr, '@'))) END)"
+    };
+}
+const STATE_M: &str = state_m!();
+/// The message waits in New people: it came from someone unknown while the screener was on (Settings → Senders,
+/// an uncorrelated check run once per query), and nobody has decided about them since. `m.screen` first: it is 0
+/// for nearly all mail. Turning the screener off shows what waited in Important again.
+macro_rules! screened_m {
+    () => {
+        concat!(
+            "(m.screen AND COALESCE((SELECT value FROM settings WHERE key = 'screener'), 'false') = 'true' AND ",
+            state_m!(),
+            " IS NULL)"
+        )
+    };
+}
+const SCREENED_M: &str = screened_m!();
+/// The message goes to Other: its sender was moved there or blocked, or (with no choice made) it is bulk mail.
+const IS_OTHER: &str = concat!("COALESCE(", state_m!(), " IN ('other', 'blocked'), m.bulk)");
 /// The conversation a follow-up reminder `r` watches: the one its sent message is in, once that is here.
 const FOLLOW_UP_THREAD: &str = "(SELECT f.thread_id FROM messages f
                                  WHERE f.account_id = r.account_id AND f.message_id = r.message_id LIMIT 1)";
@@ -296,7 +325,10 @@ fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
     let filter = match role {
         "inbox" => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"),
         STARRED => format!("m.flagged AND {inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER}"),
-        IMPORTANT => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND NOT {IS_OTHER}"),
+        IMPORTANT => {
+            format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND NOT {IS_OTHER} AND NOT {SCREENED_M}")
+        }
+        NEW_PEOPLE => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND {SCREENED_M}"),
         OTHER => format!("{inbox} AND NOT {IS_SNOOZED} AND NOT {IS_LATER} AND {IS_OTHER}"),
         SNOOZED => format!("{inbox} AND {IS_SNOOZED}"),
         // Wherever the conversation is: one shelved from Archive or a search stays there, and shows here too. Not
@@ -589,7 +621,11 @@ fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
                 )?;
             }
         }
-        OutboxOp::Send(_) | OutboxOp::Append { .. } => {}
+        // The task was only ever here: it goes from the conversation's list.
+        OutboxOp::Task { local, .. } => {
+            conn.execute("DELETE FROM tasks WHERE id = ?1", [local])?;
+        }
+        OutboxOp::Send(_) | OutboxOp::Append { .. } | OutboxOp::Unsubscribe { .. } => {}
     }
     Ok(())
 }
@@ -615,6 +651,8 @@ fn describe(op: &OutboxOp) -> String {
         OutboxOp::Label { label, add: false, uids, .. } => {
             format!("Remove the label {label} from {}", count(uids.len()))
         }
+        OutboxOp::Unsubscribe { sender, .. } => format!("Unsubscribe from {sender}"),
+        OutboxOp::Task { task, .. } => format!("Add “{}” to Todoist", task.content),
         OutboxOp::Flags { flag, add, uids, .. } => {
             let verb = match (flag.as_str(), add) {
                 ("\\Seen", true) => "Mark read",

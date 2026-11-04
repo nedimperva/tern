@@ -14,23 +14,29 @@ import { aiOn, omarchyAvailable, setSetting, settings, type Settings } from "../
 import {
   accountOf,
   act,
+  blockSender,
   folderName,
+  isMine,
   markAllRead,
   moveToSplit,
   mute,
   restartToUpdate,
+  screen,
+  senderHere,
   shelve,
   startLabel,
   switchAccount,
   targets,
   toggleRead,
   toggleStar,
+  unsubscribe,
   wake,
 } from "./actions";
 import { moveMessage, open, toggleMessage, unmute, viewFiles } from "./conversation";
 import { newMessage, reply, respond } from "./composing";
 import { escape, extend, go, isSaved, move, nextSplit, runSearch, toggleSaved, toggleSelected } from "./list";
-import { keyOf } from "./rows";
+import { keyOf, withGroups } from "./rows";
+import { startTask, suggestTask, todoistOn } from "./tasks";
 import {
   accounts,
   choose,
@@ -47,6 +53,7 @@ import {
   palette,
   perf,
   problems,
+  role,
   rows,
   searchBox,
   setExpanded,
@@ -97,13 +104,37 @@ export const bindings = (): Binding[] => [
   { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
   { keys: "]", name: "Next mark", context: "conversation", run: () => jumpMark(1), repeat: true },
   { keys: "B", name: "Reading view or the original look", context: "conversation", run: switchReading },
+  { keys: "Ctrl+u", name: "Unsubscribe from this list", context: "conversation", run: () => void unsubscribe() },
   { keys: "i", name: "The companion: the person, what's in the mail, promises and files", context: "conversation", run: toggleCompanion },
+  ...(todoistOn()
+    ? [
+        {
+          keys: "t",
+          name: "Add a task to Todoist from this conversation",
+          context: "conversation" as const,
+          run: () => {
+            const s = suggestTask(messages, isMine);
+            const last = messages[messages.length - 1];
+            if (last) startTask(last.id, s.title, s.due);
+          },
+        },
+      ]
+    : []),
+  { keys: "I", name: "Fold or open the person card in the companion", context: "conversation", run: () => setSetting("companionFolded", !settings.companionFolded) },
   { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1), repeat: true },
   { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },
   { keys: "f", name: "Forward", context: "conversation", run: () => respond(messages[messageFocus()], "forward") },
   { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
   { keys: "r", name: "Reply (or continue the draft)", context: "conversation", run: reply },
   { keys: "v", name: "View attachments", context: "conversation", run: viewFiles },
+  ...(role() === "new_people"
+    ? [
+        { keys: "y", name: "Let them in (Important)", context: "list" as const, run: () => void screen(false) },
+        { keys: "O", name: "Send them to Other", context: "list" as const, run: () => void screen(true) },
+        // Blocking takes all they sent to Done, not only the row's newest conversation.
+        { keys: "X", name: "Block them", context: "list" as const, run: () => void blockSender(false, senderHere(), withGroups(targets())) },
+      ]
+    : []),
   ...(aiOn("summaries", messages[0]?.accountId)
     ? [{ keys: "S", name: "Summarize with AI", context: "conversation" as const, run: summon }]
     : []),
@@ -129,6 +160,7 @@ export const bindings = (): Binding[] => [
   { keys: "Shift+Tab", name: "Previous split", context: "list", run: () => nextSplit(-1) },
   { keys: "g i", name: "Go to Inbox", run: () => go(home()) },
   { keys: "g o", name: "Start of the day: what waits on you", run: () => void openScreen() },
+  ...(settings.screener ? [{ keys: "g n", name: "Go to New people", run: () => go({ role: "new_people" }) }] : []),
   { keys: "g h", name: "Go to Snoozed", run: () => go({ role: "snoozed" }) },
   { keys: "g r", name: "Go to Read later", run: () => go({ role: "later" }) },
   { keys: "g m", name: "Go to Marks (what you marked and noted)", run: () => go({ role: "marked" }) },
@@ -165,8 +197,20 @@ export const menu = (all: Binding[]) => {
     if (!b || (k === "v" && !messages.some((m) => m.attachments.length))) return [];
     return [{ name: b.name, keys: keyLabel(b.keys), run: () => void b.run() }];
   });
-  items.splice(items.findIndex((i) => i.name === "Mark as spam"), 0, { name: "Move to …", run: () => void choose("Move to …") });
+  const spam = items.findIndex((i) => i.name === "Mark as spam");
+  items.splice(spam, 0, { name: "Move to …", run: () => void choose("Move to …") }, ...blocking());
   return items;
+};
+
+/** Block the sender, or everyone at their domain: in the menu and the palette, with no key (`B` reads). */
+const blocking = (): MenuItem[] => {
+  const r = senderHere();
+  const domain = r?.fromAddr.split("@")[1];
+  if (!r || !domain) return [];
+  return [
+    { name: `Block ${r.fromName || r.fromAddr}`, run: () => void blockSender(false) },
+    { name: `Block everyone at ${domain}`, run: () => void blockSender(true) },
+  ];
 };
 
 /** The command palette: every key that works here, then what has no key. */
@@ -187,6 +231,7 @@ export const commands = (all: Binding[]): Command[] => [
         { name: "Move sender to Important", group: "Actions", run: () => void moveToSplit(false) },
       ]
     : []),
+  ...blocking().map((b) => ({ ...b, group: "Actions" })),
   {
     name: "Move to …",
     group: "Actions",

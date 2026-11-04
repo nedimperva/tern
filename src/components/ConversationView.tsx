@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { api, type Mailto, type Mark, type ThreadMessage } from "../api";
+import { api, type Mark, type ThreadMessage } from "../api";
 import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { catchUp } from "../catchup";
@@ -30,11 +30,13 @@ import { aiOn, isDark, setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
 import { ActionMenu, type MenuItem } from "./ActionMenu";
 import { AiReplies } from "./AiReplies";
-import { AiSummary } from "./AiSummary";
+import { Brief } from "./AiSummary";
+import { taskRows } from "../app/tasks";
 import { Icon } from "./Icon";
 import { Original } from "./Original";
 import { PersonCard, type PersonActions } from "./PersonCard";
-import { detailsSlot, showCompanion } from "../app/state";
+import { detailsSlot, setUnsubscribed, showCompanion, unsubscribed } from "../app/state";
+import { unsubscribe } from "../app/actions";
 import { Details } from "./Details";
 import { logoFor } from "../logos";
 
@@ -653,7 +655,6 @@ export function ConversationView(props: {
   /** `text` starts the reply with it (a suggested reply). */
   onReply: (m: ThreadMessage, kind: "reply" | "replyAll" | "forward", text?: string) => void;
   onView: (m: ThreadMessage, index: number) => void;
-  onMailto: (m: Mailto) => void;
   onDone: () => void;
   onClose: () => void;
   /** The Read later shelf: whether the conversation is on it (opened from there), and putting it on or off. */
@@ -758,18 +759,7 @@ export function ConversationView(props: {
   };
   const minutes = () => (last() ? minutesOf(last()) : 0);
   const listMail = () => [...props.messages].reverse().find((m) => unsubscribeTarget(m.listUnsubscribe));
-  const [left, setLeft] = createSignal("");
-  const unsubscribe = () => {
-    const target = unsubscribeTarget(listMail()?.listUnsubscribe ?? null);
-    if (!target) return;
-    if ("web" in target) {
-      api.openUrl(target.web);
-      setLeft("Unsubscribe page opened in your browser.");
-    } else {
-      props.onMailto(target.mail);
-      setLeft("Unsubscribe mail started.");
-    }
-  };
+  const left = unsubscribed;
   // Loading images for good is a choice about a sender, so it sits in the menu, beside the conversation's actions.
   const [original, setOriginal] = createSignal<ThreadMessage | null>(null);
   const menu = () => {
@@ -789,7 +779,7 @@ export function ConversationView(props: {
     if (first === shown) return;
     shown = first;
     setAsked(false);
-    setLeft("");
+    setUnsubscribed("");
     setReading(false);
     readingChosen = false;
     setCurrentMark(null);
@@ -1078,7 +1068,7 @@ export function ConversationView(props: {
         <Icon name="panel-right" size={15} />
       </button>
       <Show when={listMail()}>
-        <button class="tool" data-tip={left() || "Unsubscribe from this list"} aria-label={left() || "Unsubscribe"} onClick={unsubscribe}>
+        <button class="tool" data-tip={left() || "Unsubscribe from this list (Ctrl+U)"} aria-label={left() || "Unsubscribe"} onClick={() => void unsubscribe()}>
           <Icon name={left() ? "check" : "mail-x"} size={15} />
         </button>
       </Show>
@@ -1150,24 +1140,30 @@ export function ConversationView(props: {
                 </span>
               </div>
             </Show>
-            <Show when={last() && aiOn("summaries", last().accountId) && last()}>{(m) => <AiSummary id={m().id} />}</Show>
+            <Show when={taskRows().length ? taskRows() : null}>
+              {(t) => (
+                <div class="in-todoist">
+                  <span>
+                    In Todoist{t()[t().length - 1].due ? ` · ${t()[t().length - 1].due}` : ""}
+                    {t().length > 1 ? ` · ${t().length} tasks` : ""}
+                  </span>
+                </div>
+              )}
+            </Show>
           </div>
           <Show when={!reader()}>{tools()}</Show>
         </header>
-        <Show when={back()}>
-          {(b) => (
-            <div class="catch-up">
-              <Icon name="activity" size={15} />
-              <span>
-                <strong>Since you last read:</strong> {b().count} new
-                {b().questions ? ` · ${b().questions === 1 ? "a question" : `${b().questions} questions`} for you` : ""}
-              </span>
-              <span class="spacer" />
-              <button type="button" class="link" onClick={() => jumpTo(b().first)}>
-                Jump to it
-              </button>
-            </div>
-          )}
+        <Show when={last()}>
+          <Brief
+            messages={props.messages}
+            mine={props.mine}
+            facts={facts()}
+            back={back()}
+            ai={aiOn("summaries", last().accountId)}
+            onJump={jumpTo}
+            onReply={(m) => props.onReply(m, "reply")}
+            onSnooze={props.onSnoozeUntil}
+          />
         </Show>
         {/* The thread, oldest first: every message one line that opens in place, and the newest open at the end, the
             same size as the rest (owner, 2026-10-29). A long conversation's older read lines wait behind "Earlier in

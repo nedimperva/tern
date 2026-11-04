@@ -266,12 +266,16 @@ button.primary kbd {
 .app.full .list-pane {
   display: none;
 }
-/* The companion (§4.2b) takes a column on the right of the conversation, or slides over it in a narrow window. */
+/* The companion (§4.2b) takes a column on the right of the conversation, or slides over it in a narrow window. It
+   grows a little with the window: at 340 px the person card's numbers and names were cut short. */
+.app {
+  --companion-w: clamp(360px, 26vw, 400px);
+}
 .app.with-companion {
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) var(--companion-w);
 }
 .app.split.with-companion {
-  grid-template-columns: 340px minmax(0, 1fr) 340px;
+  grid-template-columns: 340px minmax(0, 1fr) var(--companion-w);
 }
 @media (max-width: 1180px) {
   .app.with-companion,
@@ -286,7 +290,7 @@ button.primary kbd {
     top: var(--titlebar-h);
     right: 0;
     bottom: 0;
-    width: min(340px, 90vw);
+    width: min(var(--companion-w), 90vw);
     z-index: 8;
     box-shadow: var(--shadow);
   }
@@ -410,6 +414,43 @@ button.primary kbd {
   color: var(--fg-2);
   font-size: var(--t-sm);
   border-bottom: 1px solid var(--line);
+}
+/* Above Important while someone waits in New people. */
+.waiting-line {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--accent-soft);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+}
+.waiting-line > span:first-of-type {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.waiting-line .go {
+  margin-left: auto;
+  flex: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+.waiting-line kbd {
+  flex: none;
+}
+.waiting-line:hover .go {
+  text-decoration: underline;
+}
+.split .waiting-line kbd {
+  display: none;
 }
 
 /* Tern's right-click menu on a link in a message. */
@@ -844,9 +885,18 @@ button.primary kbd {
   display: flex;
   gap: var(--s-4);
   flex: 1;
+  min-width: 0;
   height: 100%;
 }
+/* Beside an open conversation the list is narrow: the tabs close up, and slide sideways rather than wrap
+   "New people" when four tabs with counts still don't fit. */
+.split .splits {
+  gap: var(--s-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
 .splits button {
+  white-space: nowrap;
   background: none;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -947,6 +997,24 @@ button.primary kbd {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* New people: a person's row is wider on the left, room for the name and the address beside it. */
+.crow .who.person {
+  width: calc(var(--participants-w) * 1.6);
+}
+.crow .who.person .names {
+  flex: none;
+  max-width: 60%;
+}
+.crow .who.person .addr {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.crow.two .who.person {
+  width: auto;
+}
 .crow .count {
   flex: none;
   font-size: var(--t-sm);
@@ -961,6 +1029,12 @@ button.primary kbd {
 .crow .snippet {
   color: var(--fg-2);
   margin-left: var(--s-2);
+}
+.crow .more {
+  margin-left: var(--s-2);
+  font-size: var(--t-sm);
+  font-weight: 400;
+  color: var(--fg-2);
 }
 .conversation-head .labels {
   display: flex;
@@ -1079,8 +1153,23 @@ button.primary kbd {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+/* Beside an open conversation the strip is only as wide as the list: what doesn't fit shortens instead of being cut
+   off at the edge, and the keys go (the conversation shows its own). */
+.status .sync .text,
+.status .toast > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status .toast {
+  min-width: 0;
+}
+.split .status .hints {
+  display: none;
 }
 .status .dot {
+  flex: none;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -1495,6 +1584,13 @@ button.primary kbd {
     0 0 0 2px var(--bg-1),
     0 0 0 4px var(--fg-0);
 }
+/* Shown while Ctrl is held: the key that opens this account's inbox. */
+.account-key {
+  flex: none;
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: 0;
+}
 .sync-state {
   flex: none;
   text-transform: none;
@@ -1830,23 +1926,148 @@ span.tool {
 }
 
 /* Every earlier message, one line each on a soft panel above the stage; all there, none folded away. */
-/* Coming back to a conversation: what is new since it was last read. */
-.catch-up {
+/* The brief (§4.2, canvas "Tern summary directions" A + C): one soft card under the subject with what came since you
+   last read, the AI's sentence when asked, and what was found, each with what to do about it. */
+.brief {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--s-2);
   margin-bottom: var(--s-3);
-  padding: var(--s-2) var(--s-4);
+  padding: var(--s-3) var(--s-4);
   border-radius: var(--r-lg);
-  background: var(--accent-soft);
-  color: var(--fg-0);
+  background: var(--soft);
   font-size: var(--t-md);
 }
-.catch-up svg {
+/* Nothing found and nothing new: only the AI button, as quiet as a line. */
+.brief.bare {
+  padding: 0;
+  background: none;
+}
+.brief-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 24px;
+  color: var(--fg-1);
+}
+.brief-head .spacer {
+  flex: 1;
+}
+.brief-head .since strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+.brief-head .since .link {
+  margin-left: var(--s-2);
+  font-size: inherit;
+}
+.brief kbd.ai-mark {
+  flex: none;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.brief .ai-by {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.brief .ai-by .link {
+  font-size: inherit;
+  color: var(--fg-1);
+}
+.brief-line {
+  margin: 0;
+  max-width: 680px;
+  font-size: var(--t-read);
+  line-height: 1.55;
+  color: var(--fg-0);
+}
+.brief-line.error {
+  font-size: var(--t-md);
+  color: var(--danger);
+}
+.brief-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.brief-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 36px;
+  padding: var(--s-1) var(--s-1) var(--s-1) var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+}
+.brief-row .tag {
+  flex: none;
+  min-width: 84px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  text-align: center;
+}
+.brief-row .tag.ask {
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+}
+.brief-row .tag.day {
+  background: var(--accent-soft);
   color: var(--accent);
 }
-.catch-up .spacer {
+.brief-row .tag.done {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.brief-row .text {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.brief-row .do {
+  display: flex;
+  flex: none;
+  gap: var(--s-1);
+}
+.brief-row .do button {
+  height: 28px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--fg-0);
+  font-size: var(--t-sm);
+}
+.brief-row .do button:hover {
+  background: var(--bg-2);
+}
+.brief-row .do button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+/* Under the subject, once a task was made from it. */
+.in-todoist {
+  margin-top: var(--s-2);
+}
+.in-todoist span {
+  display: inline-block;
+  padding: 2px var(--s-2);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 500;
 }
 /* The older read lines of a long conversation, behind one line that brings them out. */
 .tucked {
@@ -4511,18 +4732,6 @@ button.place.muted {
   margin-top: var(--s-4);
 }
 
-/* The AI summary under a conversation's subject. */
-.ai-summary {
-  margin-top: var(--s-3);
-  font-size: var(--t-rd);
-  color: var(--fg-1);
-}
-.ai-summary kbd.ai-mark {
-  flex: none;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
-}
 .ai-ask,
 .ai-line {
   display: inline-flex;
@@ -4671,51 +4880,6 @@ button.ai-line:hover {
   opacity: 1;
 }
 
-/* The summary as the subject's lede, its facts as chips. */
-.ai-lede {
-  margin: 0;
-  max-width: 640px;
-  font-size: var(--t-read);
-  line-height: 1.55;
-  color: var(--fg-1);
-}
-.ai-lede kbd.ai-mark {
-  vertical-align: 2px;
-  margin-right: var(--s-1);
-}
-.ai-facts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-1) var(--s-2);
-  margin-top: var(--s-2);
-}
-.ai-fact {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-  padding: 3px var(--s-2);
-  border-radius: 999px;
-  font-size: var(--t-sm);
-  background: var(--accent-soft);
-  color: var(--fg-0);
-}
-.ai-fact .label {
-  font-weight: 600;
-}
-.ai-fact.due {
-  background: var(--warn-soft);
-}
-.ai-fact.decided {
-  background: var(--ok-soft, var(--bg-2));
-}
-.ai-facts .spacer {
-  flex: 1;
-}
-.ai-facts button.link {
-  font-size: var(--t-sm);
-  color: var(--fg-1);
-}
 .ai-note {
   margin: var(--s-2) 0 0;
   padding-left: calc(var(--s-6) + var(--s-1));
@@ -6102,6 +6266,29 @@ button.link.danger {
   color: inherit;
 }
 
+.senders-title {
+  margin-top: var(--s-5);
+}
+.senders > .senders-title:first-child {
+  margin-top: 0;
+}
+/* Settings → Senders, Your choices: a heading per choice, then its senders as rows like Who writes most. */
+.sender-choices h4 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin: var(--s-4) 0 0;
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+.sender-choices h4 .count {
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.sender-choices .help {
+  margin: var(--s-1) 0 0;
+}
+
 /* Settings → Who writes most: a sender a row, a bar for how much they wrote, and what to do about them. */
 .sender-list {
   display: flex;
@@ -6195,15 +6382,11 @@ button.link.danger {
   background: var(--bg-1);
   font-size: var(--t-md);
 }
-.companion > header {
+.companion .nobody {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--s-3);
-  padding: var(--s-4) var(--s-3) var(--s-3) var(--s-4);
-  flex: none;
-}
-.companion > header .icon-button {
-  align-self: flex-start;
 }
 .companion .avatar {
   width: 40px;
@@ -6233,6 +6416,9 @@ button.link.danger {
 .companion .who span {
   font-size: var(--t-sm);
   color: var(--fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .companion-body {
   flex: 1;
@@ -6241,7 +6427,541 @@ button.link.danger {
   display: flex;
   flex-direction: column;
   gap: var(--s-5);
-  padding: var(--s-1) var(--s-4) var(--s-4);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+}
+/* The person (ui.md §4.2b): a card on --bg-0, open or folded to one row. Someone waiting has an amber edge. */
+.companion .person {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-0);
+}
+.companion .person.waiting {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--line));
+}
+.companion .person-top,
+.companion .person.folded {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.companion .person.folded {
+  flex-direction: row;
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-3);
+}
+.companion .person.folded .avatar {
+  width: 32px;
+  height: 32px;
+  font-size: var(--t-xs);
+}
+/* Write, open the card, close: three alike, quiet until pointed at. */
+.companion .person-icons {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+.companion .person-icons .icon-button {
+  width: 30px;
+  height: 30px;
+  color: var(--fg-1);
+}
+.companion .person .who strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.companion .person .tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.companion .person .tag.new {
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+}
+/* Where their mail goes, in front of the folded row's count: a word in its colour, no pill to crowd the line. */
+.companion .person .who .state {
+  color: var(--accent);
+  font-weight: 600;
+}
+.companion .person .state.other {
+  color: var(--fg-1);
+}
+.companion .person .state.blocked {
+  color: var(--danger);
+}
+.companion .tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+.companion .tiles > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+.companion .tiles strong {
+  font-size: var(--t-lg);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.companion .tiles span,
+.companion .months .quiet {
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.companion .months {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.companion .months .bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 24px;
+}
+.companion .months .bars span {
+  flex: 1;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+.companion .months .bars span.now {
+  background: var(--accent);
+}
+.companion .months .quiet {
+  display: flex;
+  justify-content: space-between;
+}
+.companion .opened {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+}
+.companion .opened > div {
+  display: flex;
+  justify-content: space-between;
+  color: var(--fg-1);
+}
+.companion .opened meter {
+  width: 100%;
+  height: 8px;
+}
+/* Important, Other, Blocked: one control with the choice raised. */
+.companion .states {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 3px;
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+.companion .states button,
+.companion .which button {
+  padding: 5px 0;
+  border: none;
+  border-radius: calc(var(--r-md) - 2px);
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.companion .states button[aria-pressed="true"],
+.companion .which button[aria-pressed="true"] {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-weight: 600;
+  box-shadow: var(--raise);
+}
+.companion .person-do button.primary {
+  flex: 1;
+}
+.companion .person-do button.primary,
+.companion .decide button.primary {
+  justify-content: center;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+.companion .person-do button.primary:hover,
+.companion .decide button.primary:hover {
+  filter: brightness(1.1);
+  background: var(--accent);
+}
+/* In the card's column, a 100% basis would be the card's height. */
+.companion .person .person-do {
+  flex: none;
+}
+.companion .person-do button {
+  height: 32px;
+}
+/* What helps decide about someone waiting: a dot each, green for what speaks for them, amber for what doesn't. */
+.companion .signs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.companion .signs li {
+  display: flex;
+  gap: var(--s-2);
+}
+.companion .signs li::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.companion .signs li.warn::before {
+  background: var(--warn);
+}
+.companion .decide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.companion .decide > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+.companion .decide button {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--fg-0);
+}
+.companion .decide button:hover {
+  background: var(--bg-2);
+}
+.companion .decide button.danger,
+.companion .tidy.danger .name {
+  color: var(--danger);
+}
+.companion .more-waiting {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) 0 0;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  text-align: left;
+}
+.companion .more-waiting span:first-of-type {
+  flex: 1;
+}
+.companion .more-waiting .go {
+  color: var(--accent);
+}
+/* Your note: a yellow card, kept only on this computer. */
+.companion .note {
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid color-mix(in srgb, var(--star) 45%, var(--line));
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--star) 10%, var(--bg-0));
+}
+.companion .note label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--warn-fg);
+}
+.companion .note label .quiet {
+  margin-left: auto;
+  font-weight: 400;
+}
+.companion .note textarea {
+  min-height: 3lh;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg-0);
+  font: inherit;
+  line-height: 1.45;
+  resize: vertical;
+  user-select: text;
+}
+.companion .note textarea:focus {
+  outline: none;
+}
+.companion .note:focus-within {
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+.companion .note-add {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 36px;
+  padding: 0 var(--s-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.companion .note-add:hover {
+  background: var(--bg-2);
+}
+.companion .tidy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  background: none;
+  text-align: left;
+}
+.companion .tidy:hover {
+  background: var(--bg-2);
+}
+.companion .tidy .name {
+  font-weight: 600;
+  color: var(--fg-0);
+}
+/* Tasks in Todoist (§4.2b): a ring and the title per task, then the row that adds one, which turns into the box. */
+.companion .task {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+}
+.companion .task .ring {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--fg-2);
+  border-radius: 50%;
+}
+.companion .task .link {
+  font-size: var(--t-sm);
+}
+.companion .task-add {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  text-align: left;
+}
+.companion .task-add span {
+  flex: 1;
+}
+.companion .task-add:hover {
+  background: var(--bg-2);
+}
+/* Over the card's own lines between rows. */
+.companion .rows .task-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+}
+.companion .task-box input,
+.companion .task-box textarea {
+  min-width: 0;
+  font: inherit;
+}
+.companion .task-top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.companion .task-box #task-title {
+  flex: 1;
+  padding: var(--s-1) 0;
+  border: none;
+  background: none;
+  font-weight: 600;
+  outline: none;
+}
+.companion .ai-fill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.companion .ai-fill:hover {
+  background: var(--bg-2);
+}
+.companion .ai-fill kbd.ai-mark {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.companion .task-project {
+  align-self: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.companion .task-box #task-note {
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  font-size: var(--t-sm);
+  resize: none;
+  field-sizing: content;
+  max-height: 120px;
+}
+.companion .task-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s-2);
+}
+.companion .task-fields input {
+  height: 30px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  font-size: var(--t-sm);
+}
+.companion .task-box p {
+  margin: 0;
+  font-size: var(--t-xs);
+}
+.companion .task-do {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+.companion .task-do button {
+  height: 30px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  font-size: var(--t-sm);
+}
+.companion .task-do button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.companion .task-do button:disabled {
+  opacity: 0.5;
+}
+/* Settings → Todoist. */
+.todoist-connect {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.todoist-connect input {
+  flex: 1;
+  min-width: 0;
+}
+.todoist-what {
+  margin: 0;
+  padding-left: var(--s-4);
+  color: var(--fg-1);
+  line-height: 1.6;
+}
+/* Files: this conversation's, or every file with the person, by kind and month. */
+.companion fieldset {
+  min-width: 0;
+  margin: 0;
+  border: none;
+}
+.companion .files-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.companion .files-head .count {
+  margin-left: auto;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.companion .which {
+  display: flex;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.companion .which button {
+  padding: 2px var(--s-2);
+  font-size: var(--t-xs);
+}
+.companion .kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+.companion .kinds button {
+  padding: 2px var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.companion .kinds button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.companion .month {
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-xs);
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.companion .more-files {
+  align-self: flex-start;
+  font-size: var(--t-sm);
 }
 .companion section {
   display: flex;
@@ -6328,17 +7048,68 @@ button.link.danger {
 .companion .what button.link:hover {
   text-decoration: underline;
 }
+/* Under the person's name: write to them, copy the address, and which split their mail goes to. */
+.companion .person-do {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.companion .person-do button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  white-space: nowrap;
+  padding: 3px var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-size: var(--t-sm);
+}
+.companion .person-do button:hover {
+  background: var(--bg-2);
+}
+/* Recent with them: each row opens its conversation; the last finds all their mail. */
 .companion .recent {
   display: flex;
   flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  align-items: stretch;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--fg-0);
+  font: inherit;
+  text-align: left;
 }
-.companion .recent li {
+.companion .recent:first-child {
+  border-top-left-radius: var(--r-lg);
+  border-top-right-radius: var(--r-lg);
+}
+.companion .recent:last-child {
+  border-bottom-left-radius: var(--r-lg);
+  border-bottom-right-radius: var(--r-lg);
+}
+.companion .recent:hover {
+  background: var(--bg-2);
+}
+.companion .recent:focus-visible {
+  outline-offset: -2px;
+}
+.companion .recent .line {
   display: flex;
+  align-items: center;
   gap: var(--s-2);
-  padding: var(--s-1) 0;
+  min-width: 0;
+}
+.companion .recent .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
 }
 .companion .recent .subject {
   flex: 1;
@@ -6346,6 +7117,18 @@ button.link.danger {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.companion .recent.unread .subject {
+  font-weight: 600;
+}
+.companion .recent .snippet {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.companion .recent.all {
+  font-size: var(--t-sm);
+  color: var(--accent);
 }
 .companion .pledge {
   display: flex;
@@ -6497,27 +7280,9 @@ button.link.danger {
   line-height: 1.45;
 }
 .ask-dock.off button.link {
-  align-self: flex-start;
   padding: 0;
+  font-size: inherit;
   color: var(--accent);
-}
-.ask-dock .suggest {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.ask-dock .suggest button {
-  padding: 3px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg-0);
-  color: var(--fg-1);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.ask-dock .suggest button:hover {
-  border-color: var(--line-strong);
-  color: var(--fg-0);
 }
 .ask-dock .ask-box {
   display: flex;
@@ -6552,10 +7317,15 @@ button.link.danger {
   width: 28px;
   height: 28px;
   flex: none;
+  padding: 0;
   border: none;
   border-radius: var(--r-md);
   background: var(--accent);
   color: var(--accent-fg);
+}
+/* The paper plane's weight sits up and right in its box: a pixel back makes it look centred. */
+.ask-dock .send svg {
+  transform: translate(-1px, 1px);
 }
 .ask-dock .send:disabled {
   opacity: 0.45;

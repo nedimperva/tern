@@ -2,19 +2,22 @@
 // shows at once, then goes to the engine, and can be undone.
 
 import { batch } from "solid-js";
-import { api, moves, type Action, type Applied, type Folder, type ThreadRow } from "../api";
+import { api, moves, type Action, type Applied, type Folder, type MessageRow, type ThreadRow } from "../api";
 import { leave, pop, type Way } from "../motion";
 import { ROLE_NAMES } from "../components/Rail";
 import { until } from "../components/ConversationRow";
 import { countCleared } from "../zero";
 import { keyOf } from "./rows";
 import { open } from "./conversation";
+import { unsubscribeTarget } from "../unsubscribe";
+import { fromLink } from "./composing";
 import { go, load, refresh } from "./list";
 import {
   accounts,
   current,
   focus,
   folders,
+  messages,
   openRow,
   role,
   rows,
@@ -25,8 +28,10 @@ import {
   setRows,
   setSelection,
   setSnoozing,
+  setUnsubscribed,
   snoozing,
   target,
+  unsubscribed,
 } from "./state";
 import { showToast } from "./toast";
 
@@ -137,11 +142,27 @@ export async function moveToSplit(other: boolean) {
   const ids = hit.map((r) => r.id);
   const shown = role();
   if ((other && shown === "important") || (!other && shown === "bulk")) dropRows(hit);
+  await splitSenders(ids, hit.map((r) => r.fromName || r.fromAddr), other);
+}
+
+/** New people: lets the senders of the target conversations in (Important), or sends them to Other. Either way
+ * they leave New people, and their later mail goes straight there. */
+export async function screen(other: boolean) {
+  const hit = targets();
+  if (!hit.length) return;
+  dropRows(hit);
+  await splitSenders(hit.map((r) => r.id), hit.map((r) => r.fromName || r.fromAddr), other);
+  void refresh(false);
+}
+
+/** Sends the senders of these messages to Other (or Important) and says so; Undo puts them back. */
+export async function splitSenders(ids: number[], names: string[], other: boolean, undone?: () => void) {
   await api.setSplit(ids, other);
-  const senders = [...new Set(hit.map((r) => r.fromName || r.fromAddr))];
+  const senders = [...new Set(names)];
   const who = senders.length === 1 ? senders[0] : `${senders.length} senders`;
   showToast(`${who}: ${other ? "Other" : "Important"} from now on`, [], undefined, async () => {
     await api.setSplit(ids, !other);
+    undone?.();
     void load();
   });
 }
@@ -188,7 +209,7 @@ export async function act(action: Action, hit = targets(), announce = true): Pro
         }
       : undefined;
     // What leaves the inbox counts for Inbox Zero's Flock and Your migration; an undo takes it off again.
-    const cleared = !searching() && moves(action) && action !== "inbox" && ["inbox", "important", "bulk"].includes(role()) ? hit.length : 0;
+    const cleared = !searching() && moves(action) && action !== "inbox" && ["inbox", "important", "bulk", "new_people"].includes(role()) ? hit.length : 0;
     countCleared(cleared);
     const uncount = cleared ? () => countCleared(-cleared) : undefined;
     if (announce) showToast(hit.length === 1 ? done : `${done} (${hit.length} conversations)`, token, uncount, undoDrafts);
@@ -257,6 +278,51 @@ export async function mute() {
   await api.mute(ids, true);
   const token = await act("archive", hit, false);
   showToast(hit.length === 1 ? "Muted" : `Muted ${hit.length} conversations`, token, () => api.mute(ids, false));
+}
+
+/** Who "the sender" is: in an open conversation, the newest one who wrote in it and isn't you (the companion's
+ * person); in the list, the focused conversation's newest sender. */
+export function senderHere(): MessageRow | undefined {
+  if (openRow()) return [...messages].reverse().find((m) => !isMine(m.fromAddr));
+  return targets()[0];
+}
+
+/** Blocks a sender (or everyone at their domain): mail from them that comes later is read and archived as it
+ * arrives, and the target conversations go to Done (in the list, those they sent). One undo puts both back.
+ * Nothing tells the sender. */
+export async function blockSender(wholeDomain = false, from = senderHere(), hit = targets()) {
+  const sender = from && (await api.senderOf(from.id));
+  if (!from || !sender) return;
+  const addr = wholeDomain ? `@${sender.domain}` : sender.addr;
+  const before = wholeDomain ? sender.domainChoice : sender.addressChoice;
+  const mine = (r: ThreadRow) => (wholeDomain ? r.fromAddr.toLowerCase().endsWith(addr) : r.fromAddr.toLowerCase() === addr);
+  await api.setSender(sender.accountId, addr, "blocked");
+  const token = await act("archive", openRow() ? hit : hit.filter(mine), false);
+  const back = () => api.setSender(sender.accountId, addr, before);
+  const who = wholeDomain ? `everyone at ${sender.domain}` : from.fromName || from.fromAddr;
+  showToast(`Blocked ${who}`, token, back, token.length ? undefined : async () => (await back(), void load()));
+}
+
+/** Ctrl+U: leaves the open conversation's mailing list. With one-click (RFC 8058) the request is queued like any
+ * change and the conversation goes to Done, one undo for both; otherwise the list's page opens in the browser, or
+ * its address in compose. */
+export async function unsubscribe() {
+  const list = [...messages].reverse().find((m) => unsubscribeTarget(m.listUnsubscribe));
+  const target = unsubscribeTarget(list?.listUnsubscribe ?? null);
+  if (!list || !target || unsubscribed().startsWith("Unsubscribed")) return;
+  const who = list.fromName || list.fromAddr;
+  const token = list.oneClick ? await api.unsubscribe(list.id).catch(() => null) : null;
+  if (token) {
+    setUnsubscribed(`Unsubscribed from ${who}.`);
+    const done = await act("archive", targets(), false);
+    showToast(`Unsubscribed from ${who}`, [...token, ...done], () => setUnsubscribed(""));
+  } else if ("web" in target) {
+    api.openUrl(target.web);
+    setUnsubscribed("Unsubscribe page opened in your browser.");
+  } else {
+    fromLink(target.mail);
+    setUnsubscribed("Unsubscribe mail started.");
+  }
 }
 
 /** The inbox of the account at this place in the account list (Ctrl+1 … Ctrl+9). */

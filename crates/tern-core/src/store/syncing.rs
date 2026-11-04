@@ -2,6 +2,50 @@
 
 use super::*;
 
+/// With the screener on, the domains the person counts as known (Settings → Senders); None while it is off, when
+/// nothing is screened. Mail that came while it was off stays where it is when it is turned on.
+fn screening(conn: &Connection) -> Result<Option<Vec<String>>> {
+    let value = |key: &str| -> Result<Option<serde_json::Value>> {
+        let raw: Option<String> =
+            conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional()?;
+        Ok(raw.and_then(|v| serde_json::from_str(&v).ok()))
+    };
+    if value("screener")? != Some(serde_json::Value::Bool(true)) {
+        return Ok(None);
+    }
+    let known = value("knownDomains")?
+        .and_then(|v| serde_json::from_value::<Vec<String>>(v).ok())
+        .unwrap_or_default();
+    Ok(Some(known.into_iter().map(|d| d.trim().trim_start_matches('@').to_lowercase()).collect()))
+}
+
+/// Whether a message comes from someone the person does not know yet, for the screener. Known: one of the
+/// account's own addresses, bulk mail (that has its own split), a domain the person listed, someone they wrote to,
+/// someone they already decided about (or their domain), or a conversation they are in.
+fn unknown(
+    conn: &Connection,
+    account_id: i64,
+    me: &[String],
+    thread_id: &str,
+    m: &NewMessage,
+    known: &[String],
+) -> Result<bool> {
+    let from = m.from_addr.trim().to_lowercase();
+    let Some((_, domain)) = from.rsplit_once('@') else { return Ok(false) };
+    if me.contains(&from) || crate::triage::is_bulk(m) || known.iter().any(|k| k == domain) {
+        return Ok(false);
+    }
+    let known: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM contacts WHERE email = ?1 AND sent_count > 0)
+             OR EXISTS (SELECT 1 FROM sender_state WHERE account_id = ?2 AND addr IN (?1, '@' || ?3))
+             OR EXISTS (SELECT 1 FROM messages WHERE account_id = ?2 AND thread_id = ?4
+                          AND lower(from_addr) IN (SELECT value FROM json_each(?5)))",
+        params![from, account_id, domain, thread_id, serde_json::to_string(me)?],
+        |r| r.get(0),
+    )?;
+    Ok(!known)
+}
+
 impl Store {
     // MARK: Sync
 
@@ -18,6 +62,7 @@ impl Store {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         let me = own_addresses(&tx, account_id)?;
+        let screening = screening(&tx)?;
         for m in messages {
             // A message moved here on this device: it has a row already, waiting for its uid.
             if let Some(mid) = &m.message_id {
@@ -37,14 +82,19 @@ impl Store {
                 "INSERT OR IGNORE INTO messages (account_id, folder_id, uid, message_id, thread_id, subject, from_name,
                                                  from_addr, to_addrs, date, snippet, seen, flagged, has_attachments,
                                                  size, body_state, list_id, list_unsubscribe, parts, subject_norm,
-                                                 cc_addrs, reply_to, followup_to, refs, bulk)
+                                                 cc_addrs, reply_to, followup_to, refs, bulk, unsubscribe_post,
+                                                 screen)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-                         ?21, ?22, ?23, ?24, ?25)",
+                         ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
                 params![
                     account_id, folder_id, m.uid, m.message_id, thread_id, m.subject, m.from_name, m.from_addr,
                     m.to_addrs, m.date, m.snippet, m.seen, m.flagged, m.has_attachments, m.size, body_state,
                     m.list_id, m.list_unsubscribe, parts, subject_norm(&m.subject), m.cc_addrs, m.reply_to,
-                    m.followup_to, m.references.join(" "), crate::triage::is_bulk(m)
+                    m.followup_to, m.references.join(" "), crate::triage::is_bulk(m), m.unsubscribe_post,
+                    match &screening {
+                        Some(known) => unknown(&tx, account_id, &me, &thread_id, m, known)?,
+                        None => false,
+                    }
                 ],
             )?;
             if inserted == 0 {
