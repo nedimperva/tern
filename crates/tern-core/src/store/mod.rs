@@ -10,8 +10,8 @@ use rusqlite::types::Value;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::models::*;
-use serde::Serialize;
 use schema::{backup_before_migrating, migrate};
+use serde::Serialize;
 
 mod accounts;
 mod drafts;
@@ -456,12 +456,7 @@ impl Store {
                 _ => {}
             }
         }))?;
-        Ok(Self {
-            conn: Mutex::new(conn),
-            readers: Vec::new(),
-            next_reader: Default::default(),
-            touched,
-        })
+        Ok(Self { conn: Mutex::new(conn), readers: Vec::new(), next_reader: Default::default(), touched })
     }
 
     /// What the writer changed since the last call, and forgets it: the conversations of the messages written, or
@@ -472,7 +467,8 @@ impl Store {
             return Ok(Changes { threads: None });
         }
         let conn = self.reader();
-        let mut stmt = conn.prepare_cached("SELECT account_id || ':' || thread_id FROM messages WHERE id = ?1")?;
+        let mut stmt =
+            conn.prepare_cached("SELECT account_id || ':' || thread_id FROM messages WHERE id = ?1")?;
         let mut threads = BTreeSet::new();
         for id in taken.messages {
             // Gone already (moved and claimed by another row): read everything again rather than miss it.
@@ -491,7 +487,9 @@ impl Store {
     pub fn optimize_if_due(&self, now: i64) -> Result<bool> {
         let conn = self.conn();
         let last: i64 = conn
-            .query_row("SELECT value FROM settings WHERE key = 'storeOptimizedAt'", [], |r| r.get::<_, String>(0))
+            .query_row("SELECT value FROM settings WHERE key = 'storeOptimizedAt'", [], |r| {
+                r.get::<_, String>(0)
+            })
             .optional()?
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);

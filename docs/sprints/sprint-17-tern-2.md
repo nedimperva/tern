@@ -41,10 +41,14 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
 - [ ] A `2.0.0-beta.N` tag needs its CHANGELOG section like any release.
 
 ### B. Foundations
-- [ ] Reader pool: WAL, one writer connection and a small pool of readers, so a list query never waits on a sync
-  write. `PRAGMA optimize` on idle once a week. `store_bench` before and after, numbers in the Log.
-- [ ] Coalesced change events: the sync worker sends `messages-changed` at most every 100 ms with the thread ids;
-  the list patches those rows in place instead of loading the page again. Check holding `j` while a large sync runs.
+- [x] Reader pool: WAL, one writer connection and three readers (`READERS`, the first free one is taken), so a list
+  query never waits on a sync write or on another read. `PRAGMA optimize` once a week while Tern runs
+  (`optimize_if_due`, looked at hourly; also at quit). `store_bench` before and after, numbers in the Log.
+- [x] Coalesced change events: SQLite's update hook on the writer notes the messages written; the shell gathers
+  them for 100 ms (`watch_changes`) and sends "mail-changed" with their conversations (`Store::take_changes`), or
+  none for a deletion, a batch over 200, or a change outside messages (sender choices, snoozes, labels…). The list
+  patches those rows in place (`patch` in `src/app/list.ts`, `Store::threads_in`) and reads the page again only
+  when a row would move. Not yet checked: holding `j` while a large sync runs.
 
 ### C. Senders: the screener, block and mute
 - [x] Schema v32 (D took v31): `sender_splits.other` becomes a sender state (`important | other | waiting | blocked`), by address
@@ -216,3 +220,7 @@ Open, for the owner:
 - 2026-11-04: owner picked A + C with actionable facts on the canvas "Tern summary directions": the brief under the
   subject (catch-up, what was found, Explain it with AI) replaced the catch-up bar and the summary chips. G's first
   slice built with it: token, Tasks, the task box, the outbox op and the pill. Not tried with a real Todoist token yet.
+- 2026-11-04: B built on `sprint/17-foundations`. `store_bench` (100k messages, medians) before / after: first page
+  0.231 / 0.227 ms, unified conversations (50) 1.53 / 1.48, Important 1.89 / 1.81, Other 5.29 / 4.62, search one word
+  5.07 / 4.87, archive 50 + undo 6.79 / 5.48 ms. The bench reads from one thread, so the pool shows as no change there;
+  it helps when the list, a conversation and the counts read at once. The four misses over 1 ms are as before.

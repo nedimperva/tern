@@ -789,16 +789,22 @@ fn changes_name_the_conversations_sync_wrote_or_ask_for_everything() {
     store.update_flags(inbox, &[(2, true, true)]).unwrap();
     let two: (i64, String) = store
         .conn()
-        .query_row("SELECT account_id, thread_id FROM messages WHERE uid = 2", [], |r| Ok((r.get(0)?, r.get(1)?)))
+        .query_row("SELECT account_id, thread_id FROM messages WHERE uid = 2", [], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
         .unwrap();
     let key = format!("{}:{}", two.0, two.1);
-    assert_eq!(threads(store.take_changes().unwrap()), [key.clone()]);
+    assert_eq!(threads(store.take_changes().unwrap()), std::slice::from_ref(&key));
     let rows = store.threads_in(&ListTarget::Folder(inbox), &[key.clone(), "9:nope".into()]).unwrap();
     assert_eq!(rows.len(), 1, "only what is in the list");
     assert!(rows[0].flagged);
 
     store.set_sender(account, "ada@example.com", Some("blocked")).unwrap();
-    assert_eq!(store.take_changes().unwrap().threads, None, "a sender choice moves conversations: read it all");
+    assert_eq!(
+        store.take_changes().unwrap().threads,
+        None,
+        "a sender choice moves conversations: read it all"
+    );
     store.conn().execute("DELETE FROM messages WHERE uid = 1", []).unwrap();
     assert_eq!(store.take_changes().unwrap().threads, None, "a deletion reads it all");
 }

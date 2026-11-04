@@ -257,7 +257,11 @@ pub async fn list_threads(
 
 /// The rows these conversations (`account_id:thread_id`) have in `target`, to patch the list after sync changed them.
 #[tauri::command]
-pub async fn threads_in(state: State<'_, AppState>, target: ListTarget, keys: Vec<String>) -> Reply<Vec<ThreadRow>> {
+pub async fn threads_in(
+    state: State<'_, AppState>,
+    target: ListTarget,
+    keys: Vec<String>,
+) -> Reply<Vec<ThreadRow>> {
     state.store.threads_in(&target, &keys).map_err(text)
 }
 

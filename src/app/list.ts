@@ -103,6 +103,12 @@ export async function loadMore() {
 
 /** Everything the window shows, read again. Sync never changes signatures, so its changes leave them out. */
 export async function refresh(signatures = true) {
+  await refreshAround(signatures);
+  await load();
+}
+
+/** What sits around the list (accounts, folders and their counts, waiting work), read again. */
+async function refreshAround(signatures: boolean) {
   if (signatures) loadSignatures();
   const [a, f, p, w, s, n] = await Promise.all([
     api.accounts(),
@@ -129,7 +135,36 @@ export async function refresh(signatures = true) {
     setWaiting(w);
     setReady(true);
   });
-  await load();
+}
+
+/** Lists whose rows are more than a conversation's newest message: a person's grouped mail, marks, search. */
+const patchable = () => !searching() && !["new_people", "marked"].includes(role()) && !rows().some((r) => r.followUp);
+
+/** Replaces the rows of these conversations with what the store has now (package 17 B), instead of reading the
+ * page again. Anything that moves a row (a new conversation, a newer message) reads the page again after all. */
+async function patch(keys: string[]) {
+  if (!patchable()) return load();
+  const ticket = generation;
+  const fresh = await api.threadsIn(target(), keys);
+  if (ticket !== generation) return;
+  const now = new Map(fresh.map((r) => [keyOf(r), r]));
+  const shown = new Map(rows().map((r) => [keyOf(r), r]));
+  for (const k of keys) {
+    const was = shown.get(k);
+    const is = now.get(k);
+    // A conversation new to the list, or one whose newest message changed, goes somewhere else in the order.
+    if (is && (!was || was.date !== is.date || was.id !== is.id)) return load();
+  }
+  const focusedKey = current() && keyOf(current()!);
+  batch(() => {
+    // Gone from the list (moved, read in Other's unread view…) drops out; the rest take the store's word.
+    const next = rows().flatMap((r) => (keys.includes(keyOf(r)) ? (now.has(keyOf(r)) ? [now.get(keyOf(r))!] : []) : [r]));
+    setRows(next);
+    const at = focusedKey ? next.findIndex((r) => keyOf(r) === focusedKey) : -1;
+    setFocus(at >= 0 ? at : Math.min(focus(), Math.max(0, next.length - 1)));
+    const left = new Set(next.map(keyOf));
+    setSelection(new Set([...selection()].filter((k) => left.has(k))));
+  });
 }
 
 /** Reloads the open conversation from any of its messages that still exists. */
@@ -143,21 +178,28 @@ async function reloadConversation() {
   }
 }
 
-// Sync can report many changes a second (a backfill reports each batch): read everything again at most every
-// 150 ms. The first change in a quiet spell shows at once; the rest wait for the end of the window.
+// Sync can report many changes a second (a backfill reports each batch): act on them at most every 150 ms. The
+// first change in a quiet spell shows at once; the rest gather until the end of the window. Each names the
+// conversations it wrote, or none for "read it all".
 const CHANGE_MS = 150;
 let changeTimer: number | undefined;
 let changeAgain = false;
-export const onChange = () => {
+let pending: Set<string> | null = new Set();
+export const onChange = (threads: string[] | null) => {
   void refreshStart();
   readProgress();
+  if (threads && pending) for (const t of threads) pending.add(t);
+  else pending = null;
   if (changeTimer !== undefined) {
     changeAgain = true;
     return;
   }
   const run = () => {
-    void refresh(false);
-    void reloadConversation();
+    const keys = pending;
+    pending = new Set();
+    const open = openRow();
+    void refreshAround(false).then(() => (keys ? patch([...keys]) : load()));
+    if (!keys || (open && keys.has(keyOf(open)))) void reloadConversation();
   };
   run();
   const settle = () => {

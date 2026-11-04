@@ -382,6 +382,8 @@ export interface Api {
   list(target: Target, before: Cursor | null, limit: number): Promise<MessageRow[]>;
   /** Conversations with a message in `target`, newest first; `before` is the last row's (date, id). */
   listThreads(target: Target, before: Cursor | null, limit: number): Promise<ThreadRow[]>;
+  /** The rows these conversations (`accountId:threadId`) have in `target`; one not in it now is left out. */
+  threadsIn(target: Target, keys: string[]): Promise<ThreadRow[]>;
   /** An action on whole conversations, each named by its row's message id. */
   applyConversations(ids: number[], action: Action, target: Target): Promise<Applied>;
   /** Every unread message in the list marked read, loaded or not. */
@@ -534,7 +536,9 @@ export interface Api {
   discardWaiting(id: number): Promise<boolean>;
   /** The system says the network is back: reconnect now instead of after the retry wait. */
   networkBack(): void;
-  onChange(f: () => void): void;
+  /** The store changed. `threads` names the conversations sync wrote (`accountId:threadId`), to patch those rows;
+   * null means read the list again whole (a deletion, a big batch, or a change made from the window). */
+  onChange(f: (threads: string[] | null) => void): void;
   /** Mutes (or unmutes) the conversations of these messages: later replies skip the inbox. */
   mute(ids: number[], mute: boolean): Promise<void>;
   muted(id: number): Promise<boolean>;
@@ -635,6 +639,7 @@ const tauri: Api = {
   clearReceivedCache: () => invoke("clear_received_cache"),
   list: (target, before, limit) => invoke("list_messages", { target, before, limit }),
   listThreads: (target, before, limit) => invoke("list_threads", { target, before, limit }),
+  threadsIn: (target, keys) => invoke("threads_in", { target, keys }),
   applyConversations: (ids, action, target) => invoke("apply_conversations", { ids, action, target }),
   markAllRead: (target) => invoke("mark_all_read", { target }),
   labelConversations: (ids, label, add) => invoke("label_conversations", { ids, label, add }),
@@ -758,7 +763,7 @@ const tauri: Api = {
   defaultMailApp: () => invoke("default_mail_app"),
   makeDefaultMailApp: () => invoke("make_default_mail_app"),
   replyInit: (id, kind) => invoke("reply_init", { id, kind }),
-  onChange: (f) => void listen("mail-changed", f),
+  onChange: (f) => void listen<{ threads: string[] | null } | null>("mail-changed", (e) => f(e.payload?.threads ?? null)),
   syncStates: () => invoke("sync_states"),
   syncProgress: () => invoke("sync_progress"),
   mute: (ids, mute) => invoke("mute", { ids, mute }),
@@ -1132,6 +1137,10 @@ function fake(): Api {
       const t = messages.find((m) => m.id === id)?.threadId;
       return messages.filter((m) => m.threadId === t).sort((a, b) => a.date - b.date);
     },
+    async threadsIn(target: Target, keys: string[]) {
+      const all: ThreadRow[] = await this.listThreads(target, null, 100_000);
+      return all.filter((r) => keys.includes(`${r.accountId}:${r.threadId}`));
+    },
     listThreads: async (target, before, limit) => {
       const newer = (m: ThreadMessage) => !!before && (m.date > before.date || (m.date === before.date && m.id >= before.id));
       const shown = new Set(messages.filter((m) => inTarget(m, target) && newer(m)).map((m) => m.threadId));
@@ -1386,7 +1395,7 @@ function fake(): Api {
       return true;
     },
     networkBack: () => {},
-    onChange: (f) => void listeners.push(f),
+    onChange: (f) => void listeners.push(() => f(null)),
     // Open the page with #offline to see how a lost connection looks.
     // #offline, #paused and #backfill show those states; #backfill also a download in progress.
     syncStates: async () => ({
