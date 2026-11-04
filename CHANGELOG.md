@@ -7,6 +7,12 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-04
+
+Your inbox, your rules: New people, blocking and one-click unsubscribe, the companion beside every conversation, the
+brief under its subject, and Todoist. 1.9.0 and 2.0.0-1 were tested but never published, so their changes are here
+too.
+
 ### Added
 
 - The companion's person card: how much they write, month by month, how fast you answer, and Important, Other or
@@ -24,16 +30,6 @@ every release needs one here before it is tagged.
 - The brief under a conversation's subject: what came since you last read it, then what was asked of you, the day
   and the place, each with a button (Answer, Snooze till then, Add task, Map). With AI on, Explain it adds a sentence
   on top.
-
-### Changed
-
-- The "Since you last read" bar and the AI summary's chips are now one brief.
-- Clicking a file in the companion opens it in Tern's viewer, as in the conversation.
-
-## [2.0.0-1] - 2026-11-03
-
-### Added
-
 - One-click unsubscribe: `Ctrl+U` (or the Unsubscribe button) on a list that offers it (RFC 8058) unsubscribes
   without a browser, after the usual five seconds to undo, and the conversation goes to Done. Lists without it
   open their page or start their mail, as before.
@@ -50,10 +46,10 @@ every release needs one here before it is tagged.
   their mail), and under their name are Write to, Copy address and where their mail goes.
 - Hold Ctrl to see each account's number in the sidebar (`Ctrl+1`…`Ctrl+9` opens its inbox).
 
-## [1.9.0] - 2026-11-02
-
 ### Changed
 
+- The "Since you last read" bar and the AI summary's chips are now one brief.
+- Clicking a file in the companion opens it in Tern's viewer, as in the conversation.
 - Writing help in compose is a sidebar now, not a chat. `Ctrl+J`, the AI key or Space in an empty draft opens it
   beside the text; for a reply it takes the companion's place. It holds everything the old panel did: a Brief you
   edit and write from again (Write it out, Write a reply, Write out these points), tries to step through, Shorter,
@@ -77,6 +73,9 @@ every release needs one here before it is tagged.
   and people at the top, gives the text the window's height, and shows an outline of your paragraphs on the left:
   click one to go there, drag to reorder, or Alt+Up/Down to move the one you're in. If your question sits below
   the first part, it says so once and can move it up. Ctrl+Shift+O hides or shows the outline.
+
+### Fixed
+
 - Enter in the Subject field, or in an empty To field, sent the mail. Only Send and Ctrl+Enter send now.
 - A reply left open under a conversation showed up a second time above it, as a draft message, once it was saved.
   It shows only in the reply box now, and comes back as "Draft · R to continue" when you close the reply.
