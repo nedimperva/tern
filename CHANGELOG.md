@@ -7,6 +7,20 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- The companion's person card: how much they write, month by month, how fast you answer, and Important, Other or
+  Blocked in one control. Fold it to one row with Shift+I; it stays folded until you open it again.
+- Someone waiting in New people gets a card that helps decide: how long they've written, whether you know anyone at
+  their domain, whether it came through a list. Let them in, send them to Other or block them from there.
+- A note on a person, kept only on this computer and shown on every conversation with them.
+- Files with a person: switch from this conversation's files to every file you exchanged, by kind and month.
+- A newsletter's card says how many issues you open, and can archive the unopened ones or unsubscribe.
+
+### Changed
+
+- Clicking a file in the companion opens it in Tern's viewer, as in the conversation.
+
 ## [2.0.0-1] - 2026-11-03
 
 ### Added

@@ -104,6 +104,7 @@ export const bindings = (): Binding[] => [
   { keys: "B", name: "Reading view or the original look", context: "conversation", run: switchReading },
   { keys: "Ctrl+u", name: "Unsubscribe from this list", context: "conversation", run: () => void unsubscribe() },
   { keys: "i", name: "The companion: the person, what's in the mail, promises and files", context: "conversation", run: toggleCompanion },
+  { keys: "I", name: "Fold or open the person card in the companion", context: "conversation", run: () => setSetting("companionFolded", !settings.companionFolded) },
   { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1), repeat: true },
   { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },
   { keys: "f", name: "Forward", context: "conversation", run: () => respond(messages[messageFocus()], "forward") },

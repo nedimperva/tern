@@ -32,6 +32,8 @@ export type Settings = {
   notifyOther: boolean;
   /** The companion column is open beside a conversation (`Ctrl+.`, `i`). */
   companion: boolean;
+  /** The companion's person card folded to one row (`Shift+I`), for every conversation. */
+  companionFolded: boolean;
   /** Promises ticked off in the companion, by key (`src/promises.ts`). */
   promisesDone: string[];
   /** A soft wing beat when mail leaves the outbox. */
@@ -121,6 +123,7 @@ export const DEFAULTS: Settings = {
   notify: true,
   wingBeat: false,
   companion: false,
+  companionFolded: false,
   promisesDone: [],
   notifyOther: false,
   quietFrom: "",

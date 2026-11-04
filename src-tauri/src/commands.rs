@@ -670,6 +670,28 @@ pub async fn contact_card(state: State<'_, AppState>, email: String) -> Reply<Co
     state.store.contact_card(&email, 5).map_err(text)
 }
 
+/// The companion's facts about a person: mail by month, who you know at their domain, your note on them.
+#[tauri::command]
+pub async fn person(
+    state: State<'_, AppState>,
+    account_id: i64,
+    email: String,
+) -> Reply<tern_core::PersonFacts> {
+    state.store.person(account_id, &email).map_err(text)
+}
+
+/// Keeps the person's own note on someone; an empty one is none.
+#[tauri::command]
+pub async fn set_person_note(state: State<'_, AppState>, email: String, body: String) -> Reply<()> {
+    state.store.set_person_note(&email, &body).map_err(text)
+}
+
+/// The files exchanged with a person, from every conversation, newest first.
+#[tauri::command]
+pub async fn person_files(state: State<'_, AppState>, email: String) -> Reply<Vec<tern_core::PersonFile>> {
+    state.store.person_files(&email, 60).map_err(text)
+}
+
 /// Where a received message's downloaded files are kept: per account, under a name only that message gets.
 fn received_dir(app: &AppHandle, account_id: i64, at: &tern_core::ForwardOf) -> Reply<std::path::PathBuf> {
     Ok(crate::cache::received(app)?.join(format!("a{account_id}")).join(at.cache_key(account_id)))

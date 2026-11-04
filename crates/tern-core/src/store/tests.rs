@@ -1573,6 +1573,65 @@ fn a_contact_card_holds_their_latest_conversations_once_each() {
 }
 
 #[test]
+fn a_person_has_months_a_note_and_the_files_both_ways() {
+    let (store, account, inbox, archive) = setup();
+    let me = "me@example.com";
+    let day = 86_400;
+    let t = now();
+    let file = |name: &str| Part {
+        section: "2".into(),
+        mime: "application/pdf".into(),
+        encoding: "base64".into(),
+        charset: None,
+        size: 1000,
+        name: Some(name.into()),
+        attachment: true,
+    };
+    let with =
+        |m: NewMessage, name: &str| NewMessage { has_attachments: true, parts: Some(vec![file(name)]), ..m };
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[
+                with(mail(1, "Contract", t - day, "Anna@x.com", me), "contract.pdf"),
+                mail(2, "Old", t - 100 * day, "anna@x.com", me),
+                mail(3, "Hi", t - 2 * day, "bob@x.com", me),
+            ],
+        )
+        .unwrap();
+    store
+        .insert_messages(
+            account,
+            archive,
+            &[with(mail(4, "Terms", t - 3 * day, me, "anna@x.com"), "terms.pdf")],
+        )
+        .unwrap();
+    store.queue_send(account, Draft { to: vec!["carl@x.com".into()], ..draft_to("hi") }, 5).unwrap();
+
+    let anna = store.person(account, "ANNA@x.com").unwrap();
+    assert_eq!(anna.months.len(), 12);
+    assert_eq!(anna.months[11], 1, "this month's mail is last");
+    assert_eq!(anna.months.iter().sum::<i64>(), 2);
+    assert_eq!(anna.since, t - 100 * day);
+    assert_eq!(anna.conversations, 2);
+    assert_eq!(anna.known_at_domain.as_deref(), Some("carl@x.com"), "someone you wrote to at x.com");
+    assert_eq!(anna.unopened.len(), 2, "her unread conversations in the inbox");
+    assert!(!anna.list);
+    assert_eq!(anna.note, "");
+
+    store.set_person_note("anna@x.com", "Prefers a call").unwrap();
+    assert_eq!(store.person(account, "Anna@X.com").unwrap().note, "Prefers a call");
+    store.set_person_note("anna@x.com", "  ").unwrap();
+    assert_eq!(store.person(account, "anna@x.com").unwrap().note, "", "an empty note is none");
+
+    let files = store.person_files("anna@x.com", 10).unwrap();
+    let names: Vec<_> = files.iter().map(|f| (f.name.as_str(), f.mine)).collect();
+    assert_eq!(names, [("contract.pdf", false), ("terms.pdf", true)], "newest first, hers and yours");
+    assert!(store.person_files("bob@x.com", 10).unwrap().is_empty());
+}
+
+#[test]
 fn settings_keep_their_json() {
     let store = Store::open_in_memory().unwrap();
     store.set_setting("theme", &serde_json::json!("dark")).unwrap();
@@ -1730,6 +1789,7 @@ fn renumbering_keeps_messages_queued_work_is_about_to_change() {
 fn wind_back(conn: &Connection, version: i64) {
     for from in (version..SCHEMA_VERSION).rev() {
         let undo = match from {
+            32 => "DROP TABLE person_notes; DROP INDEX messages_from;",
             31 => {
                 "CREATE TABLE sender_splits (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                              addr TEXT NOT NULL, other INTEGER NOT NULL,

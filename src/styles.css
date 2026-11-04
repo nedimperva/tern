@@ -6310,16 +6310,11 @@ button.link.danger {
   background: var(--bg-1);
   font-size: var(--t-md);
 }
-.companion > header {
+.companion .nobody {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: var(--s-3);
-  padding: var(--s-4) var(--s-3) var(--s-3) var(--s-4);
-  flex: none;
-}
-.companion > header .icon-button {
-  align-self: flex-start;
 }
 .companion .avatar {
   width: 40px;
@@ -6349,6 +6344,9 @@ button.link.danger {
 .companion .who span {
   font-size: var(--t-sm);
   color: var(--fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .companion-body {
   flex: 1;
@@ -6357,7 +6355,385 @@ button.link.danger {
   display: flex;
   flex-direction: column;
   gap: var(--s-5);
-  padding: var(--s-1) var(--s-4) var(--s-4);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+}
+/* The person (ui.md §4.2b): a card on --bg-0, open or folded to one row. Someone waiting has an amber edge. */
+.companion .person {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-0);
+}
+.companion .person.waiting {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--line));
+}
+.companion .person-top,
+.companion .person.folded {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.companion .person.folded {
+  flex-direction: row;
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-3);
+}
+.companion .person.folded .avatar {
+  width: 28px;
+  height: 28px;
+  font-size: var(--t-xs);
+}
+.companion .person .who strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.companion .person .tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.companion .person .tag.new {
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+}
+.companion .person .fold {
+  background: var(--bg-1);
+}
+/* Where their mail goes, in front of the folded row's counts. */
+.companion .person .who .state {
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+.companion .person .state.other {
+  background: var(--bg-2);
+  color: var(--fg-1);
+}
+.companion .person .state.blocked {
+  background: var(--bg-2);
+  color: var(--danger);
+}
+.companion .tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+.companion .tiles > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+.companion .tiles strong {
+  font-size: var(--t-lg);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.companion .tiles span,
+.companion .months .quiet {
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.companion .months {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.companion .months .bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 24px;
+}
+.companion .months .bars span {
+  flex: 1;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+.companion .months .bars span.now {
+  background: var(--accent);
+}
+.companion .months .quiet {
+  display: flex;
+  justify-content: space-between;
+}
+.companion .opened {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+}
+.companion .opened > div {
+  display: flex;
+  justify-content: space-between;
+  color: var(--fg-1);
+}
+.companion .opened meter {
+  width: 100%;
+  height: 8px;
+}
+/* Important, Other, Blocked: one control with the choice raised. */
+.companion .states {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 3px;
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+.companion .states button,
+.companion .which button {
+  padding: 5px 0;
+  border: none;
+  border-radius: calc(var(--r-md) - 2px);
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.companion .states button[aria-pressed="true"],
+.companion .which button[aria-pressed="true"] {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-weight: 600;
+  box-shadow: var(--raise);
+}
+.companion .person-do button.primary {
+  flex: 1;
+}
+.companion .person-do button.primary,
+.companion .decide button.primary {
+  justify-content: center;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+.companion .person-do button.primary:hover,
+.companion .decide button.primary:hover {
+  filter: brightness(1.1);
+  background: var(--accent);
+}
+/* In the card's column, a 100% basis would be the card's height. */
+.companion .person .person-do {
+  flex: none;
+}
+.companion .person-do button {
+  height: 32px;
+}
+/* What helps decide about someone waiting: a dot each, green for what speaks for them, amber for what doesn't. */
+.companion .signs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.companion .signs li {
+  display: flex;
+  gap: var(--s-2);
+}
+.companion .signs li::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.companion .signs li.warn::before {
+  background: var(--warn);
+}
+.companion .decide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.companion .decide > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+.companion .decide button {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--fg-0);
+}
+.companion .decide button:hover {
+  background: var(--bg-2);
+}
+.companion .decide button.danger,
+.companion .tidy.danger .name {
+  color: var(--danger);
+}
+.companion .more-waiting {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) 0 0;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  text-align: left;
+}
+.companion .more-waiting span:first-of-type {
+  flex: 1;
+}
+.companion .more-waiting .go {
+  color: var(--accent);
+}
+/* Your note: a yellow card, kept only on this computer. */
+.companion .note {
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid color-mix(in srgb, var(--star) 45%, var(--line));
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--star) 10%, var(--bg-0));
+}
+.companion .note label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--warn-fg);
+}
+.companion .note label .quiet {
+  margin-left: auto;
+  font-weight: 400;
+}
+.companion .note textarea {
+  min-height: 3lh;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg-0);
+  font: inherit;
+  line-height: 1.45;
+  resize: vertical;
+  user-select: text;
+}
+.companion .note textarea:focus {
+  outline: none;
+}
+.companion .note:focus-within {
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+.companion .note-add {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 36px;
+  padding: 0 var(--s-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.companion .note-add:hover {
+  background: var(--bg-2);
+}
+.companion .tidy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: var(--s-2) var(--s-3);
+  border: none;
+  background: none;
+  text-align: left;
+}
+.companion .tidy:hover {
+  background: var(--bg-2);
+}
+.companion .tidy .name {
+  font-weight: 600;
+  color: var(--fg-0);
+}
+/* Files: this conversation's, or every file with the person, by kind and month. */
+.companion fieldset {
+  min-width: 0;
+  margin: 0;
+  border: none;
+}
+.companion .files-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.companion .files-head .count {
+  margin-left: auto;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.companion .which {
+  display: flex;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.companion .which button {
+  padding: 2px var(--s-2);
+  font-size: var(--t-xs);
+}
+.companion .kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+.companion .kinds button {
+  padding: 2px var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.companion .kinds button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.companion .month {
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-xs);
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.companion .more-files {
+  align-self: flex-start;
+  font-size: var(--t-sm);
 }
 .companion section {
   display: flex;
@@ -6465,14 +6841,6 @@ button.link.danger {
 }
 .companion .person-do button:hover {
   background: var(--bg-2);
-}
-.companion .person-do select {
-  margin-left: auto;
-  padding: 2px var(--s-2);
-  border-color: transparent;
-  background: var(--bg-2);
-  font-size: var(--t-sm);
-  color: var(--fg-1);
 }
 /* Recent with them: each row opens its conversation; the last finds all their mail. */
 .companion .recent {

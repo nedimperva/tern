@@ -170,6 +170,40 @@ export type SenderVolume = {
 /** Someone to write to, from the mail on this computer. */
 export type Contact = { email: string; name: string };
 export type ContactCard = { email: string; name: string; sent: number; received: number; recent: MessageRow[] };
+/** The companion's facts about a person, from this computer. */
+export type PersonFacts = {
+  email: string;
+  /** Messages from them in each of the last 12 months, oldest first. */
+  months: number[];
+  /** Their first message here (Unix seconds); 0 when none is. */
+  since: number;
+  conversations: number;
+  /** Someone else at their domain you've written to. */
+  knownAtDomain: string | null;
+  /** Their newest message came through a mailing list. */
+  list: boolean;
+  /** Of their latest messages (up to 10), how many there are and how many were opened. */
+  latest: number;
+  opened: number;
+  /** One message of each of their unread conversations in an inbox. */
+  unopened: number[];
+  /** Your note on them, kept only here. */
+  note: string;
+};
+/** A file exchanged with a person, from any conversation. */
+export type PersonFile = {
+  messageId: number;
+  accountId: number;
+  threadId: string;
+  subject: string;
+  date: number;
+  /** You sent it to them. */
+  mine: boolean;
+  index: number;
+  name: string;
+  mime: string;
+  size: number;
+};
 export type ThreadMessage = MessageRow & {
   messageId: string | null;
   toAddrs: string;
@@ -369,6 +403,12 @@ export interface Api {
   contacts(query: string): Promise<{ email: string; name: string }[]>;
   /** A person's card: counts, and your latest conversations with them. */
   contactCard(email: string): Promise<ContactCard>;
+  /** The companion's facts about a person, as mail to that account sees them. */
+  person(accountId: number, email: string): Promise<PersonFacts>;
+  /** Keeps your note on someone; an empty one is none. */
+  setPersonNote(email: string, body: string): Promise<void>;
+  /** The files exchanged with a person, every conversation, newest first. */
+  personFiles(email: string): Promise<PersonFile[]>;
   /** The system file picker; paths chosen (none if cancelled). */
   pickFiles(): Promise<string[]>;
   /** Copies files into Tern's attachment folder, for a draft. */
@@ -617,6 +657,9 @@ const tauri: Api = {
   saveAttachment: (id, index) => invoke("save_attachment", { id, index }),
   contacts: (query) => invoke("contacts", { query }),
   contactCard: (email) => invoke("contact_card", { email }),
+  person: (accountId, email) => invoke("person", { accountId, email }),
+  setPersonNote: (email, body) => invoke("set_person_note", { email, body }),
+  personFiles: (email) => invoke("person_files", { email }),
   onFilesDropped: (f, hover) => {
     const stops: (() => void)[] = [];
     let stopped = false;
@@ -889,6 +932,7 @@ function fake(): Api {
     };
   });
   const listeners: (() => void)[] = [];
+  const personNotes = new Map<string, string>();
   const stateListeners: ((accountId: number, state: SyncState) => void)[] = [];
   let waiting: OutboxWaiting[] =
     location.hash === "#offline"
@@ -1192,6 +1236,41 @@ function fake(): Api {
       const theirs = messages.filter((m) => m.fromAddr.toLowerCase() === e).sort((a, b) => b.date - a.date);
       const recent = theirs.filter((m, i) => theirs.findIndex((o) => o.threadId === m.threadId) === i).slice(0, 5);
       return { email, name: theirs[0]?.fromName ?? "", sent: 3, received: theirs.length, recent };
+    },
+    person: async (accountId, email) => {
+      const e = email.toLowerCase();
+      const theirs = messages.filter((m) => m.fromAddr.toLowerCase() === e).sort((a, b) => b.date - a.date);
+      const months = Array.from({ length: 12 }, (_, i) => theirs.filter((m) => Math.floor((now - m.date) / 2_629_800) === 11 - i).length);
+      const domain = e.split("@")[1] ?? "";
+      const known = messages.find((m) => m.fromAddr.toLowerCase() !== e && m.fromAddr.toLowerCase().endsWith(`@${domain}`));
+      const latest = theirs.slice(0, 10);
+      return {
+        email: e,
+        // The fake's mail is a few days old: spread it over the year so the bars have a shape.
+        months: months.map((n, i) => (i === 11 ? n : ((e.length + i * 7) % 9) * 2)),
+        since: theirs[theirs.length - 1]?.date ?? 0,
+        conversations: new Set(theirs.map((m) => m.threadId)).size,
+        knownAtDomain: known?.fromName ?? null,
+        list: Boolean(theirs[0]?.listUnsubscribe),
+        latest: latest.length,
+        opened: latest.filter((m) => m.seen).length,
+        unopened: [...new Map(theirs.filter((m) => !m.seen && m.accountId === accountId && m.folderId === 1).map((m) => [m.threadId, m.id])).values()],
+        note: personNotes.get(e) ?? "",
+      };
+    },
+    setPersonNote: async (email, body) => {
+      if (body.trim()) personNotes.set(email.toLowerCase(), body);
+      else personNotes.delete(email.toLowerCase());
+    },
+    personFiles: async (email) => {
+      const e = email.toLowerCase();
+      return messages
+        .filter((m) => m.fromAddr.toLowerCase() === e && m.attachments.length)
+        .sort((a, b) => b.date - a.date)
+        .flatMap((m) =>
+          m.attachments.map((a, index) => ({ messageId: m.id, accountId: m.accountId, threadId: m.threadId, subject: m.subject, date: m.date, mine: false, index, ...a })),
+        )
+        .slice(0, 60);
     },
     problemToDraft: async (id) => {
       problems = problems.filter((p) => p.id !== id);

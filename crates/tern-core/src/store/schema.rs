@@ -341,6 +341,13 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
                  ALTER TABLE messages ADD COLUMN screen INTEGER NOT NULL DEFAULT 0;
                  CREATE INDEX messages_screen ON messages (folder_id) WHERE screen = 1;"
             }
+            // The companion's person (package 17): the person's own note on someone, kept only here, and an index
+            // by sender, so their monthly counts and files don't walk all mail.
+            32 => {
+                "CREATE TABLE person_notes (email TEXT PRIMARY KEY COLLATE NOCASE, body TEXT NOT NULL,
+                                            updated INTEGER NOT NULL);
+                 CREATE INDEX messages_from ON messages (from_addr COLLATE NOCASE, date);"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),

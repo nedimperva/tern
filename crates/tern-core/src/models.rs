@@ -469,6 +469,49 @@ pub struct ContactCard {
     pub recent: Vec<MessageRow>,
 }
 
+/// The companion's facts about a person, beyond the card: all from this computer.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonFacts {
+    /// Lowercase.
+    pub email: String,
+    /// Messages from them in each of the last 12 months, oldest first.
+    pub months: Vec<i64>,
+    /// Their first message here (Unix seconds); 0 when none is.
+    pub since: i64,
+    /// Conversations they wrote in.
+    pub conversations: i64,
+    /// Someone else at their domain the person has written to (a name, else the address).
+    pub known_at_domain: Option<String>,
+    /// Their newest message came through a mailing list.
+    pub list: bool,
+    /// Of their latest messages (up to 10), how many there are and how many were opened.
+    pub latest: i64,
+    pub opened: i64,
+    /// One message of each of their unread conversations still in an inbox.
+    pub unopened: Vec<i64>,
+    /// The person's own note on them, kept only here.
+    pub note: String,
+}
+
+/// A file exchanged with a person, from any conversation.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonFile {
+    pub message_id: i64,
+    pub account_id: i64,
+    pub thread_id: String,
+    pub subject: String,
+    pub date: i64,
+    /// The account sent it to them.
+    pub mine: bool,
+    /// Its place in the message's attachments, which is how it is opened.
+    pub index: usize,
+    pub name: String,
+    pub mime: String,
+    pub size: u32,
+}
+
 /// A file attached to a draft, as Tern keeps it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

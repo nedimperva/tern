@@ -448,8 +448,23 @@ Built 2026-10-29 from the design board "Tern design ideas" (owner's pick); one c
 conversation with `--shadow`), open until closed (`companion` setting). It opens and closes with `Ctrl+.`, `i` or
 the header's panel icon; a Note from the selection bar opens it with the note's field focused.
 
-- **Header**: the newest sender who isn't you, as a 40 px avatar, their name, and one line from `contact_card` and
-  this conversation: "12 from them · 9 from you · you answer in ~3 h". Then ×.
+- **The person card** (2026-11-04, canvas "Tern sidebar directions", the combined row): the newest sender who isn't
+  you, on a `--bg-0` card at the top of the column (`Store::person`, from this computer).
+  - Open: avatar, name and address, a fold chevron and ×; three tiles on `--bg-1` (from them, from you, how fast you
+    answer here, else their first mail); twelve month bars, this month in `--accent`; Important / Other / Blocked as
+    one control with the choice raised; "Write to {name}" (`--accent`) and Copy address.
+  - Folded (`Shift+I` or the chevron, the `companionFolded` setting, for every conversation): one row, the avatar,
+    the name, where their mail goes as a small tag before the counts, write, the chevron and ×.
+  - Waiting in New people (never folded): an amber edge and a New tag, then what helps decide, a dot each (`--ok`
+    for what speaks for them, `--warn` for what doesn't): conversations since when and whether you answered,
+    someone at their domain you write to (not webmail), a list or not. Then "Let {name} in", To Other and Block,
+    each for all their mail; under a line, how many more wait and Next.
+  - A list (List-Id or List-Unsubscribe on their newest mail): a List tag, "You open 7 of the last 10" with a meter,
+    and the three-way control. No note and no files; "Tidy it" follows with "Archive the N unopened" (their unread
+    conversations in an inbox, one undo) and Unsubscribe when the mail offers it. Recent becomes "Earlier issues".
+- **Your note** (people, not lists): "Add a note on {name}" as a dashed row until there is one, then a yellow card
+  with "only on this computer"; saved as it is typed (`person_notes`, schema v33), shown on every conversation with
+  them.
 - **Details**: §4.2a–c, what the newest message holds, links, a newsletter's parts and the person's marks.
 - **You owe / Owed to you** (the only place asks are listed), each shown only when it has something: what you were
   asked (`findAsks`) and what you said you'd do ("I'll…"), and the reverse. A card with a row each: a tick
@@ -457,7 +472,9 @@ the header's panel icon; a Note from the selection bar opens it with the note's 
   sentence names one. From the words, on this computer (`src/promises.ts`).
 - **Files**: every attachment in the conversation, newest first, in a card: a tile with its kind (PDF on
   `--danger`, sheets on `--ok`, documents and pictures on `--accent-soft`), its name, who, when and its size; a click
-  opens it.
+  opens it in Tern's viewer. When the person has more, "Here · 4 / With {name} · 23" switches to every file
+  exchanged with them (`Store::person_files`): kind chips, month headings, the first eight then "Show all". A file
+  from another conversation reads that message, then opens the same way.
 - **Recent with {name}**: up to four other conversations with the person in a card, each row opening it (click,
   or Tab then Enter): an `--accent` unread dot, the subject (600 if unread), the date, and a line of the newest text;
   the hovered row on `--bg-2`. The last row, "All mail from {name} · 37 →" in `--accent`, searches `from:` them.
@@ -468,8 +485,6 @@ the header's panel icon; a Note from the selection bar opens it with the note's 
   scrolls to it: answers stream in, each `[n]` becomes a chip ("Ana · Tue") that shows that message, and under each
   a receipt: provider, messages and characters sent, "nothing kept". Chats stay per conversation while Tern runs.
   With AI off the foot says what Ask needs and links to Settings → AI; nothing is sent.
-- **Under the name**: Write to {name} and Copy address as small `--bg-0` buttons with a `--line` edge, and where
-  their mail goes (Important or Other, `setSplit` with the usual undo) as a drop-down on `--bg-2` at the right.
 - **Planned for 2.0** (package 17, owner's pick 2026-11-02: canvas "Tern 2.0 screens", direction A):
   - The drop-down gains Blocked (section C).
   - **Tasks**, after the details, with "Todoist" at the right of its heading, only once Todoist is connected: a

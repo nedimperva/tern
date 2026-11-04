@@ -16,13 +16,14 @@ mod accounts;
 mod drafts;
 mod marks;
 mod outbox;
+mod people;
 mod reading;
 mod schema;
 mod settings;
 mod syncing;
 mod writing;
 
-const SCHEMA_VERSION: i64 = 32;
+const SCHEMA_VERSION: i64 = 33;
 
 /// What a mark is kept by: the message's Message-ID, or its row for mail without one.
 const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
