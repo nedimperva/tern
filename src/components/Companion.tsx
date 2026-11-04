@@ -223,13 +223,13 @@ function PersonCard(props: {
   const foldButton = () => (
     <button
       type="button"
-      class="icon-button fold"
+      class="icon-button"
       onClick={fold}
       title={folded() ? "Open the card (Shift+I)" : "Fold the card (Shift+I)"}
       aria-label={folded() ? "Open the card" : "Fold the card"}
       aria-expanded={!folded()}
     >
-      <Icon name={folded() ? "chevron-down" : "chevron-up"} size={15} />
+      <Icon name={folded() ? "chevron-down" : "chevron-up"} size={16} />
     </button>
   );
   const states = () => (
@@ -258,7 +258,7 @@ function PersonCard(props: {
             <strong title={props.m.fromAddr}>{name()}</strong>
             <span>
               <Show when={props.sender}>{(s) => <span class={`state ${s().state}`}>{STATES.find((x) => x.state === s().state)?.name}</span>}</Show>
-              {props.card ? ` · ${props.card.received.toLocaleString()} from ${list() ? "the list" : props.first}` : ""}
+              {props.card?.received ? ` · ${props.card.received.toLocaleString()} from ${list() ? "the list" : props.first}` : ""}
             </span>
           </div>
           <div class="person-icons">

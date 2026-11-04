@@ -6396,8 +6396,8 @@ button.link.danger {
   gap: 2px;
 }
 .companion .person-icons .icon-button {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   color: var(--fg-1);
 }
 .companion .person .who strong {
