@@ -36,6 +36,12 @@ pub async fn set_account_name(state: State<'_, AppState>, id: i64, name: String)
     state.store.set_display_name(id, &name).map_err(text)
 }
 
+/// The account's short name for telling it from others. Only Tern shows it; the From line does not change.
+#[tauri::command]
+pub async fn set_account_label(state: State<'_, AppState>, id: i64, label: String) -> Reply<String> {
+    state.store.set_label(id, &label).map_err(text)
+}
+
 /// The account's other From addresses; returns what was kept (trimmed, each once). The worker reads them at
 /// its next pass, as it does the name.
 #[tauri::command]
@@ -176,6 +182,7 @@ pub async fn google_sign_in(
             smtp_port: preset.smtp_port,
             smtp_security: preset.smtp_security,
             auth: Auth::Google,
+            label: String::new(),
             aliases: Vec::new(),
         },
     };

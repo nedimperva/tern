@@ -371,6 +371,9 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
                                        folder TEXT NOT NULL, path TEXT NOT NULL, total INTEGER NOT NULL,
                                        done INTEGER NOT NULL DEFAULT 0);"
             }
+            // A short name the person gives an account to tell it from another with the same name ("Work"). It is
+            // not the name on mail (display_name), so changing it never changes what recipients see.
+            36 => "ALTER TABLE accounts ADD COLUMN label TEXT NOT NULL DEFAULT '';",
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),

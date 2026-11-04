@@ -92,6 +92,7 @@ fn account(smtp_port: u16, smtp_security: Security) -> AccountConfig {
         smtp_port,
         smtp_security,
         auth: Default::default(),
+        label: String::new(),
         aliases: Vec::new(),
     }
 }

@@ -195,8 +195,9 @@ export function Rail(props: {
               title={
                 <>
                   <AccountAvatar account={account} accounts={props.accounts} size={16} />
+                  {/* The label when there is one; the address stays in the tooltip, where two labels could look alike. */}
                   <span class="name" title={account.email}>
-                    {account.email}
+                    {account.label || account.email}
                   </span>
                   <Show when={SYNC_LABELS[props.syncStates[account.id]]}>
                     {(label) => <span class={`sync-state ${props.syncStates[account.id]}`}>{label()}</span>}

@@ -1536,6 +1536,7 @@ mod tests {
                 smtp_port: 1,
                 smtp_security: Security::Tls,
                 auth: Default::default(),
+                label: String::new(),
                 aliases: Vec::new(),
             })
             .unwrap();
@@ -1635,6 +1636,7 @@ mod tests {
                     smtp_port: 465,
                     smtp_security: Security::Tls,
                     auth: Default::default(),
+                    label: String::new(),
                     aliases: Vec::new(),
                 })
                 .unwrap();
@@ -1777,6 +1779,7 @@ mod tests {
                     smtp_port: 465,
                     smtp_security: Security::Tls,
                     auth: Default::default(),
+                    label: String::new(),
                     aliases: Vec::new(),
                 })
                 .unwrap();
@@ -1944,6 +1947,7 @@ mod tests {
                     smtp_port: 465,
                     smtp_security: Security::Tls,
                     auth: Default::default(),
+                    label: String::new(),
                     aliases: Vec::new(),
                 })
                 .unwrap();
@@ -2374,6 +2378,7 @@ mod tests {
                     smtp_port: 465,
                     smtp_security: Security::Tls,
                     auth: Default::default(),
+                    label: String::new(),
                     aliases: Vec::new(),
                 })
                 .unwrap();
@@ -2511,6 +2516,7 @@ mod tests {
             smtp_port: 1465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            label: String::new(),
             aliases: Vec::new(),
         };
         (config, crate::secrets::Login::Password(password))

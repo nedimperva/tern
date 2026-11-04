@@ -70,6 +70,8 @@ export type Security = "tls" | "starttls";
 export type AccountConfig = {
   email: string;
   displayName: string;
+  /** A short name to tell accounts apart ("Work"); empty shows the name, then the address. Not on the From line. */
+  label?: string;
   username: string;
   imapHost: string;
   imapPort: number;
@@ -379,6 +381,8 @@ export interface Api {
   accounts(): Promise<Account[]>;
   /** The name on mail sent from the account; empty sends the address alone. */
   setAccountName(id: number, name: string): Promise<void>;
+  /** Sets the account's label (see Account.label); returns what was kept. */
+  setAccountLabel(id: number, label: string): Promise<string>;
   /** Replaces the account's other From addresses; returns what was kept (trimmed, each once). */
   setAccountAliases(id: number, aliases: Alias[]): Promise<Alias[]>;
   folders(): Promise<Folder[]>;
@@ -667,6 +671,7 @@ function installClose() {
 const tauri: Api = {
   accounts: () => invoke("accounts"),
   setAccountName: (id, name) => invoke("set_account_name", { id, name }),
+  setAccountLabel: (id, label) => invoke("set_account_label", { id, label }),
   setAccountAliases: (id, aliases) => invoke("set_account_aliases", { id, aliases }),
   folders: () => invoke("folders"),
   preset: (email) => invoke("preset", { email }),
@@ -1131,6 +1136,7 @@ function fake(): Api {
     accounts: async () =>
       location.hash === "#two" ? [account, { ...account, id: 2, email: "ada@work.example", displayName: "Ada Work", username: "ada@work.example" }] : [account],
     setAccountName: async (_, name) => void (account.displayName = name.trim()),
+    setAccountLabel: async (_, label) => (account.label = label.trim().replace(/\s+/g, " ").slice(0, 40)),
     setAccountAliases: async (_, aliases) => {
       const seen = new Set([account.email.toLowerCase()]);
       account.aliases = aliases

@@ -13,6 +13,7 @@ fn config() -> AccountConfig {
         smtp_port: 465,
         smtp_security: Security::Tls,
         auth: Default::default(),
+        label: String::new(),
         aliases: Vec::new(),
     }
 }
@@ -201,6 +202,32 @@ fn an_account_can_be_renamed() {
     store.set_display_name(account, "  Ada L.  ").unwrap();
     assert_eq!(store.account(account).unwrap().unwrap().config.display_name, "Ada L.");
     assert!(store.account(account + 1).unwrap().is_none());
+}
+
+#[test]
+fn an_account_has_a_label_apart_from_its_name() {
+    let (store, account, ..) = setup();
+    assert_eq!(
+        store.account(account).unwrap().unwrap().config.label,
+        "",
+        "no label until the person gives one"
+    );
+    assert_eq!(
+        store.set_label(account, "  Work \n  mail  ").unwrap(),
+        "Work mail",
+        "one line, spaces tidied"
+    );
+    let found = store.account(account).unwrap().unwrap().config;
+    assert_eq!(found.label, "Work mail");
+    assert_eq!(found.display_name, "Me", "the name on mail is not touched");
+    let long = "x".repeat(80);
+    assert_eq!(
+        store.set_label(account, &long).unwrap().chars().count(),
+        40,
+        "kept short enough for the rail"
+    );
+    store.set_label(account, "  ").unwrap();
+    assert_eq!(store.account(account).unwrap().unwrap().config.label, "", "blank clears it");
 }
 
 #[test]
@@ -1950,6 +1977,7 @@ fn renumbering_keeps_messages_queued_work_is_about_to_change() {
 fn wind_back(conn: &Connection, version: i64) {
     for from in (version..SCHEMA_VERSION).rev() {
         let undo = match from {
+            36 => "ALTER TABLE accounts DROP COLUMN label;",
             35 => "DROP TABLE imports;",
             34 => "ALTER TABLE tasks DROP COLUMN done; ALTER TABLE tasks DROP COLUMN source;",
             33 => "DROP TABLE tasks;",

@@ -1274,6 +1274,7 @@ mod tests {
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            label: String::new(),
             aliases: Vec::new(),
         };
         let account = store.add_account(&config).unwrap().id;

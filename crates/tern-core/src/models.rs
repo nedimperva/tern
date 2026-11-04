@@ -13,6 +13,10 @@ pub struct AccountConfig {
     pub smtp_host: String,
     pub smtp_port: u16,
     pub smtp_security: Security,
+    /// A short name for telling accounts apart in Tern ("Work"). Empty shows the name, then the address. Not what
+    /// recipients see (that is `display_name`).
+    #[serde(default)]
+    pub label: String,
     /// How the account signs in. Older callers and stores without it mean a password.
     #[serde(default)]
     pub auth: Auth,
