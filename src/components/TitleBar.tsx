@@ -1,5 +1,6 @@
 import { createSignal, onCleanup, Show } from "solid-js";
 import { api } from "../api";
+import { setTitleSlot } from "../app/state";
 import { Icon } from "./Icon";
 
 /** Tern's own title bar (§3): the system draws none. The sidebar button on the left, the window's buttons on the
@@ -10,6 +11,8 @@ export function TitleBar(props: {
   sideTone: boolean;
   onSidebar: () => void;
   onCompose: () => void;
+  /** The list is what the window shows (not settings or the morning screen), so its tabs belong up here. */
+  list: boolean;
 }) {
   const [maximized, setMaximized] = createSignal(false);
   onCleanup(api.onMaximized(setMaximized));
@@ -38,6 +41,8 @@ export function TitleBar(props: {
           </button>
         </Show>
       </div>
+      {/* The list's tabs and search (ListPane portals them here); the fill after it still drags the window. */}
+      <div class="titlebar-slot" classList={{ hidden: !props.list }} ref={setTitleSlot} />
       <div class="titlebar-fill" />
       <div class="window-buttons">
         <button type="button" onClick={() => api.windowButton("minimize")} title="Minimize" aria-label="Minimize">

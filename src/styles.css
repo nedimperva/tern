@@ -205,7 +205,50 @@ button.primary kbd {
 .titlebar-fill {
   flex: 1;
 }
+/* The list's tabs and search, moved up from a row of their own (owner, 2026-11-04). With the list alone they take
+   the bar's width and their empty stretch still drags the window (the bar's drag region is deep); beside a
+   conversation they are the list column's width, and the fill after them drags. */
+.titlebar-slot,
+/* Solid's Portal puts its own div around what it moves. */
+.titlebar-slot > div {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+.titlebar-slot {
+  flex: none;
+}
+.titlebar-slot:has(.in-titlebar:not(.split)) {
+  flex: 1;
+}
+.titlebar-slot:has(.in-titlebar:not(.split)) + .titlebar-fill {
+  flex: 0 0 var(--s-2);
+}
+.titlebar-slot.hidden,
+.window:has(.app.full) .titlebar-slot {
+  display: none;
+}
+.list-header.in-titlebar {
+  flex: 1;
+  height: 100%;
+}
+.list-header.in-titlebar.split {
+  flex: none;
+  width: 340px;
+  border-right: 1px solid var(--line);
+}
+/* Without the docked sidebar the bar's own buttons sit over the start of the list column. */
+.window:not(.docked) .list-header.in-titlebar.split {
+  width: calc(340px - 78px);
+}
+.list-header.in-titlebar .splits button {
+  height: 100%;
+}
+.list-header.in-titlebar h2 {
+  font-size: var(--t-md);
+}
 /* A line under the bar, except over the docked sidebar. */
+.titlebar-slot,
 .titlebar-fill,
 .window-buttons,
 .titlebar:not(.side-tone) .titlebar-side {
@@ -344,27 +387,32 @@ button.primary kbd {
   width: 320px;
 }
 /* The narrow list beside a conversation: search is a "/" key after the tabs, and the whole header while typing. */
-.app.split .list-header {
+.app.split .list-header,
+.list-header.in-titlebar.split {
   position: relative;
 }
-.app.split .search {
+.app.split .search,
+.in-titlebar.split .search {
   flex: none;
   width: 30px;
   padding: var(--s-1) 0;
   text-align: center;
 }
-.app.split .search:focus {
+.app.split .search:focus,
+.in-titlebar.split .search:focus {
   text-align: left;
   padding: var(--s-1) 10px;
 }
-.app.split .search:focus {
+.app.split .search:focus,
+.in-titlebar.split .search:focus {
   position: absolute;
   left: var(--s-3);
   right: var(--s-3);
   width: auto;
   z-index: 1;
 }
-.app.split .list-header > .link {
+.app.split .list-header > .link,
+.in-titlebar.split > .link {
   display: none;
 }
 

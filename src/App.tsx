@@ -122,6 +122,7 @@ export default function App() {
           sideTone={docked() || settingsOpen() !== null}
           onSidebar={toggleSidebar}
           onCompose={newMessage}
+          list={settingsOpen() === null && !screen() && deck() === null}
         />
       </Show>
       <div class="window-body">
