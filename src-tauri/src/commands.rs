@@ -1203,6 +1203,58 @@ pub fn export_stop() {
     EXPORT_STOP.store(true, std::sync::atomic::Ordering::SeqCst);
 }
 
+/// An mbox import that was queued.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Imported {
+    pub token: i64,
+    pub folder: String,
+    pub total: usize,
+}
+
+/// Imports an mbox file into a new folder of this account, named after the file (package 17 I). Tern keeps its own
+/// copy, so moving or deleting the picked file later changes nothing, and the messages go up to the server with
+/// the usual undo window; they come back down like any other mail. None if the person cancelled.
+#[tauri::command]
+pub async fn import_mbox(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account: i64,
+) -> Reply<Option<Imported>> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog =
+        app.dialog().file().set_title("Import an mbox file").add_filter("mbox", &["mbox", "mbx"]);
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&window);
+    }
+    dialog.pick_file(move |picked| {
+        let _ = tx.send(picked);
+    });
+    let Some(picked) = rx.await.ok().flatten().and_then(|p| p.into_path().ok()) else { return Ok(None) };
+    let bytes = std::fs::read(&picked).map_err(|e| format!("{}: {e}", picked.display()))?;
+    let total = tern_core::mbox::split(&bytes).len();
+    if total == 0 {
+        return Err("There are no messages in that file".into());
+    }
+    // A hierarchy delimiter in the name would make a folder inside another one.
+    let stem = picked.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let folder = stem.replace(['/', '\\', '.'], " ").trim().to_string();
+    let folder = if folder.is_empty() { "Imported".to_string() } else { folder };
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dir = if cfg!(debug_assertions) { dir.join("dev") } else { dir }.join("imports");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let copy = dir.join(format!("{}.mbox", tern_core::store::now()));
+    std::fs::write(&copy, &bytes).map_err(|e| format!("{}: {e}", copy.display()))?;
+    let token = state
+        .store
+        .queue_import(account, &folder, &copy.display().to_string(), total, UNDO_SECONDS)
+        .map_err(text)?;
+    state.wake(account);
+    let _ = app.emit("mail-changed", ());
+    Ok(Some(Imported { token, folder, total }))
+}
+
 /// Most a settings file may hold: settings, snippets and signatures are text, far below this.
 const BACKUP_LIMIT: u64 = 5_000_000;
 

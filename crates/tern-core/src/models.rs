@@ -701,6 +701,13 @@ pub enum OutboxOp {
         todoist_id: String,
         done: bool,
     },
+    /// An mbox file's messages uploaded to a new folder. `import` is its row in `imports`, which holds the file and
+    /// how far it got; undo before it starts forgets both.
+    Import {
+        import: i64,
+        folder: String,
+        total: usize,
+    },
     /// A copy of a sent message for the Sent folder, exactly as it went out.
     Append {
         folder: String,

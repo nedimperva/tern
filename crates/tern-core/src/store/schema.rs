@@ -363,6 +363,14 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
                 "ALTER TABLE tasks ADD COLUMN done INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE tasks ADD COLUMN source TEXT;"
             }
+            // An mbox import (package 17 I): the copy of the file it reads from and how many of its messages are on
+            // the server already, so a retry after a break carries on rather than uploading twice.
+            35 => {
+                "CREATE TABLE imports (id INTEGER PRIMARY KEY,
+                                       account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                       folder TEXT NOT NULL, path TEXT NOT NULL, total INTEGER NOT NULL,
+                                       done INTEGER NOT NULL DEFAULT 0);"
+            }
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),

@@ -541,6 +541,17 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
         Ok(appended)
     }
 
+    /// Makes a folder on the server; one that is there already is fine (servers say so in different words, so the
+    /// listing is asked).
+    pub async fn create_folder(&mut self, name: &str) -> Result<()> {
+        if let Err(e) = self.conn.create(mailbox(name)?).await {
+            if !self.folders().await?.iter().any(|f| f.name == name) {
+                return Err(anyhow::Error::new(e).context(format!("Could not make the folder {name}")));
+            }
+        }
+        Ok(())
+    }
+
     /// Deletes these messages from the selected folder for good: `\Deleted`, then UID EXPUNGE of just them. Without
     /// UIDPLUS they stay marked deleted (a plain EXPUNGE would take other deleted mail with them).
     pub async fn delete(&mut self, uids: &str) -> Result<()> {

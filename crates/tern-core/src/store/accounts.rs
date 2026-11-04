@@ -152,7 +152,7 @@ impl Store {
             let mut stmt = tx.prepare("SELECT payload FROM outbox WHERE account_id = ?1")?;
             for payload in stmt.query_map([account_id], |r| r.get::<_, String>(0))? {
                 match serde_json::from_str::<OutboxOp>(&payload?)? {
-                    OutboxOp::Flags { folder, .. } => {
+                    OutboxOp::Flags { folder, .. } | OutboxOp::Import { folder, .. } => {
                         named.insert(folder);
                     }
                     // A sent copy goes to whichever folder is Sent when it goes out (see sync::run_op).
@@ -503,7 +503,8 @@ impl Store {
                 | OutboxOp::Append { .. }
                 | OutboxOp::Unsubscribe { .. }
                 | OutboxOp::Task { .. }
-                | OutboxOp::TaskDone { .. } => {}
+                | OutboxOp::TaskDone { .. }
+                | OutboxOp::Import { .. } => {}
             }
         }
         for id in &keep {

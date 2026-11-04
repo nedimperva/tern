@@ -4,7 +4,7 @@
 import { createSignal } from "solid-js";
 import { api } from "../api";
 import { title } from "./list";
-import { query, searching, target } from "./state";
+import { accounts, folders, query, searching, target } from "./state";
 import { showToast } from "./toast";
 
 /** An export that is running: how far it is, for the status strip. */
@@ -41,6 +41,22 @@ export async function exportList() {
   } finally {
     stop();
     setExporting(null);
+  }
+}
+
+/** Imports an mbox file into a new folder of the account on show (the first one in a unified view). The messages
+ * go up to the server after the undo window and come back down like any other mail. */
+export async function importMbox() {
+  const t = target();
+  const account = ("folder" in t ? folders().find((f) => f.id === t.folder)?.accountId : undefined) ?? accounts()[0]?.id;
+  if (account == null) return;
+  try {
+    const queued = await api.importMbox(account);
+    if (!queued) return;
+    const n = queued.total.toLocaleString();
+    showToast(`Importing ${n} ${queued.total === 1 ? "message" : "messages"} into ${queued.folder}`, [queued.token]);
+  } catch (e) {
+    showToast(String(e), []);
   }
 }
 

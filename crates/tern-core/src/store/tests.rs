@@ -1950,6 +1950,7 @@ fn renumbering_keeps_messages_queued_work_is_about_to_change() {
 fn wind_back(conn: &Connection, version: i64) {
     for from in (version..SCHEMA_VERSION).rev() {
         let undo = match from {
+            35 => "DROP TABLE imports;",
             34 => "ALTER TABLE tasks DROP COLUMN done; ALTER TABLE tasks DROP COLUMN source;",
             33 => "DROP TABLE tasks;",
             32 => "DROP TABLE person_notes; DROP INDEX messages_from;",
@@ -2633,4 +2634,16 @@ fn the_shelf_keeps_conversations_shelved_outside_the_inbox_or_dated_ahead() {
         NewMessage { in_reply_to: Some("2@example.com".into()), ..message(3, "Re: From the future", 5_000) };
     store.insert_messages(account, inbox, &[reply]).unwrap();
     assert_eq!(list(LATER), ["Old report"], "a reply after it still brings it back");
+}
+
+#[test]
+fn undoing_an_import_forgets_its_copy_of_the_file() {
+    let (store, account, _, _) = setup();
+    let path = std::env::temp_dir().join(format!("tern-undo-import-{}.mbox", std::process::id()));
+    std::fs::write(&path, "From a\nSubject: one\n\nfirst\n").unwrap();
+    let token = store.queue_import(account, "Old mail", &path.display().to_string(), 1, 60).unwrap();
+    assert!(store.import_state(1).unwrap().is_some());
+    assert!(store.undo(&[token]).unwrap());
+    assert_eq!(store.import_state(1).unwrap(), None);
+    assert!(!path.exists());
 }

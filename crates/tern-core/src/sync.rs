@@ -1247,6 +1247,18 @@ async fn run_op<S: Stream>(
             let (id, done) = (todoist_id.clone(), *done);
             tokio::task::spawn_blocking(move || crate::todoist::set_done(&token, &id, done)).await??;
         }
+        OutboxOp::Import { import, folder, .. } => {
+            let Some((path, mut done)) = store.import_state(*import)? else { return Ok(Vec::new()) };
+            let file = std::fs::read(&path).map_err(|e| Unworkable(format!("The mbox file is gone: {e}")))?;
+            within(s.create_folder(folder)).await?;
+            // Counted after each message, so a break part way carries on from the next one rather than twice.
+            for message in crate::mbox::split(&file).iter().skip(done) {
+                within_for(upload_limit(message.len()), s.append(folder, message, false)).await?;
+                done += 1;
+                store.import_done(*import, done)?;
+            }
+            store.import_finished(*import)?;
+        }
         OutboxOp::Append { folder, message, .. } => {
             // Sent may have changed since the copy was queued (a duplicate removed, a folder renamed).
             let sent = sent_folders(store, account.id)?;
@@ -2125,6 +2137,34 @@ mod tests {
             result.unwrap();
             assert_eq!(sent.len(), 2, "{sent:?}");
             assert!(queue_empty(&m));
+        }
+
+        #[tokio::test]
+        async fn an_import_carries_on_after_what_is_up_already() {
+            let m = mailbox();
+            let path = std::env::temp_dir().join(format!("tern-import-{}.mbox", std::process::id()));
+            std::fs::write(&path, "From a\nSubject: one\n\nfirst\n\nFrom b\nSubject: two\n\nsecond\n")
+                .unwrap();
+            let path = path.display().to_string();
+            m.store.queue_import(m.account.id, "Old mail", &path, 2, 0).unwrap();
+            // The first one went up before a break.
+            m.store.import_done(1, 1).unwrap();
+            let (result, sent) = drain(
+                &m,
+                vec![
+                    ("CREATE \"Old mail\"", "{tag} NO [ALREADYEXISTS] it is there\r\n"),
+                    ("LIST", "* LIST (\\HasNoChildren) \"/\" \"Old mail\"\r\n{tag} OK done\r\n"),
+                    ("APPEND \"Old mail\" (\\Seen) {", "+ go\r\n"),
+                    ("", "{tag} OK done\r\n"),
+                ],
+            )
+            .await;
+            result.unwrap();
+            assert!(queue_empty(&m), "{sent:?} {:?}", m.store.outbox_problems().unwrap());
+            // Only the second message, 24 bytes with CRLF line ends, goes up.
+            assert!(sent.iter().any(|l| l.ends_with("{24}")), "{sent:?}");
+            assert!(!std::path::Path::new(&path).exists(), "the copy goes once it is done");
+            assert_eq!(m.store.import_state(1).unwrap(), None);
         }
 
         #[tokio::test]

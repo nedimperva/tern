@@ -38,7 +38,7 @@ import { newMessage, reply, respond } from "./composing";
 import { escape, extend, go, isSaved, move, nextSplit, runSearch, toggleSaved, toggleSelected } from "./list";
 import { keyOf, withGroups } from "./rows";
 import { startTask, suggestTask, todoistOn } from "./tasks";
-import { exportable, exportList, exportName, saveEml } from "./files";
+import { exportable, exportList, exportName, importMbox, saveEml } from "./files";
 import {
   accounts,
   choose,
@@ -245,6 +245,7 @@ export const commands = (all: Binding[]): Command[] => [
     : []),
   ...blocking().map((b) => ({ ...b, group: "Actions" })),
   ...(exportable() ? [{ name: `Export ${exportName()} as mbox`, group: "Actions", run: () => void exportList() }] : []),
+  { name: "Import an mbox file…", group: "Actions", run: () => void importMbox() },
   {
     name: "Move to …",
     group: "Actions",

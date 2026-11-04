@@ -171,10 +171,16 @@ Direction A on the canvas (owner, 2026-11-02). Can go before G: it needs no Todo
   presses it instead of the conversation's Reply all (`src/keys.ts`).
 
 ### I. Your mail as files
-- [ ] Export a folder or a search as one mbox; bodies not yet downloaded are fetched first, with progress and Stop
-  (canvas board "Settings"). A conversation: `…` → Save as .eml.
-- [ ] Import an mbox into a new folder (see Decisions for where it goes), with progress.
-- [ ] Tests: mbox round trip (From-line escaping, attachments, non-UTF-8 headers).
+- [x] Export a folder or a search as one mbox; bodies not yet downloaded are fetched first, with progress and Stop
+  (canvas board "Settings"). A conversation: `…` → Save as .eml. Every source comes from the server
+  (`sync::sources`), as Tern keeps no whole copy of a message; the palette has "Export … as mbox".
+- [x] Import an mbox into a new folder (see Decisions for where it goes), with progress. Palette → "Import an mbox
+  file…": the folder is named after the file, Tern keeps its own copy (`imports`, schema v36), and the outbox
+  op `Import` makes the folder and appends one message at a time, noting how far it got so a retry carries on.
+  Progress is the strip's "changes waiting" entry ("Import 128 messages into Old mail"), not a count per
+  message yet.
+- [x] Tests: mbox round trip (From-line escaping, attachments, non-UTF-8 headers) in `mbox.rs`; the import's
+  resume and undo in `sync::tests::outbox` and the store tests.
 
 ### J. Small finishes
 - [x] The sidebar shows each account's `Ctrl` number while Ctrl is held (`src/components/Rail.tsx`).
@@ -205,7 +211,8 @@ Open, for the owner:
   AI may read. Proposed: its own.
 - **Todoist sign-in:** personal token or OAuth; settled by the gate in G.
 - **Import destination:** a local-only folder, or uploaded to the server (APPEND through the outbox in batches).
-  Proposed: uploaded, so other devices see it.
+  Proposed: uploaded, so other devices see it. Built that way (marked read, one APPEND per message); the owner can
+  still change it.
 
 ## Later (2.1 and after)
 

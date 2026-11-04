@@ -25,6 +25,8 @@ export type AiFact = { kind: "due" | "asked" | "decided"; text: string };
 export type AiAnswer = { text: string; messages: number[]; sentChars: number; route: { provider: AiProvider; model: string } };
 /** A line of a summary over many conversations, with the newest message of each it rests on. */
 export type AiPoint = { text: string; messages: number[] };
+/** An mbox import that was queued: its undo token, the folder it goes to, how many messages. */
+export type Imported = { token: number; folder: string; total: number };
 /** How an mbox export went. */
 export type Exported = { written: number; missing: number; stopped: boolean; path: string };
 /** What came in overnight, in a few lines, and what was sent to get it. */
@@ -416,6 +418,8 @@ export interface Api {
   /** A folder or a search's results as one mbox file; null if the person cancelled the save dialog. */
   exportMbox(folder: number | null, query: string | null, name: string): Promise<Exported | null>;
   exportStop(): Promise<void>;
+  /** An mbox file the person picks, uploaded into a new folder of this account; null if they cancelled. */
+  importMbox(account: number): Promise<Imported | null>;
   /** How far an export is; returns a function that stops listening. */
   onExportProgress(f: (p: { done: number; total: number }) => void): () => void;
   apply(ids: number[], action: Action): Promise<Applied>;
@@ -683,6 +687,7 @@ const tauri: Api = {
   searchServer: (query) => invoke("search_server", { query }),
   saveEml: (id) => invoke("save_eml", { id }),
   exportMbox: (folder, query, name) => invoke("export_mbox", { folder, query, name }),
+  importMbox: (account) => invoke("import_mbox", { account }),
   exportStop: () => invoke("export_stop"),
   onExportProgress: (f) => {
     let stop: (() => void) | null = null;
@@ -1246,6 +1251,7 @@ function fake(): Api {
       return { written: done, missing: 0, stopped: exportStopped, path: "C:\\Users\\you\\Documents\\Mail.mbox" };
     },
     exportStop: async () => void (exportStopped = true),
+    importMbox: async () => ({ token: 1, folder: "Old mail", total: 128 }),
     onExportProgress: (f) => {
       exportListeners.push(f);
       return () => exportListeners.splice(exportListeners.indexOf(f), 1);

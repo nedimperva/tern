@@ -25,7 +25,7 @@ mod settings;
 mod syncing;
 mod writing;
 
-const SCHEMA_VERSION: i64 = 35;
+const SCHEMA_VERSION: i64 = 36;
 
 /// What a mark is kept by: the message's Message-ID, or its row for mail without one.
 const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
@@ -740,8 +740,20 @@ fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
         OutboxOp::TaskDone { local, done, .. } => {
             conn.execute("UPDATE tasks SET done = ?2 WHERE id = ?1", params![local, !done])?;
         }
+        OutboxOp::Import { import, .. } => forget_import(conn, *import)?,
         OutboxOp::Send(_) | OutboxOp::Append { .. } | OutboxOp::Unsubscribe { .. } => {}
     }
+    Ok(())
+}
+
+/// Drops an import's row and Tern's copy of its file. The file may be gone already; that is fine.
+fn forget_import(conn: &Connection, import: i64) -> Result<()> {
+    let path: Option<String> =
+        conn.query_row("SELECT path FROM imports WHERE id = ?1", [import], |r| r.get(0)).optional()?;
+    if let Some(path) = path {
+        let _ = std::fs::remove_file(path);
+    }
+    conn.execute("DELETE FROM imports WHERE id = ?1", [import])?;
     Ok(())
 }
 
@@ -770,6 +782,7 @@ fn describe(op: &OutboxOp) -> String {
         OutboxOp::Task { task, .. } => format!("Add “{}” to Todoist", task.content),
         OutboxOp::TaskDone { done: true, .. } => "Tick off a Todoist task".to_string(),
         OutboxOp::TaskDone { done: false, .. } => "Open a Todoist task again".to_string(),
+        OutboxOp::Import { folder, total, .. } => format!("Import {} into {folder}", count(*total)),
         OutboxOp::Flags { flag, add, uids, .. } => {
             let verb = match (flag.as_str(), add) {
                 ("\\Seen", true) => "Mark read",

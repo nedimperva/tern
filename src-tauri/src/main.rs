@@ -316,6 +316,7 @@ fn main() {
             commands::save_eml,
             commands::export_mbox,
             commands::export_stop,
+            commands::import_mbox,
             commands::contacts,
             commands::contact_card,
             commands::person,

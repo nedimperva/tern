@@ -582,6 +582,51 @@ impl Store {
         Ok(out)
     }
 
+    /// Queues an mbox file's messages for a new folder on the server (package 17 I). `path` is Tern's own copy of the
+    /// file, removed once the import is done or undone.
+    pub fn queue_import(
+        &self,
+        account_id: i64,
+        folder: &str,
+        path: &str,
+        total: usize,
+        delay: i64,
+    ) -> Result<i64> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT INTO imports (account_id, folder, path, total) VALUES (?1, ?2, ?3, ?4)",
+            params![account_id, folder, path, total as i64],
+        )?;
+        let import = tx.last_insert_rowid();
+        let op = OutboxOp::Import { import, folder: folder.to_string(), total };
+        let token = enqueue(&tx, account_id, &op, delay)?;
+        tx.commit()?;
+        Ok(token)
+    }
+
+    /// An import's file and how many of its messages are on the server already; None once it is gone.
+    pub fn import_state(&self, import: i64) -> Result<Option<(String, usize)>> {
+        let found = self
+            .reader()
+            .query_row("SELECT path, done FROM imports WHERE id = ?1", [import], |r| {
+                Ok((r.get(0)?, r.get::<_, i64>(1)? as usize))
+            })
+            .optional()?;
+        Ok(found)
+    }
+
+    /// Notes that the first `done` messages of an import are on the server, so a retry starts after them.
+    pub fn import_done(&self, import: i64, done: usize) -> Result<()> {
+        self.conn().execute("UPDATE imports SET done = ?2 WHERE id = ?1", params![import, done as i64])?;
+        Ok(())
+    }
+
+    /// The import is over: its row and its copy of the file go.
+    pub fn import_finished(&self, import: i64) -> Result<()> {
+        forget_import(&self.conn(), import)
+    }
+
     pub fn thread(&self, id: i64) -> Result<Vec<ThreadMessage>> {
         let conn = self.reader();
         let mut stmt = conn.prepare_cached(&format!(
