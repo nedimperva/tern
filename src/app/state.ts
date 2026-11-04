@@ -115,6 +115,8 @@ export const [idle, setIdle] = createSignal(false);
 export const ownTitleBar = !navigator.userAgent.includes("Linux");
 /** Where the list's tabs and search go in Tern's own title bar (the list keeps them itself without one). */
 export const [titleSlot, setTitleSlot] = createSignal<HTMLElement | null>(null);
+/** Where an open conversation's subject and tools go in Tern's own title bar (canvas "Tern title bar ideas", 1). */
+export const [convSlot, setConvSlot] = createSignal<HTMLElement | null>(null);
 
 /** The sidebar sits beside the list now: turned on, room for it, and not in focus mode. */
 export const docked = () => settings.sidebar && width() >= SIDEBAR_WIDTH && !focusMode();

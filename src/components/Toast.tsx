@@ -1,9 +1,8 @@
 import { Show } from "solid-js";
-import { selection } from "../app/state";
 import { toast, undo } from "../app/toast";
 
-/** The latest change with its Undo, or how many conversations are selected, as a pill at the foot of the window. It
- * shows only while there is something to say. */
+/** The latest change with its Undo, as a pill at the foot of the window, only while it can be undone. (A selection
+ * says so in the title bar.) */
 export function Toast() {
   return (
     <div class="float-pills" role="status">
@@ -18,9 +17,6 @@ export function Toast() {
             </Show>
           </span>
         )}
-      </Show>
-      <Show when={!toast() && selection().size}>
-        <span class="pill">{selection().size} selected</span>
       </Show>
     </div>
   );

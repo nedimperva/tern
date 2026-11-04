@@ -35,7 +35,7 @@ import { taskRows } from "../app/tasks";
 import { Icon } from "./Icon";
 import { Original } from "./Original";
 import { PersonCard, type PersonActions } from "./PersonCard";
-import { detailsSlot, setUnsubscribed, showCompanion, unsubscribed } from "../app/state";
+import { convSlot, detailsSlot, ownTitleBar, setUnsubscribed, showCompanion, unsubscribed } from "../app/state";
 import { unsubscribe } from "../app/actions";
 import { Details } from "./Details";
 import { logoFor } from "../logos";
@@ -1083,15 +1083,35 @@ export function ConversationView(props: {
     </div>
   );
 
+  // With Tern's own title bar the subject and the tools sit up there, and the header here keeps the people and
+  // labels: the mail starts a row higher. The heading stays for screen readers and the compact bar's watch.
+  const inBar = () => (ownTitleBar ? convSlot() : null);
+
   return (
-    <div class="reading">
+    <div class="reading" classList={{ "head-in-bar": !!inBar() }}>
+      <Show when={inBar()}>
+        {(slot) => (
+          <Portal mount={slot()}>
+            <div class="conv-bar">
+              <strong class="conv-subject" title={subject()}>
+                {subject()}
+              </strong>
+              <span class="conv-meta">
+                {people()} · {props.messages.length === 1 ? "1 message" : `${props.messages.length} messages`}
+              </span>
+              <span class="spacer" />
+              {tools()}
+            </div>
+          </Portal>
+        )}
+      </Show>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: offers the mark bar after a selection made with the mouse */}
       <div
         class="conversation"
         classList={{ replying: props.replying }}
         onMouseUp={() => setTimeout(() => setPick(picked(document, null, { left: 0, top: 0 })))}
       >
-        <div class="compact" classList={{ shown: compact() }} aria-hidden={!compact()}>
+        <div class="compact" classList={{ shown: compact() && !inBar() }} aria-hidden={!compact() || !!inBar()}>
           <div class="bar">
             <span class="subject">{subject()}</span>
             <button class="primary" tabIndex={compact() ? 0 : -1} onClick={props.onDone}>
@@ -1110,7 +1130,7 @@ export function ConversationView(props: {
             <button class="soft" onClick={props.shelf.toggle} title={props.shelf.on ? "Off the shelf, back to the inbox (Shift+L)" : "Keep it on the Read later shelf (Shift+L); a reply brings it back"}>
               {props.shelf.on ? "Back to the inbox" : "Read later"} <kbd>Shift L</kbd>
             </button>
-            {tools()}
+            <Show when={!inBar()}>{tools()}</Show>
           </div>
         </Show>
         <header class="conversation-head" classList={{ reader: reader() }}>
@@ -1151,7 +1171,7 @@ export function ConversationView(props: {
               )}
             </Show>
           </div>
-          <Show when={!reader()}>{tools()}</Show>
+          <Show when={!reader() && !inBar()}>{tools()}</Show>
         </header>
         <Show when={last()}>
           <Brief

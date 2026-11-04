@@ -22,6 +22,11 @@ every release needs one here before it is tagged.
 
 ### Changed
 
+- The title bar does more (canvas "Tern title bar ideas", 1–4): an open conversation's subject and its tools sit in
+  it, so the mail starts a row higher; selected conversations turn it into their actions (Done, Snooze, Label,
+  Mark read, Other, Trash); search grows over the tabs, its filters show as chips, and a tap adds Unread, Starred,
+  With files, This week, Marked or Sent; and New people is a tab, with its count, only while someone waits. The
+  line above Important that said so is gone.
 - The strip under the list is gone, and its key hints with it. Sync is one button at the right of the title bar
   (at the end of the list's header on Linux): a dot when all is well, a word when something needs a look, and a
   click for each account, what waits, Sync now and Pause. Undo floats at the foot of the window.

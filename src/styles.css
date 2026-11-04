@@ -223,12 +223,152 @@ button.primary kbd {
 }
 /* Only while the tabs show: in settings, the morning screen or a full-window conversation they are hidden, and the
    fill takes the width again so the sync and window buttons stay at the right. */
-.window:not(:has(.app.full)) .titlebar-slot:not(.hidden):has(.in-titlebar:not(.split)) + .titlebar-fill {
+.window:not(:has(.app.full)) .titlebar-slot:not(.hidden):has(.in-titlebar:not(.split)) ~ .titlebar-fill {
   flex: 0 0 var(--s-2);
 }
 .titlebar-slot.hidden,
 .window:has(.app.full) .titlebar-slot {
   display: none;
+}
+/* An open conversation's subject and tools, after the list's column (canvas "Tern title bar ideas", 1). */
+.titlebar-conv {
+  display: flex;
+  min-width: 0;
+}
+.titlebar-conv:has(.conv-bar) {
+  flex: 1;
+}
+.titlebar-conv > div {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+.titlebar-conv:has(.conv-bar) + .titlebar-fill {
+  flex: 0 0 0;
+}
+.conv-bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0 var(--s-2) 0 var(--s-4);
+}
+.conv-subject {
+  flex: 0 1 auto;
+  min-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-md);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+/* Gives way to the subject first when the bar is narrow. */
+.conv-meta {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.conv-bar .spacer {
+  flex: 1;
+}
+.conv-bar .tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* The subject is up in the bar: the heading here stays for screen readers, out of sight. */
+.head-in-bar .conversation-head h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.head-in-bar .conversation-head {
+  padding-top: var(--s-4);
+}
+/* Conversations selected: the bar is their actions (canvas "Tern title bar ideas", 2). */
+.titlebar.selecting .titlebar-slot,
+.titlebar.selecting .titlebar-conv,
+.titlebar.selecting .titlebar-fill,
+.titlebar.selecting > .sync-box {
+  display: none;
+}
+.select-bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-2);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+.list-pane > .select-bar {
+  flex: none;
+  height: 44px;
+}
+.select-bar strong {
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+.select-bar .from {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+.select-bar .vsep {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 var(--s-1);
+  background: color-mix(in srgb, var(--accent-fg) 35%, transparent);
+}
+.select-bar .icon-button {
+  color: inherit;
+}
+.select-bar .icon-button:hover {
+  background: color-mix(in srgb, var(--accent-fg) 16%, transparent);
+  color: inherit;
+}
+.select-act {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--s-3);
+  border: 1px solid color-mix(in srgb, var(--accent-fg) 40%, transparent);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: inherit;
+  font-size: var(--t-sm);
+}
+.select-act:hover {
+  background: color-mix(in srgb, var(--accent-fg) 14%, transparent);
+}
+.select-act.main {
+  border-color: var(--accent-fg);
+  background: var(--accent-fg);
+  color: var(--accent);
+  font-weight: 600;
+}
+.select-act kbd {
+  margin: 0;
+  border-color: currentColor;
+  background: none;
+  color: inherit;
+  opacity: 0.7;
 }
 .list-header.in-titlebar {
   flex: 1;
@@ -385,38 +525,121 @@ button.primary kbd {
 :root[data-density="spacious"] .crow {
   font-size: calc(var(--t-md) + 2px);
 }
-.search {
-  width: 200px;
-  padding: var(--s-1) 10px;
+/* The search field: a box with the filters as chips and the words after them. It grows over the tabs while it has
+   the focus or holds a search (canvas "Tern title bar ideas", 3); beside a conversation it is a "/" until then. */
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 220px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-2);
   transition: width var(--d-base) var(--ease);
 }
-.search:focus {
-  width: 320px;
+.search-box:focus-within {
+  border-color: var(--accent);
 }
-/* The narrow list beside a conversation: search is a "/" key after the tabs, and the whole header while typing. */
+.search-box.open {
+  flex: 1;
+  width: auto;
+  max-width: 760px;
+}
+.search-box .search {
+  flex: 1;
+  min-width: 40px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.search-box .chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 6px 0 8px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.search-box .chip:hover {
+  filter: brightness(0.95);
+}
+.search-quick {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: min(460px, calc(100vw - 32px));
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-0);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  min-inline-size: 0;
+}
+.search-quick .kicker {
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.search-quick .quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.search-quick button {
+  height: 28px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.search-quick button:hover {
+  background: var(--bg-2);
+}
+.search-quick button.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
 .app.split .list-header,
 .list-header.in-titlebar.split {
   position: relative;
 }
-.app.split .search,
-.in-titlebar.split .search {
+.app.split .search-box:not(.open),
+.in-titlebar.split .search-box:not(.open) {
   flex: none;
   width: 30px;
-  padding: var(--s-1) 0;
-  text-align: center;
+  padding: 0;
+  justify-content: center;
 }
-.app.split .search:focus,
-.in-titlebar.split .search:focus {
-  text-align: left;
-  padding: var(--s-1) 10px;
-}
-.app.split .search:focus,
-.in-titlebar.split .search:focus {
+.app.split .search-box:not(.open) .search,
+.in-titlebar.split .search-box:not(.open) .search {
   position: absolute;
-  left: var(--s-3);
-  right: var(--s-3);
-  width: auto;
-  z-index: 1;
+  inset: 0;
+  opacity: 0;
 }
 .app.split .list-head > .link,
 .in-titlebar.split .list-head > .link {
@@ -470,44 +693,6 @@ button.primary kbd {
   font-size: var(--t-sm);
   border-bottom: 1px solid var(--line);
 }
-/* Above Important while someone waits in New people. */
-.waiting-line {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  width: 100%;
-  padding: var(--s-2) var(--s-3);
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--accent-soft);
-  color: var(--fg-1);
-  font: inherit;
-  font-size: var(--t-sm);
-  text-align: left;
-}
-.waiting-line > span:first-of-type {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.waiting-line .go {
-  margin-left: auto;
-  flex: none;
-  color: var(--accent);
-  font-weight: 600;
-}
-.waiting-line kbd {
-  flex: none;
-}
-.waiting-line:hover .go {
-  text-decoration: underline;
-}
-.split .waiting-line kbd {
-  display: none;
-}
-
 /* Tern's right-click menu on a link in a message. */
 .link-menu {
   position: fixed;
@@ -972,6 +1157,25 @@ button.primary kbd {
   font-size: var(--t-sm);
   color: var(--fg-2);
   font-weight: 400;
+}
+/* Beside a conversation the list's column is narrow: New people is its icon and count. */
+.split .splits button.people .name,
+.in-titlebar.split .splits button.people .name {
+  display: none;
+}
+/* New people, a tab only while someone waits: its count is a pill so the wait is seen without a line of its own. */
+.splits button.people .count {
+  min-width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* MARK: Conversation rows (§4.1) */

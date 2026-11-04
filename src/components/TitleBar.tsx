@@ -1,7 +1,8 @@
 import { createSignal, onCleanup, Show } from "solid-js";
 import { api } from "../api";
-import { setTitleSlot } from "../app/state";
+import { selection, setConvSlot, setTitleSlot } from "../app/state";
 import { Icon } from "./Icon";
+import { SelectionBar } from "./SelectionBar";
 import { SyncButton } from "./SyncButton";
 
 /** Tern's own title bar (§3): the system draws none. The sidebar button on the left, the window's buttons on the
@@ -19,7 +20,7 @@ export function TitleBar(props: {
   onCleanup(api.onMaximized(setMaximized));
 
   return (
-    <header class="titlebar" classList={{ "side-tone": props.sideTone }} data-tauri-drag-region="deep">
+    <header class="titlebar" classList={{ "side-tone": props.sideTone, selecting: props.list && selection().size > 0 }} data-tauri-drag-region="deep">
       <div class="titlebar-side">
         <button
           type="button"
@@ -44,8 +45,14 @@ export function TitleBar(props: {
       </div>
       {/* The list's tabs and search (ListPane portals them here); the fill after it still drags the window. */}
       <div class="titlebar-slot" classList={{ hidden: !props.list }} ref={setTitleSlot} />
+      {/* An open conversation's subject and tools (ConversationView portals them here). */}
+      <div class="titlebar-conv" ref={setConvSlot} />
       <div class="titlebar-fill" />
       <SyncButton />
+      {/* Conversations selected: the bar becomes what can be done with them, over the tabs, search and sync. */}
+      <Show when={props.list && selection().size > 0}>
+        <SelectionBar />
+      </Show>
       <div class="window-buttons">
         <button type="button" onClick={() => api.windowButton("minimize")} title="Minimize" aria-label="Minimize">
           <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">

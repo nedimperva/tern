@@ -1,4 +1,4 @@
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { go, isSaved, loadMore, searchServer, serverFound, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
 import { open } from "../app/conversation";
@@ -10,7 +10,6 @@ import {
   openRow,
   partial,
   query,
-  newPeople,
   role,
   rows,
   searchBox,
@@ -29,6 +28,7 @@ import { colourOf } from "../colours";
 import type { ThreadRow } from "../api";
 import { ConversationRow, participants } from "./ConversationRow";
 import { Icon } from "./Icon";
+import { SelectionBar } from "./SelectionBar";
 import { SyncButton } from "./SyncButton";
 import { InboxZero } from "./InboxZero";
 import { rowId } from "../motion";
@@ -75,17 +75,67 @@ export function ListPane(props: {
     }
   };
 
+  // Search grows over the tabs while it has the focus or holds a search (canvas "Tern title bar ideas", 3). Its
+  // filters (`from:ana`, `is:unread`) show as chips before the words; a filter becomes a chip once a space follows
+  // it, so one still being typed stays in the field.
+  const [searchFocused, setSearchFocused] = createSignal(false);
+  const growing = () => searchFocused() || searching();
+  const tokens = () => query().match(/"[^"]*"|\S+/g) ?? [];
+  const isFilter = (t: string) => /^-?[a-z_]+:\S/i.test(t);
+  const typedLast = () => /\S$/.test(query());
+  const chips = () => {
+    const all = tokens();
+    return all.filter((t, i) => isFilter(t) && (i < all.length - 1 || !typedLast()));
+  };
+  const words = () => {
+    const all = tokens();
+    const kept = all.filter((t, i) => !(isFilter(t) && (i < all.length - 1 || !typedLast())));
+    return kept.join(" ") + (query().endsWith(" ") && kept.length ? " " : "");
+  };
+  const setWords = (text: string) => setQuery([...chips(), text].filter(Boolean).join(" "));
+  const dropChip = (chip: string) => {
+    const left = chips().filter((c) => c !== chip);
+    setQuery([...left, words().trim()].filter(Boolean).join(" ") + (words().trim() ? "" : left.length ? " " : ""));
+    searchBox.input?.focus();
+  };
+  /** Filters a tap adds, each a filter the search already understands. */
+  const QUICK: [string, string][] = [
+    ["Unread", "is:unread"],
+    ["Starred", "is:starred"],
+    ["With files", "has:file"],
+    ["This week", "newer_than:7d"],
+    ["Marked", "has:marks"],
+    ["Sent", "in:sent"],
+  ];
+  const toggleQuick = (token: string) => {
+    const on = chips().includes(token);
+    const left = on ? chips().filter((c) => c !== token) : [...chips(), token];
+    setQuery(`${[...left, words().trim()].filter(Boolean).join(" ")}${words().trim() ? "" : " "}`);
+    searchBox.input?.focus();
+  };
+
   /** Which list this is and searching it: in Tern's own title bar when there is one, else a row of its own. One
    * element (`display: contents`, so the row's layout holds), not loose parts: loose, swapping the tabs for
    * "Search: …" on the first letter took the search field out and put it back, and it lost the focus. */
   const Head = () => (
-    <div class="list-head">
+    <div class="list-head" classList={{ growing: growing() }}>
+      <Show when={!growing()}>
       <Show when={splitIndex() >= 0 && !searching()} fallback={<h2>{title()}</h2>}>
           <div class="splits" role="tablist" aria-label="Inbox views">
             <For each={SPLITS()}>
               {(s, i) => (
-                <button role="tab" aria-selected={i() === splitIndex()} classList={{ active: i() === splitIndex() }} onClick={() => go(s.target)}>
-                  {s.name}
+                <button
+                  role="tab"
+                  aria-selected={i() === splitIndex()}
+                  classList={{ active: i() === splitIndex(), people: "role" in s.target && s.target.role === "new_people" }}
+                  onClick={() => go(s.target)}
+                  title={"role" in s.target && s.target.role === "new_people" ? "First mail from people you haven't written to (G N)" : undefined}
+                  aria-label={"role" in s.target && s.target.role === "new_people" ? `New people, ${tabUnread(s.target)} waiting` : undefined}
+                >
+                  <Show when={"role" in s.target && s.target.role === "new_people"}>
+                    <Icon name="user-plus" size={13} />
+                  </Show>
+                  <span class="name">{s.name}</span>
                   <Show when={tabUnread(s.target)}>
                     <span class="count">{tabUnread(s.target)}</span>
                   </Show>
@@ -94,14 +144,57 @@ export function ListPane(props: {
             </For>
           </div>
         </Show>
-        <input
-          ref={(el) => (searchBox.input = el)}
-          class="search"
-          placeholder={props.split ? "/" : "Search   /"}
-          value={query()}
-          onInput={(e) => setQuery(e.currentTarget.value)}
-          onKeyDown={onSearchKey}
-        />
+      </Show>
+        <div class="search-box" classList={{ open: growing() }}>
+          <Icon name="search" size={14} />
+          <For each={growing() ? chips() : []}>
+            {(c) => (
+              <button type="button" class="chip" title={`Remove ${c}`} onMouseDown={(e) => e.preventDefault()} onClick={() => dropChip(c)}>
+                {c}
+                <Icon name="x" size={11} />
+              </button>
+            )}
+          </For>
+          <input
+            ref={(el) => (searchBox.input = el)}
+            class="search"
+            aria-label="Search mail"
+            placeholder={chips().length && growing() ? "" : props.split ? "/" : "Search   /"}
+            value={growing() ? words() : query()}
+            onInput={(e) => setWords(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              // Backspace at the start takes the last chip off.
+              if (e.key === "Backspace" && !e.currentTarget.value && chips().length) {
+                e.preventDefault();
+                dropChip(chips()[chips().length - 1]);
+                return;
+              }
+              onSearchKey(e);
+            }}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+          />
+          <Show when={searchFocused()}>
+            <fieldset class="search-quick">
+              <legend class="kicker">Narrow it</legend>
+              <div class="quick-row">
+                <For each={QUICK}>
+                  {([name, token]) => (
+                    <button
+                      type="button"
+                      classList={{ on: chips().includes(token) }}
+                      aria-pressed={chips().includes(token)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => toggleQuick(token)}
+                    >
+                      {name}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </fieldset>
+          </Show>
+        </div>
         <Show when={searching()}>
           <button
             class="link save-search"
@@ -149,6 +242,10 @@ export function ListPane(props: {
           </Portal>
         )}
       </Show>
+      {/* Without Tern's own title bar the selection's actions take a row over the list. */}
+      <Show when={!ownTitleBar && selection().size > 0}>
+        <SelectionBar />
+      </Show>
       <Show when={searching() && partial()}>
         <div class="search-note">
           {coverage()}{" "}
@@ -173,19 +270,6 @@ export function ListPane(props: {
             )}
           </Show>
         </div>
-      </Show>
-      {/* While someone waits, the inbox says so: New people is a place of its own, not a tab to notice. */}
-      <Show when={settings.screener && newPeople() && !searching() && ["inbox", "important"].includes(role()) ? newPeople() : 0}>
-        {(n) => (
-          <button type="button" class="waiting-line" onClick={() => go({ role: "new_people" })}>
-            <Icon name="user-plus" size={14} />
-            <span>
-              {n() === 1 ? "1 new person wants" : `${n()} new people want`} to write to you
-            </span>
-            <span class="go">Screen them</span>
-            <kbd>G N</kbd>
-          </button>
-        )}
       </Show>
       <Show
         when={rows().length}

@@ -17,6 +17,7 @@ import {
   home,
   listKey,
   messages,
+  newPeople,
   openRow,
   query,
   role,
@@ -245,19 +246,23 @@ export const go = (t: Target) => {
   else if ("label" in t) void api.checkFolder(t.label);
 };
 
-/** The inbox splits, shown as tabs over the unified inbox. New people is a place of its own in the sidebar, with a
- * line above Important while someone waits. */
-export const SPLITS = (): { name: string; target: Target }[] =>
-  settings.splitInbox
+/** The inbox splits, shown as tabs over the unified inbox. New people joins them as a tab only while someone waits
+ * there (or while it is the list on show), in place of the line that used to sit above Important (canvas "Tern title
+ * bar ideas", 4); it is in the sidebar too. */
+export const SPLITS = (): { name: string; target: Target }[] => {
+  const screening =
+    settings.screener && (newPeople() > 0 || ("role" in target() && (target() as { role: string }).role === "new_people"))
+      ? [{ name: "New people", target: { role: "new_people" } }]
+      : [];
+  return settings.splitInbox
     ? [
         { name: "Important", target: { role: "important" } },
         { name: "Other", target: { role: "bulk" } },
         { name: "Starred", target: { role: "starred" } },
+        ...screening,
       ]
-    : [
-        { name: "Inbox", target: { role: "inbox" } },
-        { name: "Starred", target: { role: "starred" } },
-      ];
+    : [{ name: "Inbox", target: { role: "inbox" } }, { name: "Starred", target: { role: "starred" } }, ...screening];
+};
 export const splitIndex = () => SPLITS().findIndex((s) => JSON.stringify(s.target) === JSON.stringify(target()));
 export const nextSplit = (by: number) => {
   const all = SPLITS();
@@ -344,9 +349,10 @@ export const title = () => {
 };
 
 const inboxUnread = () => folders().filter((f) => f.role === "inbox").reduce((n, f) => n + f.unread, 0);
-/** The unread count a split's tab shows; Starred shows none. */
+/** The unread count a split's tab shows (New people: how many wait); Starred shows none. */
 export const tabUnread = (t: Target) => {
   const role = "role" in t ? t.role : "";
+  if (role === "new_people") return newPeople();
   return role === "important" ? splitUnread()[0] : role === "bulk" ? splitUnread()[1] : role === "inbox" ? inboxUnread() : 0;
 };
 
