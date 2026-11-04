@@ -1258,6 +1258,8 @@ async fn run_op<S: Stream>(
                 store.import_done(*import, done)?;
             }
             store.import_finished(*import)?;
+            // The new folder shows at once rather than at the next connect, and syncs its messages down.
+            discover_folders(s, store, account.id).await?;
         }
         OutboxOp::Append { folder, message, .. } => {
             // Sent may have changed since the copy was queued (a duplicate removed, a folder renamed).
@@ -2156,6 +2158,7 @@ mod tests {
                     ("LIST", "* LIST (\\HasNoChildren) \"/\" \"Old mail\"\r\n{tag} OK done\r\n"),
                     ("APPEND \"Old mail\" (\\Seen) {", "+ go\r\n"),
                     ("", "{tag} OK done\r\n"),
+                    ("LIST", "* LIST (\\HasNoChildren) \"/\" \"Old mail\"\r\n{tag} OK done\r\n"),
                 ],
             )
             .await;
