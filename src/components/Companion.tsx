@@ -360,39 +360,20 @@ function Known(props: { first: string; card: ContactCard | null; facts: PersonFa
         </Show>
       }
     >
+      {/* What they and you have written, as a sentence (canvas "Tern polish, now and after", 8). */}
       <Show when={props.card}>
         {(c) => (
-          <div class="tiles">
-            <div>
-              <strong>{c().received.toLocaleString()}</strong>
-              <span>from {props.first}</span>
-            </div>
-            <div>
-              <strong>{c().sent.toLocaleString()}</strong>
-              <span>from you</span>
-            </div>
-            <Show
-              when={props.answer}
-              fallback={
-                <Show when={props.facts?.since}>
-                  {(s) => (
-                    <div>
-                      <strong>{monthYear.format(s() * 1000)}</strong>
-                      <span>first mail</span>
-                    </div>
-                  )}
-                </Show>
-              }
-            >
-              <div>
-                <strong>{props.answer}</strong>
-                <span>you answer</span>
-              </div>
+          <p class="person-sum">
+            {c().received.toLocaleString()} from {props.first}, {c().sent.toLocaleString()} from you
+            <Show when={props.answer} fallback={<Show when={props.facts?.since}>{(since) => <>, since {monthYear.format(since() * 1000)}</>}</Show>}>
+              {(a) => <>; you answer in {a()}</>}
             </Show>
-          </div>
+            .
+          </p>
         )}
       </Show>
-      <Show when={months().some((n) => n > 0)}>
+      {/* A year of bars says little with one month in it. */}
+      <Show when={months().filter((n) => n > 0).length >= 3}>
         <div class="months">
           <div class="bars" aria-hidden="true">
             <For each={months()}>{(n, i) => <span classList={{ now: i() === 11 }} style={{ height: `${Math.max(8, (n / max()) * 100)}%` }} />}</For>

@@ -9,7 +9,11 @@ import { keyOf } from "./rows";
 import { accounts } from "./state";
 
 /** The first name of the person, from the first account's name, for "Morning, Ada". */
-export const firstName = () => (accounts()[0]?.displayName ?? "").trim().split(/\s+/)[0] ?? "";
+/** The person's first name for a greeting; none for a display name that is an address or a stand-in like "You". */
+export const firstName = () => {
+  const first = (accounts()[0]?.displayName ?? "").trim().split(/\s+/)[0] ?? "";
+  return first.includes("@") || /^(you|me)$/i.test(first) ? "" : first;
+};
 
 /** The conversations a run goes through: one group from the line, or everything that waits, from the screen. */
 export const deckRows = () => {

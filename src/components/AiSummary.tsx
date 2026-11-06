@@ -149,7 +149,7 @@ export function Brief(props: {
           </p>
         </Show>
         <Show when={rows().length}>
-          <div class="brief-rows">
+          <div class="brief-rows" classList={{ local: !ai.summary() }}>
             <For each={rows()}>
               {(r) => (
                 <div class="brief-row">

@@ -33,6 +33,10 @@ import { SyncButton } from "./SyncButton";
 import { InboxZero } from "./InboxZero";
 import { rowId } from "../motion";
 import { VirtualList } from "./VirtualList";
+import { dayHeading } from "../listDays";
+
+/** The height of a day heading in the list. */
+const DAY_HEADING = 30;
 
 const NOBODY_NEW = "Nobody new. First mail from someone you haven't written to waits here until you let them in.";
 
@@ -90,6 +94,9 @@ export function ListPane(props: {
   // it, so one still being typed stays in the field.
   const [searchFocused, setSearchFocused] = createSignal(false);
   const growing = () => searchFocused() || searching();
+  // Day headings in the full-width list where rows run newest first by date; not in the narrow column beside a
+  // conversation, search results, Snoozed (sorted by when they come back) or New people (a row per person).
+  const dated = () => !props.split && !searching() && !["snoozed", "new_people", "later"].includes(role());
   const tokens = () => query().match(/"[^"]*"|\S+/g) ?? [];
   const isFilter = (t: string) => /^-?[a-z_]+:\S/i.test(t);
   const typedLast = () => /\S$/.test(query());
@@ -314,6 +321,8 @@ export function ListPane(props: {
           label={searching() ? `Search results for ${query()}` : title()}
           activeId={rows()[focus()] ? rowId(rows()[focus()]) : undefined}
           onEnd={loadMore}
+          heading={dated() ? (row, above) => dayHeading(row, above) : undefined}
+          headingHeight={DAY_HEADING}
         >
           {(row, index) => (
             <ConversationRow

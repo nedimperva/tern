@@ -2,7 +2,8 @@
 
 import { createSignal, onMount, Show } from "solid-js";
 import { api, type About } from "../../api";
-import { omarchyAvailable, setSetting, settings } from "../../settings";
+import { omarchyAvailable, ROW_HEIGHTS, setSetting, settings } from "../../settings";
+import { labelColour } from "../../colours";
 import { NIGHT_SHIFT, SCENES, TIDE_REPORT } from "../../zero";
 import { Select } from "./shared";
 import { Dropdown } from "../Dropdown";
@@ -54,7 +55,55 @@ export function AppearanceSettings() {
           ...[...SCENES, NIGHT_SHIFT, TIDE_REPORT].map((s) => ({ label: s.name, value: s.id as string })),
         ]}
       />
+      <LookPreview />
     </>
+  );
+}
+
+/** Two list rows and an open message drawn with the list's own classes, so a change of mood or density shows here
+ * at once (canvas "Tern polish, now and after", 5). Made-up mail: nothing in it is the person's. */
+function LookPreview() {
+  const rows = [
+    { who: "Ada Lovelace", subject: "Offsite", snippet: "Can you bring the Q3 deck?", label: "Work", date: "3:58 PM", unread: true },
+    { who: "GitHub", subject: "CI passed", snippet: "All checks have passed.", date: "Thu", unread: false },
+  ];
+  return (
+    <aside class="look-preview" aria-label="Preview">
+      <span class="kicker">Preview</span>
+      <div class="look-rows" aria-hidden="true">
+        {rows.map((r, i) => (
+          <div style={{ height: `${ROW_HEIGHTS[settings.density]}px` }}>
+            <div class="crow" classList={{ focused: i === 0, unread: r.unread }}>
+              <span class="who">
+                <span class="names">{r.who}</span>
+              </span>
+              <span class="what">
+                <span class="subject">{r.subject}</span>
+                <Show when={r.label}>
+                  {(l) => (
+                    <span class="labels">
+                      <span class="label-chip" style={{ "--label": labelColour(l()) }}>
+                        {l()}
+                      </span>
+                    </span>
+                  )}
+                </Show>
+                <span class="snippet">{r.snippet}</span>
+              </span>
+              <span class="date">{r.date}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div class="look-card" aria-hidden="true">
+        <strong>Ada Lovelace</strong>
+        <p>The offsite is set for Monday 16 November. Can you bring the Q3 deck?</p>
+        <span class="look-actions">
+          <span class="look-done">Done</span>
+          <span class="look-link">A link</span>
+        </span>
+      </div>
+    </aside>
   );
 }
 

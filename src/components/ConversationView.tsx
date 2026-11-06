@@ -340,7 +340,7 @@ function htmlSignature(doc: Document): string | null {
 }
 
 /** The pill under a message that unfolds what it folded: "···" for a quote, or whose signature it is. */
-function FoldPill(props: { signature: string | null; open: boolean; onClick: () => void }) {
+export function FoldPill(props: { signature: string | null; open: boolean; onClick: () => void }) {
   const what = () => (props.signature ? "the signature" : "quoted text");
   return (
     <button class="fold" classList={{ sig: !!props.signature }} title={`${props.open ? "Hide" : "Show"} ${what()}`} aria-expanded={props.open} onClick={props.onClick}>
@@ -571,6 +571,11 @@ const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 function full(seconds: number): string {
   const d = new Date(seconds * 1000);
   return (d.getFullYear() === new Date().getFullYear() ? fullDate : fullDateYear).format(d);
+}
+
+/** An open message's time: just the clock today, the day and clock before that. */
+function stamp(seconds: number): string {
+  return startOfDay(seconds) === startOfDay(Date.now() / 1000) ? clock.format(new Date(seconds * 1000)) : full(seconds);
 }
 
 /** How long ago, within the last month; older mail shows its date. */
@@ -1032,7 +1037,9 @@ export function ConversationView(props: {
 
   // The conversation's tools: in the header, or in the reader bar, where reading time is said in words and the book
   // is "Original look".
-  const tools = () => (
+  // In Tern's own title bar the conversation closes from a back arrow before the subject, so its ✕ is not a
+  // slip away from the window's ✕ (canvas "Tern polish, now and after", 1).
+  const tools = (inTitleBar = false) => (
     <div class="tools">
       <Show when={privacy().trackers || privacy().blocked}>
         <button class="tool safe extra" data-tip={shieldTip()} aria-label={shieldTip()} onClick={() => {
@@ -1082,9 +1089,11 @@ export function ConversationView(props: {
         Done <kbd>E</kbd>
       </button>
       <ActionMenu items={menu} />
-      <button class="tool" data-tip="Close (Esc)" aria-label="Close" onClick={props.onClose}>
-        <Icon name="x" size={15} />
-      </button>
+      <Show when={!inTitleBar}>
+        <button class="tool" data-tip="Close (Esc)" aria-label="Close" onClick={props.onClose}>
+          <Icon name="x" size={15} />
+        </button>
+      </Show>
     </div>
   );
 
@@ -1098,6 +1107,9 @@ export function ConversationView(props: {
         {(slot) => (
           <Portal mount={slot()}>
             <div class="conv-bar">
+              <button class="tool back" title="Back to the list (Esc)" aria-label="Back to the list" onClick={props.onClose}>
+                <Icon name="arrow-left" size={16} />
+              </button>
               <strong class="conv-subject" title={subject()}>
                 {subject()}
               </strong>
@@ -1105,7 +1117,7 @@ export function ConversationView(props: {
                 {people()} · {props.messages.length === 1 ? "1 message" : `${props.messages.length} messages`}
               </span>
               <span class="spacer" />
-              {tools()}
+              {tools(true)}
             </div>
           </Portal>
         )}
@@ -1239,7 +1251,7 @@ export function ConversationView(props: {
                           </Show>
                           <Show when={open()} fallback={<span class="snippet">{m.snippet}</span>}>
                             <span class="detail">
-                              {[recipients(m.toAddrs, props.mine, names()), full(m.date)].filter(Boolean).join(" · ")}
+                              {[recipients(m.toAddrs, props.mine, names()), stamp(m.date)].filter(Boolean).join(" · ")}
                             </span>
                           </Show>
                         </span>
@@ -1252,7 +1264,10 @@ export function ConversationView(props: {
                             <Show when={filesOf(m).length > 1}>{filesOf(m).length}</Show>
                           </span>
                         </Show>
-                        <time title={full(m.date)}>{clock.format(new Date(m.date * 1000))}</time>
+                        {/* An open card says its time once, in the line after the name. */}
+                        <Show when={!open()}>
+                          <time title={full(m.date)}>{clock.format(new Date(m.date * 1000))}</time>
+                        </Show>
                       </header>
                       <Show when={open()}>
                         <div class="body">

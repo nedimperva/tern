@@ -298,6 +298,19 @@ button.primary kbd {
 .conv-bar .spacer {
   flex: 1;
 }
+.conv-bar .back {
+  flex: none;
+  margin-left: calc(-1 * var(--s-2));
+}
+/* A short rule keeps the window's own buttons apart from the conversation's tools. */
+.titlebar:has(.conv-bar) .window-buttons::before {
+  content: "";
+  align-self: center;
+  width: 1px;
+  height: 18px;
+  margin-right: var(--s-1);
+  background: var(--line-strong);
+}
 .conv-bar .tools {
   display: flex;
   align-items: center;
@@ -666,6 +679,25 @@ button.primary kbd {
 .in-titlebar.split .list-head > .link {
   display: none;
 }
+/* A narrow window: search folds to its icon (until focused) before it can lie over the tabs, and the tabs slide
+   rather than spill under it (canvas "Tern polish, now and after", 2). */
+@media (max-width: 960px) {
+  .list-header .search-box:not(.open) {
+    flex: none;
+    width: 30px;
+    padding: 0;
+    justify-content: center;
+  }
+  .list-header .search-box:not(.open) .search {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+  }
+  .splits {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+}
 
 .vlist {
   flex: 1;
@@ -680,6 +712,32 @@ button.primary kbd {
   will-change: transform;
   /* When a row leaves, the ones below close up instead of jumping; new mail pushes the list down the same way. */
   transition: transform var(--d-base) var(--ease);
+}
+/* A day's heading in the list, like the thread's: small capitals, then a rule to the edge. */
+.vhead {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-3);
+  padding: 0 var(--s-4) 6px var(--s-4);
+  box-sizing: border-box;
+  font-size: var(--t-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  pointer-events: none;
+  transition: transform var(--d-base) var(--ease);
+}
+.vhead::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  margin-bottom: 5px;
+  background: var(--line);
 }
 /* A row that just left, drawn once more while it slides away (motion.ts). */
 .vrow-ghost {
@@ -1251,6 +1309,13 @@ button.primary kbd {
 }
 .crow.focused {
   background: var(--bg-3);
+}
+/* Focused and selected: a deeper tint of the selection, so the row still says it is in it. */
+.crow.focused.selected {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-0));
+}
+.crow.selected .mark {
+  font-weight: 700;
 }
 /* Two lines: who and when on top, the subject under them. */
 .crow.two {
@@ -2912,8 +2977,19 @@ button.fold {
   border-radius: var(--r-sm);
 }
 .file-card .thumb {
-  width: 52px;
+  width: 40px;
   object-fit: cover;
+}
+/* A message's files in even columns, every card the same size, so the names and Save line up. */
+.attachments:has(> .file-card) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+.attachments > .file-card {
+  max-width: none;
+}
+.attachments > .file-card .open {
+  flex: 1;
 }
 .file-card .badge {
   display: grid;
@@ -3344,14 +3420,15 @@ button.fold {
   overflow: hidden;
   font: var(--t-rd) / 1.5 var(--font);
 }
-/* Files going with the message: picture thumbnails, else the file's kind. */
+/* Files going with the message: picture thumbnails, else the file's kind. Scoped to compose: unscoped, these
+   rules also turned a received file's card into a narrow tile that cut its name to a few letters. */
 .outgoing-files {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-2);
   margin-top: var(--s-2);
 }
-.file-card {
+.outgoing-files .file-card {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -3360,7 +3437,7 @@ button.fold {
   background: var(--soft);
   overflow: hidden;
 }
-.file-card .thumb {
+.outgoing-files .file-card .thumb {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3368,12 +3445,12 @@ button.fold {
   background: var(--bg-2);
   color: var(--fg-2);
 }
-.file-card .thumb img {
+.outgoing-files .file-card .thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.file-card .meta {
+.outgoing-files .file-card .meta {
   display: flex;
   justify-content: space-between;
   gap: var(--s-1);
@@ -3381,17 +3458,17 @@ button.fold {
   font-size: var(--t-xs);
   color: var(--fg-1);
 }
-.file-card .name {
+.outgoing-files .file-card .name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.file-card .size {
+.outgoing-files .file-card .size {
   flex: none;
   color: var(--fg-2);
 }
-.file-card .remove {
+.outgoing-files .file-card .remove {
   position: absolute;
   top: 4px;
   right: 4px;
@@ -3406,8 +3483,8 @@ button.fold {
   cursor: pointer;
   opacity: 0;
 }
-.file-card:hover .remove,
-.file-card .remove:focus-visible {
+.outgoing-files .file-card:hover .remove,
+.outgoing-files .file-card .remove:focus-visible {
   opacity: 1;
 }
 .size-meter {
@@ -3989,6 +4066,93 @@ button.fold {
 }
 .settings-content.wide {
   max-width: 1280px;
+}
+/* Appearance: the settings at the left, a preview of the look beside them that follows each change. */
+.settings-content.look {
+  max-width: 1040px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  column-gap: var(--s-5);
+  align-items: start;
+}
+.settings-content.look > h1 {
+  grid-column: 1 / -1;
+}
+.settings-content.look > .setting {
+  grid-column: 1;
+}
+.look-preview {
+  grid-column: 2;
+  grid-row: 2 / span 4;
+  position: sticky;
+  top: 0;
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-2) var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+}
+.look-preview .kicker {
+  padding: 0 var(--s-3);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.look-rows {
+  background: var(--bg-0);
+  border-radius: var(--r-md);
+  padding: var(--s-1) 0;
+  overflow: hidden;
+}
+.look-rows .crow {
+  margin: 0 var(--s-1);
+}
+.look-rows .crow .who {
+  width: 96px;
+}
+.look-card {
+  margin: 0 var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  font-size: var(--t-md);
+  color: var(--fg-1);
+}
+.look-card strong {
+  color: var(--fg-0);
+}
+.look-card p {
+  margin: var(--s-1) 0 var(--s-3);
+  line-height: 1.55;
+}
+.look-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.look-done {
+  padding: 3px var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+.look-actions .look-link {
+  color: var(--accent);
+  font-size: var(--t-sm);
+}
+@media (max-width: 1100px) {
+  .settings-content.look {
+    display: block;
+    max-width: 680px;
+  }
+  .look-preview {
+    position: static;
+  }
 }
 .settings-body h1 {
   font-size: var(--t-xl);
@@ -6358,6 +6522,12 @@ button.link.danger {
   line-height: 1.3;
   font-weight: 650;
 }
+/* The pill that unfolds a card's quote or signature sits on a line of its own, as in the thread. */
+.deck-card .text > button.fold {
+  display: flex;
+  width: fit-content;
+  margin-top: var(--s-3);
+}
 .deck-card .text {
   flex: 1;
   min-height: 0;
@@ -6977,28 +7147,13 @@ button.link.danger {
 .companion .person .state.blocked {
   color: var(--danger);
 }
-.companion .tiles {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--s-2);
+.companion .person-sum {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  color: var(--fg-1);
+  font-variant-numeric: tabular-nums;
 }
-.companion .tiles > div {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  padding: var(--s-2);
-  border-radius: var(--r-md);
-  background: var(--bg-1);
-}
-.companion .tiles strong {
-  font-size: var(--t-lg);
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.companion .tiles span,
 .companion .months .quiet {
   font-size: var(--t-xs);
   color: var(--fg-2);
@@ -8955,4 +9110,14 @@ button.link.danger {
   margin: var(--s-2) 0 0;
   font-size: var(--t-xs);
   color: var(--fg-2);
+}
+
+/* With the companion open, what the thread's brief would list (asked of you, the day, the place) is in the
+   companion's You owe and In this message: the brief keeps its one line (canvas "Tern polish, now and after", 8).
+   AI's points stay, as the companion doesn't hold them. */
+.window:has(aside.companion) .brief-rows.local {
+  display: none;
+}
+.window:has(aside.companion) .brief:not(:has(.since, .ai-ask, .ai-by, .brief-line, .brief-rows:not(.local))) {
+  display: none;
 }

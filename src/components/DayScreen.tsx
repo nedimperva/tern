@@ -104,7 +104,7 @@ export function DayScreen(props: {
     return `${when}${props.name ? `, ${props.name}` : ""}. ${tide}`;
   };
   const kicker = () =>
-    `${new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })} · ${new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+    `${new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })} · ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
   const startLabel = () => {
     const f = first();
     return f ? `Start with ${sender(f).split(" ")[0]}` : "Start";
