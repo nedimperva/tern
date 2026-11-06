@@ -5,6 +5,8 @@ import { waitingSince } from "../day";
 import { typing } from "../keys";
 import { aiOn } from "../settings";
 import { AiReplies } from "./AiReplies";
+import { FoldPill } from "./ConversationView";
+import { foldAt, signatureLine } from "../fold";
 
 /** A message's words for the card: its text, else its HTML's words, else the snippet. */
 function words(m: ThreadMessage): string {
@@ -133,7 +135,7 @@ export function DayDeck(props: {
               </Show>
             </div>
             <h2>{row()!.subject || "(no subject)"}</h2>
-            <div class="text">{last() ? words(last()!) : row()!.snippet}</div>
+            <DeckText text={last() ? words(last()!) : row()!.snippet} />
             <Show when={last()?.attachments.length}>
               <div class="files">{last()!.attachments.map((a) => a.name).join(" · ")}</div>
             </Show>
@@ -157,6 +159,21 @@ export function DayDeck(props: {
           </article>
         </Show>
       </div>
+    </div>
+  );
+}
+
+/** A card's words with the quote or signature folded, as in the thread (canvas "Tern polish, now and after", 14). */
+function DeckText(props: { text: string }) {
+  const [open, setOpen] = createSignal(false);
+  createEffect(on(() => props.text, () => setOpen(false)));
+  const at = () => foldAt(props.text);
+  return (
+    <div class="text">
+      <Show when={at() > 0} fallback={props.text}>
+        {open() ? props.text : props.text.slice(0, at()).trimEnd()}
+        <FoldPill signature={signatureLine(props.text.slice(at()))} open={open()} onClick={() => setOpen(!open())} />
+      </Show>
     </div>
   );
 }

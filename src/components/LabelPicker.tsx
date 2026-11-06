@@ -16,7 +16,23 @@ export function LabelPicker(props: {
   const [index, setIndex] = createSignal(0);
   const shown = () => {
     const q = typed().trim().toLowerCase();
-    return props.labels.filter((l) => !q || l.name.toLowerCase().includes(q));
+    const all = q ? props.labels : [...props.labels].sort((a, b) => a.name.localeCompare(b.name));
+    return all.filter((l) => !q || l.name.toLowerCase().includes(q));
+  };
+  // Nested labels (Projects/Alpha) sit under their parent by their own name, as in the sidebar (idea 23). A parent
+  // that is not a label itself shows as a heading. While typing, the whole path shows.
+  const nest = (l: Folder) => {
+    const at = l.name.lastIndexOf("/");
+    if (typed().trim() || at < 0) return { name: l.name, depth: 0 };
+    return { name: l.name.slice(at + 1), depth: l.name.split("/").length - 1 };
+  };
+  /** The parent path to show as a heading before `l`, when the label above is not in that parent. */
+  const headBefore = (l: Folder, i: number) => {
+    const at = l.name.lastIndexOf("/");
+    if (typed().trim() || at < 0) return null;
+    const parent = l.name.slice(0, at);
+    const above = shown()[i - 1]?.name ?? "";
+    return above === parent || above.startsWith(`${parent}/`) ? null : parent;
   };
   const has = (l: Folder) => props.applied.includes(l.name);
   const pick = (l: Folder | undefined) => l && props.onPick(l, !has(l));
@@ -49,15 +65,24 @@ export function LabelPicker(props: {
         <ul>
           <For each={shown()} fallback={<li class="none">No label by that name</li>}>
             {(l, i) => (
+              <>
+              <Show when={headBefore(l, i())}>
+                {(parent) => (
+                  <li class="label-head" role="presentation" style={{ "padding-left": `${(parent().split("/").length - 1) * 18 + 10}px` }}>
+                    {parent().slice(parent().lastIndexOf("/") + 1)}
+                  </li>
+                )}
+              </Show>
               <li classList={{ active: i() === index() }} onMouseEnter={() => setIndex(i())} onMouseDown={() => pick(l)}>
-                <span class="label-name">
+                <span class="label-name" style={{ "padding-left": `${nest(l).depth * 18}px` }} title={l.name}>
                   <span class="label-dot" style={{ "--label": labelColour(l.name) }} />
-                  {l.name}
+                  {nest(l).name}
                 </span>
                 <Show when={has(l)}>
                   <span class="when">✓ Remove</span>
                 </Show>
               </li>
+              </>
             )}
           </For>
         </ul>

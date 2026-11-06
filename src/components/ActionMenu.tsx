@@ -1,7 +1,8 @@
 import { createEffect, createSignal, Index, onCleanup, Show } from "solid-js";
 import { Icon } from "./Icon";
 
-export type MenuItem = { name: string; keys?: string; run: () => void };
+/** `group`: items of one group sit together, with a rule before the next group. */
+export type MenuItem = { name: string; keys?: string; group?: string; run: () => void };
 
 /** The conversation's `…` menu (docs/design/ui.md §4.2): every action with its key, so a mouse user can find
  * them and learn the keys on the way. While it is open the arrows, Enter and Esc belong to it. */
@@ -61,6 +62,10 @@ export function ActionMenu(props: { items: () => MenuItem[] }) {
               take the focus away from the one pointed at. */}
           <Index each={props.items()}>
             {(item, i) => (
+              <>
+              <Show when={i > 0 && props.items()[i - 1]?.group !== item().group}>
+                <hr class="menu-rule" />
+              </Show>
               <button
                 ref={(el) => (items[i] = el)}
                 type="button"
@@ -75,6 +80,7 @@ export function ActionMenu(props: { items: () => MenuItem[] }) {
                   <kbd>{item().keys}</kbd>
                 </Show>
               </button>
+              </>
             )}
           </Index>
         </div>

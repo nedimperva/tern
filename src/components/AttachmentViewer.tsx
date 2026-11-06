@@ -132,8 +132,8 @@ export function AttachmentViewer(props: { message: ThreadMessage; index: number;
         <button onClick={() => void save()}>
           Save <kbd>Ctrl S</kbd>
         </button>
-        <button class="close" onClick={props.onClose} aria-label="Close">
-          <kbd>Esc</kbd>
+        <button class="close" onClick={props.onClose}>
+          Close <kbd>Esc</kbd>
         </button>
       </header>
       <Show when={problem()}>

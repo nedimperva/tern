@@ -65,6 +65,8 @@ export function ConversationRow(props: {
   account?: { colour: string; email: string };
   /** The element's id, for the list's aria-activedescendant. */
   id?: string;
+  /** Done, Snooze and Star on this row, shown over its date while the pointer is on it (idea 17). */
+  onQuick?: (what: "done" | "snooze" | "star") => void;
 }) {
   const lit = (text: string) => <Lit text={text} words={props.hits} />;
   return (
@@ -156,6 +158,36 @@ export function ConversationRow(props: {
         <span class="chip follow-up" title="You asked to be reminded if nobody replied. Done (e) dismisses it.">
           No reply yet
         </span>
+      </Show>
+      {/* For the mouse: the keys do the same, and the list keeps the focus (the buttons take none). */}
+      <Show when={props.onQuick}>
+        {(quick) => (
+          <span class="row-quick">
+            <For
+              each={
+                [
+                  ["done", "check", "Done (E)"],
+                  ["snooze", "clock", "Snooze (H)"],
+                  ["star", "star", props.row.flagged ? "Unstar (S)" : "Star (S)"],
+                ] as const
+              }
+            >
+              {([what, icon, name]) => (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  title={name}
+                  aria-label={name}
+                  onMouseDown={(e) => (e.stopPropagation(), e.preventDefault())}
+                  onDblClick={(e) => e.stopPropagation()}
+                  onClick={(e) => (e.stopPropagation(), quick()(what))}
+                >
+                  <Icon name={icon} size={14} filled={what === "star" && props.row.flagged} />
+                </button>
+              )}
+            </For>
+          </span>
+        )}
       </Show>
       <Show when={props.row.snoozedUntil} fallback={<span class="date">{when(props.row.date)}</span>}>
         {(due) => (

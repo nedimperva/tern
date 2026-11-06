@@ -165,6 +165,14 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
 - States: `focused` → `--bg-3` (no bar: the owner found the accent edge noisy, 2026-10-29); `selected` (`x`) → `--accent-soft` background + checkbox replaces the account dot; `hover` → `--bg-2` (no focus bar); `unread` → `--fg-0` weight 600 for participants and subject, otherwise `--fg-1` and 400.
 - Snoozed shows a small clock + due text instead of the date; scheduled drafts likewise.
 - Row removal (archive, snooze): 120 ms height collapse; focus moves to the next row immediately.
+- Day headings (2026-11-06): the full-width list, sorted by date, has the thread's quiet headings over each group:
+  Today, Yesterday, the week's days, then months ("October", "September 2025"); pinned follow-ups have their own.
+  30 px, `--t-xs` uppercase with a `--line` rule. Not in the narrow column, search results, Snoozed, Read later or
+  New people. A focused row that is also selected takes the accent at 20 % over `--bg-0`.
+- Hover (2026-11-06): Done, Snooze and Star (28 px icon buttons) take the date's place while the pointer is on a row,
+  only where a pointer hovers, not beside an open conversation, with a selection, or in New people. Unread stays
+  bold, with no dot (owner, 2026-11-06).
+- Empty views say how mail gets there, with the key: an icon in a 44 px tile, a title and one line.
 
 ### 4.2 Conversation pane
 
@@ -184,7 +192,8 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   more in a tooltip: a green shield with the tracker count (what Tern blocked; a click loads the images), a clock
   (reading time from 2 minutes), a book (reading view for designed mail), a leave icon (List-Unsubscribe: a web
   link opens in the browser, a `mailto:` one opens compose; it turns into a check). Then Done (its key on hover),
-  `…` and close. "Always load images from this sender" is in `…` while images are blocked.
+  `…` and close (in Tern's own title bar the close is a back arrow before the subject, so it sits away from the
+  window's ✕, and a short rule parts the window buttons from the tools). "Always load images from this sender" is in `…` while images are blocked.
   The header scrolls away with the messages; once the subject is out of view a 48 px bar (subject, Done) fades in
   over the top of the pane. The bar takes no space, so nothing moves as it comes and goes.
 - A thread (owner, 2026-10-29; laid out as canvas "Tern thread directions" A, 2026-10-30): every message is one

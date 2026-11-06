@@ -200,7 +200,7 @@ export function SettingsPage(props: {
         </button>
       </nav>
       <div class="settings-body">
-        <div class="settings-content" classList={{ wide: open().id === "Snippets" || open().id === "Signatures" }}>
+        <div class="settings-content" classList={{ wide: open().id === "Snippets" || open().id === "Signatures", look: open().id === "Appearance" }}>
           <h1>{open().name}</h1>
           {body()}
         </div>

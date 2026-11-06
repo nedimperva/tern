@@ -7,6 +7,45 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Day headings in the list (Today, Yesterday, the week's days, then months), like a thread's.
+- Settings → Appearance shows a preview beside the settings that follows each change of mood and density.
+- Done, Snooze and Star on a row while the pointer is on it.
+- The sync panel lists each change the server refused, with Retry and Discard beside it.
+- Empty views say how mail gets there, with the key that does it.
+
+### Changed
+
+- In Tern's title bar a conversation closes from a back arrow before its subject (Esc as before), away from the
+  window's own close button.
+- A narrow window folds search to its icon before it can lie over the tabs.
+- An open message says its time once, after the name, and only the time when it came today.
+- With the companion open, the thread's brief keeps its one line: what was asked, the day and the place are in the
+  companion. The companion says the counts in a sentence and shows the year's bars only with three months of mail.
+- A row that is focused and selected shows a deeper tint, so it still reads as selected. The selection's button says
+  "Move sender to Other" (or Important).
+- The morning screen greets without a stand-in name and writes the time without a leading zero; its cards fold a
+  signature or quote behind the same pill as a thread.
+- Search results start with their count, and "Search the server too" is a button. The Narrow it chips show the words
+  they add.
+- The undo pill names the conversation it acted on, and a thin line runs out with its undo window.
+- Refused changes show as an amber "2 to look at" on the sync button; red is kept for a sign-in that stops sync.
+- The ⋯ menu comes in groups with shorter names. The label picker nests labels under their parent.
+- The sidebar's More has its chevron on the left, like the folders.
+- Reading view sits in the middle of the card. The brief's tags are quiet words, and "Add a note" is a plain line.
+- The avatars over a conversation are a little larger, with the first on top.
+- Compose in focus mode quiets the title bar to what is being written. People in To, Cc and Bcc show as pills with
+  their initials.
+- The file viewer dims the title bar with it, and its button says Close.
+- Settings' drop-downs share one width.
+
+### Fixed
+
+- Received files show their full names again: the compose box's file tiles had taken over their cards.
+- The sync panel said "Up to date" (to screen readers too) while changes had failed.
+- Long names in the shortcut sheet no longer run into their keys.
+
 ## [2.1.0] - 2026-11-06
 
 The title bar does more: tabs, search and an open conversation's tools sit in it. Search the server, Ask your mail,

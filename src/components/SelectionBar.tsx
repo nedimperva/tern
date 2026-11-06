@@ -28,7 +28,7 @@ export function SelectionBar() {
           { name: "Label", key: "L", run: startLabel },
           { name: unread() ? "Mark read" : "Mark unread", key: "U", run: () => void toggleRead() },
           ...(settings.splitInbox && ["important", "bulk"].includes(role())
-            ? [{ name: role() === "bulk" ? "Important" : "Other", run: () => void moveToSplit(role() !== "bulk") }]
+            ? [{ name: role() === "bulk" ? "Move sender to Important" : "Move sender to Other", run: () => void moveToSplit(role() !== "bulk") }]
             : []),
           { name: "Trash", key: "#", run: () => void act("trash") },
         ];

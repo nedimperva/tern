@@ -8,7 +8,7 @@ import type { Command } from "../components/CommandBar";
 import { switchReading } from "../components/ConversationView";
 import { ROLE_NAMES, targetOf } from "../components/Rail";
 import { openScreen } from "../day";
-import { keyLabel, type Binding } from "../keys";
+import { keyLabel, shortName, type Binding } from "../keys";
 import { jumpHit } from "../hits";
 import { jumpMark, showRange } from "../marks";
 import { aiOn, omarchyAvailable, setSetting, settings, type Settings } from "../settings";
@@ -199,18 +199,34 @@ export const bindings = (): Binding[] => [
 ];
 
 /** The conversation's `…` menu: its actions in the order people reach for them, each with its key. */
-const MENU_KEYS = ["r", "Enter", "f", "v", "e", "h", "L", "s", "u", "m", "!", "#", "O", "F"];
+// In groups, with a rule between them (idea 21): answer, sort it, block, throw it away, look at it.
+const MENU_KEYS: [string, string][] = [
+  ["r", "answer"],
+  ["Enter", "answer"],
+  ["f", "answer"],
+  ["v", "answer"],
+  ["e", "sort"],
+  ["h", "sort"],
+  ["L", "sort"],
+  ["s", "sort"],
+  ["u", "sort"],
+  ["m", "sort"],
+  ["!", "away"],
+  ["#", "away"],
+  ["O", "view"],
+  ["F", "view"],
+];
 export const menu = (all: Binding[]) => {
-  const items: MenuItem[] = MENU_KEYS.flatMap((k) => {
+  const items: MenuItem[] = MENU_KEYS.flatMap(([k, group]) => {
     const b = all.find((b) => b.keys === k && (!b.context || b.context === "conversation"));
     if (!b || (k === "v" && !messages.some((m) => m.attachments.length))) return [];
-    return [{ name: b.name, keys: keyLabel(b.keys), run: () => void b.run() }];
+    return [{ name: shortName(b.name), keys: keyLabel(b.keys), group, run: () => void b.run() }];
   });
   const spam = items.findIndex((i) => i.name === "Mark as spam");
-  items.splice(spam, 0, { name: "Move to …", run: () => void choose("Move to …") }, ...blocking());
+  items.splice(spam, 0, { name: "Move to …", group: "sort", run: () => void choose("Move to …") }, ...blocking());
   // The message the keys are on, else the newest: its source from the server, as a file.
   const m = messages[messageFocus()] ?? messages[messages.length - 1];
-  if (m) items.push({ name: "Save as .eml", run: () => void saveEml(m.id) });
+  if (m) items.push({ name: "Save as .eml", group: "view", run: () => void saveEml(m.id) });
   return items;
 };
 
@@ -220,8 +236,8 @@ const blocking = (): MenuItem[] => {
   const domain = r?.fromAddr.split("@")[1];
   if (!r || !domain) return [];
   return [
-    { name: `Block ${r.fromName || r.fromAddr}`, run: () => void blockSender(false) },
-    { name: `Block everyone at ${domain}`, run: () => void blockSender(true) },
+    { name: `Block ${r.fromName || r.fromAddr}`, group: "block", run: () => void blockSender(false) },
+    { name: `Block everyone at ${domain}`, group: "block", run: () => void blockSender(true) },
   ];
 };
 

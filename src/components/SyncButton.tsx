@@ -2,6 +2,7 @@ import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { api } from "../api";
 import { restartToUpdate } from "../app/actions";
 import { exporting, stopExport } from "../app/files";
+import { refresh } from "../app/list";
 import { problems, setReviewing, syncStates, update } from "../app/state";
 import { accountStates, held, late, paused, scheduled, syncButton, syncSentence } from "../app/status";
 import { Icon } from "./Icon";
@@ -36,6 +37,13 @@ export function SyncButton() {
     setReviewing(true);
   };
   const count = (n: number, one: string, many: string) => (n === 1 ? one : `${n} ${many}`);
+  // "Up to date" is about the connection; with changes the server refused, those lead instead.
+  const headline = () => {
+    const n = problems().length + held().length;
+    const sentence = syncSentence();
+    if (n && sentence.tone !== "danger") return n === 1 ? "1 change needs a look" : `${n} changes need a look`;
+    return sentence.text || "No accounts yet";
+  };
   const state = () => syncButton();
   // Sync now turns the arrows until every account has been through a pass (or 20 s, for a server that is slow to
   // say so). A turn always finishes: stopping mid-turn, or starting again on each short pass, looked jerky.
@@ -75,8 +83,8 @@ export function SyncButton() {
         class={`sync-button ${state().tone}`}
         classList={{ turning: spinning(), labelled: !!label() }}
         aria-expanded={open()}
-        aria-label={`${syncSentence().text || "Sync"}. Sync options`}
-        title={syncSentence().text}
+        aria-label={`${headline() === "No accounts yet" ? "Sync" : headline()}. Sync options`}
+        title={headline()}
         onClick={() => setOpen(!open())}
       >
         <span class="sync-icon" onAnimationIteration={() => !want() && setSpinning(false)}>
@@ -90,7 +98,7 @@ export function SyncButton() {
       <Show when={open()}>
         <div class="sync-panel" role="dialog" aria-label="Sync">
           <div class="sync-head">
-            <strong>{syncSentence().text || "No accounts yet"}</strong>
+            <strong>{headline()}</strong>
           </div>
           <ul class="sync-accounts">
             <For each={accountStates()}>
@@ -105,10 +113,42 @@ export function SyncButton() {
           </ul>
           <Show when={late().length || scheduled().length || held().length || problems().length}>
             <div class="sync-waiting">
+              {/* Each change the server refused, with its own Retry and Discard (idea 19). A send that may have gone
+                  out is settled in the full list, where Send again and Don't send are explained. */}
               <Show when={problems().length}>
-                <button type="button" class="link danger" onClick={review}>
-                  {count(problems().length, "1 change didn't go through", "changes didn't go through")}
-                </button>
+                <ul class="sync-problems">
+                  <For each={problems().slice(0, 3)}>
+                    {(p) => (
+                      <li>
+                        <span class="dot" />
+                        <span class="what">
+                          {p.what}
+                          <small>{p.maybeSent ? "It may have gone out already" : p.lastError || `Stopped after ${p.attempts} tries`}</small>
+                        </span>
+                        <Show
+                          when={!p.maybeSent}
+                          fallback={
+                            <button type="button" class="mini" onClick={review}>
+                              Look
+                            </button>
+                          }
+                        >
+                          <button type="button" class="mini" onClick={() => void api.retryProblem(p.id).then(() => refresh())}>
+                            Retry
+                          </button>
+                          <button type="button" class="mini" onClick={() => void api.discardProblem(p.id).then(() => refresh())}>
+                            Discard
+                          </button>
+                        </Show>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+                <Show when={problems().length > 3}>
+                  <button type="button" class="link" onClick={review}>
+                    All {problems().length} changes
+                  </button>
+                </Show>
               </Show>
               <Show when={held().length}>
                 <button type="button" class="link danger" onClick={review}>

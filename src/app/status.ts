@@ -109,8 +109,9 @@ export const syncButton = (): { icon: "refresh" | "alert" | "pause" | "wifi-off"
   const sentence = syncSentence();
   const n = (x: number, one: string, many: string) => (x === 1 ? `1 ${one}` : `${x} ${many}`);
   if (sentence.tone === "danger") return { icon: "alert", label: "Sign in", tone: "danger", turning: false };
-  if (problems().length) return { icon: "alert", label: n(problems().length, "problem", "problems"), tone: "danger", turning: false };
-  if (held().length) return { icon: "alert", label: n(held().length, "to confirm", "to confirm"), tone: "danger", turning: false };
+  // Refused changes are amber, "to look at": red is kept for a sign-in that stops all sync (idea 34).
+  if (problems().length) return { icon: "alert", label: `${problems().length} to look at`, tone: "warn", turning: false };
+  if (held().length) return { icon: "alert", label: n(held().length, "to confirm", "to confirm"), tone: "warn", turning: false };
   if (sentence.text.startsWith("Offline")) return { icon: "wifi-off", label: "Offline", tone: "warn", turning: false };
   if (sentence.text.startsWith("Can't reach")) return { icon: "wifi-off", label: "Can't connect", tone: "warn", turning: false };
   if (paused()) return { icon: "pause", label: "Paused", tone: "warn", turning: false };

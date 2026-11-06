@@ -1,7 +1,8 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { go, isSaved, loadMore, searchServer, serverFound, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
 import { open } from "../app/conversation";
+import { act } from "../app/actions";
 import { keyOf } from "../app/rows";
 import {
   accounts,
@@ -18,6 +19,7 @@ import {
   selection,
   setFocus,
   setQuery,
+  setSnoozing,
   ownTitleBar,
   titleSlot,
   toggleSidebar,
@@ -33,8 +35,43 @@ import { SyncButton } from "./SyncButton";
 import { InboxZero } from "./InboxZero";
 import { rowId } from "../motion";
 import { VirtualList } from "./VirtualList";
+import { dayHeading } from "../listDays";
 
-const NOBODY_NEW = "Nobody new. First mail from someone you haven't written to waits here until you let them in.";
+/** The height of a day heading in the list. */
+const DAY_HEADING = 30;
+
+/** What an empty view says (idea 22): how mail gets here, with the key that does it. */
+const EMPTY: Record<string, { icon: IconName; title: string; line: JSX.Element }> = {
+  snoozed: { icon: "clock", title: "Nothing snoozed", line: <>Press <kbd>H</kbd> on a conversation to send it away until later. It comes back to the inbox, unread, when it's due.</> },
+  later: { icon: "book-open", title: "Nothing to read later", line: <>Press <kbd>Shift L</kbd> on a conversation to keep it here for when there's time.</> },
+  starred: { icon: "star", title: "Nothing starred", line: <>Press <kbd>S</kbd> on a conversation to keep it here.</> },
+  marked: { icon: "highlighter", title: "Nothing marked", line: <>Select words in a message and mark them; the conversation shows here.</> },
+  new_people: { icon: "user-plus", title: "Nobody new", line: <>First mail from someone you haven't written to waits here until you let them in.</> },
+  drafts: { icon: "pen-line", title: "No drafts", line: <>A mail you start and leave is kept here.</> },
+  sent: { icon: "send", title: "Nothing sent yet", line: <>Mail you send shows here.</> },
+  bulk: { icon: "inbox", title: "Nothing in Other", line: <>Newsletters, notifications and receipts land here.</> },
+  junk: { icon: "shield-check", title: "No spam", line: <>Mail the server or you mark as spam (<kbd>!</kbd>) waits here.</> },
+};
+function Empty() {
+  const e = () => EMPTY[role()];
+  return (
+    <Show when={listedHere()} fallback={<div class="empty" />}>
+      <Show when={e()} fallback={<div class="empty">Nothing here.</div>}>
+        {(e) => (
+          <div class="empty told">
+            <div>
+              <span class="empty-icon">
+                <Icon name={e().icon} size={22} />
+              </span>
+              <h2>{e().title}</h2>
+              <p>{e().line}</p>
+            </div>
+          </div>
+        )}
+      </Show>
+    </Show>
+  );
+}
 
 /** The icon each split tab shows (Lucide, see Icon.tsx). */
 const TAB_ICON: Record<string, IconName> = {
@@ -73,6 +110,14 @@ export function ListPane(props: {
     if (!row || document.activeElement?.classList.contains("vlist")) return "";
     return `${participants(row)}, ${row.subject || "no subject"}${row.unread ? ", unread" : ""}, ${focus() + 1} of ${rows().length}`;
   });
+  /** The search's result count; a search reads at most 500 here. */
+  const foundCount = () => {
+    const n = rows().length;
+    return n >= 500 ? "The newest 500" : n === 1 ? "1 conversation" : `${n.toLocaleString()} conversations`;
+  };
+  /** A row's hover buttons act on that row alone, as its key would on the focused one. */
+  const quick = (row: ThreadRow, what: "done" | "snooze" | "star") =>
+    what === "done" ? void act("archive", [row]) : what === "snooze" ? setSnoozing([row]) : void act(row.flagged ? "unstar" : "star", [row]);
   /** Rows the server's search added beyond what was found here. */
   const added = () => rows().filter((r) => r.fromServer).length;
   const onSearchKey = (e: KeyboardEvent) => {
@@ -90,6 +135,9 @@ export function ListPane(props: {
   // it, so one still being typed stays in the field.
   const [searchFocused, setSearchFocused] = createSignal(false);
   const growing = () => searchFocused() || searching();
+  // Day headings in the full-width list where rows run newest first by date; not in the narrow column beside a
+  // conversation, search results, Snoozed (sorted by when they come back) or New people (a row per person).
+  const dated = () => !props.split && !searching() && !["snoozed", "new_people", "later"].includes(role());
   const tokens = () => query().match(/"[^"]*"|\S+/g) ?? [];
   const isFilter = (t: string) => /^-?[a-z_]+:\S/i.test(t);
   const typedLast = () => /\S$/.test(query());
@@ -196,11 +244,13 @@ export function ListPane(props: {
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => toggleQuick(token)}
                     >
-                      {name}
+                      {name} <code>{token}</code>
                     </button>
                   )}
                 </For>
               </div>
+              {/* The words each chip adds show on it, so they can be typed next time (idea 16). */}
+              <p class="quick-hint">Or type them. Quote a phrase, put - before a word to leave it out.</p>
             </fieldset>
           </Show>
         </div>
@@ -255,14 +305,22 @@ export function ListPane(props: {
       <Show when={!ownTitleBar && selection().size > 0}>
         <SelectionBar />
       </Show>
-      <Show when={searching() && partial()}>
+      {/* How many were found leads; what was searched how, and the server's search, follow (idea 15). */}
+      <Show when={searching() && (rows().length || partial())}>
         <div class="search-note">
-          {coverage()}{" "}
+          <Show when={rows().length}>
+            <strong class="found">{foundCount()}</strong>
+          </Show>
+          <Show when={partial()}>
+            <span class="coverage">{coverage()}</span>
+          </Show>
+          <span class="spacer" />
+          <Show when={partial()}>
           <Show
             when={serverFound().query === query().trim() ? serverFound() : null}
             fallback={
-              <button type="button" class="link" onClick={() => void searchServer()}>
-                Search the server
+              <button type="button" class="soft-button" onClick={() => void searchServer()}>
+                Search the server too
               </button>
             }
           >
@@ -278,6 +336,7 @@ export function ListPane(props: {
               </span>
             )}
           </Show>
+          </Show>
         </div>
       </Show>
       <Show
@@ -286,7 +345,7 @@ export function ListPane(props: {
           <Show
             when={inboxZero()}
             fallback={
-              <Show when={searching()} fallback={<div class="empty">{listedHere() ? (role() === "new_people" ? NOBODY_NEW : "Nothing here.") : ""}</div>}>
+              <Show when={searching()} fallback={<Empty />}>
                 <div class="empty search-help">
                   <p>Nothing found.</p>
                   <p>
@@ -314,6 +373,8 @@ export function ListPane(props: {
           label={searching() ? `Search results for ${query()}` : title()}
           activeId={rows()[focus()] ? rowId(rows()[focus()]) : undefined}
           onEnd={loadMore}
+          heading={dated() ? (row, above) => dayHeading(row, above) : undefined}
+          headingHeight={DAY_HEADING}
         >
           {(row, index) => (
             <ConversationRow
@@ -331,6 +392,7 @@ export function ListPane(props: {
                 else if (openRow()) void open(row);
               }}
               onOpen={() => open(row)}
+              onQuick={props.split || selection().size > 0 || role() === "new_people" ? undefined : (what) => quick(row, what)}
             />
           )}
         </VirtualList>
