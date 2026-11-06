@@ -639,6 +639,12 @@ pub async fn mute(state: State<'_, AppState>, ids: Vec<i64>, mute: bool) -> Repl
     state.store.mute(&ids, mute).map_err(text)
 }
 
+/// Minutes to read each of these messages, for Read later.
+#[tauri::command]
+pub async fn reading_minutes(state: State<'_, AppState>, ids: Vec<i64>) -> Reply<Vec<(i64, Option<i64>)>> {
+    state.store.reading_minutes(&ids).map_err(text)
+}
+
 /// Every muted conversation, newest first, for Settings → Senders.
 #[tauri::command]
 pub async fn muted_conversations(state: State<'_, AppState>) -> Reply<Vec<MessageRow>> {

@@ -1,5 +1,6 @@
 import { For, onCleanup, onMount, Show } from "solid-js";
 import type { OutboxProblem, OutboxWaiting } from "../api";
+import { plainError } from "../plainError";
 import { until } from "./ConversationRow";
 
 /** "in 40 s", "in 3 min": when waiting work is tried next. */
@@ -58,15 +59,15 @@ export function ProblemsDialog(props: {
               <div class="problem">
                 <div class="what">
                   <strong>{p.what}</strong>
-                  <span class="error" title={p.lastError}>
-                    {p.lastError}
+                  {/* What happened in words, the server's code small after the tries; red only where it may
+                      have gone out (idea 40). */}
+                  <span class="said" title={p.lastError}>
+                    {plainError(p.lastError).said}
                   </span>
-                  <span class="note">
+                  <span class="note" classList={{ warn: p.maybeSent }}>
                     {p.maybeSent
                       ? "It may have been sent. Check Sent before sending it again."
-                      : p.attempts === 1
-                        ? "Tried once"
-                        : `Tried ${p.attempts} times`}
+                      : [p.attempts === 1 ? "Tried once" : `Tried ${p.attempts} times`, plainError(p.lastError).code].filter(Boolean).join(" · ")}
                   </span>
                 </div>
                 <Show when={p.what.startsWith("Send") && !p.maybeSent}>

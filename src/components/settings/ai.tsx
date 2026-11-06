@@ -27,9 +27,9 @@ const FIRST_MODEL: Record<AiProvider, string> = {
 };
 
 /** A numbered step: a check once done, the number in the accent while it is the one to do, grey after that. */
-function Step(props: { n: number; done: boolean; current: boolean; title: string; children: JSX.Element }) {
+function Step(props: { n: number; done: boolean; current: boolean; title: string; children: JSX.Element; later?: boolean }) {
   return (
-    <section class="ai-step" classList={{ done: props.done, current: props.current && !props.done }}>
+    <section class="ai-step" classList={{ done: props.done, current: props.current && !props.done, later: props.later }}>
       <span class="ai-step-mark" aria-hidden="true">
         <Show when={props.done} fallback={props.n}>
           <Icon name="check" size={13} />
@@ -257,7 +257,11 @@ export function AiSettingsPage(props: { accounts: Account[]; /** Opens Settings 
         </div>
         <span class="help">Set up one or several. Each feature below picks its model from the ones with a key.</span>
       </Step>
-      <Step n={2} done={ready() && ai().accounts.length > 0} current={ready()} title="Mail it may read">
+      {/* Without a key the next steps can't do anything yet: they step back, and one line says so (idea 52). */}
+      <Show when={!ready()}>
+        <p class="ai-next">Add a key above first: then you choose what AI may read and do.</p>
+      </Show>
+      <Step n={2} done={ready() && ai().accounts.length > 0} current={ready()} later={!ready()} title="Mail it may read">
         <div class="ai-checks">
           <For each={props.accounts}>
             {(a) => (
@@ -282,7 +286,7 @@ export function AiSettingsPage(props: { accounts: Account[]; /** Opens Settings 
           </label>
         </div>
       </Step>
-      <Step n={3} done={ready() && ai().accounts.length > 0 && anyFeature()} current={ready() && ai().accounts.length > 0} title="What it may do">
+      <Step n={3} done={ready() && ai().accounts.length > 0 && anyFeature()} current={ready() && ai().accounts.length > 0} later={!ready()} title="What it may do">
         <div class="ai-ledger" role="table" aria-label="What each feature sends and to which model">
           <div class="row head" role="row">
             <span role="columnheader">Feature</span>

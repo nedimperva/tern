@@ -108,8 +108,7 @@ impl Store {
             .map(|thread| {
                 let chars: Option<i64> =
                     minutes.query_row([thread.latest.id], |r| r.get(0)).optional()?.flatten();
-                // About 6 characters a word with its space, 230 words a minute; never "0 min".
-                let minutes = chars.filter(|&c| c > 0).map(|c| (c / (6 * 230)).max(1));
+                let minutes = reading_minutes(chars);
                 Ok(ToRead { thread, minutes })
             })
             .collect::<Result<_>>()?;
@@ -278,4 +277,10 @@ impl Store {
         self.conn().execute("DELETE FROM ai_styles WHERE account_id = ?1", [account_id])?;
         Ok(())
     }
+}
+
+/// How long a text of this many characters takes to read: about 6 characters a word with its space, 230 words a
+/// minute, and never "0 min". None when there is no text yet.
+pub(crate) fn reading_minutes(chars: Option<i64>) -> Option<i64> {
+    chars.filter(|&c| c > 0).map(|c| (c / (6 * 230)).max(1))
 }

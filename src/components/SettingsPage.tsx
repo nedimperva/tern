@@ -23,6 +23,8 @@ type Section = {
   /** Drawn before the name; an account has its colour's dot instead. */
   icon?: IconName;
   dot?: string;
+  /** Under the name: an account's address when its name is something else (idea 43). */
+  sub?: string;
 };
 
 /** Ctrl+, : settings over the list (docs/design/ui.md §4.8). Changes apply and are saved at once. */
@@ -113,6 +115,7 @@ export function SettingsPage(props: {
       (a): Section => ({
         id: `account:${a.id}`,
         name: accountName(a),
+        sub: accountName(a) === a.email ? undefined : a.email,
         group: "Accounts",
         words: `${a.email} ${(a.aliases ?? []).map((x) => x.email).join(" ")} server imap smtp account alias send as from domain`,
         dot: colourOf(props.accounts, a.id),
@@ -181,7 +184,12 @@ export function SettingsPage(props: {
                         {(name) => <Icon name={name()} size={15} />}
                       </Show>
                     </span>
-                    <span class="name">{s.name}</span>
+                    <span class="name">
+                      {s.name}
+                      <Show when={s.sub}>
+                        <small>{s.sub}</small>
+                      </Show>
+                    </span>
                   </button>
                 )}
               </For>

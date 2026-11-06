@@ -65,6 +65,8 @@ export function ConversationRow(props: {
   account?: { colour: string; email: string };
   /** The element's id, for the list's aria-activedescendant. */
   id?: string;
+  /** How long it takes to read, in Read later (idea 54). */
+  minutes?: number | null;
   /** Done, Snooze and Star on this row, shown over its date while the pointer is on it (idea 17). */
   onQuick?: (what: "done" | "snooze" | "star") => void;
 }) {
@@ -188,6 +190,9 @@ export function ConversationRow(props: {
             </For>
           </span>
         )}
+      </Show>
+      <Show when={props.minutes}>
+        {(m) => <span class="chip read-time">{m()} min read</span>}
       </Show>
       <Show when={props.row.snoozedUntil} fallback={<span class="date">{when(props.row.date)}</span>}>
         {(due) => (

@@ -14,6 +14,9 @@ every release needs one here before it is tagged.
 - Done, Snooze and Star on a row while the pointer is on it.
 - The sync panel lists each change the server refused, with Retry and Discard beside it.
 - Empty views say how mail gets there, with the key that does it.
+- The command palette offers "Search your mail for …" and "Ask your mail about …" when no command matches.
+- Keys 1 to 5 pick a time in the snooze picker; a time typed with a digit first ("3h") still works.
+- Read later rows say how long each takes to read.
 
 ### Changed
 
@@ -39,12 +42,23 @@ every release needs one here before it is tagged.
   their initials.
 - The file viewer dims the title bar with it, and its button says Close.
 - Settings' drop-downs share one width.
+- The command palette shows commands that match by word first, and at most three looser matches under their own
+  heading.
+- The quoted "On … wrote:" line in a reply folds with the quote, and the pill names whose message it is.
+- Problems say what went wrong in plain words, with the server's code beside it and its full reply on hover.
+- Morning cards show the subject above what is asked, and say "waiting 3 weeks" rather than a date.
+- Starred rows don't repeat the star. A conversation's labels sit at the end of the people line.
+- Earlier messages in a thread line up their names, and their snippets end in an ellipsis.
+- Settings: accounts show their address under the name; Email links says when Tern already opens them; the
+  Appearance preview shows whole rows; Senders says where each sender is now; AI dims the later steps until a key
+  is added; Todoist's list runs the full width.
 
 ### Fixed
 
 - Received files show their full names again: the compose box's file tiles had taken over their cards.
 - The sync panel said "Up to date" (to screen readers too) while changes had failed.
 - Long names in the shortcut sheet no longer run into their keys.
+- The sync panel said an account was "Up to date" while some of its changes had failed.
 
 ## [2.1.0] - 2026-11-06
 

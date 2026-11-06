@@ -1,7 +1,7 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { api, type AiOvernight, type ThreadRow } from "../api";
 import { asRow } from "../app/rows";
-import { closeScreen, start, waitingSince } from "../day";
+import { closeScreen, start, waitedFor, waitingSince } from "../day";
 import { typing } from "../keys";
 import { settings } from "../settings";
 
@@ -128,7 +128,8 @@ export function DayScreen(props: {
   onMount(() => window.addEventListener("keydown", onKey, true));
   onCleanup(() => window.removeEventListener("keydown", onKey, true));
 
-  const Card = (c: { row: ThreadRow; when: string; urgent?: boolean; line?: string }) => (
+  // `subject`: the subject on its own line above `line` (Needs you, idea 41).
+  const Card = (c: { row: ThreadRow; when: string; urgent?: boolean; line?: string; subject?: boolean }) => (
     <button type="button" class="tide-card" onClick={() => props.onOpen(c.row)}>
       <span class="who">
         <strong>{sender(c.row)}</strong>
@@ -136,6 +137,9 @@ export function DayScreen(props: {
           {c.when}
         </span>
       </span>
+      <Show when={c.subject}>
+        <span class="subject">{c.row.subject || "(no subject)"}</span>
+      </Show>
       <span class="what">{c.line ?? (c.row.subject || "(no subject)")}</span>
     </button>
   );
@@ -169,7 +173,7 @@ export function DayScreen(props: {
             Needs you <span class="count urgent">{s().needYou.length || ""}</span>
           </h2>
           <For each={s().needYou.slice(0, 5)} fallback={<p class="tide-empty">Nothing waits on you.</p>}>
-            {(t) => <Card row={t} when={waitingSince(t.date)} urgent={Date.now() / 1000 - t.date > 2 * 86_400} line={t.snippet || t.subject} />}
+            {(t) => <Card row={t} when={waitedFor(t.date)} urgent={Date.now() / 1000 - t.date > 2 * 86_400} subject={!!t.snippet} line={t.snippet || t.subject} />}
           </For>
           <Show when={s().needYou.length > 5}>
             <button type="button" class="link tide-more" onClick={props.onStart}>

@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, on, onMount, Show } from "solid-js";
+import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { api } from "../api";
 import { until } from "./ConversationRow";
 
@@ -53,8 +53,37 @@ export function SnoozePicker(props: {
     return due == null ? [] : [{ name: typed().trim(), due }];
   };
 
+  // 1–5 on an empty field pick that time (idea 38). A time typed with a digit first ("3h") must still work, so the
+  // pick waits a moment: a second key before then makes the digit the start of what is typed.
+  let digitTimer: number | undefined;
+  const pending = { digit: "" };
+  const cancelDigit = () => {
+    clearTimeout(digitTimer);
+    const d = pending.digit;
+    pending.digit = "";
+    return d;
+  };
+  onCleanup(() => clearTimeout(digitTimer));
   const onKeyDown = (e: KeyboardEvent) => {
     const list = choices();
+    const waiting = cancelDigit();
+    if (waiting && e.key.length === 1) {
+      // Typing went on: the digit belongs to the text, before this key.
+      setTyped(waiting + typed());
+      (e.currentTarget as HTMLInputElement).value = typed();
+      return;
+    }
+    if (!typed() && /^[1-9]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey && list[Number(e.key) - 1]) {
+      e.preventDefault();
+      pending.digit = e.key;
+      setIndex(Number(e.key) - 1);
+      const pick = list[Number(e.key) - 1];
+      digitTimer = window.setTimeout(() => {
+        pending.digit = "";
+        props.onPick(pick.due);
+      }, 350);
+      return;
+    }
     if (e.key === "Escape") props.onClose();
     else if (e.key === "ArrowDown") setIndex((index() + 1) % Math.max(1, list.length));
     else if (e.key === "ArrowUp") setIndex((index() - 1 + list.length) % Math.max(1, list.length));
@@ -91,7 +120,12 @@ export function SnoozePicker(props: {
                 onMouseEnter={() => setIndex(i())}
                 onMouseDown={() => props.onPick(c.due)}
               >
-                <span>{c.name}</span>
+                <span>
+                  <Show when={!typed().trim() && i() < 9}>
+                    <kbd class="pick-key">{i() + 1}</kbd>
+                  </Show>
+                  {c.name}
+                </span>
                 <span class="when">{until(c.due)}</span>
               </li>
             )}

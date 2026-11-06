@@ -337,6 +337,7 @@ fn main() {
             commands::check_tasks,
             commands::muted,
             commands::muted_conversations,
+            commands::reading_minutes,
             commands::take_mailto,
             commands::quit,
             commands::set_sync_paused,

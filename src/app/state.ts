@@ -156,6 +156,8 @@ export const dialog = () =>
 export const searching = () => query().trim() !== "";
 /** Ask your mail is open (`A`, package 17 F). */
 export const [askingMail, setAskingMail] = createSignal(false);
+/** A question to open Ask your mail with (from the palette's fallback); taken once. */
+export const [askFirst, setAskFirst] = createSignal("");
 /** The role of the list on show ("" for a folder or label). */
 export const role = () => {
   const t = target();

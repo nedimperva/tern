@@ -131,12 +131,13 @@ const downloadShare = () => {
   return total ? Math.min(99, Math.floor((have / total) * 100)) : 0;
 };
 
-/** Each account's state in a few words, for the sync panel. */
+/** Each account's state in a few words, for the sync panel. With changes it refused, the connection is fine but the
+ * account is not "up to date" (idea 49). */
 export const accountStates = () =>
   accounts().map((a) => {
     const s = syncStates()[a.id];
     const word =
-      s === "auth-failed" ? "Sign-in refused" : s === "offline" ? "Can't connect" : s === "paused" ? "Paused" : s === "connecting" ? "Connecting" : s === "syncing" ? "Syncing" : "Up to date";
+      s === "auth-failed" ? "Sign-in refused" : s === "offline" ? "Can't connect" : s === "paused" ? "Paused" : s === "connecting" ? "Connecting" : s === "syncing" ? "Syncing" : problems().some((p) => p.accountId === a.id) ? "Connected" : "Up to date";
     const tone = s === "auth-failed" ? "danger" : s === "offline" || s === "paused" ? "warn" : s === "syncing" || s === "connecting" ? "busy" : "ok";
     return { id: a.id, email: a.email, word, tone };
   });

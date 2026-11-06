@@ -72,7 +72,14 @@ function Marked(props: { text: string; at: number[] }) {
 }
 
 /** Ctrl+K: every command, found by typing a few letters of it (docs/design/ui.md §4.3). */
-export function CommandBar(props: { commands: Command[]; onClose: () => void; /** Open in this command's choices. */ start?: string }) {
+export function CommandBar(props: {
+  commands: Command[];
+  onClose: () => void;
+  /** Open in this command's choices. */
+  start?: string;
+  /** What to offer when no command matches the words typed: search the mail for them, ask about them (idea 36). */
+  fallback?: (words: string) => Command[];
+}) {
   const [query, setQuery] = createSignal("");
   const [index, setIndex] = createSignal(0);
   // The command whose choices are showing, if any (argument mode, §4.3).
@@ -92,13 +99,20 @@ export function CommandBar(props: { commands: Command[]; onClose: () => void; /*
         .map((c) => ({ c, at: [] as number[], group: c.group ?? "Actions" }));
       return [...first, ...rest];
     }
-    return list()
+    const found = list()
       .flatMap((c) => {
         const m = fuzzy(c.name, q);
         // A command run before gets a little ahead of an equal match.
         return m ? [{ c, at: m.at, group: "", score: m.score + (remembered.includes(c.name) ? 50 : 0) }] : [];
       })
       .sort((a, b) => b.score - a.score);
+    // Letters that only happen to come in order ("sno" in "Who fills your inbox") wait under their own heading,
+    // a few at most, after the matches by word (idea 35).
+    const tight = found.filter((m) => m.score >= 1500);
+    const loose = found.filter((m) => m.score < 1500);
+    if (!tight.length && !loose.length && !parent()) return (props.fallback?.(q) ?? []).map((c) => ({ c, at: [] as number[], group: "" }));
+    if (!tight.length) return loose;
+    return [...tight, ...loose.slice(0, 3).map((m) => ({ ...m, group: "Looser matches" }))];
   });
 
   const enter = (c: Command) => {
@@ -156,7 +170,7 @@ export function CommandBar(props: { commands: Command[]; onClose: () => void; /*
           <For each={matches()} fallback={<li class="none">No command matches</li>}>
             {(m, i) => (
               <>
-                <Show when={m.group && m.group !== matches()[i() - 1]?.group}>
+                <Show when={m.group && m.group !== (matches()[i() - 1]?.group ?? "")}>
                   <li class="group">{m.group}</li>
                 </Show>
                 <li

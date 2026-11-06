@@ -767,6 +767,17 @@ export function ConversationView(props: {
   const left = unsubscribed;
   // Loading images for good is a choice about a sender, so it sits in the menu, beside the conversation's actions.
   const [original, setOriginal] = createSignal<ThreadMessage | null>(null);
+  const labelChips = () => (
+    <div class="labels">
+      <For each={props.labels}>
+        {(l) => (
+          <span class="label-chip" style={{ "--label": labelColour(l) }}>
+            {l}
+          </span>
+        )}
+      </For>
+    </div>
+  );
   const menu = () => {
     const sender = privacy().sender;
     const items = [...props.menu(), { name: "Show original", group: "view", run: () => setOriginal(last() ?? null) }];
@@ -1153,17 +1164,8 @@ export function ConversationView(props: {
         <header class="conversation-head" classList={{ reader: reader() }}>
           <div class="title">
             <h1 ref={title}>{subject()}</h1>
-            <Show when={props.labels.length}>
-              <div class="labels">
-                <For each={props.labels}>
-                  {(l) => (
-                    <span class="label-chip" style={{ "--label": labelColour(l) }}>
-                      {l}
-                    </span>
-                  )}
-                </For>
-              </div>
-            </Show>
+            {/* Labels close the people line (idea 50), or stand alone where there is none. */}
+            <Show when={props.labels.length && (stage() || !props.messages.length)}>{labelChips()}</Show>
             <Show when={!stage() && props.messages.length > 0}>
               <div class="people">
                 <Show when={!settings.companion}>
@@ -1171,10 +1173,11 @@ export function ConversationView(props: {
                     <For each={senders()}>{(m) => <Avatar addr={m.fromAddr} name={m.fromName} />}</For>
                   </span>
                 </Show>
-                <span>
+                <span class="said">
                   {settings.companion ? "" : `${people()} · `}
                   {props.messages.length} messages · {span(props.messages[0].date, last().date)}
                 </span>
+                <Show when={props.labels.length}>{labelChips()}</Show>
               </div>
             </Show>
             <Show when={taskRows().length ? taskRows() : null}>

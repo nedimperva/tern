@@ -452,7 +452,13 @@ export function DesktopSettings() {
         <span class="title">Email links</span>
         <Show
           when={!isDefault()}
-          fallback={<span class="help">Email links (mailto:) open in Tern.</span>}
+          fallback={
+            // Already Tern's: it says so in the choice's place, not as a button that would do nothing (idea 46).
+            <>
+              <span class="setting-state ok">✓ Tern opens them</span>
+              <span class="help">Clicking an email address (mailto:) on a web page or in another app starts a message here.</span>
+            </>
+          }
         >
           <button
             onClick={() =>
