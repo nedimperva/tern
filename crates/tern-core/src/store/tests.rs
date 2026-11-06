@@ -347,7 +347,11 @@ fn the_day_starts_with_who_waits_on_you_longest() {
         start.to_read.iter().map(|r| (r.thread.latest.subject.as_str(), r.minutes)).collect();
     assert_eq!(reading, [("Weekly news", Some(1))], "a list that wrote since, about a minute long");
     let list_id = start.to_read[0].thread.latest.id;
-    assert_eq!(store.reading_minutes(&[list_id, -1]).unwrap(), [(list_id, Some(1)), (-1, None)], "Read later's rows, by id");
+    assert_eq!(
+        store.reading_minutes(&[list_id, -1]).unwrap(),
+        [(list_id, Some(1)), (-1, None)],
+        "Read later's rows, by id"
+    );
     store.read_later(&[start.need_you[1].latest.id], true, 160).unwrap();
     let shelf: Vec<String> =
         store.day_start(150).unwrap().to_read.iter().map(|r| r.thread.latest.subject.clone()).collect();
