@@ -22,7 +22,7 @@ keyring = { version = "3", features = ["windows-native", "apple-native", "sync-s
 # rustls with the platform verifier, as for IMAP: one TLS stack, no OpenSSL.
 lettre = { version = "0.11", default-features = false, features = ["builder", "hostname", "smtp-transport", "tokio1", "tokio1-rustls", "ring", "rustls-platform-verifier"] }
 log = "0.4"
-mail-parser = "0.11"
+mail-parser = "1.0"
 # io-imap 0.7.1 does not build from a fresh resolve: imap-codec turns off nom's default features and nothing turns
 # `alloc` back on. Enabling it here is the workaround; drop it once io-imap or imap-codec fixes it.
 nom = { version = "7", default-features = false, features = ["alloc"] }
