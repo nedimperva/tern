@@ -63,7 +63,8 @@
     "deep-link": {
       "desktop": {
         "schemes": [
-          "mailto"
+          "mailto",
+          "tern"
         ]
       }
     }

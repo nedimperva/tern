@@ -366,6 +366,7 @@ mod tests {
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            label: String::new(),
             aliases: Vec::new(),
         };
         let draft = Draft {
@@ -408,6 +409,7 @@ mod tests {
             smtp_port: 587,
             smtp_security: Security::Starttls,
             auth: Default::default(),
+            label: String::new(),
             aliases: vec![
                 crate::models::Alias { email: "hi@custom.example".into(), name: String::new() },
                 crate::models::Alias { email: "work@custom.example".into(), name: "Ada at Work".into() },
@@ -451,6 +453,7 @@ mod tests {
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            label: String::new(),
             aliases: Vec::new(),
         };
         let draft = Draft {
@@ -487,6 +490,7 @@ Ada"
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            label: String::new(),
             aliases: Vec::new(),
         };
         let draft = Draft {
@@ -528,6 +532,7 @@ Ada"
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            label: String::new(),
             aliases: Vec::new(),
         };
         let draft = Draft {
@@ -572,6 +577,7 @@ Ada"
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            label: String::new(),
             aliases: Vec::new(),
         };
         let draft = Draft {
@@ -622,6 +628,7 @@ Ada"
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            label: String::new(),
             aliases: Vec::new(),
         };
         let draft = Draft {
@@ -672,6 +679,7 @@ Ada"
             smtp_port: 465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            label: String::new(),
             aliases: Vec::new(),
         };
         let picture = |name: &str, cid: &str| crate::models::OutgoingAttachment {
@@ -758,6 +766,7 @@ Ada"
             smtp_port: port,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            label: String::new(),
             aliases: Vec::new(),
         };
         let draft = Draft {

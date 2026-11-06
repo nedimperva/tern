@@ -21,6 +21,17 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
       setError(String(e));
     }
   };
+  // A short name for telling this account from another with the same name. Tern only; the From line keeps the name.
+  const relabel = async (label: string) => {
+    if (label.trim() === (props.account.label ?? "")) return;
+    setError("");
+    try {
+      await api.setAccountLabel(props.account.id, label);
+      props.onRenamed();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
   // Other addresses it sends as. Edits save when a field is left; an empty address is dropped then.
   const [aliases, setAliases] = createSignal<Alias[]>(props.account.aliases ?? []);
   const [aliasError, setAliasError] = createSignal("");
@@ -98,6 +109,20 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
   const general = () => (!settings.notify ? "no notifications" : settings.notifyOther ? "Important and Other" : "Important mail");
   return (
     <>
+      <label class="setting">
+        <span class="title">Label</span>
+        <input
+          value={props.account.label ?? ""}
+          placeholder={props.account.email}
+          maxLength={40}
+          onChange={(e) => void relabel(e.currentTarget.value)}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        />
+        <span class="help">
+          A short name to tell this account from others, such as “Work” or “Personal”. Only Tern shows it. Empty shows
+          the address.
+        </span>
+      </label>
       <label class="setting">
         <span class="title">Your name</span>
         <input

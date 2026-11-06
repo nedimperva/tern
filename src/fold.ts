@@ -9,6 +9,9 @@ const OUTLOOK_HEADER = /^(From|Od|Von|De|Šalje):\s.{3,300}?\b(Sent|Poslano|Posl
 const NOTICE =
   /\b(intended recipient|contractual penalty|confidential(?:ity)? (?:notice|information)|is confidential|privileged|unauthori[sz]ed (?:copying|use|distribution|disclosure)|disclaimer|naznačeni primatelj|ugovornu kaznu|povjerljiv\w*|neovlašten\w* (?:kopiranje|korištenje|distribucija)|zaštićene zakonom)/i;
 
+/** The most text a block can hold and still be folded as one piece: a wrapper around a whole mail is not a notice. */
+const FOLD_BLOCK_MAX = 1500;
+
 /** A paragraph that is such a notice: long enough to be one, and saying what they say. */
 export const isNotice = (text: string) => text.trim().length >= 60 && NOTICE.test(text);
 
@@ -96,8 +99,17 @@ export function markQuotes(doc: Document) {
   const notices = new Set<Element>();
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const data = (n as Text).data;
+    // A mail's styles and scripts are not its words, whatever they happen to contain.
+    if (n.parentElement?.closest("style, script")) continue;
     const block = n.parentElement?.closest("p, div, td") ?? null;
     if (!block || block === doc.body) continue;
+    // A notice in a newsletter's footer can sit straight in its outer wrapper, which holds the whole mail: folding
+    // that folds everything. Only a block of its own size counts; the notice's own element is tried first.
+    if (NOTICE.test(data) && (block.textContent?.length ?? 0) > FOLD_BLOCK_MAX) {
+      const own = n.parentElement;
+      if (own && own !== doc.body && (own.textContent?.length ?? 0) <= FOLD_BLOCK_MAX && isNotice((own.textContent ?? "").replace(/ /g, " "))) notices.add(own);
+      continue;
+    }
     if (!outlook && HEADER_START.test(data.trimStart())) {
       const text = (block.textContent ?? "").replace(/\u00a0/g, " ").trim();
       if (OUTLOOK_HEADER.test(text) && !block.closest(".tern-quote") && (block.previousElementSibling || block.parentElement !== doc.body))

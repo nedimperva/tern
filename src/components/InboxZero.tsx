@@ -297,7 +297,7 @@ export function InboxZero(props: { accounts: Account[] }) {
 
     colony: () => {
       const accounts = props.accounts;
-      const names = accounts.map((a) => a.displayName || a.email);
+      const names = accounts.map((a) => a.label || a.displayName || a.email);
       const gap = Math.min(220, 760 / Math.max(1, accounts.length));
       const start = W / 2 - (gap * (accounts.length - 1)) / 2;
       return {

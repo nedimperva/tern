@@ -205,8 +205,215 @@ button.primary kbd {
 .titlebar-fill {
   flex: 1;
 }
+/* The list's tabs and search, moved up from a row of their own (owner, 2026-11-04). With the list alone they take
+   the bar's width and their empty stretch still drags the window (the bar's drag region is deep); beside a
+   conversation they are the list column's width, and the fill after them drags. */
+.titlebar-slot,
+/* Solid's Portal puts its own div around what it moves. */
+.titlebar-slot > div {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+.titlebar-slot {
+  flex: none;
+}
+.titlebar-slot:has(.in-titlebar:not(.split)) {
+  flex: 1;
+}
+/* Only while the tabs show: in settings, the morning screen or a full-window conversation they are hidden, and the
+   fill takes the width again so the sync and window buttons stay at the right. */
+.window:not(:has(.app.full)) .titlebar-slot:not(.hidden):has(.in-titlebar:not(.split)) ~ .titlebar-fill {
+  flex: 0 0 var(--s-2);
+}
+.titlebar-slot.hidden,
+.window:has(.app.full) .titlebar-slot {
+  display: none;
+}
+/* An open conversation's subject and tools, after the list's column (canvas "Tern title bar ideas", 1). With
+   both sidebars open in a smaller window it is narrow, and things give way in order so the subject keeps its room:
+   the people and count, then the keys on Done, then the quieter tools (their keys and the ⋯ menu still reach them),
+   then the sync button's words. */
+.titlebar-conv {
+  display: flex;
+  min-width: 0;
+  container: conv-bar / inline-size;
+}
+@container conv-bar (max-width: 720px) {
+  .conv-meta,
+  .conv-bar .tools .primary kbd {
+    display: none;
+  }
+}
+@container conv-bar (max-width: 560px) {
+  .conv-bar .tools .extra,
+  .conv-bar .tools .vsep {
+    display: none;
+  }
+}
+@media (max-width: 1440px) {
+  .titlebar:has(.conv-bar) .sync-label {
+    display: none;
+  }
+}
+.titlebar-conv:has(.conv-bar) {
+  flex: 1;
+}
+.titlebar-conv > div {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+.titlebar-conv:has(.conv-bar) + .titlebar-fill {
+  flex: 0 0 0;
+}
+.conv-bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0 var(--s-2) 0 var(--s-4);
+}
+.conv-subject {
+  flex: 0 1 auto;
+  min-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-md);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+/* Gives way to the subject first when the bar is narrow. */
+.conv-meta {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.conv-bar .spacer {
+  flex: 1;
+}
+.conv-bar .tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* The subject is up in the bar: the heading here stays for screen readers, out of sight. */
+.head-in-bar .conversation-head h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.head-in-bar .conversation-head {
+  padding-top: var(--s-4);
+}
+/* Conversations selected: the bar is their actions (canvas "Tern title bar ideas", 2). */
+.titlebar.selecting .titlebar-slot,
+.titlebar.selecting .titlebar-conv,
+.titlebar.selecting .titlebar-fill,
+.titlebar.selecting > .sync-box {
+  display: none;
+}
+.select-bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-2);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+.list-pane > .select-bar {
+  flex: none;
+  height: 44px;
+}
+.select-bar strong {
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+.select-bar .from {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+.select-bar .vsep {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 var(--s-1);
+  background: color-mix(in srgb, var(--accent-fg) 35%, transparent);
+}
+.select-bar .icon-button {
+  color: inherit;
+}
+.select-bar .icon-button:hover {
+  background: color-mix(in srgb, var(--accent-fg) 16%, transparent);
+  color: inherit;
+}
+.select-act {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--s-3);
+  border: 1px solid color-mix(in srgb, var(--accent-fg) 40%, transparent);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: inherit;
+  font-size: var(--t-sm);
+}
+.select-act:hover {
+  background: color-mix(in srgb, var(--accent-fg) 14%, transparent);
+}
+.select-act.main {
+  border-color: var(--accent-fg);
+  background: var(--accent-fg);
+  color: var(--accent);
+  font-weight: 600;
+}
+.select-act kbd {
+  margin: 0;
+  border-color: currentColor;
+  background: none;
+  color: inherit;
+  opacity: 0.7;
+}
+.list-header.in-titlebar {
+  flex: 1;
+  height: 100%;
+}
+.list-header.in-titlebar.split {
+  flex: none;
+  width: 340px;
+  border-right: 1px solid var(--line);
+}
+/* Without the docked sidebar the bar's own buttons sit over the start of the list column. */
+.window:not(.docked) .list-header.in-titlebar.split {
+  width: calc(340px - 78px);
+}
+.list-header.in-titlebar .splits button {
+  height: 100%;
+}
+.list-header.in-titlebar h2 {
+  font-size: var(--t-md);
+}
 /* A line under the bar, except over the docked sidebar. */
+.titlebar-slot,
 .titlebar-fill,
+.titlebar > .sync-box,
 .window-buttons,
 .titlebar:not(.side-tone) .titlebar-side {
   border-bottom: 1px solid var(--line);
@@ -318,6 +525,10 @@ button.primary kbd {
   height: 48px;
   padding: 0 var(--s-3);
 }
+/* The header's parts in one element for the DOM's sake; for layout they are the row's own children. */
+.list-head {
+  display: contents;
+}
 .list-header h2 {
   font-size: var(--t-lg);
   font-weight: 600;
@@ -335,36 +546,124 @@ button.primary kbd {
 :root[data-density="spacious"] .crow {
   font-size: calc(var(--t-md) + 2px);
 }
-.search {
-  width: 200px;
-  padding: var(--s-1) 10px;
+/* The search field: a box with the filters as chips and the words after them. It grows over the tabs while it has
+   the focus or holds a search (canvas "Tern title bar ideas", 3); beside a conversation it is a "/" until then. */
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 220px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-2);
   transition: width var(--d-base) var(--ease);
 }
-.search:focus {
-  width: 320px;
+.search-box:focus-within {
+  border-color: var(--accent);
 }
-/* The narrow list beside a conversation: search is a "/" key after the tabs, and the whole header while typing. */
-.app.split .list-header {
+.search-box.open {
+  flex: 1;
+  width: auto;
+  max-width: 760px;
+}
+.search-box .search {
+  flex: 1;
+  min-width: 40px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.search-box .chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 6px 0 8px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.search-box .chip:hover {
+  filter: brightness(0.95);
+}
+.search-quick {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: min(460px, calc(100vw - 32px));
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-0);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  min-inline-size: 0;
+}
+.search-quick .kicker {
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.search-quick .quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.search-quick button {
+  height: 28px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.search-quick button:hover {
+  background: var(--bg-2);
+}
+.search-quick button.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.app.split .list-header,
+.list-header.in-titlebar.split {
   position: relative;
 }
-.app.split .search {
+.app.split .search-box:not(.open),
+.in-titlebar.split .search-box:not(.open) {
   flex: none;
   width: 30px;
-  padding: var(--s-1) 0;
-  text-align: center;
+  padding: 0;
+  justify-content: center;
 }
-.app.split .search:focus {
-  text-align: left;
-  padding: var(--s-1) 10px;
-}
-.app.split .search:focus {
+.app.split .search-box:not(.open) .search,
+.in-titlebar.split .search-box:not(.open) .search {
   position: absolute;
-  left: var(--s-3);
-  right: var(--s-3);
-  width: auto;
-  z-index: 1;
+  inset: 0;
+  opacity: 0;
 }
-.app.split .list-header > .link {
+.app.split .list-head > .link,
+.in-titlebar.split .list-head > .link {
   display: none;
 }
 
@@ -415,44 +714,6 @@ button.primary kbd {
   font-size: var(--t-sm);
   border-bottom: 1px solid var(--line);
 }
-/* Above Important while someone waits in New people. */
-.waiting-line {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  width: 100%;
-  padding: var(--s-2) var(--s-3);
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--accent-soft);
-  color: var(--fg-1);
-  font: inherit;
-  font-size: var(--t-sm);
-  text-align: left;
-}
-.waiting-line > span:first-of-type {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.waiting-line .go {
-  margin-left: auto;
-  flex: none;
-  color: var(--accent);
-  font-weight: 600;
-}
-.waiting-line kbd {
-  flex: none;
-}
-.waiting-line:hover .go {
-  text-decoration: underline;
-}
-.split .waiting-line kbd {
-  display: none;
-}
-
 /* Tern's right-click menu on a link in a message. */
 .link-menu {
   position: fixed;
@@ -918,6 +1179,53 @@ button.primary kbd {
   color: var(--fg-2);
   font-weight: 400;
 }
+/* Each tab has its icon. Where the tabs run short of room (beside a conversation, or a narrow window) only the open
+   tab keeps its name; the others are icons, and their names stay in aria-label and the tooltip. */
+.splits {
+  container: tabs / inline-size;
+}
+@container tabs (max-width: 300px) {
+  .splits button:not(.active) .name {
+    display: none;
+  }
+}
+/* Beside a conversation the list's column is 340 px: the unread counts go, so every tab's name fits (Starred was cut
+   to "Starre"). New people keeps its count, which is all it shows. */
+.app.split .splits button:not(.people) .count,
+.in-titlebar.split .splits button:not(.people) .count {
+  display: none;
+}
+/* New people: no name, just the icon and how many wait, in the tabs' own quiet grey with a small dot. It is a tab
+   only while the sidebar is closed; open, the sidebar says it. */
+.splits button.people {
+  position: relative;
+  gap: 4px;
+  color: var(--fg-2);
+}
+.splits button.people .name {
+  display: none;
+}
+.splits button.people .count {
+  color: inherit;
+  font-weight: 500;
+}
+.splits button.people::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg-0);
+}
+.splits button.people.active::after {
+  display: none;
+}
+.splits button.people:hover {
+  color: var(--fg-0);
+}
 
 /* MARK: Conversation rows (§4.1) */
 
@@ -969,7 +1277,8 @@ button.primary kbd {
 .crow.two .glyphs {
   grid-area: glyphs;
 }
-.crow.two .chip.follow-up {
+.crow.two .chip.follow-up,
+.crow.two .chip.from-server {
   grid-area: chip;
 }
 .crow.two .date {
@@ -1095,6 +1404,19 @@ button.primary kbd {
 .crow .clip {
   color: var(--fg-2);
 }
+/* A row the server's search found: quieter than a follow-up, it only says where it came from. */
+.crow .chip.from-server {
+  flex: none;
+  padding: 1px var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+.search-note .link {
+  font-size: inherit;
+}
 .crow .chip.follow-up {
   flex: none;
   padding: 1px var(--s-2);
@@ -1135,101 +1457,252 @@ button.primary kbd {
   font-variant-numeric: tabular-nums;
 }
 
-/* MARK: Status strip (§3) */
+/* MARK: Sync button and toasts (§3) */
 
-.status {
+/* The title bar's word on sync (canvas "Tern toolbar and status bar", A): the strip under the list is gone, and the
+   keys it showed with it. Quiet arrows and a dot; a label only when something needs a look. */
+.sync-box {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--s-3);
-  height: 28px;
-  padding: 0 var(--s-3);
-  border-top: 1px solid var(--line);
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-  white-space: nowrap;
-  overflow: hidden;
+  padding: 0 var(--s-2);
 }
-.status .sync {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-/* Beside an open conversation the strip is only as wide as the list: what doesn't fit shortens instead of being cut
-   off at the edge, and the keys go (the conversation shows its own). */
-.status .sync .text,
-.status .toast > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.status .toast {
-  min-width: 0;
-}
-.split .status .hints {
-  display: none;
-}
-.status .dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ok);
-}
-.status .sync.warn .dot {
-  background: var(--warn);
-}
-.status .sync.danger {
-  color: var(--danger);
-}
-.status .sync.danger .dot {
-  background: var(--danger);
-}
-.status .spacer {
-  flex: 1;
-}
-.status .problems-link {
-  color: var(--danger);
-  text-decoration: underline;
-  font-size: inherit;
-}
-.status .waiting-link {
-  color: var(--fg-2);
-  text-decoration: underline;
-  font-size: inherit;
-}
-/* A waiting update is a button, not one more link: it is the one thing in the strip that asks for a click. */
-.status .update-link {
+.sync-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 20px;
-  padding: 0 var(--s-2);
-  border: none;
-  border-radius: 10px;
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-size: inherit;
+  height: 28px;
+  padding: 0 9px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+.sync-button:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.sync-button .sync-label {
   font-weight: 600;
 }
-.status .update-link:hover {
+.sync-box .dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.sync-button.busy,
+.sync-accounts .busy {
+  color: var(--accent);
+}
+.sync-box .busy .dot,
+.sync-button.busy .dot {
+  background: var(--accent);
+}
+.sync-box .warn .dot,
+.sync-button.warn .dot {
+  background: var(--warn);
+}
+.sync-box .waiting .dot,
+.sync-button.waiting .dot {
+  background: var(--fg-2);
+}
+.sync-button.danger,
+.sync-accounts .danger {
+  color: var(--danger);
+}
+.sync-box .danger .dot,
+.sync-button.danger .dot {
+  background: var(--danger);
+}
+.sync-icon {
+  display: inline-flex;
+  transform-origin: 50% 50%;
+}
+.sync-button.turning .sync-icon {
+  animation: sync-turn 1s linear infinite;
+}
+@keyframes sync-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sync-button.turning .sync-icon {
+    animation: none;
+  }
+}
+.sync-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: var(--s-2);
+  z-index: 40;
+  width: 300px;
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-0);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+/* Beside the list on Linux the button is at the list's right edge; the panel opens under it all the same. */
+.list-header .sync-box {
+  margin-left: auto;
+}
+.sync-head strong {
+  color: var(--fg-0);
+  font-size: var(--t-md, 14px);
+  font-weight: 600;
+}
+.sync-accounts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sync-accounts li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--fg-1);
+}
+.sync-accounts .email {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sync-accounts .word {
+  color: var(--fg-2);
+}
+.sync-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--line);
+}
+.sync-waiting .link {
+  font-size: inherit;
+  color: var(--fg-1);
+  text-decoration: underline;
+}
+.sync-waiting .link.danger {
+  color: var(--danger);
+}
+.sync-export {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.sync-export .bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.sync-export .bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.sync-export .link {
+  font-size: inherit;
+  color: var(--accent);
+}
+.sync-actions {
+  display: flex;
+  gap: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--line);
+}
+.sync-actions button {
+  flex: 1;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.sync-actions button:hover {
+  background: var(--bg-2);
+}
+.sync-actions .primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+.sync-actions .primary:hover {
+  background: var(--accent);
   filter: brightness(1.1);
 }
-.status .hints {
-  display: flex;
-  gap: var(--s-3);
+.sync-actions .primary:disabled {
+  opacity: 0.5;
 }
-.status .hints kbd {
-  margin-left: 0;
+
+/* The latest change and its Undo, floating at the foot of the window instead of in a strip. */
+.float-pills {
+  position: fixed;
+  left: 50%;
+  bottom: var(--s-4);
+  transform: translateX(-50%);
+  z-index: 30;
+  pointer-events: none;
 }
-.status .toast {
+.float-pills .pill {
+  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  color: var(--fg-0);
+  max-width: min(560px, calc(100vw - 32px));
+  height: 36px;
+  padding: 0 var(--s-2) 0 var(--s-4);
+  border-radius: 18px;
+  background: var(--fg-0);
+  color: var(--bg-0);
+  font-size: var(--t-sm);
+  box-shadow: var(--shadow);
+  white-space: nowrap;
 }
-.status .toast button {
+.float-pills .pill:not(:has(button)) {
+  padding-right: var(--s-4);
+}
+.float-pills .text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.float-pills button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bg-0) 16%, transparent);
+  color: var(--bg-0);
   font-size: inherit;
-  color: var(--accent);
+  font-weight: 600;
+}
+.float-pills kbd {
+  margin: 0;
+  border-color: color-mix(in srgb, var(--bg-0) 35%, transparent);
+  background: none;
+  color: inherit;
 }
 
 /* MARK: Rail (§3) */
@@ -6265,6 +6738,11 @@ button.link.danger {
   background-color: rgba(47, 158, 110, 0.26);
   color: inherit;
 }
+/* The hit N / P is on. */
+::highlight(tern-hit-now) {
+  background-color: rgba(47, 158, 110, 0.6);
+  color: inherit;
+}
 
 .senders-title {
   margin-top: var(--s-5);
@@ -6759,11 +7237,49 @@ button.link.danger {
   padding: var(--s-2) var(--s-3);
 }
 .companion .task .ring {
+  display: grid;
+  place-items: center;
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
   border: 1.5px solid var(--fg-2);
   border-radius: 50%;
+  background: none;
+  color: var(--accent-fg);
+}
+.companion .task .ring:hover {
+  border-color: var(--accent);
+}
+.companion .task.done .ring {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.companion .task.done .name {
+  color: var(--fg-2);
+  text-decoration: line-through;
+}
+/* An ask or promise row's way into Todoist, or the task it already is. */
+.companion .pledge .plus-task {
+  flex: none;
+  align-self: center;
+  padding: 2px var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+.companion .pledge .plus-task:hover {
+  background: var(--bg-2);
+}
+.companion .pledge .in-task {
+  flex: none;
+  align-self: center;
+  font-size: var(--t-xs);
+  color: var(--accent);
+  white-space: nowrap;
 }
 .companion .task .link {
   font-size: var(--t-sm);
@@ -7231,12 +7747,16 @@ button.link.danger {
 .companion .turns {
   gap: var(--s-4);
 }
-.companion .turn {
+.companion .turn,
+.ask-mail .turn,
+.tide-ai .turn {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
 }
-.companion .question {
+.companion .question,
+.ask-mail .question,
+.tide-ai .question {
   align-self: flex-end;
   max-width: 85%;
   padding: var(--s-2) var(--s-3);
@@ -7244,14 +7764,20 @@ button.link.danger {
   background: var(--bg-2);
   line-height: 1.5;
 }
-.companion .answer {
+.companion .answer,
+.ask-mail .answer,
+.tide-ai .answer {
   line-height: 1.6;
   white-space: pre-wrap;
 }
-.companion .error {
+.companion .error,
+.ask-mail .error,
+.tide-ai .error {
   color: var(--danger);
 }
-.companion .cite {
+.companion .cite,
+.ask-mail .cite,
+.tide-ai .cite {
   margin: 0 2px;
   padding: 0 6px;
   border: none;
@@ -7262,7 +7788,9 @@ button.link.danger {
   font-size: var(--t-xs);
   white-space: nowrap;
 }
-.companion .receipt {
+.companion .receipt,
+.ask-mail .receipt,
+.tide-ai .receipt {
   font-size: var(--t-xs);
   color: var(--fg-2);
 }
@@ -8310,4 +8838,121 @@ button.link.danger {
   .dropdown-list {
     animation: none;
   }
+}
+
+/* Ask your mail (`A`, package 17 F): a panel over the window, the chat in it and the box at its foot. */
+.ask-mail-scrim {
+  position: fixed;
+  inset: var(--titlebar-h) 0 0;
+  z-index: 20;
+  display: grid;
+  place-items: start center;
+  padding-top: 10vh;
+  background: var(--scrim);
+}
+.ask-mail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  width: min(640px, 92vw);
+  max-height: 76vh;
+  padding: var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--bg-0);
+  box-shadow: var(--shadow);
+}
+.ask-mail header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+.ask-mail header h2 {
+  margin: 0;
+  font-size: var(--t-lg);
+}
+.ask-mail header .quiet {
+  margin-left: auto;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.ask-mail kbd.ai-mark,
+.tide-ai kbd.ai-mark {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.ask-mail-turns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-height: 0;
+  overflow-y: auto;
+}
+.ask-mail-turns > .quiet {
+  margin: 0;
+  color: var(--fg-2);
+}
+.ask-mail .ask-box {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-1) var(--s-1) var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+}
+.ask-mail .ask-box:focus-within {
+  border-color: var(--accent);
+}
+.ask-mail textarea {
+  flex: 1;
+  min-width: 0;
+  padding: var(--s-2) 0;
+  border: none;
+  background: none;
+  font: inherit;
+  resize: none;
+  outline: none;
+  field-sizing: content;
+  max-height: 140px;
+}
+.ask-mail .send {
+  height: 32px;
+  padding: 0 var(--s-3);
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.ask-mail .send:disabled {
+  opacity: 0.45;
+}
+/* The tide's Summarise: one quiet line until pressed, then the points with their conversations. */
+.tide-ai {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: var(--s-3) var(--s-6) 0;
+  font-size: var(--t-rd);
+}
+.tide-ai .ai-ask {
+  margin-left: 0;
+}
+.tide-ai-line {
+  margin: 0;
+  color: var(--fg-1);
+}
+.tide-ai-line.error {
+  color: var(--danger);
+}
+.tide-points {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: 0;
+  padding-left: var(--s-5);
+  line-height: 1.55;
+}
+.tide-receipt {
+  margin: var(--s-2) 0 0;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
 }

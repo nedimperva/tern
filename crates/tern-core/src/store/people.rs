@@ -168,16 +168,16 @@ impl Store {
         }
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        let (account_id, thread_id, name, addr, subject): (i64, String, String, String, String) = tx
-            .query_row(
-                "SELECT account_id, thread_id, from_name, from_addr, subject FROM messages WHERE id = ?1",
+        let (account_id, thread_id, name, addr, subject, message_id): (i64, String, String, String, String, Option<String>) =
+            tx.query_row(
+                "SELECT account_id, thread_id, from_name, from_addr, subject, message_id FROM messages WHERE id = ?1",
                 [id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
             )?;
         let due = input.due.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(str::to_string);
         tx.execute(
-            "INSERT INTO tasks (account_id, thread_id, title, due, created) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![account_id, thread_id, title, due, now()],
+            "INSERT INTO tasks (account_id, thread_id, title, due, created, source) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![account_id, thread_id, title, due, now(), input.source],
         )?;
         let local = tx.last_insert_rowid();
         let who = if name.is_empty() { addr } else { name };
@@ -188,6 +188,11 @@ impl Store {
                     format!("From {who}")
                 } else {
                     format!("From {who} · {subject}")
+                };
+                // The way back: a link Tern opens at that conversation, by the message's own Message-ID.
+                let from = match message_id.as_deref() {
+                    Some(mid) => format!("{from}\n[Open in Tern]({})", open_link(mid)),
+                    None => from,
                 };
                 match input.note.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
                     Some(note) => format!("{note}\n\n{from}"),
@@ -218,8 +223,8 @@ impl Store {
     pub fn tasks_of(&self, id: i64) -> Result<Vec<TaskRow>> {
         let conn = self.reader();
         let mut stmt = conn.prepare_cached(
-            "SELECT t.id, t.title, t.due, t.todoist_id FROM tasks t JOIN messages m
-               ON m.account_id = t.account_id AND m.thread_id = t.thread_id
+            "SELECT DISTINCT t.id, t.title, t.due, t.todoist_id, t.done, t.source, t.created FROM tasks t
+             JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.thread_id
              WHERE m.id = ?1 ORDER BY t.created, t.id",
         )?;
         let rows = stmt
@@ -230,11 +235,118 @@ impl Store {
                     title: r.get(1)?,
                     due: r.get(2)?,
                     url: todoist_id.as_deref().map(crate::todoist::task_url),
+                    done: r.get(4)?,
+                    source: r.get(5)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
         Ok(rows)
     }
+
+    /// Ticks a task off (or opens it again) here at once, and queues the same for Todoist with the usual undo.
+    /// A task not made in Todoist yet changes only here: its creation is still in the outbox.
+    pub fn queue_task_done(&self, local: i64, done: bool, delay: i64) -> Result<(i64, Vec<i64>)> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let (account_id, todoist_id): (i64, Option<String>) =
+            tx.query_row("SELECT account_id, todoist_id FROM tasks WHERE id = ?1", [local], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })?;
+        tx.execute("UPDATE tasks SET done = ?2 WHERE id = ?1", params![local, done])?;
+        let token = match todoist_id {
+            Some(todoist_id) => {
+                vec![enqueue(&tx, account_id, &OutboxOp::TaskDone { local, todoist_id, done }, delay)?]
+            }
+            None => Vec::new(),
+        };
+        tx.commit()?;
+        Ok((account_id, token))
+    }
+
+    /// The conversation's tasks that Todoist has and that aren't done here: what opening it asks Todoist about.
+    pub fn open_todoist_tasks(&self, id: i64) -> Result<Vec<(i64, String)>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(
+            "SELECT DISTINCT t.id, t.todoist_id FROM tasks t
+             JOIN messages m ON m.account_id = t.account_id AND m.thread_id = t.thread_id
+             WHERE m.id = ?1 AND t.todoist_id IS NOT NULL AND NOT t.done",
+        )?;
+        let rows = stmt.query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+
+    /// What Todoist said about a task: done there, or gone (deleted), which takes it off the conversation.
+    pub fn task_state(&self, local: i64, state: crate::todoist::TaskState) -> Result<()> {
+        let conn = self.conn();
+        match state {
+            crate::todoist::TaskState::Open => {}
+            crate::todoist::TaskState::Done => {
+                conn.execute("UPDATE tasks SET done = 1 WHERE id = ?1", [local])?;
+            }
+            crate::todoist::TaskState::Gone => {
+                conn.execute("DELETE FROM tasks WHERE id = ?1", [local])?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The message with this Message-ID (from a `tern://` link), for opening its conversation.
+    pub fn message_by_message_id(&self, message_id: &str) -> Result<Option<NewMail>> {
+        let bare = bare_id(message_id);
+        let conn = self.reader();
+        Ok(conn
+            .query_row(
+                "SELECT m.id, m.account_id, m.thread_id, m.from_name, m.from_addr, m.subject, m.snippet
+                 FROM messages m WHERE m.message_id = ?1 ORDER BY m.date DESC LIMIT 1",
+                [bare],
+                |r| {
+                    Ok(NewMail {
+                        id: r.get(0)?,
+                        account_id: r.get(1)?,
+                        thread_id: r.get(2)?,
+                        from_name: r.get(3)?,
+                        from_addr: r.get(4)?,
+                        subject: r.get(5)?,
+                        snippet: r.get(6)?,
+                        other: false,
+                    })
+                },
+            )
+            .optional()?)
+    }
+}
+
+/// `tern://open/<Message-ID>`, percent-encoded: what a task's description links back to. Registered beside `mailto`.
+pub fn open_link(message_id: &str) -> String {
+    let mut out = String::from("tern://open/");
+    for b in bare_id(message_id).bytes() {
+        if b.is_ascii_alphanumeric() || b"@.-_~".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// The Message-ID in a `tern://open/…` link, or None for any other link.
+pub fn parse_open_link(link: &str) -> Option<String> {
+    let rest = link.strip_prefix("tern://open/")?.trim_end_matches('/');
+    let bytes = rest.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 3 <= bytes.len() {
+            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok()?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    let id = String::from_utf8(out).ok()?;
+    (!id.is_empty()).then_some(id)
 }
 
 /// Domains anyone can have an address at.

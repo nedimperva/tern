@@ -41,10 +41,14 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
 - [ ] A `2.0.0-beta.N` tag needs its CHANGELOG section like any release.
 
 ### B. Foundations
-- [ ] Reader pool: WAL, one writer connection and a small pool of readers, so a list query never waits on a sync
-  write. `PRAGMA optimize` on idle once a week. `store_bench` before and after, numbers in the Log.
-- [ ] Coalesced change events: the sync worker sends `messages-changed` at most every 100 ms with the thread ids;
-  the list patches those rows in place instead of loading the page again. Check holding `j` while a large sync runs.
+- [x] Reader pool: WAL, one writer connection and three readers (`READERS`, the first free one is taken), so a list
+  query never waits on a sync write or on another read. `PRAGMA optimize` once a week while Tern runs
+  (`optimize_if_due`, looked at hourly; also at quit). `store_bench` before and after, numbers in the Log.
+- [x] Coalesced change events: SQLite's update hook on the writer notes the messages written; the shell gathers
+  them for 100 ms (`watch_changes`) and sends "mail-changed" with their conversations (`Store::take_changes`), or
+  none for a deletion, a batch over 200, or a change outside messages (sender choices, snoozes, labels…). The list
+  patches those rows in place (`patch` in `src/app/list.ts`, `Store::threads_in`) and reads the page again only
+  when a row would move. Not yet checked: holding `j` while a large sync runs.
 
 ### C. Senders: the screener, block and mute
 - [x] Schema v32 (D took v31): `sender_splits.other` becomes a sender state (`important | other | waiting | blocked`), by address
@@ -66,10 +70,11 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
   mail from them dated after the block is marked read and archived on arrival through the outbox
   (`archive_blocked`), and still searchable; the conversation goes to Done, one undo for both. Nothing tells the
   sender. (From New people with C's screener.)
-- [ ] Settings → Senders (canvas board "Senders"): the screener switch, known domains, and Blocked, Muted, To Other
+- [x] Settings → Senders (canvas board "Senders"): the screener switch, known domains, and Blocked, Muted, To Other
   and Let in lists, each with a way back (Unblock, Unmute, To Important). Who writes most moves here. Done so far:
   the screener switch, "People you know at" (known domains), "Your choices" (Blocked, To Other, Kept in
-  Important, each with its way back; Let in shows as Kept in Important) above Who writes most. Muted is still to do.
+  Important, each with its way back; Let in shows as Kept in Important) above Who writes most, then Muted (each
+  conversation, Unmute; `muted_conversations`, 2026-11-04).
 - [x] Tests: a fixture of senders with the expected place for each, screener on and off
   (`the_screener_holds_first_mail_from_people_not_known_yet`, `blocking_a_sender_or_their_domain`).
 
@@ -86,23 +91,34 @@ The ideas page offered these as new; the code already has them, so 2.0 only fini
   op and its undo, migration 31.
 
 ### E. Search that reaches the server
-- [ ] Search on server: when local results may be partial (the search note already knows how much is downloaded),
+- [x] Search on server: when local results may be partial (the search note already knows how much is downloaded),
   Enter on "Search server" runs `UID SEARCH` per account (`X-GM-RAW` on Gmail), on its own connection like
   `sync::download`. Headers for unknown UIDs are fetched and inserted like normal mail, so they are local afterwards.
-  Results show under "From the server" (canvas board "Search").
-- [ ] Highlights and snippets: matched words lit in the list and in the open message (CSS Custom Highlight API,
+  Results show under "From the server" (canvas board "Search"). Built 2026-11-04 (`sync::search_server`): the search
+  note's "Search the server" runs `UID SEARCH TEXT` (the words, ANDed) in each account's folders whose mail isn't all
+  here; finds go under the local results with a "From the server" tag and their bodies are fetched first. Headers are
+  all local already, so no header fetch was needed. Not yet: `X-GM-RAW` on Gmail (TEXT works there too).
+- [x] Highlights and snippets: matched words lit in the list and in the open message (CSS Custom Highlight API,
   a colour apart from marks), `N` / `Shift+N` step through matches. Contentless FTS can't rebuild snippets: try
   reading the top results' text from `bodies` at query time first, measure, and only then consider changing the index.
-- [ ] Results as a split: results as you type, `↓` enters them, Enter opens, Esc goes back to the query, and `e`,
-  `s`, `#` work on results like on the inbox.
+  Built 2026-11-04: the lit words were there already (`hits.ts`); `N` / `P` (Shift+n / Shift+p, beside `n` and `p`)
+  step through them with the current one darker (`tern-hit-now`); the top 50 results' previews are cut around the
+  first word from `bodies` (`snippet_around`), timed in the Log.
+- [x] Results as a split: results as you type, `↓` enters them, Enter opens, Esc goes back to the query, and `e`,
+  `s`, `#` work on results like on the inbox. All but Esc were there; Esc in the results now goes back to the search
+  box with its words selected (Esc there clears the search).
 
 ### F. AI, on request
-- [ ] Overnight summary on the tide (canvas board "The tide"): a Summarise button over what came in since the person
+- [x] Overnight summary on the tide (canvas board "The tide"): a Summarise button over what came in since the person
   was last here. Behind `ai::allowed` (summaries switch). Points cite their messages as chips; a receipt says what
   was sent; nothing runs until pressed and nothing is kept.
-- [ ] Ask your mail: a question over all mail the AI may read (palette, and a key, see Decisions). Retrieval is local:
+- [x] Ask your mail: a question over all mail the AI may read (palette, and a key, see Decisions). Retrieval is local:
   the model picks search words, local FTS finds the top 20 messages, the answer cites them. It reuses the
   companion's Ask turns, chips and receipt. No embeddings.
+  Built 2026-11-04: Summarise on the tide (`ai::overnight`, `prompts/overnight.md`: the Important inbox's unread
+  conversations since then, up to 40, each line citing its conversations) and Ask your mail (`A`, `ai::ask_mail`: the
+  model picks the words, `Store::search` finds up to 20 conversations, `prompts/ask_mail.md` answers citing them; two
+  requests, both on the receipt). Both behind the summaries switch for now, and only the accounts it may read.
 
 ### G. Todoist
 - [x] **Decision gate.** `docs/research/todoist.md` (2026-11-04: API v1, a personal token in the keyring): the API to use (Todoist API v1 at `api.todoist.com/api/v1`;
@@ -116,8 +132,8 @@ column, at rest" and "A — Adding a task from the mail").
   the default project; the label (`mail`); a "What goes to Todoist" list. Not yet: Show tasks in the companion
   (it shows once connected), Suggest tasks with AI.
 - [x] A **Tasks** section in the companion, after the details: the conversation's tasks (Open goes to Todoist),
-  then "Add a task from this mail" with its key `t`. Shown only once Todoist is connected. Not yet: a tick that
-  completes the task.
+  then "Add a task from this mail" with its key `t`. Shown only once Todoist is connected. The ring ticks a task
+  off here and in Todoist (`OutboxOp::TaskDone`, the usual undo; schema v35 `tasks.done`).
 - [x] `t` (or the row, or Add task in the brief) opens the task box in place of that row (title, day, project;
   Enter adds, Esc cancels). Not yet: priority, the lit words, starting from a selection, "Also in this mail". The
   title comes from what was
@@ -126,13 +142,15 @@ column, at rest" and "A — Adding a task from the mail").
   those. "Also in this mail" lists the other asks and dates to use instead. Enter adds, Esc cancels.
 - [x] The task is created through the outbox with the 5-second undo, like every other change, and retried on failure
   (`OutboxOp::Task`; a 4xx or a missing token waits in the problems list).
-- [ ] A link back: the task's description carries the sender, the subject and a `tern://` link (registered beside
+- [x] A link back: the task's description carries the sender, the subject and a `tern://` link (registered beside
   `mailto`) that opens the conversation by Message-ID. No mail text goes to Todoist unless the person adds it.
-  Built: the sender and subject ("From Ada · Q3 offsite"). Not yet: the `tern://` link.
+  `[Open in Tern](tern://open/<Message-ID>)`, registered beside `mailto` by the installers (`tauri.conf.json`,
+  `tern.desktop`); a dev build doesn't register it.
 - [x] The conversation remembers its tasks (`tasks`, schema v34): the conversation shows an "In Todoist · fri" pill,
-  and the Tasks section lists them. Not yet: asking Todoist for a task's state when the conversation opens.
-- [ ] Ask and promise rows: "Owed to you" and "You owe" rows get **+ Task**; a row already in Todoist shows its task
-  instead, so nothing is listed twice.
+  and the Tasks section lists them. Opening the conversation asks Todoist where each task stands (`check_tasks`):
+  done there ticks it here, deleted there drops it.
+- [x] Ask and promise rows: "Owed to you" and "You owe" rows get **+ Task**; a row already in Todoist shows its task
+  instead, so nothing is listed twice (`tasks.source`, the row's `promises.ts` key; the brief's asks too).
 - [x] With AI (behind `ai::allowed`): Fill in the task box proposes the title, the day and a note from the mail
   (`ai::suggest_task`, `prompts/task.md`). Nothing is created until the person presses Enter. Mail goes to the AI
   provider, never to Todoist. Owner, 2026-11-04: the project is the one chosen in Settings, not asked in the box.
@@ -153,10 +171,16 @@ Direction A on the canvas (owner, 2026-11-02). Can go before G: it needs no Todo
   presses it instead of the conversation's Reply all (`src/keys.ts`).
 
 ### I. Your mail as files
-- [ ] Export a folder or a search as one mbox; bodies not yet downloaded are fetched first, with progress and Stop
-  (canvas board "Settings"). A conversation: `…` → Save as .eml.
-- [ ] Import an mbox into a new folder (see Decisions for where it goes), with progress.
-- [ ] Tests: mbox round trip (From-line escaping, attachments, non-UTF-8 headers).
+- [x] Export a folder or a search as one mbox; bodies not yet downloaded are fetched first, with progress and Stop
+  (canvas board "Settings"). A conversation: `…` → Save as .eml. Every source comes from the server
+  (`sync::sources`), as Tern keeps no whole copy of a message; the palette has "Export … as mbox".
+- [x] Import an mbox into a new folder (see Decisions for where it goes), with progress. Palette → "Import an mbox
+  file…": the folder is named after the file, Tern keeps its own copy (`imports`, schema v36), and the outbox
+  op `Import` makes the folder and appends one message at a time, noting how far it got so a retry carries on.
+  Progress is the strip's "changes waiting" entry ("Import 128 messages into Old mail"), not a count per
+  message yet.
+- [x] Tests: mbox round trip (From-line escaping, attachments, non-UTF-8 headers) in `mbox.rs`; the import's
+  resume and undo in `sync::tests::outbox` and the store tests.
 
 ### J. Small finishes
 - [x] The sidebar shows each account's `Ctrl` number while Ctrl is held (`src/components/Rail.tsx`).
@@ -187,7 +211,8 @@ Open, for the owner:
   AI may read. Proposed: its own.
 - **Todoist sign-in:** personal token or OAuth; settled by the gate in G.
 - **Import destination:** a local-only folder, or uploaded to the server (APPEND through the outbox in batches).
-  Proposed: uploaded, so other devices see it.
+  Proposed: uploaded, so other devices see it. Built that way (marked read, one APPEND per message); the owner can
+  still change it.
 
 ## Later (2.1 and after)
 
@@ -216,3 +241,7 @@ Open, for the owner:
 - 2026-11-04: owner picked A + C with actionable facts on the canvas "Tern summary directions": the brief under the
   subject (catch-up, what was found, Explain it with AI) replaced the catch-up bar and the summary chips. G's first
   slice built with it: token, Tasks, the task box, the outbox op and the pill. Not tried with a real Todoist token yet.
+- 2026-11-04: B built on `sprint/17-foundations`. `store_bench` (100k messages, medians) before / after: first page
+  0.231 / 0.227 ms, unified conversations (50) 1.53 / 1.48, Important 1.89 / 1.81, Other 5.29 / 4.62, search one word
+  5.07 / 4.87, archive 50 + undo 6.79 / 5.48 ms. The bench reads from one thread, so the pool shows as no change there;
+  it helps when the list, a conversation and the counts read at once. The four misses over 1 ms are as before.

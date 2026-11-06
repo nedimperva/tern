@@ -4,7 +4,7 @@ import { summons } from "../ai";
 import type { Facts } from "../facts";
 import { promisesIn } from "../promises";
 import { settings } from "../settings";
-import { dayWord, startTask, todoistOn } from "../app/tasks";
+import { dayWord, startTask, taskRows, todoistOn } from "../app/tasks";
 import { snoozeFor, whenSaid } from "./Details";
 
 type Action = { name: string; run: () => void; primary?: boolean };
@@ -29,8 +29,12 @@ export function Brief(props: {
   const last = () => props.messages[props.messages.length - 1];
   const theirs = () => [...props.messages].reverse().find((m) => !props.mine(m.fromAddr)) ?? last();
   const ai = summary(() => last()?.id, () => props.ai);
-  const task = (title: string, due = ""): Action[] =>
-    todoistOn() ? [{ name: "Add task", run: () => startTask(last().id, title.replace(/\s*[?.!]+$/, ""), due) }] : [];
+  // A row already made into a task says so instead of offering another.
+  const task = (title: string, due = "", source?: string): Action[] => {
+    if (!todoistOn()) return [];
+    if (source && taskRows().some((t) => t.source === source)) return [{ name: "In Todoist", run: () => {} }];
+    return [{ name: "Add task", run: () => startTask(last().id, title.replace(/\s*[?.!]+$/, ""), due, source) }];
+  };
 
   const rows = createMemo((): Row[] => {
     const out: Row[] = [];
@@ -48,7 +52,7 @@ export function Brief(props: {
           text: `${p.who}: “${p.text}”`,
           actions: [
             ...(m ? [{ name: "Answer", run: () => props.onReply(m), primary: true }] : []),
-            ...task(p.text, p.due ? dayWord(p.due) : ""),
+            ...task(p.text, p.due ? dayWord(p.due) : "", p.key),
             { name: "Show", run: () => props.onJump(p.message) },
           ],
         });

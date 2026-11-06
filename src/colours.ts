@@ -14,9 +14,10 @@ export const colourOf = (accounts: Account[], id: number) => {
   return ACCOUNT_COLOURS[Math.max(0, order) % ACCOUNT_COLOURS.length];
 };
 
-/** An account's initials for its avatar: from its name, else its address. */
+/** An account's initials for its avatar: from its label or name, else its address. A label gives two accounts with
+ * the same name different initials. */
 export const accountInitials = (a: Account) => {
-  const words = (a.displayName || a.email.split("@")[0]).split(/[\s._-]+/).filter(Boolean);
+  const words = (a.label || a.displayName || a.email.split("@")[0]).split(/[\s._-]+/).filter(Boolean);
   return ((words[0]?.[0] ?? "") + (words.length > 1 ? words[words.length - 1][0] : "")).toUpperCase() || "?";
 };
 

@@ -29,7 +29,7 @@ nom = { version = "7", default-features = false, features = ["alloc"] }
 # Bundled SQLite is new enough for FTS5 contentless-delete and RETURNING, on every platform.
 # OAuth's PKCE: system randomness and SHA-256 (already here through rustls).
 ring = "0.17"
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled", "hooks"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-platform-verifier = "0.7"
 serde = { version = "1", features = ["derive"] }

@@ -9,7 +9,8 @@ import { switchReading } from "../components/ConversationView";
 import { ROLE_NAMES, targetOf } from "../components/Rail";
 import { openScreen } from "../day";
 import { keyLabel, type Binding } from "../keys";
-import { jumpMark } from "../marks";
+import { jumpHit } from "../hits";
+import { jumpMark, showRange } from "../marks";
 import { aiOn, omarchyAvailable, setSetting, settings, type Settings } from "../settings";
 import {
   accountOf,
@@ -37,6 +38,7 @@ import { newMessage, reply, respond } from "./composing";
 import { escape, extend, go, isSaved, move, nextSplit, runSearch, toggleSaved, toggleSelected } from "./list";
 import { keyOf, withGroups } from "./rows";
 import { startTask, suggestTask, todoistOn } from "./tasks";
+import { exportable, exportList, exportName, importMbox, saveEml } from "./files";
 import {
   accounts,
   choose,
@@ -64,6 +66,7 @@ import {
   setSelection,
   setSettingsOpen,
   setSetup,
+  setAskingMail,
   setSheet,
   setSnoozing,
   searching,
@@ -103,6 +106,9 @@ export const bindings = (): Binding[] => [
   { keys: "p", name: "Previous message", context: "conversation", run: () => moveMessage(-1), repeat: true },
   { keys: "o", name: "Expand or collapse message", context: "conversation", run: () => toggleMessage(messageFocus()) },
   { keys: "]", name: "Next mark", context: "conversation", run: () => jumpMark(1), repeat: true },
+  // Beside n and p, which step through messages.
+  { keys: "N", name: "Next word searched for", context: "conversation", run: () => jumpHit(1, (r) => showRange(r)), repeat: true },
+  { keys: "P", name: "Previous word searched for", context: "conversation", run: () => jumpHit(-1, (r) => showRange(r)), repeat: true },
   { keys: "B", name: "Reading view or the original look", context: "conversation", run: switchReading },
   { keys: "Ctrl+u", name: "Unsubscribe from this list", context: "conversation", run: () => void unsubscribe() },
   { keys: "i", name: "The companion: the person, what's in the mail, promises and files", context: "conversation", run: toggleCompanion },
@@ -179,6 +185,9 @@ export const bindings = (): Binding[] => [
   })),
   { keys: "g ;", name: "Edit snippets", run: () => setSettingsOpen("Snippets") },
   { keys: "?", name: "Keyboard shortcuts", run: () => setSheet(true) },
+  ...(settings.ai.enabled && settings.ai.summaries && settings.ai.accounts.length
+    ? [{ keys: "A", name: "Ask your mail: a question about all of it, with AI", run: () => setAskingMail(true) }]
+    : []),
   { keys: "Ctrl+,", name: "Settings", run: () => setSettingsOpen("Appearance") },
   { keys: "Ctrl+q", name: "Quit Tern", run: () => void api.quit() },
   { keys: "", name: paused() ? "Resume sync" : "Pause sync", run: () => void api.setSyncPaused(!paused()) },
@@ -199,6 +208,9 @@ export const menu = (all: Binding[]) => {
   });
   const spam = items.findIndex((i) => i.name === "Mark as spam");
   items.splice(spam, 0, { name: "Move to …", run: () => void choose("Move to …") }, ...blocking());
+  // The message the keys are on, else the newest: its source from the server, as a file.
+  const m = messages[messageFocus()] ?? messages[messages.length - 1];
+  if (m) items.push({ name: "Save as .eml", run: () => void saveEml(m.id) });
   return items;
 };
 
@@ -232,6 +244,8 @@ export const commands = (all: Binding[]): Command[] => [
       ]
     : []),
   ...blocking().map((b) => ({ ...b, group: "Actions" })),
+  ...(exportable() ? [{ name: `Export ${exportName()} as mbox`, group: "Actions", run: () => void exportList() }] : []),
+  { name: "Import an mbox file…", group: "Actions", run: () => void importMbox() },
   {
     name: "Move to …",
     group: "Actions",

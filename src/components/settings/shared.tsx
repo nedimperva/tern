@@ -25,7 +25,8 @@ export function Select<K extends keyof Settings>(props: { name: K; title: string
   );
 }
 
-export const accountName = (a: Account) => a.displayName || a.email;
+/** An account's name in Tern: its label, else the name on its mail, else its address. */
+export const accountName = (a: Account) => a.label || a.displayName || a.email;
 
 /** A labelled part of an editor panel. */
 export function Group(props: { title: string; children: JSX.Element }) {

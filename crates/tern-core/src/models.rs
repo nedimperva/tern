@@ -13,6 +13,10 @@ pub struct AccountConfig {
     pub smtp_host: String,
     pub smtp_port: u16,
     pub smtp_security: Security,
+    /// A short name for telling accounts apart in Tern ("Work"). Empty shows the name, then the address. Not what
+    /// recipients see (that is `display_name`).
+    #[serde(default)]
+    pub label: String,
     /// How the account signs in. Older callers and stores without it mean a password.
     #[serde(default)]
     pub auth: Auth,
@@ -508,6 +512,9 @@ pub struct TaskInput {
     /// A line the person kept in the box (a place, a code, an amount), above the line naming the mail.
     #[serde(default)]
     pub note: Option<String>,
+    /// The ask or promise it was made from (its `promises.ts` key), so that row shows the task.
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 /// A task made from a conversation, as the conversation shows it.
@@ -519,6 +526,8 @@ pub struct TaskRow {
     pub due: Option<String>,
     /// The task in Todoist, once it was made there; None while it waits in the outbox.
     pub url: Option<String>,
+    pub done: bool,
+    pub source: Option<String>,
 }
 
 /// A file exchanged with a person, from any conversation.
@@ -689,6 +698,19 @@ pub enum OutboxOp {
     Task {
         local: i64,
         task: crate::todoist::NewTask,
+    },
+    /// A task ticked off (or opened again) from the conversation; the row shows it at once, undo puts it back.
+    TaskDone {
+        local: i64,
+        todoist_id: String,
+        done: bool,
+    },
+    /// An mbox file's messages uploaded to a new folder. `import` is its row in `imports`, which holds the file and
+    /// how far it got; undo before it starts forgets both.
+    Import {
+        import: i64,
+        folder: String,
+        total: usize,
     },
     /// A copy of a sent message for the Sent folder, exactly as it went out.
     Append {

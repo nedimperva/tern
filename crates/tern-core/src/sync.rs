@@ -1240,6 +1240,27 @@ async fn run_op<S: Stream>(
             let id = tokio::task::spawn_blocking(move || crate::todoist::create(&token, &task)).await??;
             store.task_created(*local, &id)?;
         }
+        OutboxOp::TaskDone { todoist_id, done, .. } => {
+            let token = crate::secrets::password(crate::todoist::KEY).map_err(|_| {
+                Unworkable("Todoist isn't connected. Connect it in Settings → Todoist".into())
+            })?;
+            let (id, done) = (todoist_id.clone(), *done);
+            tokio::task::spawn_blocking(move || crate::todoist::set_done(&token, &id, done)).await??;
+        }
+        OutboxOp::Import { import, folder, .. } => {
+            let Some((path, mut done)) = store.import_state(*import)? else { return Ok(Vec::new()) };
+            let file = std::fs::read(&path).map_err(|e| Unworkable(format!("The mbox file is gone: {e}")))?;
+            within(s.create_folder(folder)).await?;
+            // Counted after each message, so a break part way carries on from the next one rather than twice.
+            for message in crate::mbox::split(&file).iter().skip(done) {
+                within_for(upload_limit(message.len()), s.append(folder, message, false)).await?;
+                done += 1;
+                store.import_done(*import, done)?;
+            }
+            store.import_finished(*import)?;
+            // The new folder shows at once rather than at the next connect, and syncs its messages down.
+            discover_folders(s, store, account.id).await?;
+        }
         OutboxOp::Append { folder, message, .. } => {
             // Sent may have changed since the copy was queued (a duplicate removed, a folder renamed).
             let sent = sent_folders(store, account.id)?;
@@ -1309,6 +1330,81 @@ pub async fn download(
     let raw = message_source(&mut s, at).await;
     let _ = within(s.logout()).await;
     raw
+}
+
+/// The sources of many messages of one account, one after another on a connection of its own (an mbox export,
+/// package 17 I). `each` gets every message's place in `places` and its source (None when it's gone from the server)
+/// and returns false to stop. A read: nothing changes on the server.
+pub async fn sources(
+    config: &AccountConfig,
+    login: &Login,
+    places: &[crate::models::ForwardOf],
+    each: &mut (dyn FnMut(usize, Option<Vec<u8>>) -> bool + Send),
+) -> Result<()> {
+    let mut s = within(connect(config, login)).await?;
+    let mut result = Ok(());
+    for (i, at) in places.iter().enumerate() {
+        let raw = match message_source(&mut s, at).await {
+            Ok(raw) => Some(raw),
+            Err(e) if e.is::<Gone>() => None,
+            Err(e) => {
+                result = Err(e);
+                break;
+            }
+        };
+        if !each(i, raw) {
+            break;
+        }
+    }
+    let _ = within(s.logout()).await;
+    result
+}
+
+/// How long one folder's server search may take: a large folder's TEXT search reads every message there.
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// Searches the account's server for `query`'s words in the folders whose mail isn't all here (package 17 E), on a
+/// connection of its own like `download`. Returns the local messages it found; their bodies are marked wanted, so
+/// sync fetches them first and the next local search finds them too. Headers are all here already (sync fetches
+/// them first), so a uid not here is mail sync hasn't reached yet, and is left for it. A read, nothing changes on
+/// the server.
+pub async fn search_server(
+    store: &Store,
+    account_id: i64,
+    config: &AccountConfig,
+    login: &Login,
+    query: &str,
+) -> Result<Vec<i64>> {
+    let words = crate::query::parse(query, now()).words;
+    let folders = store.bodyless_folders(account_id)?;
+    if words.is_empty() || folders.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut s = within(connect(config, login)).await?;
+    let ids = search_folders(&mut s, store, &folders, &words).await;
+    let _ = within(s.logout()).await;
+    let ids = ids?;
+    store.want_bodies(&ids)?;
+    Ok(ids)
+}
+
+/// `search_server` on an open session: each folder's SEARCH TEXT, as local message ids. A folder the server won't
+/// open is skipped.
+async fn search_folders<S: Stream>(
+    s: &mut Imap<S>,
+    store: &Store,
+    folders: &[(i64, String)],
+    words: &[String],
+) -> Result<Vec<i64>> {
+    let mut ids = Vec::new();
+    for (folder_id, name) in folders {
+        if within(s.select(name)).await.is_err() {
+            continue;
+        }
+        let uids = within_for(SEARCH_TIMEOUT, s.search_text(words)).await?;
+        ids.extend(store.ids_for_uids(*folder_id, &uids)?);
+    }
+    Ok(ids)
 }
 
 /// Opens `folder` and works out which uids queued work should act on, as uid → message id (when known).
@@ -1440,6 +1536,7 @@ mod tests {
                 smtp_port: 1,
                 smtp_security: Security::Tls,
                 auth: Default::default(),
+                label: String::new(),
                 aliases: Vec::new(),
             })
             .unwrap();
@@ -1539,6 +1636,7 @@ mod tests {
                     smtp_port: 465,
                     smtp_security: Security::Tls,
                     auth: Default::default(),
+                    label: String::new(),
                     aliases: Vec::new(),
                 })
                 .unwrap();
@@ -1681,6 +1779,7 @@ mod tests {
                     smtp_port: 465,
                     smtp_security: Security::Tls,
                     auth: Default::default(),
+                    label: String::new(),
                     aliases: Vec::new(),
                 })
                 .unwrap();
@@ -1848,6 +1947,7 @@ mod tests {
                     smtp_port: 465,
                     smtp_security: Security::Tls,
                     auth: Default::default(),
+                    label: String::new(),
                     aliases: Vec::new(),
                 })
                 .unwrap();
@@ -2043,6 +2143,35 @@ mod tests {
             result.unwrap();
             assert_eq!(sent.len(), 2, "{sent:?}");
             assert!(queue_empty(&m));
+        }
+
+        #[tokio::test]
+        async fn an_import_carries_on_after_what_is_up_already() {
+            let m = mailbox();
+            let path = std::env::temp_dir().join(format!("tern-import-{}.mbox", std::process::id()));
+            std::fs::write(&path, "From a\nSubject: one\n\nfirst\n\nFrom b\nSubject: two\n\nsecond\n")
+                .unwrap();
+            let path = path.display().to_string();
+            m.store.queue_import(m.account.id, "Old mail", &path, 2, 0).unwrap();
+            // The first one went up before a break.
+            m.store.import_done(1, 1).unwrap();
+            let (result, sent) = drain(
+                &m,
+                vec![
+                    ("CREATE \"Old mail\"", "{tag} NO [ALREADYEXISTS] it is there\r\n"),
+                    ("LIST", "* LIST (\\HasNoChildren) \"/\" \"Old mail\"\r\n{tag} OK done\r\n"),
+                    ("APPEND \"Old mail\" (\\Seen) {", "+ go\r\n"),
+                    ("", "{tag} OK done\r\n"),
+                    ("LIST", "* LIST (\\HasNoChildren) \"/\" \"Old mail\"\r\n{tag} OK done\r\n"),
+                ],
+            )
+            .await;
+            result.unwrap();
+            assert!(queue_empty(&m), "{sent:?} {:?}", m.store.outbox_problems().unwrap());
+            // Only the second message, 24 bytes with CRLF line ends, goes up.
+            assert!(sent.iter().any(|l| l.ends_with("{24}")), "{sent:?}");
+            assert!(!std::path::Path::new(&path).exists(), "the copy goes once it is done");
+            assert_eq!(m.store.import_state(1).unwrap(), None);
         }
 
         #[tokio::test]
@@ -2249,6 +2378,7 @@ mod tests {
                     smtp_port: 465,
                     smtp_security: Security::Tls,
                     auth: Default::default(),
+                    label: String::new(),
                     aliases: Vec::new(),
                 })
                 .unwrap();
@@ -2281,6 +2411,30 @@ mod tests {
             fetch_bodies(&mut s, store, account.id, (inbox, "INBOX"), since, deadline, &|| {}).await.unwrap();
             let sent = sent.lock().unwrap()[2..].to_vec();
             sent
+        }
+
+        #[tokio::test]
+        async fn a_server_search_finds_mail_whose_text_isnt_here_and_asks_for_it() {
+            let (store, account, inbox) = mailbox();
+            assert_eq!(store.bodyless_folders(account.id).unwrap(), [(inbox, "INBOX".to_string())]);
+            let (stream, sent) = signed_in(
+                SIGNED_IN,
+                vec![
+                    ("SELECT INBOX", "* 2 EXISTS\r\n* OK [UIDVALIDITY 1] v\r\n{tag} OK [READ-WRITE] s\r\n"),
+                    ("UID SEARCH TEXT invoice TEXT march", "* SEARCH 9 77\r\n{tag} OK done\r\n"),
+                ],
+            );
+            let mut s = Imap::open(stream, "ada", "x").await.unwrap();
+            let words = vec!["invoice".to_string(), "march".to_string()];
+            let ids = super::super::search_folders(&mut s, &store, &[(inbox, "INBOX".into())], &words)
+                .await
+                .unwrap();
+            assert_eq!(ids.len(), 1, "uid 77 isn't here yet: sync reaches it");
+            let rows = store.message_rows(&ids).unwrap();
+            assert_eq!(rows[0].subject, "m9");
+            assert!(sent.lock().unwrap().iter().any(|c| c.contains("UID SEARCH TEXT invoice TEXT march")));
+            store.want_bodies(&ids).unwrap();
+            assert_eq!(store.body_state_of(inbox, 9).as_deref(), Some("wanted"), "its text comes next");
         }
 
         #[tokio::test]
@@ -2362,6 +2516,7 @@ mod tests {
             smtp_port: 1465,
             smtp_security: Security::Tls,
             auth: Default::default(),
+            label: String::new(),
             aliases: Vec::new(),
         };
         (config, crate::secrets::Login::Password(password))

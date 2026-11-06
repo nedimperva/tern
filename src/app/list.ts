@@ -1,8 +1,8 @@
 // The conversation list: loading it, reading it again as sync changes mail, moving around and selecting in it,
 // and which list is on show.
 
-import { batch, createEffect, on } from "solid-js";
-import { api, type Target } from "../api";
+import { batch, createEffect, createSignal, on } from "solid-js";
+import { api, type Target, type ThreadRow } from "../api";
 import { refreshStart } from "../day";
 import { timeQuery } from "../perf";
 import { wingBeat } from "../sound";
@@ -12,15 +12,18 @@ import { asRow, keepRows, keyOf, people } from "./rows";
 import { close, open } from "./conversation";
 import {
   current,
+  docked,
   focus,
   folders,
   home,
   listKey,
   messages,
+  newPeople,
   openRow,
   query,
   role,
   rows,
+  searchBox,
   searching,
   selection,
   setAccounts,
@@ -63,6 +66,29 @@ export const readProgress = () => {
   }, 1000);
 };
 
+/** "Search the server" for the search on show: idle, asking, or what it found (package 17 E). */
+export const [serverFound, setServerFound] = createSignal<{ query: string; state: "busy" | "done" | "error"; rows: ThreadRow[]; error?: string }>({
+  query: "",
+  state: "done",
+  rows: [],
+});
+
+/** Asks each account's server for the words of the search on show, where mail isn't all here; what it finds goes
+ * under the local results. */
+export async function searchServer() {
+  const q = query().trim();
+  if (!q || serverFound().state === "busy") return;
+  setServerFound({ query: q, state: "busy", rows: [] });
+  try {
+    const rows = (await api.searchServer(q)).map((m) => ({ ...asRow(m), fromServer: true }));
+    if (query().trim() !== q) return;
+    setServerFound({ query: q, state: "done", rows });
+    await load();
+  } catch (e) {
+    if (query().trim() === q) setServerFound({ query: q, state: "error", rows: [], error: String(e) });
+  }
+}
+
 /** Reloads the list. Keeps as many rows as are loaded, so a change from sync never makes the list jump. */
 export async function load() {
   const ticket = ++generation;
@@ -75,7 +101,11 @@ export async function load() {
     ? found.rows.map(asRow)
     : await timeQuery(() => api.listThreads(target(), null, screening ? 1000 : Math.max(PAGE, rows().length)));
   if (ticket !== generation) return;
-  const page = screening ? people(read) : read;
+  // What the server found for this search stays under the local results, until its text is here and they are
+  // found locally too.
+  const local = new Set(read.map(keyOf));
+  const fromServer = found && serverFound().query === q ? serverFound().rows.filter((r) => !local.has(keyOf(r))) : [];
+  const page = screening ? people(read) : [...read, ...fromServer];
   setPartial(found?.partial ?? false);
   exhausted = q !== "" || screening || page.length < PAGE;
   // Focus stays on the same conversation if it is still there, else on the same place in the list.
@@ -103,6 +133,12 @@ export async function loadMore() {
 
 /** Everything the window shows, read again. Sync never changes signatures, so its changes leave them out. */
 export async function refresh(signatures = true) {
+  await refreshAround(signatures);
+  await load();
+}
+
+/** What sits around the list (accounts, folders and their counts, waiting work), read again. */
+async function refreshAround(signatures: boolean) {
   if (signatures) loadSignatures();
   const [a, f, p, w, s, n] = await Promise.all([
     api.accounts(),
@@ -129,7 +165,36 @@ export async function refresh(signatures = true) {
     setWaiting(w);
     setReady(true);
   });
-  await load();
+}
+
+/** Lists whose rows are more than a conversation's newest message: a person's grouped mail, marks, search. */
+const patchable = () => !searching() && !["new_people", "marked"].includes(role()) && !rows().some((r) => r.followUp);
+
+/** Replaces the rows of these conversations with what the store has now (package 17 B), instead of reading the
+ * page again. Anything that moves a row (a new conversation, a newer message) reads the page again after all. */
+async function patch(keys: string[]) {
+  if (!patchable()) return load();
+  const ticket = generation;
+  const fresh = await api.threadsIn(target(), keys);
+  if (ticket !== generation) return;
+  const now = new Map(fresh.map((r) => [keyOf(r), r]));
+  const shown = new Map(rows().map((r) => [keyOf(r), r]));
+  for (const k of keys) {
+    const was = shown.get(k);
+    const is = now.get(k);
+    // A conversation new to the list, or one whose newest message changed, goes somewhere else in the order.
+    if (is && (!was || was.date !== is.date || was.id !== is.id)) return load();
+  }
+  const focusedKey = current() && keyOf(current()!);
+  batch(() => {
+    // Gone from the list (moved, read in Other's unread view…) drops out; the rest take the store's word.
+    const next = rows().flatMap((r) => (keys.includes(keyOf(r)) ? (now.has(keyOf(r)) ? [now.get(keyOf(r))!] : []) : [r]));
+    setRows(next);
+    const at = focusedKey ? next.findIndex((r) => keyOf(r) === focusedKey) : -1;
+    setFocus(at >= 0 ? at : Math.min(focus(), Math.max(0, next.length - 1)));
+    const left = new Set(next.map(keyOf));
+    setSelection(new Set([...selection()].filter((k) => left.has(k))));
+  });
 }
 
 /** Reloads the open conversation from any of its messages that still exists. */
@@ -143,21 +208,28 @@ async function reloadConversation() {
   }
 }
 
-// Sync can report many changes a second (a backfill reports each batch): read everything again at most every
-// 150 ms. The first change in a quiet spell shows at once; the rest wait for the end of the window.
+// Sync can report many changes a second (a backfill reports each batch): act on them at most every 150 ms. The
+// first change in a quiet spell shows at once; the rest gather until the end of the window. Each names the
+// conversations it wrote, or none for "read it all".
 const CHANGE_MS = 150;
 let changeTimer: number | undefined;
 let changeAgain = false;
-export const onChange = () => {
+let pending: Set<string> | null = new Set();
+export const onChange = (threads: string[] | null) => {
   void refreshStart();
   readProgress();
+  if (threads && pending) for (const t of threads) pending.add(t);
+  else pending = null;
   if (changeTimer !== undefined) {
     changeAgain = true;
     return;
   }
   const run = () => {
-    void refresh(false);
-    void reloadConversation();
+    const keys = pending;
+    pending = new Set();
+    const open = openRow();
+    void refreshAround(false).then(() => (keys ? patch([...keys]) : load()));
+    if (!keys || (open && keys.has(keyOf(open)))) void reloadConversation();
   };
   run();
   const settle = () => {
@@ -175,19 +247,24 @@ export const go = (t: Target) => {
   else if ("label" in t) void api.checkFolder(t.label);
 };
 
-/** The inbox splits, shown as tabs over the unified inbox. New people is a place of its own in the sidebar, with a
- * line above Important while someone waits. */
-export const SPLITS = (): { name: string; target: Target }[] =>
-  settings.splitInbox
+/** The inbox splits, shown as tabs over the unified inbox. New people joins them as a quiet tab (its icon and count)
+ * while someone waits there and the sidebar, which lists it, is closed; and while it is the list on show (canvas
+ * "Tern title bar ideas", 4). */
+export const SPLITS = (): { name: string; target: Target }[] => {
+  const showing = "role" in target() && (target() as { role: string }).role === "new_people";
+  const screening =
+    settings.screener && (showing || (newPeople() > 0 && !docked()))
+      ? [{ name: "New people", target: { role: "new_people" } }]
+      : [];
+  return settings.splitInbox
     ? [
         { name: "Important", target: { role: "important" } },
         { name: "Other", target: { role: "bulk" } },
         { name: "Starred", target: { role: "starred" } },
+        ...screening,
       ]
-    : [
-        { name: "Inbox", target: { role: "inbox" } },
-        { name: "Starred", target: { role: "starred" } },
-      ];
+    : [{ name: "Inbox", target: { role: "inbox" } }, { name: "Starred", target: { role: "starred" } }, ...screening];
+};
 export const splitIndex = () => SPLITS().findIndex((s) => JSON.stringify(s.target) === JSON.stringify(target()));
 export const nextSplit = (by: number) => {
   const all = SPLITS();
@@ -252,11 +329,12 @@ export function extend(by: number) {
   setSelection(next);
 }
 
-/** Esc goes one level up, never two: conversation → list → selection → search. */
+/** Esc goes one level up, never two: conversation → list → selection → the search box (with its words, to change
+ * them; Esc there clears the search). */
 export function escape() {
   if (openRow()) close();
   else if (selection().size) setSelection(new Set<string>());
-  else if (query()) setQuery("");
+  else if (query()) searchBox.input?.select();
 }
 
 // MARK: What the header shows
@@ -273,9 +351,10 @@ export const title = () => {
 };
 
 const inboxUnread = () => folders().filter((f) => f.role === "inbox").reduce((n, f) => n + f.unread, 0);
-/** The unread count a split's tab shows; Starred shows none. */
+/** The unread count a split's tab shows (New people: how many wait); Starred shows none. */
 export const tabUnread = (t: Target) => {
   const role = "role" in t ? t.role : "";
+  if (role === "new_people") return newPeople();
   return role === "important" ? splitUnread()[0] : role === "bulk" ? splitUnread()[1] : role === "inbox" ? inboxUnread() : 0;
 };
 

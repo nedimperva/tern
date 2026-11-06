@@ -9,8 +9,8 @@ impl Store {
         let conn = self.conn();
         conn.execute(
             "INSERT INTO accounts (email, display_name, username, imap_host, imap_port, imap_security,
-                                   smtp_host, smtp_port, smtp_security, auth)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                                   smtp_host, smtp_port, smtp_security, auth, label)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 c.email,
                 c.display_name,
@@ -21,14 +21,23 @@ impl Store {
                 c.smtp_host,
                 c.smtp_port,
                 c.smtp_security.as_str(),
-                c.auth.as_str()
+                c.auth.as_str(),
+                clean_label(&c.label)
             ],
         )?;
         let id = conn.last_insert_rowid();
         drop(conn);
         // A backup brings its aliases along; a new account has none.
         let aliases = self.set_aliases(id, &c.aliases)?;
-        Ok(Account { id, config: AccountConfig { aliases, ..c.clone() } })
+        Ok(Account { id, config: AccountConfig { aliases, label: clean_label(&c.label), ..c.clone() } })
+    }
+
+    /// The account's short name for telling it from others ("Work"). Empty goes back to showing the name and
+    /// address. It never changes the From line.
+    pub fn set_label(&self, id: i64, label: &str) -> Result<String> {
+        let label = clean_label(label);
+        self.conn().execute("UPDATE accounts SET label = ?2 WHERE id = ?1", params![id, label])?;
+        Ok(label)
     }
 
     /// Replaces the account's other From addresses. Addresses are trimmed and kept once each (the account's own
@@ -93,7 +102,7 @@ impl Store {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
             "SELECT id, email, display_name, username, imap_host, imap_port, imap_security,
-                    smtp_host, smtp_port, smtp_security, auth
+                    smtp_host, smtp_port, smtp_security, auth, label
              FROM accounts ORDER BY id",
         )?;
         let accounts = stmt
@@ -111,6 +120,7 @@ impl Store {
                         smtp_port: r.get(8)?,
                         smtp_security: security(r, 9)?,
                         auth: if r.get::<_, String>(10)? == "google" { Auth::Google } else { Auth::Password },
+                        label: r.get(11)?,
                         aliases: Vec::new(),
                     },
                 })
@@ -152,11 +162,14 @@ impl Store {
             let mut stmt = tx.prepare("SELECT payload FROM outbox WHERE account_id = ?1")?;
             for payload in stmt.query_map([account_id], |r| r.get::<_, String>(0))? {
                 match serde_json::from_str::<OutboxOp>(&payload?)? {
-                    OutboxOp::Flags { folder, .. } => {
+                    OutboxOp::Flags { folder, .. } | OutboxOp::Import { folder, .. } => {
                         named.insert(folder);
                     }
                     // A sent copy goes to whichever folder is Sent when it goes out (see sync::run_op).
-                    OutboxOp::Append { .. } | OutboxOp::Unsubscribe { .. } | OutboxOp::Task { .. } => {}
+                    OutboxOp::Append { .. }
+                    | OutboxOp::Unsubscribe { .. }
+                    | OutboxOp::Task { .. }
+                    | OutboxOp::TaskDone { .. } => {}
                     OutboxOp::Move { folder, dest, .. } => named.extend([folder, dest]),
                     OutboxOp::Label { folder, label, .. } => named.extend([folder, label]),
                     OutboxOp::Send(draft) => named.extend(draft.forward_of.map(|f| f.folder)),
@@ -499,7 +512,9 @@ impl Store {
                 OutboxOp::Send(_)
                 | OutboxOp::Append { .. }
                 | OutboxOp::Unsubscribe { .. }
-                | OutboxOp::Task { .. } => {}
+                | OutboxOp::Task { .. }
+                | OutboxOp::TaskDone { .. }
+                | OutboxOp::Import { .. } => {}
             }
         }
         for id in &keep {
@@ -516,4 +531,12 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+}
+
+/// Most characters an account's label takes: it sits in the rail and the account pickers, where it must fit.
+const LABEL_MAX: usize = 40;
+
+/// The label as stored: trimmed, one line, short. Empty is allowed (no label).
+fn clean_label(label: &str) -> String {
+    label.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(LABEL_MAX).collect()
 }

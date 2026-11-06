@@ -19,9 +19,28 @@ export const loadTasks = (id: number) => {
   if (!todoistOn()) return setTaskRows([]);
   void api.tasksOf(id).then((rows) => shownFor === id && setTaskRows(rows), () => {});
 };
+/** On opening a conversation: Todoist is asked where its tasks stand (ticked or deleted there), once. */
+export const checkTasks = (id: number) => {
+  shownFor = id;
+  if (!todoistOn()) return setTaskRows([]);
+  void api.checkTasks(id).then((rows) => shownFor === id && setTaskRows(rows), () => loadTasks(id));
+};
 
-/** The task box, open in the companion: from which message, and what it starts with. */
-export type TaskDraft = { message: number; title: string; due: string };
+/** Ticks a task off (or opens it again), with the usual undo. */
+export async function tickTask(t: TaskRow) {
+  const id = shownFor;
+  setTaskRows(taskRows().map((x) => (x.id === t.id ? { ...x, done: !t.done } : x)));
+  try {
+    const token = await api.taskDone(t.id, !t.done);
+    showToast(t.done ? `Open again: ${t.title}` : `Done: ${t.title}`, token, () => loadTasks(id));
+  } catch (e) {
+    showToast(String(e), []);
+    loadTasks(id);
+  }
+}
+
+/** The task box, open in the companion: from which message, what it starts with, and the ask it came from. */
+export type TaskDraft = { message: number; title: string; due: string; source?: string };
 export const [taskBox, setTaskBox] = createSignal<TaskDraft | null>(null);
 
 /** What a task from this conversation starts as: the first thing asked of you or that you said you'd do, else the
@@ -42,10 +61,10 @@ export function dayWord(seconds: number): string {
 }
 
 /** Opens the task box in the companion (opening the companion too). */
-export function startTask(message: number, title: string, due = "") {
+export function startTask(message: number, title: string, due = "", source?: string) {
   if (!todoistOn()) return showToast("Connect Todoist in Settings → Todoist first", []);
   setSetting("companion", true);
-  setTaskBox({ message, title, due });
+  setTaskBox({ message, title, due, source });
 }
 
 /** Adds the task to the project chosen in Settings → Todoist (its Inbox when none is). */
@@ -54,7 +73,14 @@ export async function addTask(draft: TaskDraft, title: string, due: string, note
   try {
     const label = settings.todoist.label.trim();
     const projectId = settings.todoist.project || null;
-    const token = await api.queueTask(draft.message, { title, due, projectId, label: label || null, note: note || null });
+    const token = await api.queueTask(draft.message, {
+      title,
+      due,
+      projectId,
+      label: label || null,
+      note: note || null,
+      source: draft.source ?? null,
+    });
     loadTasks(draft.message);
     showToast(`Added to Todoist: ${title}`, token, () => loadTasks(draft.message));
   } catch (e) {

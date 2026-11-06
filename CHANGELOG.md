@@ -7,6 +7,36 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- The list's tabs and search sit in Tern's title bar.
+- Settings → Senders lists muted conversations, each with Unmute.
+- Todoist: tick a task off in the companion, and Tern reads each task's state when the conversation opens. Asks and
+  promises get + Task. A task links back to its mail with a `tern://` link.
+- Search the server for mail whose text isn't on this computer yet; what it finds says "From the server".
+- Search previews are cut around the words you looked for, and N / P step through them in a conversation.
+- With AI on: Summarise what came in on the morning screen, and Ask your mail (A), answered from this computer's
+  search.
+- Your mail as files: a message as .eml, a folder or a search as one mbox file with progress and Stop, and an mbox
+  file imported into a new folder on the server.
+
+### Changed
+
+- The title bar does more (canvas "Tern title bar ideas", 1–4): an open conversation's subject and its tools sit in
+  it, so the mail starts a row higher; selected conversations turn it into their actions (Done, Snooze, Label,
+  Mark read, Other, Trash); search grows over the tabs, its filters show as chips, and a tap adds Unread, Starred,
+  With files, This week, Marked or Sent; and New people is a quiet tab, its icon and count, while someone waits and the sidebar is closed. The
+  line above Important that said so is gone.
+- The strip under the list is gone, and its key hints with it. Sync is one button at the right of the title bar
+  (at the end of the list's header on Linux): a dot when all is well, a word when something needs a look, and a
+  click for each account, what waits, Sync now and Pause. Undo floats at the foot of the window.
+- The list changes only the conversations sync touched instead of reading the page again, and lists read on their
+  own connections, so sync no longer holds them up.
+
+### Fixed
+
+- Searching from the title bar keeps the focus after the first letter.
+
 ## [2.0.0] - 2026-11-04
 
 Your inbox, your rules: New people, blocking and one-click unsubscribe, the companion beside every conversation, the

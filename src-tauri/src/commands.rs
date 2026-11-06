@@ -12,7 +12,7 @@ use tern_core::{
 };
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use tern_core::sync::SyncState;
@@ -34,6 +34,12 @@ pub async fn accounts(state: State<'_, AppState>) -> Reply<Vec<Account>> {
 #[tauri::command]
 pub async fn set_account_name(state: State<'_, AppState>, id: i64, name: String) -> Reply<()> {
     state.store.set_display_name(id, &name).map_err(text)
+}
+
+/// The account's short name for telling it from others. Only Tern shows it; the From line does not change.
+#[tauri::command]
+pub async fn set_account_label(state: State<'_, AppState>, id: i64, label: String) -> Reply<String> {
+    state.store.set_label(id, &label).map_err(text)
 }
 
 /// The account's other From addresses; returns what was kept (trimmed, each once). The worker reads them at
@@ -176,6 +182,7 @@ pub async fn google_sign_in(
             smtp_port: preset.smtp_port,
             smtp_security: preset.smtp_security,
             auth: Auth::Google,
+            label: String::new(),
             aliases: Vec::new(),
         },
     };
@@ -239,6 +246,34 @@ pub async fn thread(state: State<'_, AppState>, id: i64) -> Reply<Vec<ThreadMess
     Ok(thread)
 }
 
+/// "Search the server" (package 17 E): each account's server searched for the query's words in folders whose mail
+/// isn't all here, on a connection of its own. Returns what it found here, newest first; sync fetches their text
+/// next. An account whose server can't be reached is skipped; all of them failing is an error.
+#[tauri::command]
+pub async fn search_server(state: State<'_, AppState>, query: String) -> Reply<Vec<MessageRow>> {
+    let accounts = state.store.accounts().map_err(text)?;
+    let mut ids = Vec::new();
+    let mut failed = Vec::new();
+    for account in &accounts {
+        match sync::search_server(&state.store, account.id, &account.config, &crate::login(account), &query)
+            .await
+        {
+            Ok(found) => ids.extend(found),
+            Err(e) => {
+                log::warn!("server search on account {}: {e:#}", account.id);
+                failed.push(e.to_string());
+            }
+        }
+    }
+    if ids.is_empty() && !failed.is_empty() && failed.len() == accounts.len() {
+        return Err(failed.remove(0));
+    }
+    for account in accounts {
+        state.wake(account.id);
+    }
+    state.store.message_rows(&ids).map_err(text)
+}
+
 #[tauri::command]
 pub async fn search(state: State<'_, AppState>, query: String, limit: i64) -> Reply<SearchResult> {
     state.store.search(&query, limit).map_err(text)
@@ -253,6 +288,16 @@ pub async fn list_threads(
     limit: usize,
 ) -> Reply<Vec<ThreadRow>> {
     state.store.list_threads(&target, before, limit).map_err(text)
+}
+
+/// The rows these conversations (`account_id:thread_id`) have in `target`, to patch the list after sync changed them.
+#[tauri::command]
+pub async fn threads_in(
+    state: State<'_, AppState>,
+    target: ListTarget,
+    keys: Vec<String>,
+) -> Reply<Vec<ThreadRow>> {
+    state.store.threads_in(&target, &keys).map_err(text)
 }
 
 /// Puts a Gmail label on these conversations, or takes it off (`label` is the label's folder id).
@@ -372,6 +417,42 @@ pub async fn queue_task(
     state.wake(account);
     let _ = app.emit("mail-changed", ());
     Ok(token)
+}
+
+/// Ticks a task off (or opens it again) with the usual undo; Todoist hears of it after the undo window.
+#[tauri::command]
+pub async fn task_done(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    local: i64,
+    done: bool,
+) -> Reply<Vec<i64>> {
+    let (account, token) = state.store.queue_task_done(local, done, UNDO_SECONDS).map_err(text)?;
+    state.wake(account);
+    let _ = app.emit("mail-changed", ());
+    Ok(token)
+}
+
+/// Opening a conversation with tasks in Todoist asks Todoist where each stands (done there, or deleted), then
+/// returns the conversation's tasks. Only on opening, never in the background; offline, the tasks stay as they were.
+#[tauri::command]
+pub async fn check_tasks(state: State<'_, AppState>, id: i64) -> Reply<Vec<tern_core::TaskRow>> {
+    let open = state.store.open_todoist_tasks(id).map_err(text)?;
+    if let (false, Ok(token)) = (open.is_empty(), secrets::password(tern_core::todoist::KEY)) {
+        let store = state.store.clone();
+        let asked = blocking(move || {
+            for (local, todoist_id) in open {
+                let s = tern_core::todoist::state(&token, &todoist_id)?;
+                store.task_state(local, s)?;
+            }
+            Ok(())
+        })
+        .await;
+        if let Err(e) = asked {
+            log::info!("Todoist task states: {e}");
+        }
+    }
+    state.store.tasks_of(id).map_err(text)
 }
 
 /// The tasks made from a conversation, for its Tasks section and the pill under its subject.
@@ -516,6 +597,12 @@ pub async fn reply_init(state: State<'_, AppState>, id: i64, kind: ReplyKind) ->
     state.store.reply_init(id, kind).map_err(text)
 }
 
+/// Sync now, from the title bar's sync button: every account looks at once rather than at its next round.
+#[tauri::command]
+pub fn sync_now(state: State<'_, AppState>) {
+    state.wake_all();
+}
+
 /// The person opened a folder: check it now rather than on its five-minute round.
 #[tauri::command]
 pub async fn check_folder(state: State<'_, AppState>, id: i64) -> Reply<()> {
@@ -550,6 +637,12 @@ pub async fn set_setting(state: State<'_, AppState>, key: String, value: serde_j
 #[tauri::command]
 pub async fn mute(state: State<'_, AppState>, ids: Vec<i64>, mute: bool) -> Reply<()> {
     state.store.mute(&ids, mute).map_err(text)
+}
+
+/// Every muted conversation, newest first, for Settings → Senders.
+#[tauri::command]
+pub async fn muted_conversations(state: State<'_, AppState>) -> Reply<Vec<MessageRow>> {
+    state.store.muted_conversations().map_err(text)
 }
 
 #[tauri::command]
@@ -991,6 +1084,188 @@ pub async fn save_attachment(
     let file = received_file(&app, &state, id, index).await?;
     std::fs::copy(&file, &path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(true)
+}
+
+/// Asks where to save a file, with a title and a suggested name; None when the person cancels.
+async fn save_path(app: &AppHandle, title: &str, name: &str) -> Option<std::path::PathBuf> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog = app.dialog().file().set_title(title).set_file_name(mime::safe_file_name(name));
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&window);
+    }
+    dialog.save_file(move |chosen| {
+        let _ = tx.send(chosen);
+    });
+    rx.await.ok().flatten().and_then(|p| p.into_path().ok())
+}
+
+/// A message as a `.eml` file: its source from the server, as it came. False if the person cancelled.
+#[tauri::command]
+pub async fn save_eml(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<bool> {
+    let (account_id, at, _) = state
+        .store
+        .attachment_source(id)
+        .map_err(text)?
+        .ok_or("This message is not on the server yet; try again once it has synced")?;
+    let subject = state.store.message_rows(&[id]).map_err(text)?.pop().map(|m| m.subject).unwrap_or_default();
+    let name = format!("{}.eml", if subject.trim().is_empty() { "message" } else { subject.trim() });
+    let Some(path) = save_path(&app, "Save as .eml", &name).await else { return Ok(false) };
+    let account = state
+        .store
+        .accounts()
+        .map_err(text)?
+        .into_iter()
+        .find(|a| a.id == account_id)
+        .ok_or("The account of this message is gone")?;
+    let raw = sync::download(&account.config, &crate::login(&account), &at).await.map_err(text)?;
+    std::fs::write(&path, raw).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(true)
+}
+
+/// Set by Stop while an mbox export runs.
+static EXPORT_STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// How an mbox export went.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Exported {
+    pub written: usize,
+    /// Gone from the server, or not on it yet.
+    pub missing: usize,
+    pub stopped: bool,
+    pub path: String,
+}
+
+/// Exports a folder or a search's results as one mbox file (package 17 I), each message's source fetched from the
+/// server, as there is no other copy of it whole here. Sends "export-progress" ({done, total}) as it goes; Stop
+/// (`export_stop`) ends it with what was written so far. None if the person cancelled the save dialog.
+#[tauri::command]
+pub async fn export_mbox(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    folder: Option<i64>,
+    query: Option<String>,
+    name: String,
+) -> Reply<Option<Exported>> {
+    let ids = match (folder, query) {
+        (Some(f), _) => state.store.folder_message_ids(f).map_err(text)?,
+        (None, Some(q)) => {
+            state.store.search(&q, 100_000).map_err(text)?.rows.into_iter().map(|r| r.id).rev().collect()
+        }
+        (None, None) => return Err("Nothing to export".into()),
+    };
+    if ids.is_empty() {
+        return Err("There is nothing here to export".into());
+    }
+    let Some(path) = save_path(&app, "Export as mbox", &format!("{name}.mbox")).await else {
+        return Ok(None);
+    };
+    let places = state.store.export_places(&ids).map_err(text)?;
+    let accounts = state.store.accounts().map_err(text)?;
+    let total = ids.len();
+    let file = std::fs::File::create(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let out = Arc::new(Mutex::new(std::io::BufWriter::new(file)));
+    let mut done = Exported {
+        written: 0,
+        missing: total - places.len(),
+        stopped: false,
+        path: path.display().to_string(),
+    };
+    EXPORT_STOP.store(false, std::sync::atomic::Ordering::SeqCst);
+    let _ = app.emit("export-progress", serde_json::json!({ "done": 0, "total": total }));
+    for account in &accounts {
+        let mine: Vec<_> = places.iter().filter(|p| p.0 == account.id).collect();
+        if mine.is_empty() {
+            continue;
+        }
+        let at: Vec<_> = mine.iter().map(|p| p.1.clone()).collect();
+        let (written, missing) = (Arc::new(Mutex::new(0usize)), Arc::new(Mutex::new(0usize)));
+        let (w, m, o, a) = (written.clone(), missing.clone(), out.clone(), app.clone());
+        let before = done.written + done.missing;
+        let mut each = move |i: usize, raw: Option<Vec<u8>>| {
+            match raw {
+                Some(raw) => {
+                    if tern_core::mbox::write_message(&mut *o.lock().unwrap(), &raw, &mine[i].2, mine[i].3)
+                        .is_ok()
+                    {
+                        *w.lock().unwrap() += 1;
+                    }
+                }
+                None => *m.lock().unwrap() += 1,
+            }
+            let _ = a.emit("export-progress", serde_json::json!({ "done": before + i + 1, "total": total }));
+            !EXPORT_STOP.load(std::sync::atomic::Ordering::SeqCst)
+        };
+        let ran = sync::sources(&account.config, &crate::login(account), &at, &mut each).await;
+        done.written += *written.lock().unwrap();
+        done.missing += *missing.lock().unwrap();
+        ran.map_err(text)?;
+        if EXPORT_STOP.load(std::sync::atomic::Ordering::SeqCst) {
+            done.stopped = true;
+            break;
+        }
+    }
+    std::io::Write::flush(&mut *out.lock().unwrap()).map_err(|e| e.to_string())?;
+    Ok(Some(done))
+}
+
+/// Stops the mbox export that is running, keeping what it wrote.
+#[tauri::command]
+pub fn export_stop() {
+    EXPORT_STOP.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// An mbox import that was queued.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Imported {
+    pub token: i64,
+    pub folder: String,
+    pub total: usize,
+}
+
+/// Imports an mbox file into a new folder of this account, named after the file (package 17 I). Tern keeps its own
+/// copy, so moving or deleting the picked file later changes nothing, and the messages go up to the server with
+/// the usual undo window; they come back down like any other mail. None if the person cancelled.
+#[tauri::command]
+pub async fn import_mbox(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account: i64,
+) -> Reply<Option<Imported>> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog =
+        app.dialog().file().set_title("Import an mbox file").add_filter("mbox", &["mbox", "mbx"]);
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&window);
+    }
+    dialog.pick_file(move |picked| {
+        let _ = tx.send(picked);
+    });
+    let Some(picked) = rx.await.ok().flatten().and_then(|p| p.into_path().ok()) else { return Ok(None) };
+    let bytes = std::fs::read(&picked).map_err(|e| format!("{}: {e}", picked.display()))?;
+    let total = tern_core::mbox::split(&bytes).len();
+    if total == 0 {
+        return Err("There are no messages in that file".into());
+    }
+    // A hierarchy delimiter in the name would make a folder inside another one.
+    let stem = picked.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let folder = stem.replace(['/', '\\', '.'], " ").trim().to_string();
+    let folder = if folder.is_empty() { "Imported".to_string() } else { folder };
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dir = if cfg!(debug_assertions) { dir.join("dev") } else { dir }.join("imports");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let copy = dir.join(format!("{}.mbox", tern_core::store::now()));
+    std::fs::write(&copy, &bytes).map_err(|e| format!("{}: {e}", copy.display()))?;
+    let token = state
+        .store
+        .queue_import(account, &folder, &copy.display().to_string(), total, UNDO_SECONDS)
+        .map_err(text)?;
+    state.wake(account);
+    let _ = app.emit("mail-changed", ());
+    Ok(Some(Imported { token, folder, total }))
 }
 
 /// Most a settings file may hold: settings, snippets and signatures are text, far below this.
@@ -1489,6 +1764,37 @@ pub async fn ai_ask(
     let store = state.store.clone();
     blocking(move || {
         ai::ask_about(&store, &providers::Router, id, &question, &earlier, &mut |t| {
+            drop(on_text.send(t.to_string()))
+        })
+    })
+    .await
+}
+
+/// The tide's Summarise: a few lines on what came in since `since`, from the accounts the AI may read.
+#[tauri::command]
+pub async fn ai_overnight(
+    state: State<'_, AppState>,
+    since: i64,
+    on_text: tauri::ipc::Channel<String>,
+) -> Reply<ai::Overnight> {
+    let store = state.store.clone();
+    blocking(move || {
+        ai::overnight(&store, &providers::Router, since, &mut |t| drop(on_text.send(t.to_string())))
+    })
+    .await
+}
+
+/// Ask your mail: a question over all the mail the AI may read, answered from what this computer's search finds.
+#[tauri::command]
+pub async fn ai_ask_mail(
+    state: State<'_, AppState>,
+    question: String,
+    earlier: Vec<(String, String)>,
+    on_text: tauri::ipc::Channel<String>,
+) -> Reply<ai::Answer> {
+    let store = state.store.clone();
+    blocking(move || {
+        ai::ask_mail(&store, &providers::Router, &question, &earlier, &mut |t| {
             drop(on_text.send(t.to_string()))
         })
     })

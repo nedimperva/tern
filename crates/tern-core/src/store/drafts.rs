@@ -2,6 +2,46 @@
 
 use super::*;
 
+/// Search results whose preview is cut around the words: about what fills the window. At 50, reading the bodies
+/// took a one-word search's p95 from 13 to 32 ms on 100k messages (store_bench).
+const SNIPPET_ROWS: usize = 25;
+/// Characters of text kept before the first word found, and in all.
+const SNIPPET_BEFORE: usize = 40;
+const SNIPPET_LEN: usize = 160;
+
+/// The text around the first of `words` that starts a word (as search matches prefixes), on one line, with "…"
+/// where it was cut; None when none of them is in the text, or when the first is near the start anyway (the usual
+/// preview shows it). Quoted replies are text too: the first match wins wherever it is.
+pub(super) fn snippet_around(text: &str, words: &[String]) -> Option<String> {
+    let flat: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let lower = flat.to_lowercase();
+    let starts_word = |i: usize| i == 0 || !lower[..i].chars().next_back().is_some_and(char::is_alphanumeric);
+    let at = words
+        .iter()
+        .filter_map(|w| {
+            let w = w.trim_matches('"').to_lowercase();
+            lower.match_indices(&w).map(|(i, _)| i).find(|&i| starts_word(i))
+        })
+        .min()?;
+    if at < SNIPPET_LEN - SNIPPET_BEFORE {
+        return None;
+    }
+    // Back to a char boundary, then on to the start of a word.
+    let mut start = at.saturating_sub(SNIPPET_BEFORE);
+    while !flat.is_char_boundary(start) {
+        start -= 1;
+    }
+    if let Some(space) = flat[start..at].find(' ') {
+        start += space + 1;
+    }
+    let mut end = (start + SNIPPET_LEN).min(flat.len());
+    while !flat.is_char_boundary(end) {
+        end -= 1;
+    }
+    let tail = if end < flat.len() { "…" } else { "" };
+    Some(format!("…{}{tail}", &flat[start..end]))
+}
+
 impl Store {
     // MARK: Drafts
 
@@ -506,6 +546,87 @@ impl Store {
         }))
     }
 
+    /// Every message in a folder that is on the server, oldest first: what an mbox export of the folder holds.
+    pub fn folder_message_ids(&self, folder_id: i64) -> Result<Vec<i64>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id FROM messages WHERE folder_id = ?1 AND uid IS NOT NULL ORDER BY date, id",
+        )?;
+        let ids = stmt.query_map([folder_id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+        Ok(ids)
+    }
+
+    /// Where each of these messages is on the server, with its sender and date for an mbox "From " line, as
+    /// (account, place, from, date). Messages not on the server yet are left out.
+    pub fn export_places(&self, ids: &[i64]) -> Result<Vec<(i64, ForwardOf, String, i64)>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(
+            "SELECT m.account_id, f.name, m.uid, f.uid_validity, m.message_id, m.from_addr, m.date FROM messages m
+             JOIN folders f ON f.id = m.folder_id WHERE m.id = ?1 AND m.uid IS NOT NULL",
+        )?;
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            let found = stmt
+                .query_row([id], |r| {
+                    let at = ForwardOf {
+                        folder: r.get(1)?,
+                        uid: r.get(2)?,
+                        validity: r.get(3)?,
+                        message_id: r.get(4)?,
+                    };
+                    Ok((r.get(0)?, at, r.get(5)?, r.get(6)?))
+                })
+                .optional()?;
+            out.extend(found);
+        }
+        Ok(out)
+    }
+
+    /// Queues an mbox file's messages for a new folder on the server (package 17 I). `path` is Tern's own copy of the
+    /// file, removed once the import is done or undone.
+    pub fn queue_import(
+        &self,
+        account_id: i64,
+        folder: &str,
+        path: &str,
+        total: usize,
+        delay: i64,
+    ) -> Result<i64> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT INTO imports (account_id, folder, path, total) VALUES (?1, ?2, ?3, ?4)",
+            params![account_id, folder, path, total as i64],
+        )?;
+        let import = tx.last_insert_rowid();
+        let op = OutboxOp::Import { import, folder: folder.to_string(), total };
+        let token = enqueue(&tx, account_id, &op, delay)?;
+        tx.commit()?;
+        Ok(token)
+    }
+
+    /// An import's file and how many of its messages are on the server already; None once it is gone.
+    pub fn import_state(&self, import: i64) -> Result<Option<(String, usize)>> {
+        let found = self
+            .reader()
+            .query_row("SELECT path, done FROM imports WHERE id = ?1", [import], |r| {
+                Ok((r.get(0)?, r.get::<_, i64>(1)? as usize))
+            })
+            .optional()?;
+        Ok(found)
+    }
+
+    /// Notes that the first `done` messages of an import are on the server, so a retry starts after them.
+    pub fn import_done(&self, import: i64, done: usize) -> Result<()> {
+        self.conn().execute("UPDATE imports SET done = ?2 WHERE id = ?1", params![import, done as i64])?;
+        Ok(())
+    }
+
+    /// The import is over: its row and its copy of the file go.
+    pub fn import_finished(&self, import: i64) -> Result<()> {
+        forget_import(&self.conn(), import)
+    }
+
     pub fn thread(&self, id: i64) -> Result<Vec<ThreadMessage>> {
         let conn = self.reader();
         let mut stmt = conn.prepare_cached(&format!(
@@ -610,6 +731,17 @@ impl Store {
             let message_id: Option<String> = ids.query_row([r.id], |x| x.get(0))?;
             if message_id.is_none_or(|m| seen.insert((r.account_id, m))) {
                 kept.push(r);
+            }
+        }
+        // The preview shows where the words are, not how the mail starts (package 17 E). The index keeps no text
+        // (contentless), so the top results' bodies are read here; past them the usual preview stays.
+        if !q.words.is_empty() {
+            let mut body = conn.prepare_cached("SELECT text FROM bodies WHERE message_id = ?1")?;
+            for r in kept.iter_mut().take(SNIPPET_ROWS) {
+                let text: Option<String> = body.query_row([r.id], |x| x.get(0)).optional()?.flatten();
+                if let Some(around) = text.as_deref().and_then(|t| snippet_around(t, &q.words)) {
+                    r.snippet = around;
+                }
             }
         }
         Ok(SearchResult { rows: kept, partial })

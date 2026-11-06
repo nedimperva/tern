@@ -56,6 +56,7 @@ pub fn generate(store: &Store, messages: u32) -> Result<i64> {
         smtp_port: 465,
         smtp_security: tern_core::Security::Tls,
         auth: Default::default(),
+        label: String::new(),
         aliases: Vec::new(),
     })?;
     let folders = [

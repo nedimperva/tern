@@ -28,6 +28,46 @@ pub struct AppState {
     /// Every account's sync worker waits while this is true (Pause sync). Not kept across restarts, so a
     /// forgotten pause can't stop mail for good.
     pub pause: tokio::sync::watch::Sender<bool>,
+    /// Sync changed the store: `watch_changes` tells the window, at most every 100 ms.
+    pub changed: Arc<Notify>,
+}
+
+/// How long changes gather before the window hears of them: a backfill writes many batches a second, and one read
+/// of what changed in that time is enough.
+const CHANGE_GATHER: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Tells the window what sync changed (package 17 B): "mail-changed" names the conversations written since the last
+/// time, so the list patches those rows; a deletion, a big batch or a change outside messages sends none, and the
+/// window reads its list again. New-mail notifications and the tray count follow each one.
+fn watch_changes(app: &AppHandle, store: Arc<Store>, changed: Arc<Notify>) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            changed.notified().await;
+            tokio::time::sleep(CHANGE_GATHER).await;
+            let s = store.clone();
+            let changes = match tauri::async_runtime::spawn_blocking(move || s.take_changes()).await {
+                Ok(Ok(c)) => c,
+                _ => tern_core::store::Changes { threads: None },
+            };
+            let _ = app.emit("mail-changed", changes);
+            desktop::mail_changed(&app);
+        }
+    });
+}
+
+/// `PRAGMA optimize` once a week while Tern runs, looked at every hour (it also runs at quit).
+fn watch_optimize(store: Arc<Store>) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            let s = store.clone();
+            let ran = tauri::async_runtime::spawn_blocking(move || s.optimize_if_due(desktop::now())).await;
+            if let Ok(Err(e)) = ran {
+                log::warn!("optimize: {e:#}");
+            }
+        }
+    });
 }
 
 /// What the "sync-state" event carries.
@@ -76,11 +116,8 @@ pub fn start_account(app: &AppHandle, state: &AppState, account: Account) {
     let password = login(&account);
     let wake = Arc::new(Notify::new());
     state.wakers.lock().unwrap().insert(account.id, wake.clone());
-    let handle = app.clone();
-    let on_change: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-        let _ = handle.emit("mail-changed", ());
-        desktop::mail_changed(&handle);
-    });
+    let changed = state.changed.clone();
+    let on_change: Arc<dyn Fn() + Send + Sync> = Arc::new(move || changed.notify_one());
     let (handle, states, account_id) = (app.clone(), state.states.clone(), account.id);
     let on_state: Arc<dyn Fn(SyncState) + Send + Sync> = Arc::new(move |s| {
         states.lock().unwrap().insert(account_id, s);
@@ -168,7 +205,10 @@ fn main() {
                 wakers: Default::default(),
                 states: Default::default(),
                 pause: tokio::sync::watch::channel(false).0,
+                changed: Default::default(),
             };
+            watch_changes(app.handle(), state.store.clone(), state.changed.clone());
+            watch_optimize(state.store.clone());
             // Sends scheduled for a time that passed while Tern was closed wait to be confirmed.
             let held = state.store.hold_overdue(desktop::now())?;
             if held > 0 {
@@ -200,6 +240,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::accounts,
             commands::set_account_name,
+            commands::set_account_label,
             commands::set_account_aliases,
             commands::folders,
             commands::preset,
@@ -241,6 +282,7 @@ fn main() {
             commands::set_mark_note,
             commands::delete_mark,
             commands::search,
+            commands::search_server,
             commands::apply,
             commands::undo,
             commands::send,
@@ -254,6 +296,7 @@ fn main() {
             commands::sync_progress,
             commands::check_folder,
             commands::list_threads,
+            commands::threads_in,
             commands::apply_conversations,
             commands::label_conversations,
             commands::settings,
@@ -271,6 +314,11 @@ fn main() {
             commands::open_attachment,
             commands::inline_images,
             commands::save_attachment,
+            commands::save_eml,
+            commands::export_mbox,
+            commands::export_stop,
+            commands::import_mbox,
+            commands::sync_now,
             commands::contacts,
             commands::contact_card,
             commands::person,
@@ -282,8 +330,13 @@ fn main() {
             commands::todoist_forget,
             commands::queue_task,
             commands::ai_task,
+            commands::ai_overnight,
+            commands::ai_ask_mail,
             commands::tasks_of,
+            commands::task_done,
+            commands::check_tasks,
             commands::muted,
+            commands::muted_conversations,
             commands::take_mailto,
             commands::quit,
             commands::set_sync_paused,

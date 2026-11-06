@@ -541,6 +541,17 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
         Ok(appended)
     }
 
+    /// Makes a folder on the server; one that is there already is fine (servers say so in different words, so the
+    /// listing is asked).
+    pub async fn create_folder(&mut self, name: &str) -> Result<()> {
+        if let Err(e) = self.conn.create(mailbox(name)?).await {
+            if !self.folders().await?.iter().any(|f| f.name == name) {
+                return Err(anyhow::Error::new(e).context(format!("Could not make the folder {name}")));
+            }
+        }
+        Ok(())
+    }
+
     /// Deletes these messages from the selected folder for good: `\Deleted`, then UID EXPUNGE of just them. Without
     /// UIDPLUS they stay marked deleted (a plain EXPUNGE would take other deleted mail with them).
     pub async fn delete(&mut self, uids: &str) -> Result<()> {
@@ -560,6 +571,18 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
             AString::try_from(format!("<{message_id}>"))?,
         );
         let found = self.conn.search(Vec1::from(header), ImapMessageSearchOptions { uid: true }).await?;
+        Ok(found.into_iter().map(|u| u.get()).collect())
+    }
+
+    /// UIDs in the selected folder whose text holds every one of `words` (SEARCH TEXT, ANDed): the server's own
+    /// search, for mail whose text isn't on this computer yet.
+    pub async fn search_text(&mut self, words: &[String]) -> Result<Vec<u32>> {
+        let keys = words
+            .iter()
+            .map(|w| Ok(SearchKey::Text(AString::try_from(w.clone())?)))
+            .collect::<Result<Vec<_>>>()?;
+        let Ok(keys) = Vec1::try_from(keys) else { return Ok(Vec::new()) };
+        let found = self.conn.search(keys, ImapMessageSearchOptions { uid: true }).await?;
         Ok(found.into_iter().map(|u| u.get()).collect())
     }
 

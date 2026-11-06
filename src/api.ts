@@ -23,6 +23,14 @@ export type AiFact = { kind: "due" | "asked" | "decided"; text: string };
 /** An answer about a conversation: `messages` are the ids its [n] count by, oldest first; what was sent, for the
  * receipt under it. */
 export type AiAnswer = { text: string; messages: number[]; sentChars: number; route: { provider: AiProvider; model: string } };
+/** A line of a summary over many conversations, with the newest message of each it rests on. */
+export type AiPoint = { text: string; messages: number[] };
+/** An mbox import that was queued: its undo token, the folder it goes to, how many messages. */
+export type Imported = { token: number; folder: string; total: number };
+/** How an mbox export went. */
+export type Exported = { written: number; missing: number; stopped: boolean; path: string };
+/** What came in overnight, in a few lines, and what was sent to get it. */
+export type AiOvernight = { points: AiPoint[]; conversations: number; sentChars: number; route: { provider: AiProvider; model: string } };
 /** One suggested reply: a few words on what it does, and the reply. */
 export type AiSuggestion = { label: string; text: string };
 /** A style just learned, with made-up notes written plainly and in that style, shown once. */
@@ -62,6 +70,8 @@ export type Security = "tls" | "starttls";
 export type AccountConfig = {
   email: string;
   displayName: string;
+  /** A short name to tell accounts apart ("Work"); empty shows the name, then the address. Not on the From line. */
+  label?: string;
   username: string;
   imapHost: string;
   imapPort: number;
@@ -192,11 +202,19 @@ export type PersonFacts = {
 };
 export type TodoistProject = { id: string; name: string; inbox: boolean };
 /** What the task box sends. */
-export type TaskInput = { title: string; due?: string | null; projectId?: string | null; label?: string | null; note?: string | null };
+export type TaskInput = {
+  title: string;
+  due?: string | null;
+  projectId?: string | null;
+  label?: string | null;
+  note?: string | null;
+  /** The ask or promise it was made from (`promises.ts` key). */
+  source?: string | null;
+};
 /** A task the AI proposes for the task box; `due` as Todoist reads it, empty when none. */
 export type TaskSuggestion = { title: string; due: string; note: string; sentChars: number; route: { provider: AiProvider; model: string } };
 /** A task made from a conversation; `url` once Todoist has it. */
-export type TaskRow = { id: number; title: string; due: string | null; url: string | null };
+export type TaskRow = { id: number; title: string; due: string | null; url: string | null; done: boolean; source: string | null };
 /** A file exchanged with a person, from any conversation. */
 export type PersonFile = {
   messageId: number;
@@ -241,6 +259,8 @@ export type ThreadRow = MessageRow & {
   labels?: string[];
   /** New people shows a row per person: their newest conversation, with the others they started in `group`. */
   group?: ThreadRow[];
+  /** Found by searching the server, its text not here yet. */
+  fromServer?: boolean;
 };
 /** Where an account's sync stands. */
 export type SyncState = "connecting" | "syncing" | "idle" | "offline" | "auth-failed" | "paused";
@@ -361,6 +381,8 @@ export interface Api {
   accounts(): Promise<Account[]>;
   /** The name on mail sent from the account; empty sends the address alone. */
   setAccountName(id: number, name: string): Promise<void>;
+  /** Sets the account's label (see Account.label); returns what was kept. */
+  setAccountLabel(id: number, label: string): Promise<string>;
   /** Replaces the account's other From addresses; returns what was kept (trimmed, each once). */
   setAccountAliases(id: number, aliases: Alias[]): Promise<Alias[]>;
   folders(): Promise<Folder[]>;
@@ -382,6 +404,8 @@ export interface Api {
   list(target: Target, before: Cursor | null, limit: number): Promise<MessageRow[]>;
   /** Conversations with a message in `target`, newest first; `before` is the last row's (date, id). */
   listThreads(target: Target, before: Cursor | null, limit: number): Promise<ThreadRow[]>;
+  /** The rows these conversations (`accountId:threadId`) have in `target`; one not in it now is left out. */
+  threadsIn(target: Target, keys: string[]): Promise<ThreadRow[]>;
   /** An action on whole conversations, each named by its row's message id. */
   applyConversations(ids: number[], action: Action, target: Target): Promise<Applied>;
   /** Every unread message in the list marked read, loaded or not. */
@@ -391,6 +415,17 @@ export interface Api {
   thread(id: number): Promise<ThreadMessage[]>;
   /** Search with filters (see crates/tern-core/src/query.rs). `partial`: words were not looked for in mail without its text. */
   search(query: string, limit: number): Promise<{ rows: MessageRow[]; partial: boolean }>;
+  /** Each account's server searched for the query's words where mail isn't all here; what it found, newest first. */
+  searchServer(query: string): Promise<MessageRow[]>;
+  /** A message's source from the server, saved where the person picks; false if they cancelled. */
+  saveEml(id: number): Promise<boolean>;
+  /** A folder or a search's results as one mbox file; null if the person cancelled the save dialog. */
+  exportMbox(folder: number | null, query: string | null, name: string): Promise<Exported | null>;
+  exportStop(): Promise<void>;
+  /** An mbox file the person picks, uploaded into a new folder of this account; null if they cancelled. */
+  importMbox(account: number): Promise<Imported | null>;
+  /** How far an export is; returns a function that stops listening. */
+  onExportProgress(f: (p: { done: number; total: number }) => void): () => void;
   apply(ids: number[], action: Action): Promise<Applied>;
   undo(token: number[]): Promise<boolean>;
   /** Queues a send; `delay` is the undo window in seconds; `draftId` when it was a saved draft. */
@@ -425,6 +460,10 @@ export interface Api {
   /** Queues a task from the conversation of message `id`, with the usual undo; the undo token. */
   queueTask(id: number, task: TaskInput): Promise<number[]>;
   tasksOf(id: number): Promise<TaskRow[]>;
+  /** Ticks a task off (or opens it again), with the usual undo; the undo token. */
+  taskDone(local: number, done: boolean): Promise<number[]>;
+  /** On opening a conversation: asks Todoist where its tasks stand, then returns them. */
+  checkTasks(id: number): Promise<TaskRow[]>;
   /** A task proposed by AI from the conversation (behind the summaries switch); nothing is created. */
   aiTask(id: number): Promise<TaskSuggestion>;
   /** The system file picker; paths chosen (none if cancelled). */
@@ -517,6 +556,8 @@ export interface Api {
   }): void;
   /** Pauses or resumes sync for every account (also in the tray); `onSyncState` reports "paused" per account. */
   setSyncPaused(on: boolean): Promise<void>;
+  /** Every account looks for new mail now. */
+  syncNow(): Promise<void>;
   /** The `mailto:` link Tern was started with, if any (once). */
   takeMailto(): Promise<Mailto | null>;
   autostart(): Promise<boolean>;
@@ -534,9 +575,13 @@ export interface Api {
   discardWaiting(id: number): Promise<boolean>;
   /** The system says the network is back: reconnect now instead of after the retry wait. */
   networkBack(): void;
-  onChange(f: () => void): void;
+  /** The store changed. `threads` names the conversations sync wrote (`accountId:threadId`), to patch those rows;
+   * null means read the list again whole (a deletion, a big batch, or a change made from the window). */
+  onChange(f: (threads: string[] | null) => void): void;
   /** Mutes (or unmutes) the conversations of these messages: later replies skip the inbox. */
   mute(ids: number[], mute: boolean): Promise<void>;
+  /** Every muted conversation, newest first, by its newest message. */
+  mutedConversations(): Promise<MessageRow[]>;
   muted(id: number): Promise<boolean>;
   /** Settings the person changed, by name; the UI holds the defaults. */
   settings(): Promise<Record<string, unknown>>;
@@ -584,6 +629,10 @@ export interface Api {
   aiReplies(id: number, fresh: boolean, onText: (text: string) => void): Promise<AiSuggestion[]>;
   /** Answers a question about the conversation of message `id`, with the chat so far as [question, answer]. */
   aiAsk(id: number, question: string, earlier: [string, string][], onText: (text: string) => void): Promise<AiAnswer>;
+  /** The tide's Summarise: what came in since `since`, from the accounts the AI may read. */
+  aiOvernight(since: number, onText: (text: string) => void): Promise<AiOvernight>;
+  /** Ask your mail: a question over all the mail the AI may read; `messages` are the ids its [n] count by. */
+  aiAskMail(question: string, earlier: [string, string][], onText: (text: string) => void): Promise<AiAnswer>;
   aiWrite(input: AiWriteInput, onText: (text: string) => void): Promise<AiWritten>;
   aiClearCache(): Promise<number>;
   aiStats(): Promise<AiStats>;
@@ -622,6 +671,7 @@ function installClose() {
 const tauri: Api = {
   accounts: () => invoke("accounts"),
   setAccountName: (id, name) => invoke("set_account_name", { id, name }),
+  setAccountLabel: (id, label) => invoke("set_account_label", { id, label }),
   setAccountAliases: (id, aliases) => invoke("set_account_aliases", { id, aliases }),
   folders: () => invoke("folders"),
   preset: (email) => invoke("preset", { email }),
@@ -635,11 +685,23 @@ const tauri: Api = {
   clearReceivedCache: () => invoke("clear_received_cache"),
   list: (target, before, limit) => invoke("list_messages", { target, before, limit }),
   listThreads: (target, before, limit) => invoke("list_threads", { target, before, limit }),
+  threadsIn: (target, keys) => invoke("threads_in", { target, keys }),
   applyConversations: (ids, action, target) => invoke("apply_conversations", { ids, action, target }),
   markAllRead: (target) => invoke("mark_all_read", { target }),
   labelConversations: (ids, label, add) => invoke("label_conversations", { ids, label, add }),
   thread: (id) => invoke("thread", { id }),
   search: (query, limit) => invoke("search", { query, limit }),
+  searchServer: (query) => invoke("search_server", { query }),
+  saveEml: (id) => invoke("save_eml", { id }),
+  exportMbox: (folder, query, name) => invoke("export_mbox", { folder, query, name }),
+  importMbox: (account) => invoke("import_mbox", { account }),
+  exportStop: () => invoke("export_stop"),
+  onExportProgress: (f) => {
+    let stop: (() => void) | null = null;
+    let stopped = false;
+    void listen<{ done: number; total: number }>("export-progress", (e) => f(e.payload)).then((u) => (stopped ? u() : (stop = u)));
+    return () => ((stopped = true), stop?.());
+  },
   apply: (ids, action) => invoke("apply", { ids, action }),
   problems: () => invoke("problems"),
   retryProblem: (id) => invoke("retry_problem", { id }),
@@ -684,6 +746,8 @@ const tauri: Api = {
   todoistForget: () => invoke("todoist_forget"),
   queueTask: (id, task) => invoke("queue_task", { id, task }),
   tasksOf: (id) => invoke("tasks_of", { id }),
+  taskDone: (local, done) => invoke("task_done", { local, done }),
+  checkTasks: (id) => invoke("check_tasks", { id }),
   aiTask: (id) => invoke("ai_task", { id }),
   onFilesDropped: (f, hover) => {
     const stops: (() => void)[] = [];
@@ -734,6 +798,7 @@ const tauri: Api = {
   },
   takeMailto: () => invoke("take_mailto"),
   setSyncPaused: (on) => invoke("set_sync_paused", { on }),
+  syncNow: () => invoke("sync_now"),
   setSplit: (ids, other) => invoke("set_split", { ids, other }),
   senderOf: (id) => invoke("sender_of", { id }),
   setSender: (accountId, addr, choice) => invoke("set_sender", { accountId, addr, choice }),
@@ -758,10 +823,11 @@ const tauri: Api = {
   defaultMailApp: () => invoke("default_mail_app"),
   makeDefaultMailApp: () => invoke("make_default_mail_app"),
   replyInit: (id, kind) => invoke("reply_init", { id, kind }),
-  onChange: (f) => void listen("mail-changed", f),
+  onChange: (f) => void listen<{ threads: string[] | null } | null>("mail-changed", (e) => f(e.payload?.threads ?? null)),
   syncStates: () => invoke("sync_states"),
   syncProgress: () => invoke("sync_progress"),
   mute: (ids, mute) => invoke("mute", { ids, mute }),
+  mutedConversations: () => invoke("muted_conversations"),
   muted: (id) => invoke("muted", { id }),
   settings: () => invoke("settings"),
   setSetting: (key, value) => invoke("set_setting", { key, value }),
@@ -805,6 +871,8 @@ const tauri: Api = {
   aiSummarize: (id, fresh, onText) => invoke("ai_summarize", { id, fresh, onText: channel(onText) }),
   aiReplies: (id, fresh, onText) => invoke("ai_replies", { id, fresh, onText: channel(onText) }),
   aiAsk: (id, question, earlier, onText) => invoke("ai_ask", { id, question, earlier, onText: channel(onText) }),
+  aiOvernight: (since, onText) => invoke("ai_overnight", { since, onText: channel(onText) }),
+  aiAskMail: (question, earlier, onText) => invoke("ai_ask_mail", { question, earlier, onText: channel(onText) }),
   aiWrite: (input, onText) => invoke("ai_write", { input, onText: channel(onText) }),
   aiClearCache: () => invoke("ai_clear_cache"),
   aiStats: () => invoke("ai_stats"),
@@ -958,6 +1026,8 @@ function fake(): Api {
   });
   const listeners: (() => void)[] = [];
   const personNotes = new Map<string, string>();
+  const exportListeners: ((p: { done: number; total: number }) => void)[] = [];
+  let exportStopped = false;
   // #todoist: start connected, to see the Tasks section and the task box.
   let todoistToken = location.hash === "#todoist" ? "fake" : "";
   const TODOIST_PROJECTS: TodoistProject[] = [
@@ -1066,6 +1136,7 @@ function fake(): Api {
     accounts: async () =>
       location.hash === "#two" ? [account, { ...account, id: 2, email: "ada@work.example", displayName: "Ada Work", username: "ada@work.example" }] : [account],
     setAccountName: async (_, name) => void (account.displayName = name.trim()),
+    setAccountLabel: async (_, label) => (account.label = label.trim().replace(/\s+/g, " ").slice(0, 40)),
     setAccountAliases: async (_, aliases) => {
       const seen = new Set([account.email.toLowerCase()]);
       account.aliases = aliases
@@ -1132,6 +1203,10 @@ function fake(): Api {
       const t = messages.find((m) => m.id === id)?.threadId;
       return messages.filter((m) => m.threadId === t).sort((a, b) => a.date - b.date);
     },
+    async threadsIn(target: Target, keys: string[]) {
+      const all: ThreadRow[] = await this.listThreads(target, null, 100_000);
+      return all.filter((r) => keys.includes(`${r.accountId}:${r.threadId}`));
+    },
     listThreads: async (target, before, limit) => {
       const newer = (m: ThreadMessage) => !!before && (m.date > before.date || (m.date === before.date && m.id >= before.id));
       const shown = new Set(messages.filter((m) => inTarget(m, target) && newer(m)).map((m) => m.threadId));
@@ -1172,6 +1247,34 @@ function fake(): Api {
       return api.apply(chosen, action);
     },
     markAllRead: async (target) => api.apply(messages.filter((m) => inTarget(m, target) && !m.seen).map((m) => m.id), "markRead"),
+    saveEml: async () => true,
+    // A slow export of up to 40 messages, to see the progress and Stop.
+    async exportMbox(folder: number | null, query: string | null) {
+      const total = folder != null ? messages.filter((m) => m.folderId === folder).length : query ? 40 : 0;
+      let done = 0;
+      exportStopped = false;
+      for (; done < Math.min(total, 40) && !exportStopped; done++) {
+        await new Promise((r) => setTimeout(r, 60));
+        for (const f of exportListeners) f({ done: done + 1, total });
+      }
+      return { written: done, missing: 0, stopped: exportStopped, path: "C:\\Users\\you\\Documents\\Mail.mbox" };
+    },
+    exportStop: async () => void (exportStopped = true),
+    importMbox: async () => ({ token: 1, folder: "Old mail", total: 128 }),
+    onExportProgress: (f) => {
+      exportListeners.push(f);
+      return () => exportListeners.splice(exportListeners.indexOf(f), 1);
+    },
+    // The fake's "server" finds the first word in snippets, as if their text weren't here.
+    searchServer: async (query) => {
+      await new Promise((r) => setTimeout(r, 900));
+      const word = query.toLowerCase().split(/\s+/).find((t) => t && !t.includes(":"));
+      if (!word) return [];
+      // Two the local search found too, and one it didn't (the oldest message), to see both cases.
+      const found = messages.filter((m) => m.snippet.toLowerCase().includes(word)).sort((a, b) => b.date - a.date).slice(0, 2);
+      const oldest = [...messages].sort((a, b) => a.date - b.date)[0];
+      return [...found, ...(oldest ? [oldest] : [])].map(row);
+    },
     search: async (query, limit) => {
       // Words, is:marked, has:note and is:snoozed only; the filters live in the engine. Shown as partial so the note
       // can be worked on here.
@@ -1309,7 +1412,15 @@ function fake(): Api {
     todoistForget: async () => void (todoistToken = ""),
     queueTask: async (id, task) => {
       const thread = messages.find((m) => m.id === id)?.threadId ?? "";
-      const row = { id: nextTask++, thread, title: task.title.trim(), due: task.due?.trim() || null, url: null as string | null };
+      const row = {
+        id: nextTask++,
+        thread,
+        title: task.title.trim(),
+        due: task.due?.trim() || null,
+        url: null as string | null,
+        done: false,
+        source: task.source ?? null,
+      };
       if (!row.title) throw "A task needs a title";
       fakeTasks.push(row);
       // After the undo window it "reaches Todoist".
@@ -1331,6 +1442,16 @@ function fake(): Api {
     tasksOf: async (id) => {
       const thread = messages.find((m) => m.id === id)?.threadId;
       return fakeTasks.filter((t) => t.thread === thread).map(({ thread: _, ...t }) => t);
+    },
+    async checkTasks(id: number) {
+      return this.tasksOf(id);
+    },
+    taskDone: async (local, done) => {
+      const t = fakeTasks.find((x) => x.id === local);
+      if (!t) return [];
+      t.done = done;
+      pending.set(-1000 - local, () => (t.done = !done));
+      return [-1000 - local];
     },
     personFiles: async (email) => {
       const e = email.toLowerCase();
@@ -1386,7 +1507,7 @@ function fake(): Api {
       return true;
     },
     networkBack: () => {},
-    onChange: (f) => void listeners.push(f),
+    onChange: (f) => void listeners.push(() => f(null)),
     // Open the page with #offline to see how a lost connection looks.
     // #offline, #paused and #backfill show those states; #backfill also a download in progress.
     syncStates: async () => ({
@@ -1399,6 +1520,11 @@ function fake(): Api {
     ],
     onSyncState: (f) => void stateListeners.push(f),
     setSyncPaused: async (on) => stateListeners.forEach((f) => f(1, on ? "paused" : "idle")),
+    // A short pass, so the button's turning arrows can be seen.
+    async syncNow() {
+      for (const f of stateListeners) f(1, "syncing");
+      setTimeout(() => stateListeners.forEach((f) => f(1, "idle")), 1200);
+    },
     checkFolder: async () => {},
     mute: async (ids, mute) => {
       for (const m of messages.filter((m) => ids.includes(m.id))) {
@@ -1407,6 +1533,12 @@ function fake(): Api {
       }
     },
     muted: async (id) => mutedThreads.has(messages.find((m) => m.id === id)?.threadId ?? ""),
+    mutedConversations: async () =>
+      [...mutedThreads]
+        .map((t) => messages.filter((m) => m.threadId === t).sort((a, b) => b.date - a.date)[0])
+        .filter((m): m is ThreadMessage => !!m)
+        .sort((a, b) => b.date - a.date)
+        .map(row),
     // The browser fake keeps settings in this window's storage.
     settings: async () => {
       try {
@@ -1647,6 +1779,31 @@ function fake(): Api {
         onText(word);
       }
       return { text, messages: ids, sentChars: 4210, route: { provider: "anthropic", model: "claude-sonnet-5-5" } };
+    },
+    aiOvernight: async (since, onText) => {
+      const recent = messages.filter((m) => m.date > since && !m.seen).sort((a, b) => b.date - a.date);
+      const ids = [...new Map(recent.map((m) => [m.threadId, m.id])).values()].slice(0, 40);
+      const text = "- Ana wants the Q3 deck by Saturday and asks you to present it [1]\n- Grace booked lunch for 12; she needs a head count by Friday [2]\n- Also: 4 newsletters and 2 receipts [3][4]";
+      await stream(text, onText);
+      return {
+        points: [
+          { text: "Ana wants the Q3 deck by Saturday and asks you to present it", messages: ids.slice(0, 1) },
+          { text: "Grace booked lunch for 12; she needs a head count by Friday", messages: ids.slice(1, 2) },
+          { text: "Also: 4 newsletters and 2 receipts", messages: ids.slice(2, 4) },
+        ],
+        conversations: ids.length,
+        sentChars: 18_420,
+        route: { provider: "anthropic", model: "claude-haiku-5-5" },
+      };
+    },
+    aiAskMail: async (question, _earlier, onText) => {
+      const word = question.toLowerCase().split(/\W+/).find((w) => w.length > 3) ?? "";
+      const ids = messages.filter((m) => `${m.subject} ${m.bodyText}`.toLowerCase().includes(word)).slice(0, 3).map((m) => m.id);
+      const text = ids.length
+        ? `The latest is from yesterday: Ana asked for the totals [1]; Tom answered with a draft [2].`
+        : "Nothing in your mail says, as far as the search found.";
+      await stream(text, onText);
+      return { text, messages: ids, sentChars: 6_120, route: { provider: "anthropic", model: "claude-haiku-5-5" } };
     },
     aiSummarize: async (id, fresh, onText) => {
       if (!fresh && fakeSummaries.has(id)) return fakeSummaries.get(id)!;

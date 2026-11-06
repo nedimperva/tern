@@ -113,6 +113,10 @@ export const [idle, setIdle] = createSignal(false);
 /** Tern draws its own title bar on Windows only. On Linux the window manager handles the window (Hyprland draws no
  * frame and ignores minimize and maximize), so the bar's buttons would do nothing there. */
 export const ownTitleBar = !navigator.userAgent.includes("Linux");
+/** Where the list's tabs and search go in Tern's own title bar (the list keeps them itself without one). */
+export const [titleSlot, setTitleSlot] = createSignal<HTMLElement | null>(null);
+/** Where an open conversation's subject and tools go in Tern's own title bar (canvas "Tern title bar ideas", 1). */
+export const [convSlot, setConvSlot] = createSignal<HTMLElement | null>(null);
 
 /** The sidebar sits beside the list now: turned on, room for it, and not in focus mode. */
 export const docked = () => settings.sidebar && width() >= SIDEBAR_WIDTH && !focusMode();
@@ -146,8 +150,10 @@ const replyFocused = () => !!document.activeElement?.closest(".inline-reply, .ai
 /** Something is over the list and takes the keys. */
 export const dialog = () =>
   screen() || deck() !== null || reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin() && (!compose()!.inline || replyFocused())) || setup() || rail() || snoozing() !== null || labeling() !== null ||
-  viewing() !== null;
+  viewing() !== null || askingMail();
 export const searching = () => query().trim() !== "";
+/** Ask your mail is open (`A`, package 17 F). */
+export const [askingMail, setAskingMail] = createSignal(false);
 /** The role of the list on show ("" for a folder or label). */
 export const role = () => {
   const t = target();

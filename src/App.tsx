@@ -5,12 +5,14 @@ import { CommandBar } from "./components/CommandBar";
 import { Compose } from "./components/Compose";
 import { ConversationView } from "./components/ConversationView";
 import { ListPane } from "./components/ListPane";
+import { Toast } from "./components/Toast";
 import { ProblemsDialog } from "./components/Problems";
 import { Rail } from "./components/Rail";
 import { TitleBar } from "./components/TitleBar";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { LabelPicker } from "./components/LabelPicker";
 import { SnoozePicker } from "./components/SnoozePicker";
+import { AskMail } from "./components/AskMail";
 import { AttachmentViewer } from "./components/AttachmentViewer";
 import { PerfOverlay } from "./components/PerfOverlay";
 import { DayDeck } from "./components/DayDeck";
@@ -40,7 +42,7 @@ import {
 import { closeDeck, deckRows, doneUpdates, firstName, runDeck } from "./app/deck";
 import { forgetSearch, isTarget, go, loadSignatures, onChange, readProgress, refresh, runSearch, watchList } from "./app/list";
 import { checkTodoist } from "./app/tasks";
-import { keyOf } from "./app/rows";
+import { asRow, keyOf } from "./app/rows";
 import {
   accounts,
   compose,
@@ -96,6 +98,7 @@ import {
   ownTitleBar,
   toggleSidebar,
   viewing,
+  askingMail,
   width,
 } from "./app/state";
 import { clock, held, late, scheduled, watchStatus } from "./app/status";
@@ -122,6 +125,7 @@ export default function App() {
           sideTone={docked() || settingsOpen() !== null}
           onSidebar={toggleSidebar}
           onCompose={newMessage}
+          list={settingsOpen() === null && !screen() && deck() === null}
         />
       </Show>
       <div class="window-body">
@@ -130,6 +134,7 @@ export default function App() {
         </Show>
         <Main />
       </div>
+      <Toast />
     </div>
   );
 }
@@ -232,8 +237,14 @@ function Main() {
   });
   onCleanup(() => window.removeEventListener("keydown", onKeyDown));
 
+  // A conversation opened from elsewhere (the morning screen, Ask your mail) that this list doesn't hold gets the
+  // whole window: beside it the list would show nothing of it, often just its empty state.
+  const inList = () => {
+    const open = openRow();
+    return open !== null && rows().some((r) => keyOf(r) === keyOf(open));
+  };
   const roomForSplit = () =>
-    focusMode() || settings.openMode === "full"
+    focusMode() || settings.openMode === "full" || !inList()
       ? false
       : width() >= (settings.openMode === "split" ? MIN_SPLIT_WIDTH : SPLIT_WIDTH);
   const split = () => openRow() !== null && roomForSplit();
@@ -365,6 +376,16 @@ function Main() {
       </Show>
       <Show when={viewing()}>
         {(v) => <AttachmentViewer message={v().message} index={v().index} onClose={() => setViewing(null)} />}
+      </Show>
+      <Show when={askingMail()}>
+        <AskMail
+          onOpen={(id) =>
+            void api.thread(id).then((t) => {
+              const m = t.find((x) => x.id === id) ?? t[t.length - 1];
+              if (m) void openConversation(asRow(m));
+            })
+          }
+        />
       </Show>
       <Show when={snoozing()}>
         {(hit) => <SnoozePicker count={hit().length} onPick={(due) => void snoozeUntil(due)} onClose={() => (snoozeThen(null), setSnoozing(null))} />}

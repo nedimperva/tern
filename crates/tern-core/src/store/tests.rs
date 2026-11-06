@@ -13,6 +13,7 @@ fn config() -> AccountConfig {
         smtp_port: 465,
         smtp_security: Security::Tls,
         auth: Default::default(),
+        label: String::new(),
         aliases: Vec::new(),
     }
 }
@@ -201,6 +202,32 @@ fn an_account_can_be_renamed() {
     store.set_display_name(account, "  Ada L.  ").unwrap();
     assert_eq!(store.account(account).unwrap().unwrap().config.display_name, "Ada L.");
     assert!(store.account(account + 1).unwrap().is_none());
+}
+
+#[test]
+fn an_account_has_a_label_apart_from_its_name() {
+    let (store, account, ..) = setup();
+    assert_eq!(
+        store.account(account).unwrap().unwrap().config.label,
+        "",
+        "no label until the person gives one"
+    );
+    assert_eq!(
+        store.set_label(account, "  Work \n  mail  ").unwrap(),
+        "Work mail",
+        "one line, spaces tidied"
+    );
+    let found = store.account(account).unwrap().unwrap().config;
+    assert_eq!(found.label, "Work mail");
+    assert_eq!(found.display_name, "Me", "the name on mail is not touched");
+    let long = "x".repeat(80);
+    assert_eq!(
+        store.set_label(account, &long).unwrap().chars().count(),
+        40,
+        "kept short enough for the rail"
+    );
+    store.set_label(account, "  ").unwrap();
+    assert_eq!(store.account(account).unwrap().unwrap().config.label, "", "blank clears it");
 }
 
 #[test]
@@ -488,6 +515,33 @@ fn mark_all_read_takes_every_unread_message_in_the_list_and_undoes() {
 }
 
 #[test]
+fn a_search_result_previews_the_text_around_the_words() {
+    let (store, account, inbox, _) = setup();
+    let long = format!(
+        "{} The invoice for March is attached, paid by Friday. {}",
+        "Hello there. ".repeat(20),
+        "Bye."
+    );
+    let m = NewMessage { body_text: Some(long), ..message(1, "Numbers", 100) };
+    store.insert_messages(account, inbox, &[m, message(2, "Invoice early", 200)]).unwrap();
+    let found = store.search("invoice", 10).unwrap();
+    let deep = found.rows.iter().find(|r| r.subject == "Numbers").unwrap();
+    assert!(deep.snippet.starts_with('…') && deep.snippet.contains("invoice for March"), "{}", deep.snippet);
+    assert!(deep.snippet.chars().count() <= 162);
+    let early = found.rows.iter().find(|r| r.subject == "Invoice early").unwrap();
+    assert!(!early.snippet.starts_with('…'), "a word near the start keeps the usual preview");
+
+    use super::drafts::snippet_around;
+    assert_eq!(snippet_around("short text", &["text".into()]), None);
+    assert_eq!(snippet_around(&"x ".repeat(200), &["invoice".into()]), None);
+    let words = format!("{} reinvoiced later invoice", "word ".repeat(40));
+    assert!(
+        snippet_around(&words, &["invoice".into()]).unwrap().contains("later invoice"),
+        "only where a word starts"
+    );
+}
+
+#[test]
 fn search_finds_snoozed_conversations() {
     let (store, account, inbox, _) = setup();
     store.insert_messages(account, inbox, &[message(1, "Tickets", 100), message(2, "Lunch", 200)]).unwrap();
@@ -746,17 +800,75 @@ fn mail_without_references_joins_by_subject_and_people() {
 fn a_store_on_disk_reads_what_it_wrote_on_its_second_connection() {
     let dir = std::env::temp_dir().join(format!("tern-reader-{}-{}", std::process::id(), now()));
     std::fs::create_dir_all(&dir).unwrap();
-    let store = Store::open(&dir.join("mail.db")).unwrap();
-    assert!(store.reader.is_some());
+    let store = std::sync::Arc::new(Store::open(&dir.join("mail.db")).unwrap());
+    assert_eq!(store.readers.len(), READERS);
     let account = store.add_account(&config()).unwrap().id;
     let inbox = store.upsert_folder(account, "INBOX", "inbox").unwrap();
     store.insert_messages(account, inbox, &[message(1, "zeppelin", 100)]).unwrap();
     assert_eq!(store.folders().unwrap().len(), 1);
     assert_eq!(store.list_threads(&ListTarget::Folder(inbox), None, 10).unwrap().len(), 1);
     assert_eq!(store.search("zeppelin", 10).unwrap().rows.len(), 1);
+    // Reads from several threads at once, each on a reader of its own, while the writer writes.
+    let readers: Vec<_> = (0..4)
+        .map(|_| {
+            let s = store.clone();
+            std::thread::spawn(move || {
+                for _ in 0..50 {
+                    assert_eq!(s.list_threads(&ListTarget::Folder(inbox), None, 10).unwrap().len(), 1);
+                }
+            })
+        })
+        .collect();
+    for i in 0..20 {
+        store.update_flags(inbox, &[(1, i % 2 == 0, false)]).unwrap();
+    }
+    for r in readers {
+        r.join().unwrap();
+    }
     store.tidy_on_exit().unwrap();
     drop(store);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn changes_name_the_conversations_sync_wrote_or_ask_for_everything() {
+    let (store, account, inbox, _) = setup();
+    assert_eq!(store.take_changes().unwrap().threads, None, "a new account: read it all");
+    store.insert_messages(account, inbox, &[message(1, "one", 100), message(2, "two", 200)]).unwrap();
+    let threads = |c: Changes| c.threads.expect("conversations, not everything");
+    let first = threads(store.take_changes().unwrap());
+    assert_eq!(first.len(), 2);
+    assert_eq!(store.take_changes().unwrap(), Changes { threads: Some(vec![]) }, "taken once");
+
+    store.update_flags(inbox, &[(2, true, true)]).unwrap();
+    let two: (i64, String) = store
+        .conn()
+        .query_row("SELECT account_id, thread_id FROM messages WHERE uid = 2", [], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .unwrap();
+    let key = format!("{}:{}", two.0, two.1);
+    assert_eq!(threads(store.take_changes().unwrap()), std::slice::from_ref(&key));
+    let rows = store.threads_in(&ListTarget::Folder(inbox), &[key.clone(), "9:nope".into()]).unwrap();
+    assert_eq!(rows.len(), 1, "only what is in the list");
+    assert!(rows[0].flagged);
+
+    store.set_sender(account, "ada@example.com", Some("blocked")).unwrap();
+    assert_eq!(
+        store.take_changes().unwrap().threads,
+        None,
+        "a sender choice moves conversations: read it all"
+    );
+    store.conn().execute("DELETE FROM messages WHERE uid = 1", []).unwrap();
+    assert_eq!(store.take_changes().unwrap().threads, None, "a deletion reads it all");
+}
+
+#[test]
+fn optimize_runs_once_a_week() {
+    let (store, _, _, _) = setup();
+    assert!(store.optimize_if_due(1_000_000).unwrap());
+    assert!(!store.optimize_if_due(1_000_000 + 86_400).unwrap());
+    assert!(store.optimize_if_due(1_000_000 + 8 * 86_400).unwrap());
 }
 
 #[test]
@@ -968,6 +1080,8 @@ fn muted_conversations_skip_the_inbox() {
         store.list(&ListTarget::Folder(inbox), None, 9).unwrap().into_iter().map(|r| r.subject).collect();
     assert_eq!(left, ["other"]);
     assert_eq!(store.list(&ListTarget::Folder(archive), None, 9).unwrap().len(), 2);
+    let muted: Vec<String> = store.muted_conversations().unwrap().into_iter().map(|r| r.subject).collect();
+    assert_eq!(muted, ["re a"], "one row a conversation, by its newest message");
     store.mute(&[id], false).unwrap();
     assert!(!store.muted(id).unwrap());
 }
@@ -1644,6 +1758,7 @@ fn a_task_from_mail_shows_at_once_goes_on_undo_and_keeps_its_todoist_id() {
         project_id: Some(String::new()),
         label: Some("@mail".into()),
         note: None,
+        source: Some("ask:1".into()),
     };
     let (owner, token) = store.queue_task(id, &input, 5).unwrap();
     assert_eq!(owner, account);
@@ -1654,7 +1769,11 @@ fn a_task_from_mail_shows_at_once_goes_on_undo_and_keeps_its_todoist_id() {
     );
     let payload: String = store.conn().query_row("SELECT payload FROM outbox", [], |r| r.get(0)).unwrap();
     let OutboxOp::Task { task, .. } = serde_json::from_str(&payload).unwrap() else { panic!("{payload}") };
-    assert_eq!(task.description, "From Ada · Q3 offsite", "who and what, never the text");
+    assert_eq!(
+        task.description, "From Ada · Q3 offsite\n[Open in Tern](tern://open/1@example.com)",
+        "who and what and the way back, never the text"
+    );
+    assert_eq!(tasks[0].source.as_deref(), Some("ask:1"));
     assert_eq!((task.project_id, task.labels), (None, vec!["mail".to_string()]));
 
     assert!(store.undo(&token).unwrap());
@@ -1675,7 +1794,29 @@ fn a_task_from_mail_shows_at_once_goes_on_undo_and_keeps_its_todoist_id() {
     let last: String =
         store.conn().query_row("SELECT payload FROM outbox ORDER BY id DESC", [], |r| r.get(0)).unwrap();
     let OutboxOp::Task { task, .. } = serde_json::from_str(&last).unwrap() else { panic!("{last}") };
-    assert_eq!(task.description, "IBAN in the mail\n\nFrom Ada · Q3 offsite", "the kept note, then the mail");
+    assert_eq!(
+        task.description,
+        "IBAN in the mail\n\nFrom Ada · Q3 offsite\n[Open in Tern](tern://open/1@example.com)",
+        "the kept note, then the mail"
+    );
+
+    // Ticked off: at once here, and queued for Todoist; undo opens it again.
+    let (_, ticked) = store.queue_task_done(local, true, 5).unwrap();
+    assert!(store.tasks_of(id).unwrap().iter().find(|t| t.id == local).unwrap().done);
+    assert_eq!(ticked.len(), 1, "it is in Todoist, so Todoist hears of it");
+    assert!(store.undo(&ticked).unwrap());
+    assert!(!store.tasks_of(id).unwrap().iter().find(|t| t.id == local).unwrap().done);
+    assert_eq!(store.open_todoist_tasks(id).unwrap(), [(local, "6X7rM8997g3RQmvh".to_string())]);
+    store.task_state(local, crate::todoist::TaskState::Done).unwrap();
+    assert!(store.open_todoist_tasks(id).unwrap().is_empty(), "done in Todoist: nothing to ask about");
+    store.task_state(local, crate::todoist::TaskState::Gone).unwrap();
+    assert!(store.tasks_of(id).unwrap().iter().all(|t| t.id != local), "deleted in Todoist: gone here");
+
+    // The link back.
+    assert_eq!(super::people::open_link("<a b@x.com>"), "tern://open/a%20b@x.com");
+    assert_eq!(super::people::parse_open_link("tern://open/a%20b@x.com").as_deref(), Some("a b@x.com"));
+    assert_eq!(super::people::parse_open_link("https://x.com"), None);
+    assert_eq!(store.message_by_message_id("<1@example.com>").unwrap().map(|m| m.id), Some(id));
 }
 
 #[test]
@@ -1836,6 +1977,9 @@ fn renumbering_keeps_messages_queued_work_is_about_to_change() {
 fn wind_back(conn: &Connection, version: i64) {
     for from in (version..SCHEMA_VERSION).rev() {
         let undo = match from {
+            36 => "ALTER TABLE accounts DROP COLUMN label;",
+            35 => "DROP TABLE imports;",
+            34 => "ALTER TABLE tasks DROP COLUMN done; ALTER TABLE tasks DROP COLUMN source;",
             33 => "DROP TABLE tasks;",
             32 => "DROP TABLE person_notes; DROP INDEX messages_from;",
             31 => {
@@ -2518,4 +2662,16 @@ fn the_shelf_keeps_conversations_shelved_outside_the_inbox_or_dated_ahead() {
         NewMessage { in_reply_to: Some("2@example.com".into()), ..message(3, "Re: From the future", 5_000) };
     store.insert_messages(account, inbox, &[reply]).unwrap();
     assert_eq!(list(LATER), ["Old report"], "a reply after it still brings it back");
+}
+
+#[test]
+fn undoing_an_import_forgets_its_copy_of_the_file() {
+    let (store, account, _, _) = setup();
+    let path = std::env::temp_dir().join(format!("tern-undo-import-{}.mbox", std::process::id()));
+    std::fs::write(&path, "From a\nSubject: one\n\nfirst\n").unwrap();
+    let token = store.queue_import(account, "Old mail", &path.display().to_string(), 1, 60).unwrap();
+    assert!(store.import_state(1).unwrap().is_some());
+    assert!(store.undo(&[token]).unwrap());
+    assert_eq!(store.import_state(1).unwrap(), None);
+    assert!(!path.exists());
 }
