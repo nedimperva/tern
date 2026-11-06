@@ -212,7 +212,8 @@ export async function act(action: Action, hit = targets(), announce = true): Pro
     const cleared = !searching() && moves(action) && action !== "inbox" && ["inbox", "important", "bulk", "new_people"].includes(role()) ? hit.length : 0;
     countCleared(cleared);
     const uncount = cleared ? () => countCleared(-cleared) : undefined;
-    if (announce) showToast(hit.length === 1 ? done : `${done} (${hit.length} conversations)`, token, uncount, undoDrafts);
+    // One conversation is named, so the pill says which one went (idea 18).
+    if (announce) showToast(hit.length === 1 ? `${done}: ${hit[0].subject || "no subject"}` : `${done} (${hit.length} conversations)`, token, uncount, undoDrafts);
     return token;
   } catch (e) {
     showToast(String(e), []);

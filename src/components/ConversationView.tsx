@@ -769,11 +769,11 @@ export function ConversationView(props: {
   const [original, setOriginal] = createSignal<ThreadMessage | null>(null);
   const menu = () => {
     const sender = privacy().sender;
-    const items = [...props.menu(), { name: "Show original", run: () => setOriginal(last() ?? null) }];
+    const items = [...props.menu(), { name: "Show original", group: "view", run: () => setOriginal(last() ?? null) }];
     if (!sender) return items;
     return [
       ...items,
-      { name: "Always load images from this sender", run: () => setSetting("imagesFrom", [...settings.imagesFrom, sender.toLowerCase()]) },
+      { name: "Always load images from this sender", group: "view", run: () => setSetting("imagesFrom", [...settings.imagesFrom, sender.toLowerCase()]) },
     ];
   };
 

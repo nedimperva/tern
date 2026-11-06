@@ -81,3 +81,7 @@ export function keyHandler(bindings: () => Binding[], context: () => Context, bl
     }
   };
 }
+
+/** A binding's name without what follows " (" or ": " ("Done (archive)" → "Done"), for the ⋯ menu and the
+ * shortcut sheet, where the full name is its tooltip (ideas 20, 21). The palette keeps the full name to search. */
+export const shortName = (name: string) => name.split(/ \(|: /)[0];

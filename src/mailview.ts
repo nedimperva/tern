@@ -347,7 +347,7 @@ export function readingFrame(html: string, remote: boolean, t: FrameTheme): stri
     `${FONT_FACES}
   :root{color-scheme:${t.dark ? "dark" : "light"}}
   html,body{margin:0;padding:0;background:transparent;overflow:hidden}
-  body{padding:2px 0 8px;max-width:62ch;color:${t.fg0};font:17px/1.7 "Source Serif 4","Iowan Old Style","Charter",Georgia,serif;word-wrap:break-word}
+  body{padding:2px 0 8px;max-width:62ch;margin:0 auto;color:${t.fg0};font:17px/1.7 "Source Serif 4","Iowan Old Style","Charter",Georgia,serif;word-wrap:break-word}
   h2,h3{font-family:"Inter Variable","Inter",system-ui,sans-serif;line-height:1.3;margin:18px 0 8px}
   h2{font-size:22px} h3{font-size:17px}
   p{margin:0 0 14px}

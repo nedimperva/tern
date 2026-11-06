@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
-import { keyLabel, type Binding } from "../keys";
+import { keyLabel, shortName, type Binding } from "../keys";
 import { fuzzy } from "./CommandBar";
 
 const PLACES: { context: Binding["context"]; title: string }[] = [
@@ -42,7 +42,7 @@ export function ShortcutSheet(props: { bindings: Binding[]; onClose: () => void 
                   <For each={shown().filter((b) => b.context === place.context)}>
                     {(b) => (
                       <div class="shortcut">
-                        <span>{b.name}</span>
+                        <span title={shortName(b.name) === b.name ? undefined : b.name}>{shortName(b.name)}</span>
                         <span class="caps">
                           <For each={keyLabel(b.keys).split(" then ")}>
                             {(part, i) => (

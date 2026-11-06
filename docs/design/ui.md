@@ -169,6 +169,10 @@ Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 
   Today, Yesterday, the week's days, then months ("October", "September 2025"); pinned follow-ups have their own.
   30 px, `--t-xs` uppercase with a `--line` rule. Not in the narrow column, search results, Snoozed, Read later or
   New people. A focused row that is also selected takes the accent at 20 % over `--bg-0`.
+- Hover (2026-11-06): Done, Snooze and Star (28 px icon buttons) take the date's place while the pointer is on a row,
+  only where a pointer hovers, not beside an open conversation, with a selection, or in New people. Unread stays
+  bold, with no dot (owner, 2026-11-06).
+- Empty views say how mail gets there, with the key: an icon in a 44 px tile, a title and one line.
 
 ### 4.2 Conversation pane
 

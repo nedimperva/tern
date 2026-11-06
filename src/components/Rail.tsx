@@ -232,12 +232,13 @@ export function Rail(props: {
                 <Tree nodes={folderTree(labels())} open={showsLabels()} depth={0} account={account.id} isTarget={props.isTarget} go={go} dots />
               </Show>
               <Show when={more().length}>
-                <button type="button" class="rail-sub" aria-expanded={showsMore()} onClick={() => toggle(moreKey, false)}>
+                {/* More is a fold of rows, not a heading: its chevron sits where the folders' own do (idea 32). */}
+                <button type="button" class="rail-sub more" aria-expanded={showsMore()} onClick={() => toggle(moreKey, false)}>
+                  <Icon name={showsMore() ? "chevron-down" : "chevron-right"} size={12} />
                   <span>More</span>
                   <Show when={!showsMore()}>
                     <span class="rail-sub-count">{more().length}</span>
                   </Show>
-                  <Icon name={showsMore() ? "chevron-down" : "chevron-right"} size={12} />
                 </button>
                 <For each={shown(more(), showsMore())}>{row}</For>
               </Show>

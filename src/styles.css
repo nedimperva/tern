@@ -329,6 +329,28 @@ button.primary kbd {
   padding-top: var(--s-4);
 }
 /* Conversations selected: the bar is their actions (canvas "Tern title bar ideas", 2). */
+.titlebar.writing .titlebar-slot,
+.titlebar.writing .titlebar-conv,
+.titlebar.writing > .sync-box,
+.titlebar.writing .titlebar-side {
+  visibility: hidden;
+}
+.titlebar.writing {
+  position: relative;
+}
+.titlebar-writing {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+  pointer-events: none;
+}
 .titlebar.selecting .titlebar-slot,
 .titlebar.selecting .titlebar-conv,
 .titlebar.selecting .titlebar-fill,
@@ -652,6 +674,20 @@ button.primary kbd {
 .search-quick button:hover {
   background: var(--bg-2);
 }
+.search-quick button code {
+  margin-left: 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+.search-quick button.on code {
+  color: inherit;
+}
+.search-quick .quick-hint {
+  margin: 0;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
 .search-quick button.on {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -751,6 +787,31 @@ button.primary kbd {
   height: 100%;
   color: var(--fg-2);
 }
+.empty.told > div {
+  max-width: 44ch;
+  padding: 0 var(--s-5);
+  text-align: center;
+}
+.empty-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--fg-1);
+}
+.empty.told h2 {
+  margin: var(--s-3) 0 var(--s-1);
+  font-size: var(--t-lg, 16px);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.empty.told p {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
 
 .search-help {
   align-content: center;
@@ -767,10 +828,37 @@ button.primary kbd {
   color: var(--fg-0);
 }
 .search-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+  min-height: 36px;
   padding: var(--s-1) var(--s-3);
   color: var(--fg-2);
   font-size: var(--t-sm);
   border-bottom: 1px solid var(--line);
+}
+.search-note .found {
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.search-note .spacer {
+  flex: 1;
+}
+/* A small outlined pill button, for a second action beside a line of text. */
+.soft-button {
+  flex: none;
+  height: 26px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--bg-0);
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+.soft-button:hover {
+  background: var(--accent-soft);
 }
 /* Tern's right-click menu on a link in a message. */
 .link-menu {
@@ -1521,6 +1609,40 @@ button.primary kbd {
   color: var(--fg-2);
   font-variant-numeric: tabular-nums;
 }
+/* Done, Snooze and Star over the date while the pointer is on the row (idea 17); only where a pointer hovers. */
+.crow .row-quick {
+  display: none;
+  position: absolute;
+  right: var(--s-2);
+  top: 50%;
+  transform: translateY(-50%);
+  gap: 2px;
+  padding-left: var(--s-3);
+  background: inherit;
+}
+.crow .row-quick button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-1);
+}
+.crow .row-quick button:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+@media (hover: hover) {
+  .crow:hover .row-quick {
+    display: flex;
+  }
+  .crow:hover:has(.row-quick) .date {
+    visibility: hidden;
+  }
+}
 
 /* MARK: Sync button and toasts (§3) */
 
@@ -1571,6 +1693,9 @@ button.primary kbd {
 .sync-button.warn .dot {
   background: var(--warn);
 }
+.sync-button.warn .sync-icon {
+  color: var(--warn);
+}
 .sync-box .waiting .dot,
 .sync-button.waiting .dot {
   background: var(--fg-2);
@@ -1605,7 +1730,7 @@ button.primary kbd {
   top: calc(100% + 6px);
   right: var(--s-2);
   z-index: 40;
-  width: 300px;
+  width: 340px;
   padding: var(--s-3);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -1665,6 +1790,47 @@ button.primary kbd {
 }
 .sync-waiting .link.danger {
   color: var(--danger);
+}
+.sync-problems {
+  align-self: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.sync-problems li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.sync-problems .dot {
+  background: var(--warn);
+}
+.sync-problems .what {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-0);
+  overflow-wrap: anywhere;
+}
+.sync-problems small {
+  display: block;
+  color: var(--fg-2);
+  font-size: var(--t-xs);
+}
+.sync-problems .mini {
+  flex: none;
+  height: 24px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+}
+.sync-problems .mini:hover {
+  background: var(--bg-2);
 }
 .sync-export {
   display: flex;
@@ -1762,6 +1928,27 @@ button.primary kbd {
   color: var(--bg-0);
   font-size: inherit;
   font-weight: 600;
+}
+.float-pills .pill:has(.undo-time) {
+  position: relative;
+  overflow: hidden;
+}
+/* The undo window, running out (a linear count-down is the information, so it runs with reduced motion too). */
+.float-pills .undo-time {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 2px;
+  background: currentColor;
+  opacity: 0.45;
+  transform-origin: left;
+  animation: undo-time linear forwards;
+}
+@keyframes undo-time {
+  to {
+    transform: scaleX(0);
+  }
 }
 .float-pills kbd {
   margin: 0;
@@ -1975,6 +2162,13 @@ button.primary kbd {
 .rail-sub {
   margin-top: var(--s-1);
   padding-left: 35px;
+}
+.rail-sub.more {
+  padding-left: 1px;
+}
+.rail-sub.more > svg:first-child {
+  flex: none;
+  margin-right: 0;
 }
 /* "More": the server's other special folders (Junk, Trash, All Mail…), a heading like Folders and Labels at the end
    of the account, folded by default, with how many it holds while folded. */
@@ -2197,14 +2391,23 @@ button.primary kbd {
   flex: none;
   display: inline-flex;
 }
+/* Each a little larger, the first on top, with a ring in the page's colour between them (idea 29), so the
+   initials stay readable where they overlap. */
 .conversation-head .stack .avatar {
-  width: 20px;
-  height: 20px;
-  font-size: calc(var(--t-xs) - 3px);
+  position: relative;
+  width: 22px;
+  height: 22px;
+  font-size: calc(var(--t-xs) - 2px);
   box-shadow: 0 0 0 2px var(--bg-0);
 }
+.conversation-head .stack .avatar:nth-child(1) {
+  z-index: 3;
+}
+.conversation-head .stack .avatar:nth-child(2) {
+  z-index: 2;
+}
 .conversation-head .stack .avatar + .avatar {
-  margin-left: -5px;
+  margin-left: -4px;
 }
 /* What Tern blocked, how long the mail is and how to leave its list: icons that each show only when they apply
    and say more on hover. Then Done, the menu and close. */
@@ -2542,28 +2745,18 @@ span.tool {
   border-radius: var(--r-md);
   background: var(--bg-0);
 }
+/* Quiet uppercase words, not pills (idea 31): the text and its buttons lead. "Asked of you" keeps a warm tone. */
 .brief-row .tag {
   flex: none;
-  min-width: 84px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--bg-2);
-  color: var(--fg-1);
-  font-size: var(--t-xs);
+  min-width: 96px;
+  color: var(--fg-2);
+  font-size: 11px;
   font-weight: 600;
-  text-align: center;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 .brief-row .tag.ask {
-  background: var(--warn-soft);
   color: var(--warn-fg);
-}
-.brief-row .tag.day {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-.brief-row .tag.done {
-  background: var(--ok-soft);
-  color: var(--ok);
 }
 .brief-row .text {
   flex: 1;
@@ -3170,12 +3363,23 @@ button.fold {
   color: var(--fg-2);
   margin: var(--s-3) 0 var(--s-1);
 }
+/* A long name wraps and the row grows; the keys never wrap or run under it. */
 .shortcut {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 28px;
+  gap: var(--s-3);
+  min-height: 28px;
+  padding-block: 2px;
   font-size: var(--t-md);
+}
+.shortcut > span:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.shortcut .caps {
+  flex: none;
+  white-space: nowrap;
 }
 .command-bar .then,
 .shortcut .then {
@@ -5001,6 +5205,22 @@ button.place.muted {
   white-space: pre-line;
 }
 /* MARK: Attachment viewer (docs/design/ui.md §4.11): the file over everything, on a dark scrim in either theme. */
+/* The viewer owns the window (idea 26): the title bar dims with it, its window buttons still at hand. */
+body:has(.viewer) .titlebar {
+  box-shadow: inset 0 0 0 100vmax var(--viewer-scrim);
+  color: var(--viewer-fg);
+}
+body:has(.viewer) .titlebar .titlebar-side,
+body:has(.viewer) .titlebar .list-header {
+  background: none;
+}
+body:has(.viewer) .window-buttons button {
+  color: var(--viewer-fg);
+}
+body:has(.viewer) .titlebar > :not(.window-buttons) {
+  opacity: 0.25;
+  pointer-events: none;
+}
 .viewer {
   position: fixed;
   inset: var(--titlebar-h) 0 0;
@@ -5206,6 +5426,15 @@ button.place.muted {
 }
 .action-menu .menu-list button.pointed {
   background: var(--accent-soft);
+}
+.action-menu .menu-list button kbd {
+  flex: none;
+  white-space: nowrap;
+}
+.action-menu .menu-rule {
+  margin: var(--s-1) var(--s-2);
+  border: 0;
+  border-top: 1px solid var(--line);
 }
 
 /* A sender's card, on hover or click of their name. */
@@ -7352,20 +7581,21 @@ button.link.danger {
 .companion .note:focus-within {
   box-shadow: 0 0 0 2px var(--focus-ring);
 }
+/* A plain + line (idea 28): a note is optional, so it doesn't compete with what you owe. */
 .companion .note-add {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  height: 36px;
+  height: 30px;
   padding: 0 var(--s-3);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--r-lg);
+  border: 0;
+  border-radius: var(--r-md);
   background: none;
-  color: var(--fg-1);
+  color: var(--fg-2);
   font-size: var(--t-sm);
 }
 .companion .note-add:hover {
-  background: var(--bg-2);
+  color: var(--accent);
 }
 .companion .tidy {
   display: flex;
@@ -8337,19 +8567,20 @@ button.link.danger {
 .compose .suggestions {
   left: 28px;
 }
-/* People as names, underlined dashed like something to click, not as boxes. */
+/* People as soft pills with their initials (idea 33), like everywhere else they appear, so a wrong pick stands out. */
 .compose .chip {
-  height: 22px;
-  padding: 0;
-  gap: 2px;
-  border-radius: 0;
-  background: none;
+  height: 24px;
+  padding: 0 4px 0 2px;
+  gap: 6px;
+  border-radius: 12px;
+  background: var(--bg-2);
   color: var(--fg-0);
   font-size: var(--t-md);
-  border-bottom: 1px dashed var(--line-strong);
 }
 .compose .chip .initials {
-  display: none;
+  width: 20px;
+  height: 20px;
+  font-size: 9px;
 }
 .compose .chip button {
   opacity: 0;
@@ -8360,7 +8591,7 @@ button.link.danger {
   opacity: 1;
 }
 .compose .chip.outside {
-  background: none;
+  background: var(--warn-soft);
   box-shadow: none;
   color: var(--warn-fg);
   border-bottom-color: var(--warn);
@@ -8860,6 +9091,17 @@ button.link.danger {
   flex: 1;
 }
 
+/* A nested label's parent that is not a label itself: a heading in the picker, not a choice. */
+.command-bar li.label-head {
+  pointer-events: none;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
+/* A settings row's choice: one width for all, so they make a clean column (idea 27); a longer choice still fits. */
+.setting > .dropdown {
+  min-width: 236px;
+  justify-content: space-between;
+}
 /* Tern's own drop-down (Dropdown.tsx): a quiet button with the choice and a chevron; the list is drawn like the
    other menus, on top of everything, with a tick on the chosen one. */
 .dropdown {

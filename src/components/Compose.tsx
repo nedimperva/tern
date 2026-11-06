@@ -17,7 +17,7 @@ import {
   type Contact,
 } from "../api";
 import { Portal } from "solid-js/web";
-import { aiSlot, setAiSide, setAiSlot, setReplyDraft } from "../app/state";
+import { aiSlot, setAiSide, setAiSlot, setReplyDraft, setWritingTitle } from "../app/state";
 import { fillSnippet } from "../snippets";
 import { attachmentWords, domainOf, mentionsAttachment, outside } from "../attachmentWords";
 import { colourOf } from "../colours";
@@ -282,6 +282,13 @@ export function Compose(props: {
   });
   const [saveState, setSaveState] = createSignal<"saving" | "saved" | null>(null);
   const [focusMode, setFocusMode] = createSignal(false);
+  // In focus mode the title bar says only what this is and whether it is kept (idea 25).
+  createEffect(() => {
+    if (!focusMode()) return setWritingTitle(null);
+    const name = subject().trim() || "New mail";
+    setWritingTitle(saveState() === "saved" ? `${name} · saved` : saveState() === "saving" ? `${name} · saving…` : name);
+  });
+  onCleanup(() => setWritingTitle(null));
   const [sendMenu, setSendMenu] = createSignal(false);
   // Checks before sending (attachment mentioned but missing, no subject). Shown on the first try; sending again
   // with them showing sends anyway. Any change takes them away, since it may have been the fix.

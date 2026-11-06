@@ -89,6 +89,8 @@ export const SIDEBAR_WIDTH = 1100;
 // Focus mode: the open conversation over the whole window, list hidden, until F again. Kept for the session.
 export const [focusMode, setFocusMode] = createSignal(false);
 export const [compose, setCompose] = createSignal<ComposeInit | null>(null);
+/** Compose in focus mode: what the title bar says in place of the tabs, search and sync (idea 25); null otherwise. */
+export const [writingTitle, setWritingTitle] = createSignal<string | null>(null);
 // New mail folded into a corner card while the person reads; a new compose always opens unfolded.
 export const [composeMin, setComposeMin] = createSignal(false);
 export const [palette, setPalette] = createSignal(false);
