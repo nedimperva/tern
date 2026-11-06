@@ -7,6 +7,11 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-06
+
+The title bar does more: tabs, search and an open conversation's tools sit in it. Search the server, Ask your mail,
+and your mail as .eml or mbox files.
+
 ### Added
 
 - The list's tabs and search sit in Tern's title bar.
