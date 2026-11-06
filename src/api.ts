@@ -582,6 +582,8 @@ export interface Api {
   mute(ids: number[], mute: boolean): Promise<void>;
   /** Every muted conversation, newest first, by its newest message. */
   mutedConversations(): Promise<MessageRow[]>;
+  /** Minutes to read each of these messages; null while its text is not here. */
+  readingMinutes(ids: number[]): Promise<[number, number | null][]>;
   muted(id: number): Promise<boolean>;
   /** Settings the person changed, by name; the UI holds the defaults. */
   settings(): Promise<Record<string, unknown>>;
@@ -828,6 +830,7 @@ const tauri: Api = {
   syncProgress: () => invoke("sync_progress"),
   mute: (ids, mute) => invoke("mute", { ids, mute }),
   mutedConversations: () => invoke("muted_conversations"),
+  readingMinutes: (ids) => invoke("reading_minutes", { ids }),
   muted: (id) => invoke("muted", { id }),
   settings: () => invoke("settings"),
   setSetting: (key, value) => invoke("set_setting", { key, value }),
@@ -1533,6 +1536,7 @@ function fake(): Api {
       }
     },
     muted: async (id) => mutedThreads.has(messages.find((m) => m.id === id)?.threadId ?? ""),
+    readingMinutes: async (ids) => ids.map((id) => [id, [6, 3, 12, 2, 9][id % 5]] as [number, number | null]),
     mutedConversations: async () =>
       [...mutedThreads]
         .map((t) => messages.filter((m) => m.threadId === t).sort((a, b) => b.date - a.date)[0])

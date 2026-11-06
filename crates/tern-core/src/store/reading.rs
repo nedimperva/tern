@@ -164,6 +164,19 @@ impl Store {
         Ok(())
     }
 
+    /// How long each of these messages takes to read, for Read later's rows (idea 54); a message whose text is not
+    /// here yet has none.
+    pub fn reading_minutes(&self, ids: &[i64]) -> Result<Vec<(i64, Option<i64>)>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached("SELECT length(text) FROM bodies WHERE message_id = ?1")?;
+        ids.iter()
+            .map(|&id| {
+                let chars: Option<i64> = stmt.query_row([id], |r| r.get(0)).optional()?.flatten();
+                Ok((id, super::settings::reading_minutes(chars)))
+            })
+            .collect()
+    }
+
     /// Every muted conversation, newest first, by its newest message: for Settings → Senders, with Unmute.
     pub fn muted_conversations(&self) -> Result<Vec<MessageRow>> {
         let conn = self.reader();

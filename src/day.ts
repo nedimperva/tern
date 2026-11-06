@@ -93,6 +93,17 @@ export function whenSaid(seconds: number): string {
 }
 
 /** Since when a message waits, said short: "Tuesday", "yesterday", "07:52". */
+/** How long something has waited on you, past a day: "waiting 3 days", "waiting 2 weeks", "waiting 3 months"
+ * (idea 41). Before that, the time as `waitingSince` says it. */
+export function waitedFor(seconds: number, now = Date.now()): string {
+  const days = Math.floor((now / 1000 - seconds) / 86_400);
+  if (days < 2) return waitingSince(seconds);
+  if (days < 14) return `waiting ${days} days`;
+  if (days < 60) return `waiting ${Math.floor(days / 7)} weeks`;
+  if (days < 730) return `waiting ${Math.floor(days / 30)} months`;
+  return `waiting ${Math.floor(days / 365)} years`;
+}
+
 export function waitingSince(seconds: number): string {
   const then = new Date(seconds * 1000);
   const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(then).setHours(0, 0, 0, 0)) / 86_400_000);

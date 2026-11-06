@@ -3,6 +3,7 @@ import { api } from "../api";
 import { restartToUpdate } from "../app/actions";
 import { exporting, stopExport } from "../app/files";
 import { refresh } from "../app/list";
+import { plainError } from "../plainError";
 import { problems, setReviewing, syncStates, update } from "../app/state";
 import { accountStates, held, late, paused, scheduled, syncButton, syncSentence } from "../app/status";
 import { Icon } from "./Icon";
@@ -123,7 +124,7 @@ export function SyncButton() {
                         <span class="dot" />
                         <span class="what">
                           {p.what}
-                          <small>{p.maybeSent ? "It may have gone out already" : p.lastError || `Stopped after ${p.attempts} tries`}</small>
+                          <small title={p.lastError}>{p.maybeSent ? "It may have gone out already" : p.lastError ? plainError(p.lastError).said : `Stopped after ${p.attempts} tries`}</small>
                         </span>
                         <Show
                           when={!p.maybeSent}

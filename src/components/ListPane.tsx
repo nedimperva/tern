@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { go, isSaved, loadMore, searchServer, serverFound, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
 import { open } from "../app/conversation";
@@ -27,7 +27,7 @@ import {
 import { coverage, inboxZero, listedHere } from "../app/status";
 import { ROW_HEIGHTS, settings, SPLIT_ROW_EXTRA } from "../settings";
 import { colourOf } from "../colours";
-import type { Target, ThreadRow } from "../api";
+import { api, type Target, type ThreadRow } from "../api";
 import { ConversationRow, participants } from "./ConversationRow";
 import { Icon, type IconName } from "./Icon";
 import { SelectionBar } from "./SelectionBar";
@@ -115,6 +115,13 @@ export function ListPane(props: {
     const n = rows().length;
     return n >= 500 ? "The newest 500" : n === 1 ? "1 conversation" : `${n.toLocaleString()} conversations`;
   };
+  /** Read later says how long each one takes to read, from what the morning screen worked out. */
+  const [readMinutes, setReadMinutes] = createSignal<Map<number, number | null> | null>(null);
+  createEffect(() => {
+    if (role() !== "later") return setReadMinutes(null);
+    const ids = rows().map((r) => r.id);
+    void api.readingMinutes(ids).then((m) => role() === "later" && setReadMinutes(new Map(m)), () => {});
+  });
   /** A row's hover buttons act on that row alone, as its key would on the focused one. */
   const quick = (row: ThreadRow, what: "done" | "snooze" | "star") =>
     what === "done" ? void act("archive", [row]) : what === "snooze" ? setSnoozing([row]) : void act(row.flagged ? "unstar" : "star", [row]);
@@ -268,7 +275,8 @@ export function ListPane(props: {
   );
 
   return (
-    <main class="list-pane">
+    // In Starred every row is starred, so the stars say nothing there (idea 42).
+    <main class="list-pane" classList={{ starred: role() === "starred" }}>
       <Show
         when={ownTitleBar && titleSlot()}
         fallback={
@@ -392,6 +400,7 @@ export function ListPane(props: {
                 else if (openRow()) void open(row);
               }}
               onOpen={() => open(row)}
+              minutes={readMinutes()?.get(row.id)}
               onQuick={props.split || selection().size > 0 || role() === "new_people" ? undefined : (what) => quick(row, what)}
             />
           )}

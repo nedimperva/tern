@@ -1,3 +1,4 @@
+import { quotedName } from "../quote";
 import { createEffect, createRoot, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { baseKeymap, setBlockType, toggleMark, wrapIn, lift } from "prosemirror-commands";
 import { history, redo, undo } from "prosemirror-history";
@@ -241,6 +242,7 @@ export function Editor(props: {
   // The quote at the end of a reply starts folded behind "···".
   const [hasQuote, setHasQuote] = createSignal(false);
   const [quoteOpen, setQuoteOpen] = createSignal(props.quoteOpen ?? false);
+  const [quotedFrom, setQuotedFrom] = createSignal("");
   // The snippet picker: where its `;` is, what follows it, and which entry is pointed at.
   const [picker, setPicker] = createSignal<{ from: number; typed: string; left: number; top: number } | null>(null);
   const [pointed, setPointed] = createSignal(0);
@@ -288,6 +290,9 @@ export function Editor(props: {
     }
     const last = state.doc.lastChild;
     setHasQuote(state.doc.childCount > 1 && last?.type === blockquote);
+    // "On …, Ada Lovelace <ada@…> wrote:" above the quote folds with it; the pill says whose it is (idea 39).
+    const above = state.doc.childCount > 1 ? state.doc.child(state.doc.childCount - 2) : null;
+    setQuotedFrom(above && /wrote:\s*$/.test(above.textContent) ? quotedName(above.textContent) : "");
     findTrigger(state);
   };
 
@@ -482,7 +487,7 @@ export function Editor(props: {
           aria-expanded={quoteOpen()}
           onClick={() => setQuoteOpen(!quoteOpen())}
         >
-          ···
+          {quotedFrom() && !quoteOpen() ? `${quotedFrom()}'s message · show` : "···"}
         </button>
       </Show>
       <Show when={picker() && offered().length ? picker() : null}>
@@ -553,3 +558,4 @@ export function Editor(props: {
     </div>
   );
 }
+

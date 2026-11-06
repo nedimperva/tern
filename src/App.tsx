@@ -99,6 +99,8 @@ import {
   toggleSidebar,
   viewing,
   askingMail,
+  setAskFirst,
+  setAskingMail,
   width,
 } from "./app/state";
 import { clock, held, late, scheduled, watchStatus } from "./app/status";
@@ -174,6 +176,13 @@ function Main() {
   const needsYou = createMemo(() => new Set((start()?.needYou ?? []).map(keyOf)));
   const bindings = createMemo(allBindings);
   const commands = createMemo(() => allCommands(bindings()));
+  // No command by those words: search the mail for them, or ask about them where Ask your mail is on.
+  const paletteFallback = (words: string) => [
+    { name: `Search your mail for “${words}”`, keys: "Enter", run: () => runSearch(words) },
+    ...(bindings().some((b) => b.keys === "A")
+      ? [{ name: `Ask your mail about “${words}”`, run: () => (setAskFirst(words), setAskingMail(true)) }]
+      : []),
+  ];
 
   onMount(() => {
     void api.syncProgress().then(setProgress, () => {});
@@ -405,6 +414,7 @@ function Main() {
         <CommandBar
           commands={commands()}
           start={paletteStart()}
+          fallback={paletteFallback}
           onClose={() => batch(() => (setPalette(false), setPaletteStart(undefined)))}
         />
       </Show>

@@ -1,6 +1,6 @@
 import { createSignal, For, onMount, Show } from "solid-js";
 import { api, type AiAnswer } from "../api";
-import { setAskingMail } from "../app/state";
+import { askFirst, setAskFirst, setAskingMail } from "../app/state";
 
 const PROVIDER_NAMES: Record<string, string> = { anthropic: "Claude", openai: "OpenAI", gemini: "Gemini" };
 type Turn = { question: string; answer: string; done: AiAnswer | null; error: string };
@@ -12,7 +12,8 @@ let kept: Turn[] = [];
  * conversations, and a receipt says what was sent. Behind the summaries switch; nothing is kept. */
 export function AskMail(props: { onOpen: (id: number) => void }) {
   const [turns, setTurns] = createSignal<Turn[]>(kept);
-  const [question, setQuestion] = createSignal("");
+  const [question, setQuestion] = createSignal(askFirst());
+  setAskFirst("");
   const [busy, setBusy] = createSignal(false);
   let field!: HTMLTextAreaElement;
   onMount(() => queueMicrotask(() => field.focus()));

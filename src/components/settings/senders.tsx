@@ -101,8 +101,10 @@ export function SendersSettings() {
                       Unsubscribe
                     </button>
                   </Show>
+                  {/* Where they are now, then the move (idea 48). */}
+                  <span class="now-in">{s.other ? "Other" : "Important"}</span>
                   <button type="button" onClick={() => void split(s)}>
-                    {s.other ? "To Important" : "To Other"}
+                    {s.other ? "Move to Important" : "Move to Other"}
                   </button>
                 </span>
               </li>

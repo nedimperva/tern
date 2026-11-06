@@ -1570,6 +1570,18 @@ button.primary kbd {
 .search-note .link {
   font-size: inherit;
 }
+.list-pane.starred .crow .glyphs .star {
+  display: none;
+}
+.crow .chip.read-time {
+  flex: none;
+  padding: 1px var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg-2);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
 .crow .chip.follow-up {
   flex: none;
   padding: 1px var(--s-2);
@@ -2382,10 +2394,16 @@ button.primary kbd {
   color: var(--fg-2);
   font-size: var(--t-sm);
 }
-.conversation-head .people > span:last-child {
+.conversation-head .people > .said {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.conversation-head .people .labels {
+  flex: none;
+  flex-wrap: nowrap;
+  margin-top: 0;
 }
 .conversation-head .stack {
   flex: none;
@@ -2866,6 +2884,27 @@ span.tool {
 .card.row > header .line {
   flex: 1;
 }
+/* Closed lines start their text at one place, the name in a column of its own, like the list (idea 51). */
+.card.row:not(.open) > header .line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.card.row:not(.open) > header .line > :first-child {
+  flex: none;
+  width: 128px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card.row:not(.open) > header .line .snippet {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Hover, and the closed line the keys act on: a step darker, no bar. */
 .card.row:not(.open) > header:hover,
 .card.row.focused:not(.open) > header {
@@ -3307,6 +3346,12 @@ button.fold {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--fg-2);
+}
+.command-bar .pick-key {
+  display: inline-block;
+  min-width: 18px;
+  margin-right: 10px;
+  text-align: center;
 }
 .command-bar .when {
   font-size: var(--t-sm);
@@ -3846,7 +3891,8 @@ button.fold {
   outline: 2px solid var(--accent);
 }
 /* A reply's quote starts folded behind the "···" pill. */
-.editor.quote-folded .ProseMirror > blockquote:last-child {
+.editor.quote-folded .ProseMirror > blockquote:last-child,
+.editor.quote-folded .ProseMirror > p:has(+ blockquote:last-child) {
   display: none;
 }
 .format-bar {
@@ -4125,6 +4171,14 @@ button.fold {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.problem .said {
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.problem .note.warn {
+  color: var(--warn-fg);
+  font-weight: 600;
+}
 .problems footer {
   display: flex;
   justify-content: flex-end;
@@ -4224,6 +4278,27 @@ button.fold {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.settings-page nav button:has(small) {
+  height: auto;
+  min-height: 30px;
+  padding-block: 5px;
+}
+.settings-page nav button .name small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+/* A setting that is already as it should be says so where its button would be. */
+.setting-state {
+  justify-self: end;
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+.setting-state.ok {
+  color: var(--ok);
+}
 .settings-page nav button:hover,
 .settings-page nav button:focus-visible {
   outline: none;
@@ -4313,8 +4388,24 @@ button.fold {
 .look-rows .crow {
   margin: 0 var(--s-1);
 }
+/* In the narrow preview a row keeps its name and subject whole; the snippet and labels would only be cut (idea 47). */
 .look-rows .crow .who {
-  width: 96px;
+  flex: none;
+  width: auto;
+  max-width: 48%;
+}
+.look-rows .crow .what {
+  flex: 1;
+  min-width: 0;
+}
+.look-rows .crow .snippet,
+.look-rows .crow .labels {
+  display: none;
+}
+.look-rows .crow .subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .look-card {
   margin: 0 var(--s-2);
@@ -6599,6 +6690,14 @@ button.link.danger {
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
+.tide-card .subject {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--fg-0);
+}
 .tide-card .when.urgent {
   color: var(--warn);
 }
@@ -7213,11 +7312,24 @@ button.link.danger {
   align-items: center;
   gap: var(--s-2);
 }
+/* Grey, so the names lead the page, not the bars. */
 .sender-list .bar {
   height: 6px;
   border-radius: 3px;
-  background: var(--accent);
-  opacity: 0.7;
+  background: var(--line-strong);
+}
+.ai-step.later {
+  opacity: 0.45;
+}
+.ai-next {
+  margin: calc(-1 * var(--s-2)) 0 var(--s-4) 32px;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--accent);
+}
+.sender-list .now-in {
+  font-size: var(--t-xs);
+  color: var(--fg-2);
 }
 .sender-list .count {
   font-size: var(--t-sm);
@@ -7801,10 +7913,22 @@ button.link.danger {
   flex: 1;
   min-width: 0;
 }
-.todoist-what {
+/* A list under its title, the row's whole width, not in the column a choice takes (idea 45). */
+.setting:has(> .todoist-what) {
+  display: block;
+}
+.setting:has(> .todoist-what) > .title {
+  display: block;
+  margin-bottom: var(--s-1);
+}
+.setting > .title + .todoist-what {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  max-width: none;
   margin: 0;
   padding-left: var(--s-4);
   color: var(--fg-1);
+  font-size: var(--t-sm);
   line-height: 1.6;
 }
 /* Files: this conversation's, or every file with the person, by kind and month. */
