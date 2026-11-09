@@ -4,7 +4,7 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Sh
 import { api, type Account, type Snippet } from "../../api";
 import { fillSnippet, PLACES } from "../../snippets";
 import { Icon } from "../Icon";
-import { accountName, Group, MailPreview, lastDay } from "./shared";
+import { accountName, Part, MailPreview, Preview, lastDay } from "./shared";
 import { Dropdown } from "../Dropdown";
 
 /** Snippets: text typed after `;` in compose. A list on the left, the one picked on the right; changes save as they
@@ -141,10 +141,7 @@ export function SnippetSettings(props: { accounts: Account[] }) {
 
   return (
     <div class="snippets-settings">
-      <div class="section-intro">
-        <p class="help">
-          Type <kbd>;</kbd> in a message to pick one, or type its shortcut and <kbd>Space</kbd>.
-        </p>
+      <div class="section-intro end">
         <button class="primary" onClick={() => add()}>
           <Icon name="plus" size={14} /> New snippet
         </button>
@@ -210,7 +207,21 @@ export function SnippetSettings(props: { accounts: Account[] }) {
           <Show when={current()}>
             {(s) => (
               <section class="detail panel snippet-editor" aria-label="Edit snippet">
-                <Group title="Snippet">
+                <Preview label="As it goes out">
+                  <MailPreview
+                    head={[
+                      ["To", "Ana Rossi <ana.rossi@example.com>"],
+                      ["Subject", sample(s()).subject ?? "Q4 offer"],
+                    ]}
+                  >
+                    <p class="preview-text">
+                      {sample(s()).before}
+                      <span class="caret" role="img" aria-label="The cursor goes here" />
+                      {sample(s()).after}
+                    </p>
+                  </MailPreview>
+                </Preview>
+                <Part title="Snippet">
                 <div class="pair">
                   <label class="field">
                     <span class="title">Name</span>
@@ -266,9 +277,9 @@ export function SnippetSettings(props: { accounts: Account[] }) {
                     />
                   </div>
                 </div>
-                </Group>
+                </Part>
 
-                <Group title="When it's used">
+                <Part title="When it's used">
                 <div class="pair">
                   <Show when={props.accounts.length > 1}>
                     <div class="field">
@@ -325,22 +336,8 @@ export function SnippetSettings(props: { accounts: Account[] }) {
                   </div>
                 </Show>
 
-                </Group>
+                </Part>
 
-                <Group title="Preview">
-                  <MailPreview
-                    head={[
-                      ["To", "Ana Rossi <ana.rossi@example.com>"],
-                      ["Subject", sample(s()).subject ?? "Q4 offer"],
-                    ]}
-                  >
-                    <p class="preview-text">
-                      {sample(s()).before}
-                      <span class="caret" role="img" aria-label="The cursor goes here" />
-                      {sample(s()).after}
-                    </p>
-                  </MailPreview>
-                </Group>
 
                 <footer class="detail-foot">
                   <span class="meta">

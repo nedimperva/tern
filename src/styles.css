@@ -4340,44 +4340,26 @@ button.fold {
   padding: var(--s-6) var(--s-6) 64px;
 }
 .settings-content {
-  max-width: 680px;
+  max-width: 760px;
   margin: 0 auto;
 }
 .settings-content.wide {
   max-width: 1280px;
 }
-/* Appearance: the settings at the left, a preview of the look beside them that follows each change. */
-.settings-content.look {
-  max-width: 1040px;
+/* Appearance: the list rows and an open message side by side in the page's preview panel. */
+.look-preview {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  column-gap: var(--s-5);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--s-3);
   align-items: start;
 }
-.settings-content.look > h1 {
-  grid-column: 1 / -1;
+.look-preview .look-card {
+  margin: 0;
 }
-.settings-content.look > .setting {
-  grid-column: 1;
-}
-.look-preview {
-  grid-column: 2;
-  grid-row: 2 / span 4;
-  position: sticky;
-  top: 0;
-  display: grid;
-  gap: var(--s-3);
-  padding: var(--s-3) var(--s-2) var(--s-4);
-  border-radius: var(--r-lg);
-  background: var(--bg-1);
-}
-.look-preview .kicker {
-  padding: 0 var(--s-3);
-  font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--fg-2);
+@media (max-width: 860px) {
+  .look-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .look-rows {
   background: var(--bg-0);
@@ -4439,15 +4421,6 @@ button.fold {
 .look-actions .look-link {
   color: var(--accent);
   font-size: var(--t-sm);
-}
-@media (max-width: 1100px) {
-  .settings-content.look {
-    display: block;
-    max-width: 680px;
-  }
-  .look-preview {
-    position: static;
-  }
 }
 .settings-body h1 {
   font-size: var(--t-xl);
@@ -4543,7 +4516,7 @@ button.fold {
 .settings-page :is(select, input):focus {
   border-color: var(--accent);
 }
-.setting button:not(.link, .primary, [role="radio"]) {
+.setting button:not(.link, .primary, [role="radio"], .switch, .icon-button, .word-tag button) {
   height: 32px;
   padding: 0 var(--s-3);
   background: var(--bg-0);
@@ -4552,7 +4525,7 @@ button.fold {
   white-space: nowrap;
   box-shadow: var(--raise);
 }
-.setting button:not(.link, .primary, [role="radio"]):hover:not(:disabled) {
+.setting button:not(.link, .primary, [role="radio"], .switch, .icon-button, .word-tag button):hover:not(:disabled) {
   background: var(--bg-2);
   border-color: var(--line-strong);
 }
@@ -4600,8 +4573,8 @@ button.fold {
   accent-color: var(--accent);
 }
 .settings-content
-  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions)
-  button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button) {
+  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .list-row .end, .ai-ask, .settings-card .setting)
+  button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button, .switch, .icon-button, .dropdown, .dropdown *, .word-tag button) {
   height: 32px;
   padding: 0 var(--s-3);
   background: var(--bg-0);
@@ -4612,8 +4585,8 @@ button.fold {
   box-shadow: var(--raise);
 }
 .settings-content
-  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions)
-  button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button):hover:not(:disabled) {
+  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .list-row .end, .ai-ask, .settings-card .setting)
+  button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button, .switch, .icon-button, .dropdown, .dropdown *, .word-tag button):hover:not(:disabled) {
   background: var(--bg-2);
   border-color: var(--line-strong);
 }
@@ -4727,6 +4700,379 @@ button.fold {
   margin: var(--s-3) 0 0;
   font-size: var(--t-sm);
   color: var(--fg-1);
+}
+
+/* Settings, one sheet for every page (canvas "Tern settings and compose", 55): a line on what the page is for, a
+   preview when there is something to see, then groups, each a plain heading and one card of rows. */
+.settings-body .lede {
+  margin: calc(-1 * var(--s-4)) 0 var(--s-5);
+  font-size: var(--t-md);
+  line-height: 1.5;
+  color: var(--fg-1);
+}
+.settings-group {
+  margin-bottom: var(--s-5);
+}
+.settings-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin: 0 2px var(--s-2);
+}
+.settings-group-head h2 {
+  margin: 0;
+  font-size: var(--t-md);
+  font-weight: 600;
+  color: var(--fg-1);
+}
+.settings-group-head small {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.settings-group-head .end {
+  margin-left: auto;
+  font-size: var(--t-sm);
+}
+.settings-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  overflow: hidden;
+}
+.settings-card > * + * {
+  border-top: 1px solid var(--line);
+}
+.settings-card > .setting {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}
+.settings-card > * + .setting {
+  border-top: 1px solid var(--line);
+}
+/* Every control on one edge, at one width: a dropdown, a field, a segmented choice end where a switch ends. */
+.settings-card > .setting {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 58px;
+}
+.settings-card > .setting > .dropdown,
+.settings-card > .setting > input:not([type="checkbox"], [type="radio"]) {
+  width: 240px;
+}
+/* A row that only shows once the one above is on: set in under it. */
+.settings-card > .setting.sub {
+  background: var(--bg-0);
+  padding-left: 34px;
+  min-height: 48px;
+}
+.setting .segmented button {
+  flex: none;
+  white-space: nowrap;
+}
+.switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-3);
+  cursor: pointer;
+  transition: background var(--d-fast) var(--ease);
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: left var(--d-fast) var(--ease);
+}
+.switch[aria-checked="true"] {
+  background: var(--accent);
+}
+.switch[aria-checked="true"]::after {
+  left: 16px;
+}
+.switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.switch:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 var(--s-2);
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.state-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.8;
+}
+.state-chip.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.state-chip.warn {
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+}
+.settings-preview {
+  display: grid;
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+  padding: var(--s-4) 18px 18px;
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+}
+.settings-preview-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.settings-preview-label::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.settings-preview-note {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+/* A preview's made-up mail: a white sheet on the panel. */
+.preview-sheet {
+  min-width: 0;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  font-size: var(--t-md);
+  color: var(--fg-1);
+  line-height: 1.5;
+}
+.preview-sheet strong {
+  color: var(--fg-0);
+}
+.preview-sheet .small {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.preview-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+@media (max-width: 860px) {
+  .preview-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Lists (senders, providers, accounts, addresses): one look. A find box and filters on top, rows of the same
+   columns, "Show all" at the foot. */
+.list-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 10px var(--s-3);
+  background: var(--bg-0);
+}
+.list-head .find {
+  flex: 1;
+  min-width: 0;
+}
+.list-filters {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+.list-filters button {
+  height: 26px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.list-filters button:hover {
+  color: var(--fg-0);
+  background: var(--bg-2);
+}
+.list-filters button[aria-pressed="true"] {
+  background: var(--bg-3);
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.list-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--s-3);
+  min-height: 56px;
+  padding: var(--s-2) 18px;
+}
+.list-row:hover {
+  background: var(--bg-0);
+}
+.list-row .badge-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+.list-row .badge-mark.square {
+  border-radius: var(--r-md);
+}
+.list-row .badge-mark.quiet {
+  background: var(--bg-2);
+  color: var(--fg-1);
+}
+.list-row .who {
+  min-width: 0;
+}
+.list-row .who strong,
+.list-row .who .sub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list-row .who strong {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--fg-0);
+}
+.list-row .who .sub {
+  margin-top: 1px;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.list-row .who .said {
+  display: block;
+  font-size: var(--t-sm);
+  color: var(--ok);
+}
+.list-row .end {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.list-row .tag {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  vertical-align: 1px;
+}
+.list-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: 10px 18px;
+  background: var(--bg-0);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.list-none {
+  margin: 0;
+  padding: var(--s-4) 18px;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+/* An empty or waiting state: an icon, a line, one button. */
+.settings-empty-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: var(--s-4) 18px;
+}
+.settings-empty-row .mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+}
+.settings-empty-row strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.settings-empty-row span {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+/* A small meter: senders' share, storage. */
+.mini-meter {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.mini-meter .track {
+  position: relative;
+  flex: 1;
+  min-width: 60px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.mini-meter .track span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.6;
+}
+/* A danger row's button: red words, nothing else red. */
+.setting button.danger-text,
+.list-row button.danger-text {
+  color: var(--danger);
+}
+/* Searching settings: the rows that match, tinted, their words marked (idea 69). */
+.setting.found {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 .settings-empty {
   flex: 1;
@@ -9486,4 +9832,435 @@ button.link.danger {
 }
 .window:has(aside.companion) .brief:not(:has(.since, .ai-ask, .ai-by, .brief-line, .brief-rows:not(.local))) {
   display: none;
+}
+::highlight(settings-find) {
+  background-color: var(--mark-soft);
+  color: inherit;
+}
+
+/* Appearance: moods as pictures, a swatch over its name (idea 56). */
+.moods {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: var(--s-2);
+}
+.mood {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: var(--s-2) var(--s-2) 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  color: var(--fg-1);
+  text-align: left;
+  cursor: pointer;
+}
+.mood:hover {
+  border-color: var(--line-strong);
+}
+.mood.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.mood .swatch {
+  width: 100%;
+  height: 44px;
+  margin-bottom: 6px;
+  border-radius: var(--r-md);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.mood .name {
+  font-size: var(--t-md);
+  font-weight: 500;
+  color: var(--fg-0);
+}
+.mood .note {
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.mood:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Small words shared by the previews. */
+.settings-preview .block {
+  display: block;
+}
+.settings-preview .dim {
+  color: var(--fg-2);
+}
+.settings-preview .look-link {
+  color: var(--accent);
+}
+
+/* Reading: a sender's line, then what happens to its pictures. */
+.reading-preview {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--s-3);
+  row-gap: var(--s-2);
+}
+.reading-preview .who-mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+.reading-preview .who-mark.logo {
+  border-radius: var(--r-md);
+  background: var(--fg-0);
+  color: var(--bg-0);
+}
+.reading-preview .who-text {
+  min-width: 0;
+}
+.reading-preview .images-line {
+  grid-column: 1 / -1;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  font-size: var(--t-sm);
+}
+
+/* Compose: the leaving pill and the forgotten-file line. */
+.settings-preview .preview-sheet:has(.leaving-pill),
+.settings-preview .preview-sheet:has(.forgot-text) {
+  display: grid;
+  gap: var(--s-2);
+  align-content: start;
+}
+.leaving-pill {
+  justify-self: start;
+  padding: 6px var(--s-3);
+  border-radius: 999px;
+  background: var(--fg-0);
+  color: var(--bg-0);
+  font-size: var(--t-sm);
+  font-weight: 500;
+}
+.leaving-pill .dim {
+  margin-left: 6px;
+  color: inherit;
+  opacity: 0.6;
+}
+.forgot-text {
+  margin: 0;
+}
+.forgot-text mark {
+  background: var(--mark-soft);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+.forgot-line {
+  padding: 6px var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+  font-size: var(--t-sm);
+}
+.word-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  max-width: 340px;
+}
+.word-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  padding: 0 4px 0 9px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  font-size: var(--t-sm);
+  color: var(--fg-0);
+}
+.word-tag button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--fg-2);
+  line-height: 1;
+}
+.word-tag button:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.word-tags input {
+  width: 110px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: var(--t-sm);
+}
+
+/* Notifications: a notice as it shows, and the day with its quiet stretch. */
+.toast-sample {
+  display: grid;
+  gap: 2px;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--raise);
+  font-size: var(--t-md);
+  color: var(--fg-1);
+  transition: opacity var(--d-fast) var(--ease);
+}
+.toast-sample.off {
+  opacity: 0.4;
+}
+.toast-sample .app {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.toast-sample strong {
+  color: var(--fg-0);
+}
+.toast-actions {
+  display: flex;
+  gap: var(--s-4);
+  margin-top: var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  color: var(--accent);
+}
+.quiet-strip {
+  display: grid;
+  gap: var(--s-2);
+  align-content: center;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+.quiet-strip .day {
+  position: relative;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.quiet-strip .quiet {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--accent);
+  opacity: 0.45;
+}
+.quiet-strip .now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--fg-0);
+}
+.quiet-strip .hours {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* About. */
+.about-head {
+  margin-bottom: var(--s-5);
+}
+.about-head .settings-empty-row {
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+}
+.storage-meter {
+  max-width: 260px;
+  margin-bottom: 4px;
+}
+
+/* Senders: where the last weeks' mail went, then each sender on one line. */
+.split-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.split-bar .important {
+  background: var(--accent);
+}
+.split-bar .other {
+  background: var(--fg-2);
+  opacity: 0.35;
+}
+.split-legend {
+  display: flex;
+  gap: var(--s-4);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.split-legend strong {
+  color: var(--fg-0);
+  font-variant-numeric: tabular-nums;
+}
+.list-row.sender-row {
+  grid-template-columns: 32px minmax(0, 1fr) 120px auto 32px;
+}
+.sender-row .avatar {
+  width: 32px;
+  height: 32px;
+}
+
+/* AI. */
+.ai-payload {
+  display: grid;
+  gap: var(--s-2);
+}
+.ai-payload code {
+  display: block;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  font: var(--t-sm) / 1.55 var(--mono);
+  white-space: pre-wrap;
+  color: var(--fg-1);
+}
+.settings-card .ai-sheet {
+  margin: 0;
+  padding: var(--s-4) 18px;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg-0);
+}
+.ai-provider-row .ai-key-row {
+  padding: 0 18px var(--s-3) 62px;
+}
+.ai-rest {
+  transition: opacity var(--d-fast) var(--ease);
+}
+/* Until a key is in, the rest waits: shown so it can be read, but quiet. */
+.ai-rest.later {
+  opacity: 0.5;
+}
+.ai-ask {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3) 18px;
+  background: var(--warn-soft);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.setting .help .keys {
+  color: var(--fg-2);
+  font-family: var(--mono);
+  font-size: var(--t-xs);
+}
+.ai-meter {
+  min-width: 200px;
+}
+.style-sample {
+  display: grid;
+  gap: 2px;
+  margin: var(--s-2) 0;
+}
+
+/* Todoist: a mail becomes a task. */
+.todoist-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--fg-2);
+}
+.todoist-preview .task {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.todoist-preview .task .ring {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  border: 1.5px solid var(--danger);
+  border-radius: 50%;
+}
+
+/* Backup: what goes in. */
+.backup-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* Account: the person's inbox row and the From picker line. */
+.their-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--s-3);
+  align-items: baseline;
+  margin-top: 4px;
+}
+.their-row span:not(.small) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.from-line {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.from-line .dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* Snippets and signatures: the button above the list, the preview at the head of the editor. */
+.section-intro.end {
+  justify-content: flex-end;
+}
+.detail.panel > .settings-preview {
+  margin: var(--s-4) var(--s-4) 0;
+}
+.sender-row .avatar {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--accent-fg);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+.settings-preview .small {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.settings-card .setting button.link {
+  color: var(--accent);
+  font-weight: 500;
+}
+.ai-payload mark {
+  background: var(--mark-soft);
+  color: var(--fg-0);
+  border-radius: 3px;
 }

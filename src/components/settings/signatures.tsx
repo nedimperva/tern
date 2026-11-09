@@ -7,7 +7,7 @@ import { setSetting, settings } from "../../settings";
 import { Icon } from "../Icon";
 import { HtmlFrame } from "../HtmlFrame";
 import { htmlSource, htmlText, localPictures, pastedHtml } from "../../htmlSignature";
-import { accountName, Group, MailPreview } from "./shared";
+import { accountName, Part, MailPreview, Preview } from "./shared";
 import { formatted, keptHtml } from "./snippets";
 import { Dropdown } from "../Dropdown";
 
@@ -95,11 +95,7 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
 
   return (
     <div class="signatures-settings">
-      <div class="section-intro">
-        <p class="help">
-          Each account can have several. Pick one for new mail and one for replies; switch in compose with{" "}
-          <kbd>Ctrl Shift S</kbd>.
-        </p>
+      <div class="section-intro end">
         <button class="primary" onClick={() => void add()}>
           <Icon name="plus" size={14} /> New signature
         </button>
@@ -163,7 +159,30 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
         >
           {(s) => (
             <section class="detail panel signature-editor" aria-label="Edit signature">
-              <Group title="Signature">
+              <Preview label="As it goes out">
+                <MailPreview
+                  head={[
+                    ["From", from()],
+                    ["To", "Ana Rossi <ana.rossi@example.com>"],
+                    ["Subject", "Re: Q4 offer"],
+                  ]}
+                >
+                  <p class="preview-text">Thanks, the offer follows tomorrow.</p>
+                  <Show when={settings.signatureBelow}>
+                    <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
+                  </Show>
+                  <Show
+                    when={s().custom && s().html}
+                    fallback={<p class="preview-text preview-signature">{`-- \n${s().body.trim() || "(empty)"}`}</p>}
+                  >
+                    {(html) => <HtmlFrame html={html()} title="The signature as it goes out" />}
+                  </Show>
+                  <Show when={!settings.signatureBelow}>
+                    <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
+                  </Show>
+                </MailPreview>
+              </Preview>
+              <Part title="Signature">
                 <label class="field narrow">
                   <span class="title">Name</span>
                   <input value={s().name} onInput={(e) => edit({ name: e.currentTarget.value })} />
@@ -270,9 +289,9 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
                   </div>
                 </div>
                 </Show>
-              </Group>
+              </Part>
 
-              <Group title="When it's used">
+              <Part title="When it's used">
               <div class="pair">
                 <div class="field">
                   <span class="title">New messages</span>
@@ -322,31 +341,8 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
                 </span>
               </fieldset>
 
-              </Group>
+              </Part>
 
-              <Group title="Preview">
-                <MailPreview
-                  head={[
-                    ["From", from()],
-                    ["To", "Ana Rossi <ana.rossi@example.com>"],
-                    ["Subject", "Re: Q4 offer"],
-                  ]}
-                >
-                  <p class="preview-text">Thanks, the offer follows tomorrow.</p>
-                  <Show when={settings.signatureBelow}>
-                    <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
-                  </Show>
-                  <Show
-                    when={s().custom && s().html}
-                    fallback={<p class="preview-text preview-signature">{`-- \n${s().body.trim() || "(empty)"}`}</p>}
-                  >
-                    {(html) => <HtmlFrame html={html()} title="The signature as it goes out" />}
-                  </Show>
-                  <Show when={!settings.signatureBelow}>
-                    <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
-                  </Show>
-                </MailPreview>
-              </Group>
 
               <footer class="detail-foot">
                 <span class="meta">Changes save as you type.</span>

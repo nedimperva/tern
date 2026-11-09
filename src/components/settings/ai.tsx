@@ -1,17 +1,16 @@
-// The ledger in step 3 is an ARIA table laid out with CSS grid, so its rows and cells are divs and spans with roles;
-// the token meter is a div (a native meter can't be styled alike in WebKitGTK and WebView2); the style note's length
+// The token meter is a span (a native meter can't be styled alike in WebKitGTK and WebView2); the style note's length
 // and tone are styled radios that radioKeys gives the arrow keys of native ones.
 // biome-ignore-all lint/a11y/useSemanticElements: see above
-// biome-ignore-all lint/a11y/useFocusableInteractive: table rows, not grid rows; nothing in them needs focus but the controls
+// biome-ignore-all lint/a11y/useFocusableInteractive: the meter is read, not used
 // Settings → AI: providers and keys, the features, and the writing style note.
 
-import { createSignal, For, Show, type JSX } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { api, type Account, type AiLearned, type AiProvider, type AiStats, type AiStyle } from "../../api";
 import { colourOf } from "../../colours";
 import { radioKeys } from "../../a11y";
 import { aiRoute, setSetting, settings, type AiFeatureKey, type AiRoute, type AiSettings } from "../../settings";
 import { Icon } from "../Icon";
-import { accountName, lastDay } from "./shared";
+import { accountName, Chip, Group, lastDay, Preview, Row, Switch } from "./shared";
 import { Dropdown } from "../Dropdown";
 
 const PROVIDERS: { id: AiProvider; company: string; family: string; host: string; keys: string; placeholder: string }[] = [
@@ -26,30 +25,8 @@ const FIRST_MODEL: Record<AiProvider, string> = {
   gemini: "gemini-flash-latest",
 };
 
-/** A numbered step: a check once done, the number in the accent while it is the one to do, grey after that. */
-function Step(props: { n: number; done: boolean; current: boolean; title: string; children: JSX.Element; later?: boolean }) {
-  return (
-    <section class="ai-step" classList={{ done: props.done, current: props.current && !props.done, later: props.later }}>
-      <span class="ai-step-mark" aria-hidden="true">
-        <Show when={props.done} fallback={props.n}>
-          <Icon name="check" size={13} />
-        </Show>
-      </span>
-      <div class="ai-step-body">
-        <h2>
-          {props.title}
-          <Show when={props.done}>
-            <span class="visually-hidden"> (done)</span>
-          </Show>
-        </h2>
-        {props.children}
-      </div>
-    </section>
-  );
-}
-
-/** Optional AI with the person's own keys (package 10), as three steps: the providers (any of them, each with its
- * key), the mail it may read, and what it may do, each feature with what it sends and the model it asks. Off until
+/** Optional AI with the person's own keys (package 10), in the settings grammar (idea 60): the providers (any of them,
+ * each with its key), the mail it may read, and what it may do, each feature with what it sends and the model it asks. Off until
  * turned on, which first shows the privacy sheet; a provider not agreed to yet is asked about before it gets mail. */
 export function AiSettingsPage(props: { accounts: Account[]; /** Opens Settings → Writing style. */ onStyles: () => void }) {
   const ai = () => settings.ai;
@@ -165,7 +142,6 @@ export function AiSettingsPage(props: { accounts: Account[]; /** Opens Settings 
     setSheet(false);
   };
   const ready = () => PROVIDERS.some((p) => hasKey(p.id));
-  const anyFeature = () => ai().summaries || ai().replies || ai().writing;
   const kept = () => {
     const k = stats()?.kept ?? {};
     const parts = [
@@ -179,191 +155,56 @@ export function AiSettingsPage(props: { accounts: Account[]; /** Opens Settings 
   const usedShare = () => (ai().dailyTokens > 0 ? Math.min(100, (used() / ai().dailyTokens) * 100) : 0);
   const usesGemini = () => inUse().includes("gemini");
 
+  const redactNote = () => (ai().redact ? "Addresses and phone numbers are taken out first." : "Addresses and phone numbers go as they are.");
+  const PROVIDER_COLOUR: Record<AiProvider, string> = { anthropic: "#c4621d", openai: "#1f1e1b", gemini: "#2b5fb8" };
+
   return (
     <Show when={known()}>
-      <div class="ai-status">
-        <Show
-          when={ai().enabled}
-          fallback={<p class="help">Off unless you turn it on, and only when you ask: Tern never sends mail to AI in the background.</p>}
-        >
-          <span class="on">
-            <span class="dot" /> On · {inUse().map(company).join(", ")}
+      {/* What one request sends, with the redaction as it is set: the privacy promise made visible (idea 60). */}
+      <Preview label="What leaves your computer" note="Never files, never in the background, never mail from accounts you didn't tick.">
+        <div class="preview-sheet ai-payload" aria-hidden="true">
+          <span class="small">
+            For a summary of “Offsite”, this goes to {company(aiRoute(ai(), "summaries").provider)}. {redactNote()}
           </span>
-          <button onClick={() => set({ enabled: false })}>Turn off</button>
-        </Show>
-      </div>
-      <Step n={1} done={ready()} current title="Providers">
-        <div class="ai-provider-list">
-          <For each={PROVIDERS}>
-            {(p) => (
-              <div class="ai-provider" classList={{ set: hasKey(p.id) }}>
-                <div class="who">
-                  <strong>{p.company}</strong>
-                  <span>{p.family}</span>
-                </div>
-                <Show
-                  when={adding() === p.id}
-                  fallback={
-                    <Show
-                      when={hasKey(p.id)}
-                      fallback={
-                        <button onClick={() => (setAdding(p.id), setKey(""), setTested(null))}>
-                          Add key
-                        </button>
-                      }
-                    >
-                      <span class="saved-key">
-                        <Icon name="check" size={12} /> Key saved
-                      </span>
-                      <button disabled={testing()} onClick={() => void test(p.id)}>
-                        {testing() && tested() == null ? "Testing…" : "Test"}
-                      </button>
-                      <button onClick={() => void forgetKey(p.id)}>Forget</button>
-                    </Show>
-                  }
-                >
-                  <span class="ai-key">
-                    <input
-                      type="password"
-                      placeholder={p.placeholder}
-                      aria-label={`${p.company} API key`}
-                      value={key()}
-                      onInput={(e) => (setKey(e.currentTarget.value), setTested(null))}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && key().trim()) void saveKey(p.id);
-                        else if (e.key === "Escape") (e.stopPropagation(), setAdding(null));
-                      }}
-                      ref={(el) => queueMicrotask(() => el.focus())}
-                    />
-                    <button disabled={!key().trim() || testing()} onClick={() => void test(p.id)}>
-                      Test
-                    </button>
-                    <button class="primary" disabled={!key().trim()} onClick={() => void saveKey(p.id)}>
-                      Save
-                    </button>
-                  </span>
-                </Show>
-                <Show when={tested()?.p === p.id}>
-                  <span class={tested()!.ok ? "ai-test ok" : "ai-test bad"}>{tested()!.text}</span>
-                </Show>
-                <Show when={adding() === p.id}>
-                  <span class="help">
-                    Make one at {p.keys}. {p.company} bills you for what Tern asks; the key only ever goes to {p.company}.
-                  </span>
-                </Show>
-              </div>
-            )}
-          </For>
+          <code>
+            {'<mail from="Ada Lovelace" date="Fri 6 Nov">'}
+            {"\n"}The offsite is at Studio 4 on Monday. Call me on{" "}
+            <Show when={ai().redact} fallback="+44 20 7946 0958">
+              <mark>[phone]</mark>
+            </Show>{" "}
+            or write to{" "}
+            <Show when={ai().redact} fallback="ada@example.com">
+              <mark>[email]</mark>
+            </Show>
+            .{"\n"}
+            {"</mail>"}
+          </code>
         </div>
-        <span class="help">Set up one or several. Each feature below picks its model from the ones with a key.</span>
-      </Step>
-      {/* Without a key the next steps can't do anything yet: they step back, and one line says so (idea 52). */}
-      <Show when={!ready()}>
-        <p class="ai-next">Add a key above first: then you choose what AI may read and do.</p>
-      </Show>
-      <Step n={2} done={ready() && ai().accounts.length > 0} current={ready()} later={!ready()} title="Mail it may read">
-        <div class="ai-checks">
-          <For each={props.accounts}>
-            {(a) => (
-              <label>
-                <input type="checkbox" checked={allowed(a.id)} onChange={(e) => allow(a.id, e.currentTarget.checked)} />
-                <span class="dot" style={{ background: colourOf(props.accounts, a.id) }} />
-                <span class="what">
-                  {accountName(a)}
-                  <Show when={a.displayName}>
-                    <span class="sub">{a.email}</span>
-                  </Show>
-                </span>
-              </label>
-            )}
-          </For>
-          <label class="redact">
-            <input type="checkbox" checked={ai().redact} onChange={(e) => set({ redact: e.currentTarget.checked })} />
-            <span class="what">
-              Take addresses and phone numbers out first
-              <span class="sub">They become [email] and [phone]. Best effort, not anonymous.</span>
-            </span>
-          </label>
-        </div>
-      </Step>
-      <Step n={3} done={ready() && ai().accounts.length > 0 && anyFeature()} current={ready() && ai().accounts.length > 0} later={!ready()} title="What it may do">
-        <div class="ai-ledger" role="table" aria-label="What each feature sends and to which model">
-          <div class="row head" role="row">
-            <span role="columnheader">Feature</span>
-            <span role="columnheader">What goes to its model's provider, when you ask</span>
-            <span role="columnheader">Model</span>
-            <span role="columnheader">On</span>
-          </div>
-          <For each={FEATURES}>
-            {(f) => (
-              <>
-                <div class="row" role="row">
-                  <span role="cell" class="name">
-                    {f.name}
-                    <span class="keys">{f.keys}</span>
-                  </span>
-                  <span role="cell" class="sends">
-                    {f.sends}
-                  </span>
-                  <span role="cell">
-                    <Dropdown
-                      label={`Model for ${f.name}`}
-                      value={`${aiRoute(ai(), f.key).provider}:${aiRoute(ai(), f.key).model}`}
-                      disabled={!ready()}
-                      choices={[
-                        // The model in use stays listed while the providers' lists load, or after it left them.
-                        ...((models()[aiRoute(ai(), f.key).provider] ?? []).some(([id]) => id === aiRoute(ai(), f.key).model)
-                          ? []
-                          : [{ value: `${aiRoute(ai(), f.key).provider}:${aiRoute(ai(), f.key).model}`, label: modelName(aiRoute(ai(), f.key)) }]),
-                        ...PROVIDERS.filter((p) => hasKey(p.id)).flatMap((p) =>
-                          (models()[p.id] ?? []).map(([id, name]) => ({ value: `${p.id}:${id}`, label: name, group: p.company })),
-                        ),
-                      ]}
-                      onChange={(v) => pick(f.key, v)}
-                    />
-                  </span>
-                  <span role="cell">
-                    <input type="checkbox" checked={ai()[f.toggle]} onChange={(e) => set({ [f.toggle]: e.currentTarget.checked })} aria-label={f.name} />
-                  </span>
-                </div>
-                <Show when={asking()?.feature === f.key}>
-                  <div class="row ask" role="row">
-                    <span role="cell" class="ask-text">
-                      {modelName(asking()!.route)} sends {f.name.toLowerCase()} to <strong>{company(asking()!.route.provider)}</strong>, under your key at{" "}
-                      {PROVIDERS.find((p) => p.id === asking()!.route.provider)!.host}. Their terms and data retention apply.
-                      <Show when={asking()!.route.provider === "gemini"}> On Google's free tier, Google may use it to improve its products.</Show>
-                    </span>
-                    <span role="cell" class="ask-actions">
-                      <button class="primary" onClick={allowAsked}>
-                        Allow {company(asking()!.route.provider)}
-                      </button>
-                      <button onClick={() => setAsking(null)}>Cancel</button>
-                    </span>
-                  </div>
-                </Show>
-              </>
-            )}
-          </For>
-          <p class="foot">
-            Never attachments, never in the background, never mail from accounts you didn't tick.
-            <Show when={usesGemini()}> On Google's free tier, Google may use what you send to improve its products.</Show>
-          </p>
-        </div>
-      </Step>
-      <Show
-        when={!sheet()}
-        fallback={
+      </Preview>
+      <Group title="AI in Tern">
+        <Row
+          title="Use AI"
+          help={
+            ai().enabled
+              ? `On · ${inUse().map(company).join(", ") || "no feature on"}. Turn it off here at any time: from then on nothing is sent.`
+              : ready()
+                ? `Turning it on shows exactly what goes to ${inUse().map(company).join(" and ")} first.`
+                : "Add a key below first."
+          }
+        >
+          <Switch label="Use AI" on={ai().enabled || sheet()} disabled={!ready() && !ai().enabled} onChange={(on) => (on ? setSheet(true) : (set({ enabled: false }), setSheet(false)))} />
+        </Row>
+        <Show when={sheet()}>
           <div class="ai-sheet" role="dialog" aria-label="What AI sends">
             <h2>Before you turn it on</h2>
             <ul>
               <li>
-                <strong>Only when you ask</strong>, what the table above says goes{" "}
-                <strong>to {inUse().map(company).join(" and ")}</strong> (
+                <strong>Only when you ask</strong>, what the rows below say goes <strong>to {inUse().map(company).join(" and ")}</strong> (
                 {inUse()
                   .map((p) => PROVIDERS.find((x) => x.id === p)!.host)
                   .join(", ")}
-                ), under your keys. Their terms and data retention apply to it, so that mail no longer stays only on this
-                computer and your mail provider.
+                ), under your keys. Their terms and data retention apply to it, so that mail no longer stays only on this computer and your
+                mail provider.
               </li>
               <Show when={usesGemini()}>
                 <li>
@@ -382,63 +223,192 @@ export function AiSettingsPage(props: { accounts: Account[]; /** Opens Settings 
               <button onClick={() => setSheet(false)}>Cancel</button>
             </div>
           </div>
-        }
-      >
-        <Show when={!ai().enabled}>
-          <div class="ai-turn-on">
-            <span>{ready() ? `Turning it on shows exactly what goes to ${inUse().map(company).join(" and ")} first.` : "Add a key first."}</span>
-            <button class="primary" disabled={!ready()} onClick={() => setSheet(true)}>
-              Review and turn on
-            </button>
-          </div>
         </Show>
-      </Show>
-      <Show when={ai().enabled}>
-        <div class="ai-usage">
-          <div class="ai-card">
-            <span class="kicker">Today</span>
-            <span>
-              {used().toLocaleString()} of {ai().dailyTokens > 0 ? `${ai().dailyTokens.toLocaleString()} tokens` : "no limit"}
-            </span>
-            <Show when={ai().dailyTokens > 0}>
-              <div class="meter" role="meter" aria-valuenow={used()} aria-valuemin={0} aria-valuemax={ai().dailyTokens} aria-label="Tokens used today">
-                <div style={{ width: `${usedShare()}%` }} />
+      </Group>
+      <Group title="Providers" note="one is enough">
+        <For each={PROVIDERS}>
+          {(p) => (
+            <div class="ai-provider-row">
+              <div class="list-row">
+                <span class="badge-mark square" style={{ background: PROVIDER_COLOUR[p.id] }}>
+                  {p.company[0]}
+                </span>
+                <span class="who">
+                  <strong>{p.company}</strong>
+                  <span class="sub">
+                    {p.family} · {hasKey(p.id) ? "key in the system keyring" : "no key"}
+                  </span>
+                </span>
+                <span class="end">
+                  <Show
+                    when={hasKey(p.id)}
+                    fallback={
+                      <Show when={adding() !== p.id}>
+                        <button onClick={() => (setAdding(p.id), setKey(""), setTested(null))}>Add key</button>
+                      </Show>
+                    }
+                  >
+                    <Chip tone="ok">Connected</Chip>
+                    <button disabled={testing()} onClick={() => void test(p.id)}>
+                      {testing() && tested() == null ? "Testing…" : "Test"}
+                    </button>
+                    <button class="danger-text" onClick={() => void forgetKey(p.id)}>
+                      Forget
+                    </button>
+                  </Show>
+                </span>
               </div>
-            </Show>
-            <span class="help">Sent and received, all providers. Resets at midnight UTC.</span>
-          </div>
-          <div class="ai-card">
-            <span class="kicker">Limit</span>
-            <div class="ai-inline">
-              Daily limit
-              <Dropdown
-                label="Daily limit"
-                value={String(ai().dailyTokens)}
-                choices={[
-                  { value: "50000", label: "50,000 tokens" },
-                  { value: "200000", label: "200,000 tokens" },
-                  { value: "1000000", label: "1,000,000 tokens" },
-                  { value: "0", label: "No limit" },
-                ]}
-                onChange={(v) => set({ dailyTokens: Number(v) })}
-              />
+              <Show when={adding() === p.id}>
+                <div class="ai-key-row">
+                  <span class="ai-key">
+                    <input
+                      type="password"
+                      placeholder={p.placeholder}
+                      aria-label={`${p.company} API key`}
+                      value={key()}
+                      onInput={(e) => (setKey(e.currentTarget.value), setTested(null))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && key().trim()) void saveKey(p.id);
+                        else if (e.key === "Escape") (e.stopPropagation(), setAdding(null));
+                      }}
+                      ref={(el) => queueMicrotask(() => el.focus())}
+                    />
+                    <button disabled={!key().trim() || testing()} onClick={() => void test(p.id)}>
+                      Test
+                    </button>
+                    <button onClick={() => setAdding(null)}>Cancel</button>
+                    <button class="primary" disabled={!key().trim()} onClick={() => void saveKey(p.id)}>
+                      Save
+                    </button>
+                  </span>
+                  <span class="help">
+                    Make one at {p.keys}. {p.company} bills you for what Tern asks; the key only ever goes to {p.company}.
+                  </span>
+                </div>
+              </Show>
+              <Show when={tested()?.p === p.id}>
+                <span class={tested()!.ok ? "ai-test ok" : "ai-test bad"}>{tested()!.text}</span>
+              </Show>
             </div>
-            <span class="help">Small models cost a fraction of the big ones: summaries and replies need little.</span>
-          </div>
-        </div>
-      </Show>
-      <button type="button" class="ai-link" onClick={props.onStyles}>
-        <span class="what">
-          Writing style
-          <span class="sub">What Tern learned from each account's sent mail, for suggested replies and Write with AI.</span>
-        </span>
-        <Icon name="chevron-right" size={15} />
-      </button>
-      <div class="ai-kept">
-        <span>Kept on this computer: {kept()}.</span>
-        <span class="spacer" />
-        <button onClick={() => void api.aiClearCache().then(() => restat(), (e) => setError(String(e)))}>Delete AI cache</button>
+          )}
+        </For>
+      </Group>
+      {/* Without a key the rest can't do anything yet: it steps back (idea 52). */}
+      <div class="ai-rest" classList={{ later: !ready() }}>
+        <Group title="Mail it may read">
+          <For each={props.accounts}>
+            {(a) => (
+              <div class="list-row">
+                <span class="badge-mark" style={{ background: colourOf(props.accounts, a.id) }}>
+                  {accountName(a)[0]?.toUpperCase()}
+                </span>
+                <span class="who">
+                  <strong>{accountName(a)}</strong>
+                  <Show when={accountName(a) !== a.email}>
+                    <span class="sub">{a.email}</span>
+                  </Show>
+                </span>
+                <Switch label={`AI may read ${accountName(a)}`} on={allowed(a.id)} disabled={!ready()} onChange={(on) => allow(a.id, on)} />
+              </div>
+            )}
+          </For>
+          <Row title="Take addresses and phone numbers out first" help="They become [email] and [phone]. Best effort, not anonymous.">
+            <Switch label="Take addresses and phone numbers out first" on={ai().redact} disabled={!ready()} onChange={(on) => set({ redact: on })} />
+          </Row>
+        </Group>
+        <Group title="What it may do" note="each only when you ask">
+          <For each={FEATURES}>
+            {(f) => (
+              <>
+                <Row
+                  title={f.name}
+                  help={
+                    <>
+                      {f.sends}. <span class="keys">{f.keys}</span>
+                    </>
+                  }
+                >
+                  <span class="value-action">
+                    <Dropdown
+                      label={`Model for ${f.name}`}
+                      value={`${aiRoute(ai(), f.key).provider}:${aiRoute(ai(), f.key).model}`}
+                      disabled={!ready()}
+                      choices={[
+                        // The model in use stays listed while the providers' lists load, or after it left them.
+                        ...((models()[aiRoute(ai(), f.key).provider] ?? []).some(([id]) => id === aiRoute(ai(), f.key).model)
+                          ? []
+                          : [{ value: `${aiRoute(ai(), f.key).provider}:${aiRoute(ai(), f.key).model}`, label: modelName(aiRoute(ai(), f.key)) }]),
+                        ...PROVIDERS.filter((p) => hasKey(p.id)).flatMap((p) =>
+                          (models()[p.id] ?? []).map(([id, name]) => ({ value: `${p.id}:${id}`, label: name, group: p.company })),
+                        ),
+                      ]}
+                      onChange={(v) => pick(f.key, v)}
+                    />
+                    <Switch label={f.name} on={ai()[f.toggle]} disabled={!ready()} onChange={(on) => set({ [f.toggle]: on })} />
+                  </span>
+                </Row>
+                <Show when={asking()?.feature === f.key}>
+                  <div class="ai-ask">
+                    <span>
+                      {modelName(asking()!.route)} sends {f.name.toLowerCase()} to <strong>{company(asking()!.route.provider)}</strong>, under your key at{" "}
+                      {PROVIDERS.find((p) => p.id === asking()!.route.provider)!.host}. Their terms and data retention apply.
+                      <Show when={asking()!.route.provider === "gemini"}> On Google's free tier, Google may use it to improve its products.</Show>
+                    </span>
+                    <span class="value-action">
+                      <button onClick={() => setAsking(null)}>Cancel</button>
+                      <button class="primary" onClick={allowAsked}>
+                        Allow {company(asking()!.route.provider)}
+                      </button>
+                    </span>
+                  </div>
+                </Show>
+              </>
+            )}
+          </For>
+          <Show when={usesGemini()}>
+            <p class="list-none">On Google's free tier, Google may use what you send to improve its products.</p>
+          </Show>
+        </Group>
       </div>
+      <Show when={ai().enabled}>
+        <Group title="Use">
+          <Row title="Today" help="Sent and received, all providers. Resets at midnight UTC.">
+            <span class="mini-meter ai-meter" role="meter" aria-valuenow={used()} aria-valuemin={0} aria-valuemax={ai().dailyTokens || used()} aria-label="Tokens used today">
+              <Show when={ai().dailyTokens > 0}>
+                <span class="track">
+                  <span style={{ width: `${usedShare()}%` }} />
+                </span>
+              </Show>
+              {used().toLocaleString()} of {ai().dailyTokens > 0 ? ai().dailyTokens.toLocaleString() : "no limit"}
+            </span>
+          </Row>
+          <Row title="Daily limit" help="Small models cost a fraction of the big ones: summaries and replies need little.">
+            <Dropdown
+              label="Daily limit"
+              value={String(ai().dailyTokens)}
+              choices={[
+                { value: "50000", label: "50,000 tokens" },
+                { value: "200000", label: "200,000 tokens" },
+                { value: "1000000", label: "1,000,000 tokens" },
+                { value: "0", label: "No limit" },
+              ]}
+              onChange={(v) => set({ dailyTokens: Number(v) })}
+            />
+          </Row>
+        </Group>
+      </Show>
+      <Group title="Kept on this computer">
+        <Row title="Writing style" help="What Tern learned from each account's sent mail, for suggested replies and Write with AI.">
+          <button type="button" class="link" onClick={props.onStyles}>
+            Open
+          </button>
+        </Row>
+        <Row title="AI cache" help={`Answers kept so they open at once: ${kept()}.`}>
+          <button class="danger-text" onClick={() => void api.aiClearCache().then(() => restat(), (e) => setError(String(e)))}>
+            Delete
+          </button>
+        </Row>
+      </Group>
       <Show when={error()}>
         <p class="setting-error">{error()}</p>
       </Show>
@@ -453,30 +423,33 @@ export function AiStylePage(props: { accounts: Account[]; /** Opens Settings →
   const readable = () => props.accounts.filter((a) => ai().accounts.includes(a.id));
   const why = () =>
     !ai().enabled
-      ? "AI is off. Turn it on with Write in my style ticked, and Tern can learn how you write."
+      ? "Learning needs AI on, with Write in my style ticked."
       : !ai().voice
-        ? "Write in my style is off. Tick it in Settings → AI to learn how you write."
-        : "No account may be read by AI yet. Tick one under Mail it may read.";
+        ? "Turn it on in Settings → AI to learn how you write."
+        : "Turn one on under Mail it may read in Settings → AI.";
   return (
-    <>
-      <p class="help section-lead">
-        Learned from an account's latest 50 sent messages when you click Learn, your own words only. Kept on this
-        computer and yours to change; suggested replies and Write with AI follow it.
-      </p>
-      <Show
-        when={ai().enabled && ai().voice && readable().length}
-        fallback={
-          <div class="ai-turn-on">
-            <span>{why()}</span>
+    <Show
+      when={ai().enabled && ai().voice && readable().length}
+      fallback={
+        // The same empty card as everywhere: an icon, a line, one button (idea 61).
+        <div class="settings-card">
+          <div class="settings-empty-row">
+            <span class="mark">
+              <Icon name="sparkles" size={18} />
+            </span>
+            <span>
+              <strong>{!ai().enabled ? "AI is off" : !ai().voice ? "Write in my style is off" : "No account may be read yet"}</strong>
+              <span>{why()}</span>
+            </span>
             <button onClick={props.onAi}>Open AI settings</button>
           </div>
-        }
-      >
-        <div class="ai-styles">
-          <For each={readable()}>{(a) => <StyleNote account={a} accounts={props.accounts} onChange={() => {}} />}</For>
         </div>
-      </Show>
-    </>
+      }
+    >
+      <Group title="Your style" note="learned from your latest 50 sent messages, your own words only">
+        <For each={readable()}>{(a) => <StyleNote account={a} accounts={props.accounts} onChange={() => {}} />}</For>
+      </Group>
+    </Show>
   );
 }
 
@@ -625,6 +598,14 @@ function StyleNote(props: { account: Account; accounts: Account[]; onChange: () 
             </div>
           }
         >
+          <Show when={structured() && (parts().opens.length || parts().closes.length)}>
+            <div class="preview-sheet style-sample">
+              <span class="small">A reply to Ada, as the note has it</span>
+              <span>{(parts().opens[0] ?? "Hi").replace(/[,!]$/, "")} Ada,</span>
+              <span class="dim">…</span>
+              <span>{parts().closes[0] ?? "Best"}</span>
+            </div>
+          </Show>
           <Show
             when={structured() && !asText()}
             fallback={

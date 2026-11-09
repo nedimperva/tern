@@ -2,10 +2,11 @@
 
 import { createSignal, For, Index, Show } from "solid-js";
 import { api, type Account, type Alias } from "../../api";
-import { ACCOUNT_COLOURS, COLOUR_NAMES } from "../../colours";
+import { ACCOUNT_COLOURS, COLOUR_NAMES, colourOf } from "../../colours";
 import { radioKeys } from "../../a11y";
 import { type NotifyMode, setSetting, settings } from "../../settings";
 import { Dropdown } from "../Dropdown";
+import { Chip, Group, Preview } from "./shared";
 
 /** One account: its name on sent mail, what else Tern knows of it, and a way to its signatures. */
 export function AccountPage(props: { account: Account; onSignatures: () => void; onRenamed: () => void; onRemoved: () => void }) {
@@ -107,8 +108,30 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
     setSetting("notifyAccounts", mode ? { ...rest, [key()]: mode } : rest);
   };
   const general = () => (!settings.notify ? "no notifications" : settings.notifyOther ? "Important and Other" : "Important mail");
+  const sender = () => props.account.displayName || props.account.email;
   return (
     <>
+      {/* How the name and colour show, for them and for you (idea 68). */}
+      <Preview>
+        <div class="preview-pair" aria-hidden="true">
+          <div class="preview-sheet">
+            <span class="small block">In their inbox</span>
+            <span class="their-row">
+              <strong>{sender()}</strong>
+              <span>Q3 offer</span>
+              <span class="small">now</span>
+            </span>
+          </div>
+          <div class="preview-sheet">
+            <span class="small block">In your From picker</span>
+            <span class="from-line">
+              <span class="dot" style={{ background: picked() ?? colourOf(settings.accountColours ? [props.account] : [], props.account.id) }} />
+              {sender()} &lt;{props.account.email}&gt;
+            </span>
+          </div>
+        </div>
+      </Preview>
+      <Group title="How it shows">
       <label class="setting">
         <span class="title">Label</span>
         <input
@@ -136,13 +159,38 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
           the name in Settings and in the From picker.
         </span>
       </label>
+      <div class="setting">
+        <span class="title">Colour</span>
+        <span class="swatches" role="radiogroup" aria-label="Colour" onKeyDown={radioKeys}>
+          <For each={ACCOUNT_COLOURS}>
+            {(c, i) => (
+              // biome-ignore lint/a11y/useSemanticElements: a swatch is a styled radio; radioKeys gives it the arrow keys of a native one
+              <button
+                type="button"
+                role="radio"
+                aria-checked={picked() === c}
+                tabIndex={picked() === c || (!picked() && i() === 0) ? 0 : -1}
+                aria-label={COLOUR_NAMES[i()]}
+                title={COLOUR_NAMES[i()]}
+                classList={{ on: picked() === c }}
+                style={{ background: c }}
+                onClick={() => pick(c)}
+              />
+            )}
+          </For>
+          <Show when={picked()}>
+            <button type="button" class="link" onClick={() => pick(null)}>
+              Default
+            </button>
+          </Show>
+        </span>
+        <span class="help">Its dot in mixed lists, its badge in the rail (Ctrl+\) and in the From picker.</span>
+      </div>
+      </Group>
       <Show when={error()}>
         <p class="setting-error">{error()}</p>
       </Show>
-      <div class="setting">
-        <span class="title">Address</span>
-        <span>{props.account.email}</span>
-      </div>
+      <Group title="Addresses">
       <div class="setting">
         <span class="title">Also send as</span>
         <span class="help">
@@ -182,52 +230,12 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
           <p class="setting-error">{aliasError()}</p>
         </Show>
       </div>
-      <div class="setting">
-        <span class="title">Colour</span>
-        <span class="swatches" role="radiogroup" aria-label="Colour" onKeyDown={radioKeys}>
-          <For each={ACCOUNT_COLOURS}>
-            {(c, i) => (
-              // biome-ignore lint/a11y/useSemanticElements: a swatch is a styled radio; radioKeys gives it the arrow keys of a native one
-              <button
-                type="button"
-                role="radio"
-                aria-checked={picked() === c}
-                tabIndex={picked() === c || (!picked() && i() === 0) ? 0 : -1}
-                aria-label={COLOUR_NAMES[i()]}
-                title={COLOUR_NAMES[i()]}
-                classList={{ on: picked() === c }}
-                style={{ background: c }}
-                onClick={() => pick(c)}
-              />
-            )}
-          </For>
-          <Show when={picked()}>
-            <button type="button" class="link" onClick={() => pick(null)}>
-              Default
-            </button>
-          </Show>
-        </span>
-        <span class="help">Its dot in mixed lists, its badge in the rail (Ctrl+\) and in the From picker.</span>
-      </div>
-      <div class="setting">
-        <span class="title">Notifications</span>
-        <Dropdown
-          label="Notifications"
-          value={notifies()}
-          choices={[
-            { value: "", label: `As in Notifications (${general()})` },
-            { value: "important", label: "Important mail" },
-            { value: "all", label: "Important and Other" },
-            { value: "off", label: "None" },
-          ]}
-          onChange={(v) => setNotifies(v as NotifyMode | "")}
-        />
-        <span class="help">New mail in this account's inbox. Quiet hours apply to every account.</span>
-      </div>
+      </Group>
+      <Group title="Sign-in and servers">
       <div class="setting">
         <span class="title">Sign-in</span>
         <span class="value-action">
-          {props.account.auth === "google" ? "With Google, in the browser" : gmail() ? "App password" : "Password"}
+          <Chip tone="ok">{props.account.auth === "google" ? "Google" : gmail() ? "App password" : "Password"}</Chip>
           <Show when={props.account.auth !== "google" && !changing()}>
             <button onClick={() => (setChanging(true), setPasswordNote(""))}>Change password</button>
           </Show>
@@ -270,27 +278,52 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
         </Show>
       </div>
       <div class="setting">
-        <span class="title">Incoming mail</span>
+        <span class="title">Incoming</span>
         <span class="mono">
           {props.account.imapHost}:{props.account.imapPort} · {security(props.account.imapSecurity)}
         </span>
       </div>
       <div class="setting">
-        <span class="title">Outgoing mail</span>
+        <span class="title">Outgoing</span>
         <span class="mono">
           {props.account.smtpHost}:{props.account.smtpPort} · {security(props.account.smtpSecurity)}
         </span>
       </div>
+      </Group>
+      <Group title="This account">
       <div class="setting">
-        <span class="title">Signatures</span>
-        <button onClick={props.onSignatures}>Edit signatures</button>
+        <span class="title">Notifications</span>
+        <Dropdown
+          label="Notifications"
+          value={notifies()}
+          choices={[
+            { value: "", label: `As in Notifications (${general()})` },
+            { value: "important", label: "Important mail" },
+            { value: "all", label: "Important and Other" },
+            { value: "off", label: "None" },
+          ]}
+          onChange={(v) => setNotifies(v as NotifyMode | "")}
+        />
+        <span class="help">New mail in this account's inbox. Quiet hours apply to every account.</span>
       </div>
       <div class="setting">
-        <span class="title">Remove account</span>
+        <span class="title">Signatures</span>
+        <button type="button" class="link" onClick={props.onSignatures}>
+          Edit
+        </button>
+      </div>
+      </Group>
+      <Group title="Remove">
+      <div class="setting">
+        <span class="title">Remove from Tern</span>
         <span class="value-action">
           <Show
             when={removing()}
-            fallback={<button onClick={() => setRemoving(true)}>Remove from Tern…</button>}
+            fallback={
+              <button class="danger-text" onClick={() => setRemoving(true)}>
+                Remove…
+              </button>
+            }
           >
             <button class="danger" onClick={() => void remove()}>
               Remove {props.account.email}
@@ -303,6 +336,7 @@ export function AccountPage(props: { account: Account; onSignatures: () => void;
           password. The mail stays on the server.
         </span>
       </div>
+      </Group>
     </>
   );
 }
