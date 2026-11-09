@@ -1340,9 +1340,19 @@ function fake(): Api {
     discardDraft: async (id) => void drafts.delete(id),
     undoDiscard: async () => false,
     // The browser has no file paths; a picked "file" is made up so the strip can be worked on.
-    pickFiles: async () => ["/home/you/Documents/report.pdf"],
+    pickFiles: async () => [
+      "/home/you/Documents/Q3 offer for Analytical Engines - final v2.pdf",
+      "/home/you/Documents/Budget 2027 draft.xlsx",
+      "/home/you/Pictures/site-visit-photo-04.jpg",
+      "/home/you/Documents/Contract notes.docx",
+    ],
     addAttachments: async (paths) =>
-      paths.map((p) => ({ path: p, name: p.split("/").pop()!, mime: "application/pdf", size: 1_234_567 })),
+      paths.map((p) => {
+        const ext = p.split(".").pop() ?? "";
+        const mime = ext === "jpg" ? "image/jpeg" : ext === "pdf" ? "application/pdf" : "application/octet-stream";
+        // Big enough together to show the size note when picked twice.
+        return { path: p, name: p.split("/").pop()!, mime, size: ext === "jpg" ? 6_800_000 : ext === "pdf" ? 3_200_000 : 84_000 };
+      }),
     onFilesDropped: () => () => {},
     outgoingPreview: async (path) => pasted.get(path) ?? null,
     // The file goes nowhere in the browser: an import reads back the last export.

@@ -3669,105 +3669,124 @@ button.fold {
   overflow: hidden;
   font: var(--t-rd) / 1.5 var(--font);
 }
-/* Files going with the message: picture thumbnails, else the file's kind. Scoped to compose: unscoped, these
-   rules also turned a received file's card into a narrow tile that cut its name to a few letters. */
+/* Files going with the message: a folded tray, one line until it is opened, then a row a file (idea 70, C). Names
+   cut in the middle keep their ends, so "final v2.pdf" still reads. */
 .outgoing-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
   margin-top: var(--s-2);
-}
-.outgoing-files .file-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  width: 132px;
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   background: var(--soft);
   overflow: hidden;
 }
-.outgoing-files .file-card .thumb {
+.outgoing-files .tray-head {
   display: flex;
   align-items: center;
-  justify-content: center;
-  height: 72px;
-  background: var(--bg-2);
-  color: var(--fg-2);
-}
-.outgoing-files .file-card .thumb img {
+  gap: 6px;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.outgoing-files .file-card .meta {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--s-1);
-  padding: 4px 6px;
-  font-size: var(--t-xs);
+  height: 36px;
+  padding: 0 var(--s-3);
+  border: 0;
+  background: none;
   color: var(--fg-1);
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
 }
-.outgoing-files .file-card .name {
+.outgoing-files .tray-head:hover {
+  background: var(--soft-hover);
+}
+.outgoing-files .tray-head strong {
+  flex: none;
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.outgoing-files .tray-sum {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.outgoing-files .file-card .size {
-  flex: none;
   color: var(--fg-2);
 }
-.outgoing-files .file-card .remove {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 20px;
-  height: 20px;
+.tray-list {
+  max-height: 180px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+.tray-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto 24px;
+  align-items: center;
+  gap: var(--s-3);
+  height: 36px;
+  padding: 0 var(--s-2) 0 var(--s-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-md);
+}
+.tray-row .badge {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  object-fit: cover;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: var(--file-other);
+}
+.tray-row .badge.pdf { background: var(--file-pdf); }
+.tray-row .badge.doc { background: var(--file-doc); }
+.tray-row .badge.sheet { background: var(--file-sheet); }
+.tray-row .badge.slides { background: var(--file-slides); }
+.tray-row .badge.image { background: var(--file-image); }
+.tray-row .badge.quiet {
+  background: var(--bg-2);
+  color: var(--fg-1);
+}
+.tray-row .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-0);
+}
+.tray-row .size {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.tray-row .remove {
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-2);
+  font-size: 16px;
   line-height: 1;
-  cursor: pointer;
-  opacity: 0;
 }
-.outgoing-files .file-card:hover .remove,
-.outgoing-files .file-card .remove:focus-visible {
-  opacity: 1;
+.tray-row .remove:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
 }
-.size-meter {
+/* Only a size worth a word gets one: amber near the usual limit, red past it. */
+.size-note {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  margin-top: var(--s-1);
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.size-meter .bar {
-  flex: none;
-  width: 120px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--line);
-  overflow: hidden;
-}
-.size-meter .bar span {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-}
-.size-meter.near {
+  margin: var(--s-2) 0 0;
+  padding: 6px var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--warn-soft);
   color: var(--warn-fg);
+  font-size: var(--t-sm);
 }
-.size-meter.near .bar span {
-  background: var(--warn);
-}
-.size-meter.over {
+.size-note.over {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
   color: var(--danger);
-}
-.size-meter.over .bar span {
-  background: var(--danger);
 }
 /* Files dragged over the window: where they go. The window takes the drop; this only says so. */
 .drop-zone {
@@ -3956,7 +3975,7 @@ button.fold {
 .send-split > .primary:first-child {
   border-radius: var(--r-md) 0 0 var(--r-md);
 }
-.send-split > .more {
+.send-split > .send-more {
   display: inline-flex;
   align-items: center;
   padding: 0 6px;
@@ -9220,9 +9239,39 @@ button.link.danger {
 .compose-main > footer .more-wrap {
   position: relative;
 }
-.compose-main > footer .send-menu {
+.compose-main > footer .send-split .send-menu {
   left: auto;
   right: 0;
+}
+/* The signature menu opens up from its button, over the text. */
+.compose-main > footer .send-menu.up-left {
+  min-width: 200px;
+}
+.compose-main > footer .foot-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 var(--s-1);
+  background: var(--line);
+}
+.compose-main > footer .snippet-button {
+  font: 600 15px / 1 var(--mono);
+}
+/* Discard: red and small, only an icon, a step from Send but not beside it by accident. */
+.compose-main > footer .discard {
+  margin-right: var(--s-2);
+  color: var(--danger);
+  opacity: 0.8;
+}
+.compose-main > footer .discard:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.compose-main > footer .send-split .send {
+  box-shadow: none;
+}
+.compose-main > footer .send-split {
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
 }
 .send-menu hr {
   margin: var(--s-1) 0;
@@ -9365,8 +9414,12 @@ button.link.danger {
 .compose.focus .compose-main > footer .send {
   border-radius: 999px;
 }
+.compose.focus .compose-main > footer .send-split {
+  border-radius: 999px;
+}
 .compose.focus .compose-main > footer .from-pick,
-.compose.focus .compose-main > footer .more-wrap,
+.compose.focus .compose-main > footer .foot-sep,
+.compose.focus .compose-main > footer .send-more,
 .compose.focus .compose-main > footer .spacer {
   display: none;
 }
@@ -9407,12 +9460,12 @@ button.link.danger {
 
 /* While the person types, the tools fade; a pause, the mouse or focus on them brings them back. */
 .compose-main > footer .tools,
-.compose-main > footer .more-wrap,
+.compose-main > footer .discard,
 .compose-head .icon-button {
   transition: opacity var(--d-base);
 }
 .compose.typing .compose-main > footer .tools:not(:focus-within),
-.compose.typing .compose-main > footer .more-wrap:not(:focus-within),
+.compose.typing .compose-main > footer .discard:not(:focus-visible),
 .compose.typing .compose-head .icon-button:not(:focus-visible) {
   opacity: 0;
 }

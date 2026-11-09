@@ -4,7 +4,7 @@ import { api, type Mark, type ThreadMessage } from "../api";
 import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { catchUp } from "../catchup";
-import { filesOf } from "../files";
+import { filesOf, kind } from "../files";
 import { docOf, windowOf } from "../frames";
 import { unsubscribeTarget } from "../unsubscribe";
 import { foldAt, HTML_FOLD_SELECTOR, markQuotes, signatureLine } from "../fold";
@@ -408,20 +408,6 @@ function size(bytes: number): string {
   if (bytes < 1000) return `${bytes} B`;
   if (bytes < 1_000_000) return `${Math.round(bytes / 1000)} KB`;
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
-}
-
-/** What kind of file a name is, for its badge's label and colour. */
-function kind(name: string, mime: string): { label: string; tone: string } {
-  const ext = /\.([a-z0-9]{1,5})$/i.exec(name)?.[1]?.toLowerCase() ?? "";
-  const tone =
-    ext === "pdf" ? "pdf"
-    : /^(docx?|odt|rtf|pages)$/.test(ext) ? "doc"
-    : /^(xlsx?|ods|csv|numbers)$/.test(ext) ? "sheet"
-    : /^(pptx?|odp|key)$/.test(ext) ? "slides"
-    : /^(zip|rar|7z|gz|tar)$/.test(ext) ? "archive"
-    : mime.startsWith("image/") ? "image"
-    : "other";
-  return { label: (ext || "file").slice(0, 4).toUpperCase(), tone };
 }
 
 /** One file as a card: a picture of it when it is an image already on this computer, else a badge of its type.
