@@ -24,7 +24,7 @@ import {
   titleSlot,
   toggleSidebar,
 } from "../app/state";
-import { coverage, inboxZero, listedHere } from "../app/status";
+import { coverage, coverageShort, inboxZero, listedHere } from "../app/status";
 import { ROW_HEIGHTS, settings, SPLIT_ROW_EXTRA } from "../settings";
 import { colourOf } from "../colours";
 import { api, type Target, type ThreadRow } from "../api";
@@ -113,7 +113,7 @@ export function ListPane(props: {
   /** The search's result count; a search reads at most 500 here. */
   const foundCount = () => {
     const n = rows().length;
-    return n >= 500 ? "The newest 500" : n === 1 ? "1 conversation" : `${n.toLocaleString()} conversations`;
+    return n >= 500 ? "500 here" : n === 1 ? "1 conversation" : `${n.toLocaleString()} conversations`;
   };
   /** Read later says how long each one takes to read, from what the morning screen worked out. */
   const [readMinutes, setReadMinutes] = createSignal<Map<number, number | null> | null>(null);
@@ -316,18 +316,24 @@ export function ListPane(props: {
       {/* How many were found leads; what was searched how, and the server's search, follow (idea 15). */}
       <Show when={searching() && (rows().length || partial())}>
         <div class="search-note">
+          {/* One line: how many, in what order, what was searched how, then the server's search (idea 81). */}
           <Show when={rows().length}>
             <strong class="found">{foundCount()}</strong>
           </Show>
-          <Show when={partial()}>
-            <span class="coverage">{coverage()}</span>
+          <Show when={rows().length >= 500}>
+            <span>· newest first</span>
           </Show>
-          <span class="spacer" />
+          <Show when={partial()}>
+            <span class="coverage" title={coverage()}>
+              · {coverageShort()}
+            </span>
+          </Show>
           <Show when={partial()}>
           <Show
             when={serverFound().query === query().trim() ? serverFound() : null}
             fallback={
-              <button type="button" class="soft-button" onClick={() => void searchServer()}>
+              <button type="button" class="link server-link" onClick={() => void searchServer()}>
+                <Icon name="globe" size={13} />
                 Search the server too
               </button>
             }

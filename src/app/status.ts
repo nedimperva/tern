@@ -73,6 +73,13 @@ export const coverage = () => {
     : "Older mail without its text downloaded was searched by sender and subject only.";
 };
 
+/** The same in a few words, for the one-line search note (idea 81); the sentence above is its tooltip. */
+export const coverageShort = () => {
+  const all = progress().reduce((n, p) => n + p.messages, 0);
+  const text = progress().reduce((n, p) => n + p.withText, 0);
+  return text < all ? `text of ${Math.floor((text / all) * 100)}% here, the rest by sender and subject` : "older mail by sender and subject only";
+};
+
 /** One sentence for every account together, naming the account when only some are in trouble. */
 export const syncSentence = () => {
   // A removed account's last state may linger until its worker stops.

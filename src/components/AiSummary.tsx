@@ -6,9 +6,12 @@ import { promisesIn } from "../promises";
 import { settings } from "../settings";
 import { dayWord, startTask, taskRows, todoistOn } from "../app/tasks";
 import { snoozeFor, whenSaid } from "./Details";
+import { Icon } from "./Icon";
 
 type Action = { name: string; run: () => void; primary?: boolean };
 type Row = { tag: string; tone: "ask" | "day" | "plain" | "done"; text: string; actions: Action[] };
+// The same icons the companion gives these facts, so the card and the companion say it one way (idea 76).
+const TONE_ICON = { ask: "message", day: "clock", plain: "map-pin", done: "check" } as const;
 
 /** The brief under a conversation's subject (docs/design/ui.md §4.2, canvas "Tern summary directions", A + C): what
  * came since you last read it, then what Tern found on this computer (what you were asked, the day, the place), each
@@ -61,7 +64,7 @@ export function Brief(props: {
     const w = props.facts?.when;
     if (w && snoozeFor(w) > Date.now() / 1000) {
       out.push({
-        tag: "Day",
+        tag: "When",
         tone: "day",
         text: whenSaid(w),
         actions: [{ name: "Snooze till then", run: () => props.onSnooze(snoozeFor(w)) }, ...task(last()?.subject ?? "", dayWord(w.at))],
@@ -70,7 +73,7 @@ export function Brief(props: {
     const where = props.facts?.where;
     if (where) {
       out.push({
-        tag: "Place",
+        tag: "Where",
         tone: "plain",
         text: where,
         actions: [{ name: "Map", run: () => api.openUrl(`https://www.openstreetmap.org/search?query=${encodeURIComponent(where)}`) }],
@@ -108,14 +111,14 @@ export function Brief(props: {
               when={ai.state() === "done" || ai.state() === "busy"}
               fallback={
                 <button type="button" class="ai-ask" onClick={() => void ai.run(false)} title="Explain it with AI (Shift+S). Sends this conversation to your AI provider.">
-                  <kbd class="ai-mark">AI</kbd>
+                  <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
                   Explain it
                   <kbd>Shift S</kbd>
                 </button>
               }
             >
               <span class="ai-by">
-                <kbd class="ai-mark">AI</kbd>
+                <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
                 <Show when={ai.state() === "done"} fallback="Reading the conversation…">
                   <Show when={ai.summary()?.points.length}>
                     <button type="button" class="link" aria-expanded={ai.open()} onClick={() => ai.setOpen(!ai.open())} title="The points (Shift+S)">
@@ -153,12 +156,15 @@ export function Brief(props: {
             <For each={rows()}>
               {(r) => (
                 <div class="brief-row">
-                  <span class={`tag ${r.tone}`}>{r.tag}</span>
+                  <span class={`tag ${r.tone}`}>
+                    <Icon name={TONE_ICON[r.tone]} size={14} />
+                    {r.tag}
+                  </span>
                   <span class="text">{r.text}</span>
                   <span class="do">
                     <For each={r.actions}>
                       {(a) => (
-                        <button type="button" classList={{ primary: !!a.primary }} onClick={a.run}>
+                        <button type="button" classList={{ primary: !!a.primary, link: !a.primary }} onClick={a.run}>
                           {a.name}
                         </button>
                       )}

@@ -615,7 +615,7 @@ function TaskBox(props: { draft: TaskDraft; accountId: number }) {
         <input id="task-title" ref={field} value={title()} onInput={(e) => setTitle(e.currentTarget.value)} onKeyDown={keys} placeholder="What to do" />
         <Show when={aiOn("summaries", props.accountId)}>
           <button type="button" class="ai-fill" onClick={() => void fill()} disabled={filling()} title="Propose the title, the day and a note from this conversation. Sends it to your AI provider.">
-            <kbd class="ai-mark">AI</kbd>
+            <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
             {filling() ? "Filling…" : "Fill"}
           </button>
         </Show>

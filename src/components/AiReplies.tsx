@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch } from "solid-js";
+import { Icon } from "./Icon";
 import { api, type AiSuggestion } from "../api";
 import { replyAsks, setSuggestions } from "../ai";
 
@@ -58,21 +59,21 @@ export function AiReplies(props: { id: number; onPick: (text: string) => void })
       <Switch>
         <Match when={state() === "idle"}>
           <button class="ai-ask" onClick={() => void run(false)} title="Suggest replies with AI (Q)">
-            <kbd class="ai-mark">AI</kbd>
+            <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
             Suggest replies
             <kbd>Q</kbd>
           </button>
         </Match>
         <Match when={state() === "busy"}>
           <div class="ai-answer-head" aria-live="polite">
-            <kbd class="ai-mark">AI</kbd>
+            <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
             <span class="kicker">Answer with</span>
             <span class="ai-wait">{partial().join(" · ") || "Thinking of replies…"}</span>
           </div>
         </Match>
         <Match when={state() === "done"}>
           <div class="ai-answer-head">
-            <kbd class="ai-mark">AI</kbd>
+            <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
             <span class="kicker">Answer with</span>
           </div>
           <div class="ai-intents">
@@ -109,7 +110,7 @@ export function AiReplies(props: { id: number; onPick: (text: string) => void })
         </Match>
         <Match when={state() === "error"}>
           <p class="ai-line error">
-            <kbd class="ai-mark">AI</kbd>
+            <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
             <span class="text">{error()}</span>
             <button class="link" onClick={() => void run(false)}>
               Try again

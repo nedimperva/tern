@@ -653,8 +653,6 @@ button.primary kbd {
   padding: 0;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 .search-quick .quick-row {
@@ -760,10 +758,8 @@ button.primary kbd {
   gap: var(--s-3);
   padding: 0 var(--s-4) 6px var(--s-4);
   box-sizing: border-box;
-  font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
+  font-weight: 600;
   color: var(--fg-2);
   pointer-events: none;
   transition: transform var(--d-base) var(--ease);
@@ -2721,12 +2717,6 @@ span.tool {
   margin-left: var(--s-2);
   font-size: inherit;
 }
-.brief kbd.ai-mark {
-  flex: none;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
-}
 .brief .ai-by {
   display: inline-flex;
   align-items: center;
@@ -2763,15 +2753,16 @@ span.tool {
   border-radius: var(--r-md);
   background: var(--bg-0);
 }
-/* Quiet uppercase words, not pills (idea 31): the text and its buttons lead. "Asked of you" keeps a warm tone. */
+/* Quiet words, not pills (idea 31): the text and its buttons lead. "Asked of you" keeps a warm tone. */
 .brief-row .tag {
   flex: none;
-  min-width: 96px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 112px;
   color: var(--fg-2);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
+  font-weight: 500;
 }
 .brief-row .tag.ask {
   color: var(--warn-fg);
@@ -2788,7 +2779,16 @@ span.tool {
   flex: none;
   gap: var(--s-1);
 }
-.brief-row .do button {
+.brief-row .do button.link {
+  height: 28px;
+  padding: 0 var(--s-1);
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 500;
+}
+.brief-row .do button:not(.link) {
   height: 28px;
   padding: 0 var(--s-2);
   border: 1px solid var(--line);
@@ -2797,7 +2797,7 @@ span.tool {
   color: var(--fg-0);
   font-size: var(--t-sm);
 }
-.brief-row .do button:hover {
+.brief-row .do button:not(.link):hover {
   background: var(--bg-2);
 }
 .brief-row .do button.primary {
@@ -2852,10 +2852,8 @@ span.tool {
   gap: 10px;
   margin: var(--s-4) 0 var(--s-1);
   padding: 0 10px;
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 .history .day:first-child {
@@ -3341,10 +3339,8 @@ button.fold {
 .command-bar li.group {
   height: 24px;
   padding-top: var(--s-2);
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--fg-2);
 }
 .command-bar .pick-key {
@@ -3393,18 +3389,21 @@ button.fold {
 }
 .sheet-body {
   overflow-y: auto;
-  padding: var(--s-2) var(--s-4) var(--s-4);
+  padding: var(--s-3) var(--s-4) var(--s-4);
   columns: 2 260px;
   column-gap: var(--s-5);
 }
 .sheet section {
   break-inside: avoid;
 }
+/* A heading at the top of the second column loses its margin at the break; the first one drops its own too, so both
+   columns start on one line (idea 79). */
+.sheet-body > section:first-child h3 {
+  margin-top: 0;
+}
 .sheet h3 {
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--fg-2);
   margin: var(--s-3) 0 var(--s-1);
 }
@@ -4592,7 +4591,7 @@ button.fold {
   accent-color: var(--accent);
 }
 .settings-content
-  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .list-row .end, .ai-ask, .settings-card .setting)
+  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .list-row .end, .settings-card .ai-ask, .settings-card .setting)
   button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button, .switch, .icon-button, .dropdown, .dropdown *, .word-tag button) {
   height: 32px;
   padding: 0 var(--s-3);
@@ -4604,7 +4603,7 @@ button.fold {
   box-shadow: var(--raise);
 }
 .settings-content
-  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .list-row .end, .ai-ask, .settings-card .setting)
+  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .list-row .end, .settings-card .ai-ask, .settings-card .setting)
   button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button, .switch, .icon-button, .dropdown, .dropdown *, .word-tag button):hover:not(:disabled) {
   background: var(--bg-2);
   border-color: var(--line-strong);
@@ -4626,10 +4625,8 @@ button.fold {
 }
 .panel-head {
   padding: 0 var(--s-1) var(--s-1);
-  font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
+  font-weight: 600;
   color: var(--fg-2);
 }
 .detail.panel {
@@ -4645,10 +4642,8 @@ button.fold {
 }
 .group-title {
   margin: 0;
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 .detail.panel .detail-foot {
@@ -5470,10 +5465,8 @@ button.place.muted {
   padding: var(--s-4);
 }
 .snippet-preview .label {
-  font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
+  font-weight: 600;
   color: var(--fg-2);
 }
 .mail-body p {
@@ -6175,11 +6168,6 @@ button.ai-line:hover {
   font-size: var(--t-rd);
   color: var(--fg-1);
 }
-.ai-replies kbd.ai-mark {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
-}
 .ai-wait {
   color: var(--fg-2);
 }
@@ -6188,10 +6176,6 @@ button.ai-line:hover {
   display: inline-block;
   border: 1px solid var(--line);
   background: var(--bg-2);
-}
-.reply-end .ai-replies kbd.ai-mark {
-  border-color: transparent;
-  background: var(--accent-soft);
 }
 .reply-end .ai-replies .ai-ask kbd:last-child {
   display: none;
@@ -6217,10 +6201,8 @@ button.ai-line:hover {
   margin-bottom: var(--s-2);
 }
 .ai-answer-head .kicker {
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-1);
 }
 .ai-intents {
@@ -6434,10 +6416,8 @@ fieldset.plain {
   background: var(--bg-1);
   border-top: none;
   padding-block: var(--s-2);
-  font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
+  font-weight: 600;
   color: var(--fg-2);
 }
 .ai-ledger .name {
@@ -6502,10 +6482,8 @@ fieldset.plain {
 }
 .ai-card .kicker,
 .style-note .kicker {
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-1);
 }
 .ai-card .meter {
@@ -6781,13 +6759,6 @@ button.link.danger {
 }
 
 /* The AI mark wherever writing help shows. */
-.ai-side kbd.ai-mark,
-.ai-try kbd.ai-mark,
-.ai-button kbd.ai-mark {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
-}
 .ai-preview {
   min-height: 160px;
   padding: var(--s-2) 0;
@@ -7237,11 +7208,6 @@ button.link.danger {
   background: var(--soft);
   font-size: var(--t-md);
   color: var(--fg-1);
-}
-.deck-card .ai-replies kbd.ai-mark {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
 }
 .deck-actions {
   display: grid;
@@ -8207,11 +8173,6 @@ button.link.danger {
 .companion .ai-fill:hover {
   background: var(--bg-2);
 }
-.companion .ai-fill kbd.ai-mark {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
-}
 .companion .task-project {
   align-self: center;
   overflow: hidden;
@@ -8363,10 +8324,8 @@ button.link.danger {
   align-items: center;
   gap: var(--s-2);
   margin: 0;
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 .companion h2 .count {
@@ -8834,8 +8793,6 @@ button.link.danger {
   margin: 0;
   font-size: var(--t-xs, 11px);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 .ai-side .hint {
@@ -9488,10 +9445,8 @@ button.link.danger {
   align-items: baseline;
   gap: var(--s-1);
   padding: 0 var(--s-2) var(--s-1);
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 .outline-head .faint {
@@ -9750,8 +9705,6 @@ button.link.danger {
   padding: var(--s-2) var(--s-2) 2px;
   font-size: var(--t-xs, 11px);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -9794,12 +9747,6 @@ button.link.danger {
   margin-left: auto;
   font-size: var(--t-xs);
   color: var(--fg-2);
-}
-.ask-mail kbd.ai-mark,
-.tide-ai kbd.ai-mark {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
 }
 .ask-mail-turns {
   display: flex;
@@ -10209,7 +10156,7 @@ button.link.danger {
 .ai-rest.later {
   opacity: 0.5;
 }
-.ai-ask {
+.settings-card .ai-ask {
   display: grid;
   gap: var(--s-2);
   padding: var(--s-3) 18px;
@@ -10316,4 +10263,59 @@ button.link.danger {
   background: var(--mark-soft);
   color: var(--fg-0);
   border-radius: 3px;
+}
+
+/* AI is one mark everywhere: the sparkle settings already uses, never a key cap that reads as a shortcut (idea 77). */
+.ai-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--accent);
+}
+
+/* An inline reply starts at about three lines and grows as it is written, so an empty one leaves no gap (idea 78). */
+.compose.inline .editor-body .ProseMirror {
+  min-height: 72px;
+}
+/* The folded quote names what it holds in the text's own font, not as spaced-out letters. */
+button.fold.said {
+  max-width: 100%;
+  height: 24px;
+  padding: 0 var(--s-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: normal;
+  line-height: 24px;
+  font-family: var(--font);
+  color: var(--fg-1);
+}
+.search-note .coverage {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-note .server-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: var(--s-1);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.search-note {
+  flex-wrap: nowrap;
+}
+
+/* A narrow reading pane (the companion open in a smaller window): the view toggles fold into the ⋯ menu, so the
+   subject keeps two lines and Done stays (idea 75). */
+.reading {
+  container: reading / inline-size;
+}
+@container reading (max-width: 760px) {
+  .conversation-head .tools .extra,
+  .conversation-head .tools .vsep {
+    display: none;
+  }
 }

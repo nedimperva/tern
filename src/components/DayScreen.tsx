@@ -1,4 +1,5 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { Icon } from "./Icon";
 import { api, type AiOvernight, type ThreadRow } from "../api";
 import { asRow } from "../app/rows";
 import { closeScreen, start, waitedFor, waitingSince } from "../day";
@@ -36,13 +37,13 @@ function Overnight(props: { since: number; onOpen: (row: ThreadRow) => void }) {
       <section class="tide-ai" aria-live="polite">
         <Show when={state() !== "idle"} fallback={
           <button type="button" class="ai-ask" onClick={() => void run()} title="Sends what came in to your AI provider">
-            <kbd class="ai-mark">AI</kbd>
+            <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
             Summarise what came in
           </button>
         }>
           <Show when={state() === "done" && got()} fallback={
             <p class="tide-ai-line" classList={{ error: state() === "error" }}>
-              <kbd class="ai-mark">AI</kbd> {state() === "error" ? error() : streamed().split("\n")[0]?.replace(/^- /, "") || "Reading what came in…"}
+              <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span> {state() === "error" ? error() : streamed().split("\n")[0]?.replace(/^- /, "") || "Reading what came in…"}
             </p>
           }>
             {(o) => (

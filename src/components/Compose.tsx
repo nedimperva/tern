@@ -941,7 +941,7 @@ export function Compose(props: {
   const side = () => (
     <aside class="ai-side" ref={asideEl} aria-label="Writing help">
       <header>
-        <kbd class="ai-mark">AI</kbd>
+        <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
         <strong>Writing help</strong>
         <span class="spacer" />
         <kbd>Ctrl J</kbd>
@@ -1250,7 +1250,7 @@ export function Compose(props: {
               )}
             </Show>
             <div class="ai-try-bar">
-              <kbd class="ai-mark">AI</kbd>
+              <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
               <span class="text">
                 {v.written
                   ? `Try ${shown() + 1} of ${versions().length}. It isn't in the email until you keep it.`

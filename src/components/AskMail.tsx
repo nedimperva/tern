@@ -1,4 +1,5 @@
 import { createSignal, For, onMount, Show } from "solid-js";
+import { Icon } from "./Icon";
 import { api, type AiAnswer } from "../api";
 import { askFirst, setAskFirst, setAskingMail } from "../app/state";
 
@@ -61,7 +62,7 @@ export function AskMail(props: { onOpen: (id: number) => void }) {
     <div class="ask-mail-scrim" onClick={(e) => e.target === e.currentTarget && setAskingMail(false)}>
       <section class="ask-mail" role="dialog" aria-label="Ask your mail">
         <header>
-          <kbd class="ai-mark">AI</kbd>
+          <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
           <h2>Ask your mail</h2>
           <span class="quiet">Searched on this computer; what it finds goes to your AI provider</span>
         </header>

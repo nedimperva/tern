@@ -20,6 +20,18 @@ every release needs one here before it is tagged.
 
 ### Changed
 
+- Settings read one way on every page: a line on what the page is for, a preview where there is something to see,
+  then headed groups of rows, with switches for on and off. Moods are picked from pictures, Senders is one list
+  with a split preview, AI shows what would leave the computer, and searching settings marks the matching rows.
+- Files in compose fold into one line (how many, how big, their names) and open to a row each; long names are cut
+  in the middle so their ends show. The size bar is gone; a note shows only near or past 25 MB.
+- Compose's footer: writing tools on the left (attach, AI, snippet, signature), and on the right a red discard icon
+  and Send with an arrow for Send & Done, Send later and Remind me. The ⋯ menu is gone.
+- Headings are in plain words everywhere instead of capitals; AI is marked with the sparkle everywhere.
+- The facts card over a conversation says When, Where and Asked of you with icons, and its actions are links.
+- An inline reply starts small; its folded quote shows the quote's first words.
+- With little room, a conversation's view buttons move into its ⋯ menu so the subject keeps its space.
+- The problems pill keeps its dot and drops the triangle; the search line fits on one line.
 - In Tern's title bar a conversation closes from a back arrow before its subject (Esc as before), away from the
   window's own close button.
 - A narrow window folds search to its icon before it can lie over the tabs.

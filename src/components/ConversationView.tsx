@@ -766,7 +766,13 @@ export function ConversationView(props: {
   );
   const menu = () => {
     const sender = privacy().sender;
-    const items = [...props.menu(), { name: "Show original", group: "view", run: () => setOriginal(last() ?? null) }];
+    // The view toggles are here too, so they still reach when a narrow header folds them away (idea 75).
+    const items = [
+      ...props.menu(),
+      ...(designed().size ? [{ name: reading() ? "Show the original look" : "Reading view", group: "view", run: () => setReading(!reading()) }] : []),
+      ...(listMail() && !left() ? [{ name: "Unsubscribe", group: "view", run: () => void unsubscribe() }] : []),
+      { name: "Show original", group: "view", run: () => setOriginal(last() ?? null) },
+    ];
     if (!sender) return items;
     return [
       ...items,
