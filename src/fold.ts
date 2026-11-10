@@ -51,6 +51,108 @@ export function signatureLine(folded: string): string | null {
   return said.length ? said.join(" · ") : null;
 }
 
+/** "On …, Ana Rossi <ana@x.org> wrote:" in the languages above; the middle holds the date and the name. */
+const WROTE_LINE =
+  /^(?:On|Am|Le|El|Il|Op|Den|W dniu|Dana|Dne)\s(.{2,300}?)\s*(?:wrote|schrieb|a écrit|escribió|ha scritto|schreef|skrev|napisał|je napisao|je napisala|napisao|napisala|napisal|napsal)\s*:?$/i;
+/** An Outlook or forward header's lines: who, when, to whom, about what. */
+const HEADER_LINE = /^(From|Od|Von|De|Šalje|Pošiljatelj|Sent|Date|Datum|Poslano|Poslato|Gesendet|Envoyé|To|Za|An|À|Prima|Cc|Kopija|Subject|Predmet|Betreff|Objet|Tema)\s*:\s*(.*)$/i;
+const FROM_KEY = /^(From|Od|Von|De|Šalje|Pošiljatelj)$/i;
+const SUBJECT_KEY = /^(Subject|Predmet|Betreff|Objet|Tema)$/i;
+
+/** The name in "Ana Rossi <ana@x.org>", "Ana Rossi [mailto:ana@x.org]" or "ana@x.org": the address when that is all. */
+function nameOf(who: string): string {
+  const addr = who.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0] ?? "";
+  const name = who
+    .replace(/<[^>]*>|\[mailto:[^\]]*\]|\([^)]*@[^)]*\)/gi, "")
+    .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "")
+    .replace(/["'“”]/g, "")
+    .trim()
+    .replace(/[,;:]$/, "")
+    .trim();
+  return name || addr;
+}
+
+/** The sender in the middle of an "On … wrote:" line, its date taken off the front: after the time when it says
+ * one ("…, 3 Nov 2025 at 10:04 Ana Rossi"), else after the last comma ("On Mon, Ana"). */
+function wroteName(middle: string): string {
+  const before = middle.includes("<") ? middle.slice(0, middle.indexOf("<")) : middle;
+  const times = [...before.matchAll(/\d{1,2}[:.]\d{2}(?::\d{2})?(?:\s?[AaPp]\.?[Mm]\.?)?(?:\s?(?:[A-Z]{2,5}|[+-]\d{4}))?,?/g)];
+  const last = times.at(-1);
+  let name = last ? before.slice((last.index ?? 0) + last[0].length) : before.slice(before.lastIndexOf(",") + 1);
+  // Thunderbird says the date alone before the comma ("03/11/2025 10:04, Ana"); what is left must not be a date.
+  if (/\d{4}/.test(name)) name = "";
+  name = nameOf(name);
+  return name || nameOf(middle);
+}
+
+const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max).replace(/\s+\S*$/, "")}…` : text);
+
+/** What a folded quote holds, so its "···" pill can say whose mail it is: the sender from the "On … wrote:" line
+ * or the From: of Outlook's or a forward's header, and the quoted mail's first words (its subject when it has
+ * none). Null when the fold holds no quote. */
+export function quoteOf(folded: string): { who: string; said: string } | null {
+  const lines = folded
+    .split("\n")
+    .map((l) => l.replace(/\u00a0/g, " ").trim())
+    // Outlook's header can arrive as one line ("From: Ana Sent: Monday To: Tom Subject: Offer").
+    .flatMap((l) => (HEADER_START.test(l) && OUTLOOK_HEADER.test(l) ? l.split(/\s+(?=(?:Sent|Poslano|Poslato|Gesendet|Envoyé|Date|Datum|To|Za|An|À|Prima|Cc|Subject|Predmet|Betreff|Objet|Tema):\s)/) : [l]));
+  let who = "";
+  let subject = "";
+  let start = -1;
+  for (let i = 0; i < lines.length && start < 0; i++) {
+    const l = lines[i];
+    const wrote = l.match(WROTE_LINE) ?? (/^(On|Am|Le) /.test(l) ? `${l} ${lines[i + 1] ?? ""}`.match(WROTE_LINE) : null);
+    if (wrote) {
+      who = wroteName(wrote[1]);
+      start = wrote[0].length > l.length ? i + 2 : i + 1;
+      continue;
+    }
+    const head = l.match(HEADER_LINE);
+    if (head && FROM_KEY.test(head[1]) && HEADER_LINE.test(lines[i + 1] ?? "")) {
+      who = nameOf(head[2]);
+      let j = i;
+      for (; j < lines.length && HEADER_LINE.test(lines[j]); j++) {
+        const h = lines[j].match(HEADER_LINE);
+        if (h && SUBJECT_KEY.test(h[1])) subject = h[2].trim();
+      }
+      start = j;
+      continue;
+    }
+    if (l.startsWith(">")) start = i;
+  }
+  if (start < 0) return null;
+  const words: string[] = [];
+  for (const raw of lines.slice(start)) {
+    const l = raw.replace(/^(>\s?)+/, "").trim();
+    // The quote's own quote, or its signature, ends its words.
+    if (WROTE_LINE.test(l) || /^-{2,}\s*(Original|Forwarded)/i.test(l) || l === "--" || (words.length && SIGN_OFF.test(l))) break;
+    if (/^-{2,}\s*(Original|Forwarded)/i.test(raw) || HEADER_LINE.test(l)) continue;
+    if (l) words.push(l);
+    if (words.join(" ").length > 90) break;
+  }
+  const said = clip(words.join(" ").replace(/\s+/g, " "), 60) || subject;
+  if (!who && !said) return null;
+  return { who, said };
+}
+
+/** The quote pill's words, as compose's own quote pill says them: "“Thanks for the offer…” · Ana Rossi’s message". */
+export function quoteLabel(q: { who: string; said: string }): string {
+  if (q.who && q.said) return `“${q.said}” · ${q.who}’s message`;
+  return q.who ? `${q.who}’s message` : `“${q.said}”`;
+}
+
+/** A greeting alone on the first line ("Hi Ana,", "Poštovani,", "Dear all,"), which a one-line preview can do without. */
+const GREETING =
+  /^(hi|hello|hey|dear|good (morning|afternoon|evening)|poštovani|poštovana|poštovanje|postovani|postovana|postovanje|dragi|draga|zdravo|ćao|cao|pozdrav|dobar dan|dobro jutro|hallo|liebe|lieber|sehr geehrte\w*|guten tag|bonjour|salut)\b[^.?!\n]{0,30}[,!]?$/i;
+
+/** The text without its first line when that is only a greeting, so a preview starts at what the mail says. */
+export function withoutGreeting(text: string): string {
+  const t = text.trimStart();
+  const end = t.indexOf("\n");
+  if (end < 0) return text;
+  return GREETING.test(t.slice(0, end).trim()) && t.slice(end).trim() ? t.slice(end + 1) : text;
+}
+
 /** Where in a plain-text body the quoted reply or the signature starts, so it can be folded; -1 if nowhere. */
 export function foldAt(text: string): number {
   const lines = text.split("\n");

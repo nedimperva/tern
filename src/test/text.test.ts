@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { mentionsAttachment, outside } from "../attachmentWords";
 import { findAsks, findCodes, findWhere } from "../facts";
-import { foldAt, markQuotes, signatureLine } from "../fold";
+import { foldAt, markQuotes, quoteLabel, quoteOf, signatureLine, withoutGreeting } from "../fold";
 import { keyLabel } from "../keys";
 
 describe("foldAt", () => {
@@ -27,6 +27,36 @@ describe("foldAt", () => {
     // A greeting is not a sign-off, and a quote's fold says nothing about a signature.
     expect(foldAt("Pozdrav,\nimate li pištolj na stanju?")).toBe(-1);
     expect(signatureLine("On Tue, Ana wrote:\n> Evo.")).toBeNull();
+  });
+});
+
+describe("quoteOf", () => {
+  it("says whose mail a reply quotes and its first words", () => {
+    const gmail = "On Mon, Nov 3, 2025 at 10:04 AM Ana Rossi <ana@example.com> wrote:\n> Evo ponude za plin.\n> Javite se.";
+    expect(quoteOf(gmail)).toEqual({ who: "Ana Rossi", said: "Evo ponude za plin. Javite se." });
+    expect(quoteLabel(quoteOf(gmail)!)).toBe("“Evo ponude za plin. Javite se.” · Ana Rossi’s message");
+    expect(quoteOf("On Tue, Ana wrote:\n> Evo.")?.who).toBe("Ana");
+    expect(quoteOf("On 3 Nov 2025, at 10:04, Cuzovic, Muhamed <m@example.com> wrote:\n> Ok.")?.who).toBe("Cuzovic, Muhamed");
+    expect(quoteOf("On 03/11/2025 10:04, Tom Berg wrote:\n> Hi")?.who).toBe("Tom Berg");
+  });
+  it("reads Outlook's header, in Bosnian too, and a forward's", () => {
+    const outlook = "Od: Muhamed Cuzovic <m@example.com>\nPoslano: 3. novembar 2025 10:04\nZa: Nedim\nPredmet: Narudžba\n\nPoštovani,\nšaljem narudžbu.";
+    expect(quoteOf(outlook)).toEqual({ who: "Muhamed Cuzovic", said: "Poštovani, šaljem narudžbu." });
+    const oneLine = "From: Ana Rossi Sent: Monday, 3 November To: Tom Subject: Offer";
+    expect(quoteOf(oneLine)).toEqual({ who: "Ana Rossi", said: "Offer" });
+    const fwd = "---------- Forwarded message ----------\nFrom: ana@example.com\nDate: Mon\nSubject: Plan\nTo: tom@example.com\n\nThe plan is attached.";
+    expect(quoteOf(fwd)).toEqual({ who: "ana@example.com", said: "The plan is attached." });
+  });
+  it("finds the quote under your own signature, and stops at the quote's own sign-off", () => {
+    const own = "S poštovanjem,\nNedim Perva\nReferent\n\nOn Tue, Ana wrote:\n> Evo ponude.\n> Pozdrav\n> Ana";
+    expect(quoteOf(own)).toEqual({ who: "Ana", said: "Evo ponude." });
+    expect(quoteOf("--\nAda Lovelace\nAnalyst")).toBeNull();
+  });
+  it("leaves a greeting out of a one-line preview, not the words after it", () => {
+    expect(withoutGreeting("Poštovani,\n\nšaljem narudžbu.").trim()).toBe("šaljem narudžbu.");
+    expect(withoutGreeting("Hi Ana,\nSee you at 10.").trim()).toBe("See you at 10.");
+    expect(withoutGreeting("Hi, can you send it today?\nThanks")).toBe("Hi, can you send it today?\nThanks");
+    expect(withoutGreeting("Pozdrav,")).toBe("Pozdrav,");
   });
 });
 

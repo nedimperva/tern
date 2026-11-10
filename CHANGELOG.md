@@ -7,6 +7,24 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- A quote's "···" says whose mail it holds and how it starts ("“Evo ponude…” · Ana’s message"), from the
+  "On … wrote:" line or Outlook's and a forward's header, beside the signature's line when a mail has both.
+- "Earlier in this conversation" lists the mails it holds, a line each: who, their own words, when.
+
+### Changed
+
+- A closed message's line in a thread shows its own words: the quote it carries, its signature and a lone
+  greeting are left out.
+
+### Fixed
+
+- Send and its menu slipped under compose's footer when the row ran out of room (a long From address, the word
+  count, a narrow window); the From address now gives way instead.
+- A long conversation with unread mail between read ones showed "Earlier in this conversation" more than once,
+  each with the count of all of them.
+
 ## [2.2.0] - 2026-11-10
 
 Settings read one way on every page, compose folds its files into one line and gets a calmer footer, and a
