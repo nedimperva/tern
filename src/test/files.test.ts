@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filesOf } from "../files";
+import { filesOf, middleCut } from "../files";
 
 describe("a message's files", () => {
   it("leaves out the pictures its HTML shows, keeping each file's index", () => {
@@ -15,5 +15,17 @@ describe("a message's files", () => {
       ["TROŠKOVI.pdf", 1],
       ["photo.jpg", 2],
     ]);
+  });
+});
+
+describe("middleCut", () => {
+  it("keeps short names whole", () => {
+    expect(middleCut("Budget.xlsx")).toBe("Budget.xlsx");
+  });
+  it("keeps the end and the extension of a long name", () => {
+    const cut = middleCut("Q3 offer for Analytical Engines - final v2.pdf", 32);
+    expect(cut.length).toBeLessThanOrEqual(32);
+    expect(cut.endsWith("final v2.pdf")).toBe(true);
+    expect(cut).toContain("…");
   });
 });

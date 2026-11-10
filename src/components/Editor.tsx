@@ -243,6 +243,8 @@ export function Editor(props: {
   const [hasQuote, setHasQuote] = createSignal(false);
   const [quoteOpen, setQuoteOpen] = createSignal(props.quoteOpen ?? false);
   const [quotedFrom, setQuotedFrom] = createSignal("");
+  // The quote's first words, so the folded pill says what it holds, not only whose it is (idea 78).
+  const [quoteStart, setQuoteStart] = createSignal("");
   // The snippet picker: where its `;` is, what follows it, and which entry is pointed at.
   const [picker, setPicker] = createSignal<{ from: number; typed: string; left: number; top: number } | null>(null);
   const [pointed, setPointed] = createSignal(0);
@@ -293,6 +295,8 @@ export function Editor(props: {
     // "On …, Ada Lovelace <ada@…> wrote:" above the quote folds with it; the pill says whose it is (idea 39).
     const above = state.doc.childCount > 1 ? state.doc.child(state.doc.childCount - 2) : null;
     setQuotedFrom(above && /wrote:\s*$/.test(above.textContent) ? quotedName(above.textContent) : "");
+    const said = last?.type === blockquote ? last.textBetween(0, last.content.size, " ").replace(/\s+/g, " ").trim() : "";
+    setQuoteStart(said.length > 34 ? `${said.slice(0, 32).trimEnd()}…` : said);
     findTrigger(state);
   };
 
@@ -483,11 +487,12 @@ export function Editor(props: {
         <button
           type="button"
           class="fold"
+          classList={{ said: !!quotedFrom() && !quoteOpen() }}
           title={quoteOpen() ? "Hide quoted text" : "Show quoted text"}
           aria-expanded={quoteOpen()}
           onClick={() => setQuoteOpen(!quoteOpen())}
         >
-          {quotedFrom() && !quoteOpen() ? `${quotedFrom()}'s message · show` : "···"}
+          {quotedFrom() && !quoteOpen() ? (quoteStart() ? `“${quoteStart()}” · ${quotedFrom()}’s message` : `${quotedFrom()}’s message`) : "···"}
         </button>
       </Show>
       <Show when={picker() && offered().length ? picker() : null}>

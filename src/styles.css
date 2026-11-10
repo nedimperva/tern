@@ -653,8 +653,6 @@ button.primary kbd {
   padding: 0;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 .search-quick .quick-row {
@@ -760,10 +758,8 @@ button.primary kbd {
   gap: var(--s-3);
   padding: 0 var(--s-4) 6px var(--s-4);
   box-sizing: border-box;
-  font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
+  font-weight: 600;
   color: var(--fg-2);
   pointer-events: none;
   transition: transform var(--d-base) var(--ease);
@@ -2721,12 +2717,6 @@ span.tool {
   margin-left: var(--s-2);
   font-size: inherit;
 }
-.brief kbd.ai-mark {
-  flex: none;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
-}
 .brief .ai-by {
   display: inline-flex;
   align-items: center;
@@ -2763,15 +2753,16 @@ span.tool {
   border-radius: var(--r-md);
   background: var(--bg-0);
 }
-/* Quiet uppercase words, not pills (idea 31): the text and its buttons lead. "Asked of you" keeps a warm tone. */
+/* Quiet words, not pills (idea 31): the text and its buttons lead. "Asked of you" keeps a warm tone. */
 .brief-row .tag {
   flex: none;
-  min-width: 96px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 112px;
   color: var(--fg-2);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
+  font-weight: 500;
 }
 .brief-row .tag.ask {
   color: var(--warn-fg);
@@ -2788,7 +2779,16 @@ span.tool {
   flex: none;
   gap: var(--s-1);
 }
-.brief-row .do button {
+.brief-row .do button.link {
+  height: 28px;
+  padding: 0 var(--s-1);
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 500;
+}
+.brief-row .do button:not(.link) {
   height: 28px;
   padding: 0 var(--s-2);
   border: 1px solid var(--line);
@@ -2797,7 +2797,7 @@ span.tool {
   color: var(--fg-0);
   font-size: var(--t-sm);
 }
-.brief-row .do button:hover {
+.brief-row .do button:not(.link):hover {
   background: var(--bg-2);
 }
 .brief-row .do button.primary {
@@ -2852,10 +2852,8 @@ span.tool {
   gap: 10px;
   margin: var(--s-4) 0 var(--s-1);
   padding: 0 10px;
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 .history .day:first-child {
@@ -3341,10 +3339,8 @@ button.fold {
 .command-bar li.group {
   height: 24px;
   padding-top: var(--s-2);
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--fg-2);
 }
 .command-bar .pick-key {
@@ -3393,18 +3389,21 @@ button.fold {
 }
 .sheet-body {
   overflow-y: auto;
-  padding: var(--s-2) var(--s-4) var(--s-4);
+  padding: var(--s-3) var(--s-4) var(--s-4);
   columns: 2 260px;
   column-gap: var(--s-5);
 }
 .sheet section {
   break-inside: avoid;
 }
+/* A heading at the top of the second column loses its margin at the break; the first one drops its own too, so both
+   columns start on one line (idea 79). */
+.sheet-body > section:first-child h3 {
+  margin-top: 0;
+}
 .sheet h3 {
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--fg-2);
   margin: var(--s-3) 0 var(--s-1);
 }
@@ -3669,105 +3668,124 @@ button.fold {
   overflow: hidden;
   font: var(--t-rd) / 1.5 var(--font);
 }
-/* Files going with the message: picture thumbnails, else the file's kind. Scoped to compose: unscoped, these
-   rules also turned a received file's card into a narrow tile that cut its name to a few letters. */
+/* Files going with the message: a folded tray, one line until it is opened, then a row a file (idea 70, C). Names
+   cut in the middle keep their ends, so "final v2.pdf" still reads. */
 .outgoing-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
   margin-top: var(--s-2);
-}
-.outgoing-files .file-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  width: 132px;
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   background: var(--soft);
   overflow: hidden;
 }
-.outgoing-files .file-card .thumb {
+.outgoing-files .tray-head {
   display: flex;
   align-items: center;
-  justify-content: center;
-  height: 72px;
-  background: var(--bg-2);
-  color: var(--fg-2);
-}
-.outgoing-files .file-card .thumb img {
+  gap: 6px;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.outgoing-files .file-card .meta {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--s-1);
-  padding: 4px 6px;
-  font-size: var(--t-xs);
+  height: 36px;
+  padding: 0 var(--s-3);
+  border: 0;
+  background: none;
   color: var(--fg-1);
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
 }
-.outgoing-files .file-card .name {
+.outgoing-files .tray-head:hover {
+  background: var(--soft-hover);
+}
+.outgoing-files .tray-head strong {
+  flex: none;
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.outgoing-files .tray-sum {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.outgoing-files .file-card .size {
-  flex: none;
   color: var(--fg-2);
 }
-.outgoing-files .file-card .remove {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 20px;
-  height: 20px;
+.tray-list {
+  max-height: 180px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+.tray-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto 24px;
+  align-items: center;
+  gap: var(--s-3);
+  height: 36px;
+  padding: 0 var(--s-2) 0 var(--s-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-md);
+}
+.tray-row .badge {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  object-fit: cover;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: var(--file-other);
+}
+.tray-row .badge.pdf { background: var(--file-pdf); }
+.tray-row .badge.doc { background: var(--file-doc); }
+.tray-row .badge.sheet { background: var(--file-sheet); }
+.tray-row .badge.slides { background: var(--file-slides); }
+.tray-row .badge.image { background: var(--file-image); }
+.tray-row .badge.quiet {
+  background: var(--bg-2);
+  color: var(--fg-1);
+}
+.tray-row .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-0);
+}
+.tray-row .size {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.tray-row .remove {
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-2);
+  font-size: 16px;
   line-height: 1;
-  cursor: pointer;
-  opacity: 0;
 }
-.outgoing-files .file-card:hover .remove,
-.outgoing-files .file-card .remove:focus-visible {
-  opacity: 1;
+.tray-row .remove:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
 }
-.size-meter {
+/* Only a size worth a word gets one: amber near the usual limit, red past it. */
+.size-note {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  margin-top: var(--s-1);
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.size-meter .bar {
-  flex: none;
-  width: 120px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--line);
-  overflow: hidden;
-}
-.size-meter .bar span {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-}
-.size-meter.near {
+  margin: var(--s-2) 0 0;
+  padding: 6px var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--warn-soft);
   color: var(--warn-fg);
+  font-size: var(--t-sm);
 }
-.size-meter.near .bar span {
-  background: var(--warn);
-}
-.size-meter.over {
+.size-note.over {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
   color: var(--danger);
-}
-.size-meter.over .bar span {
-  background: var(--danger);
 }
 /* Files dragged over the window: where they go. The window takes the drop; this only says so. */
 .drop-zone {
@@ -3956,7 +3974,7 @@ button.fold {
 .send-split > .primary:first-child {
   border-radius: var(--r-md) 0 0 var(--r-md);
 }
-.send-split > .more {
+.send-split > .send-more {
   display: inline-flex;
   align-items: center;
   padding: 0 6px;
@@ -4340,44 +4358,26 @@ button.fold {
   padding: var(--s-6) var(--s-6) 64px;
 }
 .settings-content {
-  max-width: 680px;
+  max-width: 760px;
   margin: 0 auto;
 }
 .settings-content.wide {
   max-width: 1280px;
 }
-/* Appearance: the settings at the left, a preview of the look beside them that follows each change. */
-.settings-content.look {
-  max-width: 1040px;
+/* Appearance: the list rows and an open message side by side in the page's preview panel. */
+.look-preview {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  column-gap: var(--s-5);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--s-3);
   align-items: start;
 }
-.settings-content.look > h1 {
-  grid-column: 1 / -1;
+.look-preview .look-card {
+  margin: 0;
 }
-.settings-content.look > .setting {
-  grid-column: 1;
-}
-.look-preview {
-  grid-column: 2;
-  grid-row: 2 / span 4;
-  position: sticky;
-  top: 0;
-  display: grid;
-  gap: var(--s-3);
-  padding: var(--s-3) var(--s-2) var(--s-4);
-  border-radius: var(--r-lg);
-  background: var(--bg-1);
-}
-.look-preview .kicker {
-  padding: 0 var(--s-3);
-  font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--fg-2);
+@media (max-width: 860px) {
+  .look-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .look-rows {
   background: var(--bg-0);
@@ -4439,15 +4439,6 @@ button.fold {
 .look-actions .look-link {
   color: var(--accent);
   font-size: var(--t-sm);
-}
-@media (max-width: 1100px) {
-  .settings-content.look {
-    display: block;
-    max-width: 680px;
-  }
-  .look-preview {
-    position: static;
-  }
 }
 .settings-body h1 {
   font-size: var(--t-xl);
@@ -4543,7 +4534,7 @@ button.fold {
 .settings-page :is(select, input):focus {
   border-color: var(--accent);
 }
-.setting button:not(.link, .primary, [role="radio"]) {
+.setting button:not(.link, .primary, [role="radio"], .switch, .icon-button, .word-tag button) {
   height: 32px;
   padding: 0 var(--s-3);
   background: var(--bg-0);
@@ -4552,7 +4543,7 @@ button.fold {
   white-space: nowrap;
   box-shadow: var(--raise);
 }
-.setting button:not(.link, .primary, [role="radio"]):hover:not(:disabled) {
+.setting button:not(.link, .primary, [role="radio"], .switch, .icon-button, .word-tag button):hover:not(:disabled) {
   background: var(--bg-2);
   border-color: var(--line-strong);
 }
@@ -4600,8 +4591,8 @@ button.fold {
   accent-color: var(--accent);
 }
 .settings-content
-  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions)
-  button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button) {
+  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .settings-content .list-row .end, .settings-card .ai-ask, .settings-card .setting)
+  button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button, .switch, .icon-button, .dropdown, .dropdown *, .word-tag button) {
   height: 32px;
   padding: 0 var(--s-3);
   background: var(--bg-0);
@@ -4612,8 +4603,8 @@ button.fold {
   box-shadow: var(--raise);
 }
 .settings-content
-  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions)
-  button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button):hover:not(:disabled) {
+  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .settings-content .list-row .end, .settings-card .ai-ask, .settings-card .setting)
+  button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button, .switch, .icon-button, .dropdown, .dropdown *, .word-tag button):hover:not(:disabled) {
   background: var(--bg-2);
   border-color: var(--line-strong);
 }
@@ -4634,10 +4625,8 @@ button.fold {
 }
 .panel-head {
   padding: 0 var(--s-1) var(--s-1);
-  font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
+  font-weight: 600;
   color: var(--fg-2);
 }
 .detail.panel {
@@ -4653,10 +4642,8 @@ button.fold {
 }
 .group-title {
   margin: 0;
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 .detail.panel .detail-foot {
@@ -4727,6 +4714,379 @@ button.fold {
   margin: var(--s-3) 0 0;
   font-size: var(--t-sm);
   color: var(--fg-1);
+}
+
+/* Settings, one sheet for every page (canvas "Tern settings and compose", 55): a line on what the page is for, a
+   preview when there is something to see, then groups, each a plain heading and one card of rows. */
+.settings-body .lede {
+  margin: calc(-1 * var(--s-4)) 0 var(--s-5);
+  font-size: var(--t-md);
+  line-height: 1.5;
+  color: var(--fg-1);
+}
+.settings-group {
+  margin-bottom: var(--s-5);
+}
+.settings-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin: 0 2px var(--s-2);
+}
+.settings-group-head h2 {
+  margin: 0;
+  font-size: var(--t-md);
+  font-weight: 600;
+  color: var(--fg-1);
+}
+.settings-group-head small {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.settings-group-head .end {
+  margin-left: auto;
+  font-size: var(--t-sm);
+}
+.settings-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  overflow: hidden;
+}
+.settings-card > * + * {
+  border-top: 1px solid var(--line);
+}
+.settings-card > .setting {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}
+.settings-card > * + .setting {
+  border-top: 1px solid var(--line);
+}
+/* Every control on one edge, at one width: a dropdown, a field, a segmented choice end where a switch ends. */
+.settings-card > .setting {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 58px;
+}
+.settings-card > .setting > .dropdown,
+.settings-card > .setting > input:not([type="checkbox"], [type="radio"]) {
+  width: 240px;
+}
+/* A row that only shows once the one above is on: set in under it. */
+.settings-card > .setting.sub {
+  background: var(--bg-0);
+  padding-left: 34px;
+  min-height: 48px;
+}
+.setting .segmented button {
+  flex: none;
+  white-space: nowrap;
+}
+.switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-3);
+  cursor: pointer;
+  transition: background var(--d-fast) var(--ease);
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: left var(--d-fast) var(--ease);
+}
+.switch[aria-checked="true"] {
+  background: var(--accent);
+}
+.switch[aria-checked="true"]::after {
+  left: 16px;
+}
+.switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.switch:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 var(--s-2);
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.state-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.8;
+}
+.state-chip.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.state-chip.warn {
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+}
+.settings-preview {
+  display: grid;
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+  padding: var(--s-4) 18px 18px;
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+}
+.settings-preview-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.settings-preview-label::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.settings-preview-note {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+/* A preview's made-up mail: a white sheet on the panel. */
+.preview-sheet {
+  min-width: 0;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  font-size: var(--t-md);
+  color: var(--fg-1);
+  line-height: 1.5;
+}
+.preview-sheet strong {
+  color: var(--fg-0);
+}
+.preview-sheet .small {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.preview-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+@media (max-width: 860px) {
+  .preview-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Lists (senders, providers, accounts, addresses): one look. A find box and filters on top, rows of the same
+   columns, "Show all" at the foot. */
+.settings-content .list-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 10px var(--s-3);
+  background: var(--bg-0);
+}
+.settings-content .list-head .find {
+  flex: 1;
+  min-width: 0;
+}
+.settings-content .list-filters {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+.settings-content .list-filters button {
+  height: 26px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+}
+.settings-content .list-filters button:hover {
+  color: var(--fg-0);
+  background: var(--bg-2);
+}
+.settings-content .list-filters button[aria-pressed="true"] {
+  background: var(--bg-3);
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.settings-content .list-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--s-3);
+  min-height: 56px;
+  padding: var(--s-2) 18px;
+}
+.settings-content .list-row:hover {
+  background: var(--bg-0);
+}
+.settings-content .list-row .badge-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+.settings-content .list-row .badge-mark.square {
+  border-radius: var(--r-md);
+}
+.settings-content .list-row .badge-mark.quiet {
+  background: var(--bg-2);
+  color: var(--fg-1);
+}
+.settings-content .list-row .who {
+  min-width: 0;
+}
+.settings-content .list-row .who strong,
+.settings-content .list-row .who .sub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-content .list-row .who strong {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--fg-0);
+}
+.settings-content .list-row .who .sub {
+  margin-top: 1px;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.settings-content .list-row .who .said {
+  display: block;
+  font-size: var(--t-sm);
+  color: var(--ok);
+}
+.settings-content .list-row .end {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.settings-content .list-row .tag {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  vertical-align: 1px;
+}
+.settings-content .list-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: 10px 18px;
+  background: var(--bg-0);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.settings-content .list-none {
+  margin: 0;
+  padding: var(--s-4) 18px;
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+/* An empty or waiting state: an icon, a line, one button. */
+.settings-empty-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: var(--s-4) 18px;
+}
+.settings-empty-row .mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+}
+.settings-empty-row strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.settings-empty-row span {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+/* A small meter: senders' share, storage. */
+.mini-meter {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.mini-meter .track {
+  position: relative;
+  flex: 1;
+  min-width: 60px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.mini-meter .track span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.6;
+}
+/* A danger row's button: red words, nothing else red. */
+.setting button.danger-text,
+.settings-content .list-row button.danger-text {
+  color: var(--danger);
+}
+/* Searching settings: the rows that match, tinted, their words marked (idea 69). */
+.setting.found {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 .settings-empty {
   flex: 1;
@@ -4889,25 +5249,25 @@ button.pill[aria-pressed="true"] {
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
-.detail .prefixed {
+:is(.detail, .snippet-editor, .signature-editor) .prefixed {
   display: flex;
   align-items: center;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg-0);
 }
-.detail .prefixed:focus-within {
+:is(.detail, .snippet-editor, .signature-editor) .prefixed:focus-within {
   border-color: var(--accent);
 }
-.detail .prefixed.invalid:focus-within {
+:is(.detail, .snippet-editor, .signature-editor) .prefixed.invalid:focus-within {
   border-color: var(--danger);
 }
-.detail .prefixed > span {
+:is(.detail, .snippet-editor, .signature-editor) .prefixed > span {
   padding-left: 10px;
   font-family: var(--mono);
   color: var(--fg-2);
 }
-.detail .prefixed input {
+:is(.detail, .snippet-editor, .signature-editor) .prefixed input {
   flex: 1;
   min-width: 0;
   padding-left: 2px;
@@ -4928,18 +5288,18 @@ button.pill[aria-pressed="true"] {
 .detail .note.bad {
   color: var(--danger);
 }
-.detail .textbox {
+:is(.detail, .snippet-editor, .signature-editor) .textbox {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg-0);
   overflow: hidden;
 }
-.detail .textbox:focus-within {
+:is(.detail, .snippet-editor, .signature-editor) .textbox:focus-within {
   border-color: var(--accent);
 }
 
 /* An HTML signature (pasted from another mail app): where it is pasted, its source, and how it looks. */
-.detail .paste-box {
+:is(.detail, .signature-editor) .paste-box {
   padding: var(--s-3);
   border: 1px dashed var(--line);
   border-radius: var(--r-md);
@@ -4947,12 +5307,12 @@ button.pill[aria-pressed="true"] {
   color: var(--fg-2);
   cursor: text;
 }
-.detail .paste-box:focus {
+:is(.detail, .signature-editor) .paste-box:focus {
   outline: none;
   border-color: var(--accent);
   color: var(--fg-1);
 }
-.detail .html-source {
+:is(.detail, .signature-editor) .html-source {
   width: 100%;
   resize: vertical;
   font: var(--t-xs) / 1.5 var(--mono);
@@ -4988,7 +5348,7 @@ button.pill[aria-pressed="true"] {
   background: #fff;
   box-shadow: inset 0 0 0 1px var(--line);
 }
-.detail .places {
+:is(.detail, .snippet-editor, .signature-editor) .places {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -5009,7 +5369,7 @@ button.place.muted {
   background: var(--bg-2);
   color: var(--fg-1);
 }
-.detail .textbox textarea {
+:is(.detail, .snippet-editor, .signature-editor) .textbox textarea {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -5018,11 +5378,11 @@ button.place.muted {
   resize: vertical;
   font: var(--t-rd) / 1.5 var(--font);
 }
-.detail .textbox .editor-body {
+:is(.detail, .snippet-editor, .signature-editor) .textbox .editor-body {
   min-height: 110px;
   padding: var(--s-3) var(--s-4);
 }
-.detail .textbox .editor-body .ProseMirror {
+:is(.detail, .snippet-editor, .signature-editor) .textbox .editor-body .ProseMirror {
   min-height: 86px;
 }
 /* The signature editor's bar: always there, over the text. */
@@ -5105,10 +5465,8 @@ button.place.muted {
   padding: var(--s-4);
 }
 .snippet-preview .label {
-  font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
+  font-weight: 600;
   color: var(--fg-2);
 }
 .mail-body p {
@@ -5810,11 +6168,6 @@ button.ai-line:hover {
   font-size: var(--t-rd);
   color: var(--fg-1);
 }
-.ai-replies kbd.ai-mark {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
-}
 .ai-wait {
   color: var(--fg-2);
 }
@@ -5823,10 +6176,6 @@ button.ai-line:hover {
   display: inline-block;
   border: 1px solid var(--line);
   background: var(--bg-2);
-}
-.reply-end .ai-replies kbd.ai-mark {
-  border-color: transparent;
-  background: var(--accent-soft);
 }
 .reply-end .ai-replies .ai-ask kbd:last-child {
   display: none;
@@ -5852,10 +6201,8 @@ button.ai-line:hover {
   margin-bottom: var(--s-2);
 }
 .ai-answer-head .kicker {
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-1);
 }
 .ai-intents {
@@ -6069,10 +6416,8 @@ fieldset.plain {
   background: var(--bg-1);
   border-top: none;
   padding-block: var(--s-2);
-  font-size: var(--t-xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
+  font-weight: 600;
   color: var(--fg-2);
 }
 .ai-ledger .name {
@@ -6137,10 +6482,8 @@ fieldset.plain {
 }
 .ai-card .kicker,
 .style-note .kicker {
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-1);
 }
 .ai-card .meter {
@@ -6416,13 +6759,6 @@ button.link.danger {
 }
 
 /* The AI mark wherever writing help shows. */
-.ai-side kbd.ai-mark,
-.ai-try kbd.ai-mark,
-.ai-button kbd.ai-mark {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
-}
 .ai-preview {
   min-height: 160px;
   padding: var(--s-2) 0;
@@ -6872,11 +7208,6 @@ button.link.danger {
   background: var(--soft);
   font-size: var(--t-md);
   color: var(--fg-1);
-}
-.deck-card .ai-replies kbd.ai-mark {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
 }
 .deck-actions {
   display: grid;
@@ -7842,11 +8173,6 @@ button.link.danger {
 .companion .ai-fill:hover {
   background: var(--bg-2);
 }
-.companion .ai-fill kbd.ai-mark {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
-}
 .companion .task-project {
   align-self: center;
   overflow: hidden;
@@ -7998,10 +8324,8 @@ button.link.danger {
   align-items: center;
   gap: var(--s-2);
   margin: 0;
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 .companion h2 .count {
@@ -8469,8 +8793,6 @@ button.link.danger {
   margin: 0;
   font-size: var(--t-xs, 11px);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 .ai-side .hint {
@@ -8874,9 +9196,39 @@ button.link.danger {
 .compose-main > footer .more-wrap {
   position: relative;
 }
-.compose-main > footer .send-menu {
+.compose-main > footer .send-split .send-menu {
   left: auto;
   right: 0;
+}
+/* The signature menu opens up from its button, over the text. */
+.compose-main > footer .send-menu.up-left {
+  min-width: 200px;
+}
+.compose-main > footer .foot-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 var(--s-1);
+  background: var(--line);
+}
+.compose-main > footer .snippet-button {
+  font: 600 15px / 1 var(--mono);
+}
+/* Discard: red and small, only an icon, a step from Send but not beside it by accident. */
+.compose-main > footer .discard {
+  margin-right: var(--s-2);
+  color: var(--danger);
+  opacity: 0.8;
+}
+.compose-main > footer .discard:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.compose-main > footer .send-split .send {
+  box-shadow: none;
+}
+.compose-main > footer .send-split {
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
 }
 .send-menu hr {
   margin: var(--s-1) 0;
@@ -9019,8 +9371,12 @@ button.link.danger {
 .compose.focus .compose-main > footer .send {
   border-radius: 999px;
 }
+.compose.focus .compose-main > footer .send-split {
+  border-radius: 999px;
+}
 .compose.focus .compose-main > footer .from-pick,
-.compose.focus .compose-main > footer .more-wrap,
+.compose.focus .compose-main > footer .foot-sep,
+.compose.focus .compose-main > footer .send-more,
 .compose.focus .compose-main > footer .spacer {
   display: none;
 }
@@ -9061,12 +9417,12 @@ button.link.danger {
 
 /* While the person types, the tools fade; a pause, the mouse or focus on them brings them back. */
 .compose-main > footer .tools,
-.compose-main > footer .more-wrap,
+.compose-main > footer .discard,
 .compose-head .icon-button {
   transition: opacity var(--d-base);
 }
 .compose.typing .compose-main > footer .tools:not(:focus-within),
-.compose.typing .compose-main > footer .more-wrap:not(:focus-within),
+.compose.typing .compose-main > footer .discard:not(:focus-visible),
 .compose.typing .compose-head .icon-button:not(:focus-visible) {
   opacity: 0;
 }
@@ -9089,10 +9445,8 @@ button.link.danger {
   align-items: baseline;
   gap: var(--s-1);
   padding: 0 var(--s-2) var(--s-1);
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 .outline-head .faint {
@@ -9351,8 +9705,6 @@ button.link.danger {
   padding: var(--s-2) var(--s-2) 2px;
   font-size: var(--t-xs, 11px);
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--fg-2);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -9395,12 +9747,6 @@ button.link.danger {
   margin-left: auto;
   font-size: var(--t-xs);
   color: var(--fg-2);
-}
-.ask-mail kbd.ai-mark,
-.tide-ai kbd.ai-mark {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: transparent;
 }
 .ask-mail-turns {
   display: flex;
@@ -9486,4 +9832,596 @@ button.link.danger {
 }
 .window:has(aside.companion) .brief:not(:has(.since, .ai-ask, .ai-by, .brief-line, .brief-rows:not(.local))) {
   display: none;
+}
+::highlight(settings-find) {
+  background-color: var(--mark-soft);
+  color: inherit;
+}
+
+/* Appearance: moods as pictures, a swatch over its name (idea 56). */
+.moods {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: var(--s-2);
+}
+.mood {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: var(--s-2) var(--s-2) 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  color: var(--fg-1);
+  text-align: left;
+  cursor: pointer;
+}
+.mood:hover {
+  border-color: var(--line-strong);
+}
+.mood.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.mood .swatch {
+  width: 100%;
+  height: 44px;
+  margin-bottom: 6px;
+  border-radius: var(--r-md);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.mood .name {
+  font-size: var(--t-md);
+  font-weight: 500;
+  color: var(--fg-0);
+}
+.mood .note {
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.mood:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Small words shared by the previews. */
+.settings-preview .block {
+  display: block;
+}
+.settings-preview .dim {
+  color: var(--fg-2);
+}
+.settings-preview .look-link {
+  color: var(--accent);
+}
+
+/* Reading: a sender's line, then what happens to its pictures. */
+.reading-preview {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--s-3);
+  row-gap: var(--s-2);
+}
+.reading-preview .who-mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+.reading-preview .who-mark.logo {
+  border-radius: var(--r-md);
+  background: var(--fg-0);
+  color: var(--bg-0);
+}
+.reading-preview .who-text {
+  min-width: 0;
+}
+.reading-preview .images-line {
+  grid-column: 1 / -1;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  font-size: var(--t-sm);
+}
+
+/* Compose: the leaving pill and the forgotten-file line. */
+.settings-preview .preview-sheet:has(.leaving-pill),
+.settings-preview .preview-sheet:has(.forgot-text) {
+  display: grid;
+  gap: var(--s-2);
+  align-content: start;
+}
+.leaving-pill {
+  justify-self: start;
+  padding: 6px var(--s-3);
+  border-radius: 999px;
+  background: var(--fg-0);
+  color: var(--bg-0);
+  font-size: var(--t-sm);
+  font-weight: 500;
+}
+.leaving-pill .dim {
+  margin-left: 6px;
+  color: inherit;
+  opacity: 0.6;
+}
+.forgot-text {
+  margin: 0;
+}
+.forgot-text mark {
+  background: var(--mark-soft);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+.forgot-line {
+  padding: 6px var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--warn-soft);
+  color: var(--warn-fg);
+  font-size: var(--t-sm);
+}
+.word-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  max-width: 340px;
+}
+.word-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  padding: 0 4px 0 9px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  font-size: var(--t-sm);
+  color: var(--fg-0);
+}
+.word-tag button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--fg-2);
+  line-height: 1;
+}
+.word-tag button:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.word-tags input {
+  width: 110px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: var(--t-sm);
+}
+
+/* Notifications: a notice as it shows, and the day with its quiet stretch. */
+.toast-sample {
+  display: grid;
+  gap: 2px;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--raise);
+  font-size: var(--t-md);
+  color: var(--fg-1);
+  transition: opacity var(--d-fast) var(--ease);
+}
+.toast-sample.off {
+  opacity: 0.4;
+}
+.toast-sample .app {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.toast-sample strong {
+  color: var(--fg-0);
+}
+.toast-actions {
+  display: flex;
+  gap: var(--s-4);
+  margin-top: var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  color: var(--accent);
+}
+.quiet-strip {
+  display: grid;
+  gap: var(--s-2);
+  align-content: center;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+.quiet-strip .day {
+  position: relative;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.quiet-strip .quiet {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--accent);
+  opacity: 0.45;
+}
+.quiet-strip .now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--fg-0);
+}
+.quiet-strip .hours {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* About. */
+.about-head {
+  margin-bottom: var(--s-5);
+}
+.about-head .settings-empty-row {
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+}
+.storage-meter {
+  max-width: 260px;
+  margin-bottom: 4px;
+}
+
+/* Senders: where the last weeks' mail went, then each sender on one line. */
+.split-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.split-bar .important {
+  background: var(--accent);
+}
+.split-bar .other {
+  background: var(--fg-2);
+  opacity: 0.35;
+}
+.split-legend {
+  display: flex;
+  gap: var(--s-4);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.split-legend strong {
+  color: var(--fg-0);
+  font-variant-numeric: tabular-nums;
+}
+.settings-content .list-row.sender-row {
+  grid-template-columns: 32px minmax(0, 1fr) 120px auto 32px;
+}
+.sender-row .avatar {
+  width: 32px;
+  height: 32px;
+}
+
+/* AI. */
+.ai-payload {
+  display: grid;
+  gap: var(--s-2);
+}
+.ai-payload code {
+  display: block;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  font: var(--t-sm) / 1.55 var(--mono);
+  white-space: pre-wrap;
+  color: var(--fg-1);
+}
+.settings-card .ai-sheet {
+  margin: 0;
+  padding: var(--s-4) 18px;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg-0);
+}
+.ai-provider-row .ai-key-row {
+  padding: 0 18px var(--s-3) 62px;
+}
+.ai-rest {
+  transition: opacity var(--d-fast) var(--ease);
+}
+/* Until a key is in, the rest waits: shown so it can be read, but quiet. */
+.ai-rest.later {
+  opacity: 0.5;
+}
+.settings-card .ai-ask {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3) 18px;
+  background: var(--warn-soft);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+.setting .help .keys {
+  color: var(--fg-2);
+  font-family: var(--mono);
+  font-size: var(--t-xs);
+}
+.ai-meter {
+  min-width: 200px;
+}
+.style-sample {
+  display: grid;
+  gap: 2px;
+  margin: var(--s-2) 0;
+}
+
+/* Todoist: a mail becomes a task. */
+.todoist-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--fg-2);
+}
+.todoist-preview .task {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.todoist-preview .task .ring {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  border: 1.5px solid var(--danger);
+  border-radius: 50%;
+}
+
+/* Backup: what goes in. */
+.backup-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* Account: the person's inbox row and the From picker line. */
+.their-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--s-3);
+  align-items: baseline;
+  margin-top: 4px;
+}
+.their-row span:not(.small) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.from-line {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.from-line .dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* Snippets and signatures: the button above the list, the preview at the head of the editor. */
+.section-intro.end {
+  justify-content: flex-end;
+}
+.detail.panel > .settings-preview {
+  margin: var(--s-4) var(--s-4) 0;
+}
+.sender-row .avatar {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--accent-fg);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+.settings-preview .small {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.settings-card .setting button.link {
+  color: var(--accent);
+  font-weight: 500;
+}
+.ai-payload mark {
+  background: var(--mark-soft);
+  color: var(--fg-0);
+  border-radius: 3px;
+}
+
+/* AI is one mark everywhere: the sparkle settings already uses, never a key cap that reads as a shortcut (idea 77). */
+.ai-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--accent);
+}
+
+/* An inline reply starts at about three lines and grows as it is written, so an empty one leaves no gap (idea 78). */
+.compose.inline .editor-body .ProseMirror {
+  min-height: 72px;
+}
+/* The folded quote names what it holds in the text's own font, not as spaced-out letters. */
+button.fold.said {
+  max-width: 100%;
+  height: 24px;
+  padding: 0 var(--s-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: normal;
+  line-height: 24px;
+  font-family: var(--font);
+  color: var(--fg-1);
+}
+.search-note .coverage {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-note .server-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: var(--s-1);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.search-note {
+  flex-wrap: nowrap;
+}
+
+/* A narrow reading pane (the companion open in a smaller window): the view toggles fold into the ⋯ menu, so the
+   subject keeps two lines and Done stays (idea 75). */
+.reading {
+  container: reading / inline-size;
+}
+@container reading (max-width: 760px) {
+  .conversation-head .tools .extra,
+  .conversation-head .tools .vsep {
+    display: none;
+  }
+}
+
+/* Writing style: each account a group of rows, like every other page. */
+.style-group .settings-card > :is(.style-preview, .style-sample-row, .style-text) {
+  padding: var(--s-4) 18px;
+}
+.style-group .style-sample {
+  margin: 0;
+  max-width: 320px;
+}
+.style-group .style-text textarea {
+  width: 100%;
+  font: var(--t-md) / 1.5 var(--font);
+}
+.style-habits {
+  margin: var(--s-1) 0 0;
+  padding-left: 18px;
+}
+.style-foot-actions {
+  display: flex;
+  gap: var(--s-3);
+}
+.settings-group-head .end button.link {
+  color: var(--accent);
+  font-weight: 500;
+}
+.settings-content .list-foot button.link {
+  color: var(--accent);
+}
+.settings-content .list-foot button.link.danger {
+  color: var(--danger);
+}
+
+/* Snippets and signatures: the list is a card of rows to pick from; the picked one shows below it (canvas 66, 67). */
+.pick-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+.settings-content .pick-row {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-content .pick-row + .pick-row {
+  border-top: 1px solid var(--line);
+}
+.settings-content .pick-row.picked {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.settings-content .pick-row .end .sub {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.pick-row .snippet-key {
+  font: var(--t-sm) var(--mono);
+  color: var(--fg-1);
+}
+/* A field that needs the card's whole width (a text, a pasted signature): its name over it. */
+.settings-card > .setting-block {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3) 18px var(--s-4);
+}
+.setting-block .field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.setting-block .field-head .title {
+  font-size: var(--t-md);
+  font-weight: 500;
+  color: var(--fg-0);
+}
+.setting-block .help {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.setting-block .help.warn {
+  color: var(--warn-fg);
+}
+.snippet-editor,
+.signature-editor {
+  margin-top: var(--s-5);
+}
+.settings-card > .setting .prefixed {
+  width: 240px;
+  box-sizing: border-box;
+}
+.setting .help .note.ok {
+  color: var(--ok);
+}
+.setting .help .note.bad {
+  color: var(--danger);
+}
+fieldset.list-filters {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
 }

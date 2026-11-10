@@ -4,7 +4,7 @@ import { api, type Mark, type ThreadMessage } from "../api";
 import { quietMenu } from "../browserKeys";
 import { labelColour } from "../colours";
 import { catchUp } from "../catchup";
-import { filesOf } from "../files";
+import { filesOf, kind } from "../files";
 import { docOf, windowOf } from "../frames";
 import { unsubscribeTarget } from "../unsubscribe";
 import { foldAt, HTML_FOLD_SELECTOR, markQuotes, signatureLine } from "../fold";
@@ -410,20 +410,6 @@ function size(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
-/** What kind of file a name is, for its badge's label and colour. */
-function kind(name: string, mime: string): { label: string; tone: string } {
-  const ext = /\.([a-z0-9]{1,5})$/i.exec(name)?.[1]?.toLowerCase() ?? "";
-  const tone =
-    ext === "pdf" ? "pdf"
-    : /^(docx?|odt|rtf|pages)$/.test(ext) ? "doc"
-    : /^(xlsx?|ods|csv|numbers)$/.test(ext) ? "sheet"
-    : /^(pptx?|odp|key)$/.test(ext) ? "slides"
-    : /^(zip|rar|7z|gz|tar)$/.test(ext) ? "archive"
-    : mime.startsWith("image/") ? "image"
-    : "other";
-  return { label: (ext || "file").slice(0, 4).toUpperCase(), tone };
-}
-
 /** One file as a card: a picture of it when it is an image already on this computer, else a badge of its type.
  * Opening it downloads it the first time; a preview never does. */
 function FileCard(props: { message: ThreadMessage; index: number; busy: boolean; onOpen: () => void; onSave: () => void }) {
@@ -780,7 +766,13 @@ export function ConversationView(props: {
   );
   const menu = () => {
     const sender = privacy().sender;
-    const items = [...props.menu(), { name: "Show original", group: "view", run: () => setOriginal(last() ?? null) }];
+    // The view toggles are here too, so they still reach when a narrow header folds them away (idea 75).
+    const items = [
+      ...props.menu(),
+      ...(designed().size ? [{ name: reading() ? "Show the original look" : "Reading view", group: "view", run: () => setReading(!reading()) }] : []),
+      ...(listMail() && !left() ? [{ name: "Unsubscribe", group: "view", run: () => void unsubscribe() }] : []),
+      { name: "Show original", group: "view", run: () => setOriginal(last() ?? null) },
+    ];
     if (!sender) return items;
     return [
       ...items,

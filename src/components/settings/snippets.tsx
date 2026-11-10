@@ -4,7 +4,7 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Sh
 import { api, type Account, type Snippet } from "../../api";
 import { fillSnippet, PLACES } from "../../snippets";
 import { Icon } from "../Icon";
-import { accountName, Group, MailPreview, lastDay } from "./shared";
+import { accountName, Group, lastDay, MailPreview, Preview, Row } from "./shared";
 import { Dropdown } from "../Dropdown";
 
 /** Snippets: text typed after `;` in compose. A list on the left, the one picked on the right; changes save as they
@@ -139,32 +139,40 @@ export function SnippetSettings(props: { accounts: Account[] }) {
   };
   const firstLine = (body: string) => body.replace(/\{cursor\}/g, "").split("\n").find((l) => l.trim()) ?? "";
 
+  // In the settings grammar (canvas 66): the list as one card of rows with a find box, then the picked snippet as it
+  // goes out, then its fields as groups of rows.
   return (
     <div class="snippets-settings">
-      <div class="section-intro">
-        <p class="help">
-          Type <kbd>;</kbd> in a message to pick one, or type its shortcut and <kbd>Space</kbd>.
-        </p>
-        <button class="primary" onClick={() => add()}>
-          <Icon name="plus" size={14} /> New snippet
-        </button>
-      </div>
       <Show when={error()}>
         <p class="setting-error">{error()}</p>
       </Show>
-      <Show
-        when={list().length}
-        fallback={
-          <div class="settings-empty">
-            <p>No snippets yet. Save the replies you write again and again, then type <kbd>;</kbd> to use one.</p>
-          </div>
+      <Group
+        title="Your snippets"
+        note={list().length ? `${list().length}` : undefined}
+        end={
+          <button type="button" class="link" onClick={() => add()}>
+            <Icon name="plus" size={13} /> New snippet
+          </button>
         }
       >
-        <div class="master-detail">
-          <section class="master panel" aria-label="Your snippets">
-            <span class="panel-head">
-              {list().length} {list().length === 1 ? "snippet" : "snippets"}
-            </span>
+        <Show
+          when={list().length}
+          fallback={
+            <div class="settings-empty-row">
+              <span class="mark">
+                <Icon name="file-text" size={18} />
+              </span>
+              <span>
+                <strong>No snippets yet</strong>
+                <span>Save the replies you write again and again, then type ; in a message to use one.</span>
+              </span>
+              <button type="button" class="primary" onClick={() => add()}>
+                New snippet
+              </button>
+            </div>
+          }
+        >
+          <div class="list-head">
             <input
               type="search"
               class="find"
@@ -173,196 +181,181 @@ export function SnippetSettings(props: { accounts: Account[] }) {
               value={query()}
               onInput={(e) => setQuery(e.currentTarget.value)}
             />
-            <fieldset class="filters plain" aria-label="Show">
-              <button class="pill" aria-pressed={filter() === "all"} onClick={() => setFilter("all")}>
+            <fieldset class="list-filters" aria-label="Show">
+              <button type="button" aria-pressed={filter() === "all"} onClick={() => setFilter("all")}>
                 All
               </button>
               <Show when={props.accounts.length > 1}>
                 <For each={props.accounts}>
                   {(a) => (
-                    <button class="pill" aria-pressed={filter() === a.id} onClick={() => setFilter(a.id)}>
+                    <button type="button" aria-pressed={filter() === a.id} onClick={() => setFilter(a.id)}>
                       {accountName(a)}
                     </button>
                   )}
                 </For>
               </Show>
-              <button class="pill" aria-pressed={filter() === "used"} onClick={() => setFilter("used")}>
+              <button type="button" aria-pressed={filter() === "used"} onClick={() => setFilter("used")}>
                 Most used
               </button>
             </fieldset>
-            <ul class="master-list">
-              <For each={shown()} fallback={<li class="none">Nothing matches.</li>}>
-                {(s) => (
-                  <li>
-                    <button classList={{ picked: s.key === picked() }} aria-current={s.key === picked()} onClick={() => setPicked(s.key)}>
-                      <span class="row-head">
-                        <span class="name">{s.name || "Untitled"}</span>
-                        <span class="snippet-key">;{s.shortcut}</span>
+          </div>
+          <div class="pick-list">
+            <For each={shown()} fallback={<p class="list-none">Nothing matches.</p>}>
+              {(s) => (
+                <button
+                  type="button"
+                  class="list-row pick-row"
+                  classList={{ picked: s.key === picked() }}
+                  aria-current={s.key === picked()}
+                  onClick={() => setPicked(s.key)}
+                >
+                  <span class="badge-mark square quiet">;</span>
+                  <span class="who">
+                    <strong>{s.name || "Untitled"}</strong>
+                    <span class="sub">{firstLine(s.body)}</span>
+                  </span>
+                  <span class="end">
+                    <span class="snippet-key">;{s.shortcut}</span>
+                  </span>
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
+      </Group>
+
+      <Show when={current()}>
+        {(s) => (
+          <div class="snippet-editor">
+            <Preview label="As it goes out">
+              <MailPreview
+                head={[
+                  ["To", "Ana Rossi <ana.rossi@example.com>"],
+                  ["Subject", sample(s()).subject ?? "Q4 offer"],
+                ]}
+              >
+                <p class="preview-text">
+                  {sample(s()).before}
+                  <span class="caret" role="img" aria-label="The cursor goes here" />
+                  {sample(s()).after}
+                </p>
+              </MailPreview>
+            </Preview>
+            <Group title={s().name || "Untitled"} note={s().shortcut ? `;${s().shortcut}` : undefined}>
+              <label class="setting">
+                <span class="title">Name</span>
+                <input value={s().name} onInput={(e) => edit({ name: e.currentTarget.value })} />
+              </label>
+              <Row
+                title="Shortcut"
+                help={
+                  <Show when={shortcutNote(s())}>
+                    {(note) => (
+                      <span class="note" classList={{ ok: note().ok, bad: !note().ok && !!s().shortcut.trim() }}>
+                        {note().text}
                       </span>
-                      <span class="row-sub">{firstLine(s.body)}</span>
-                    </button>
-                  </li>
-                )}
-              </For>
-            </ul>
-          </section>
-
-          <Show when={current()}>
-            {(s) => (
-              <section class="detail panel snippet-editor" aria-label="Edit snippet">
-                <Group title="Snippet">
-                <div class="pair">
-                  <label class="field">
-                    <span class="title">Name</span>
-                    <input value={s().name} onInput={(e) => edit({ name: e.currentTarget.value })} />
-                  </label>
-                  <label class="field snippet-key">
-                    <span class="title">Shortcut</span>
-                    <span class="prefixed" classList={{ invalid: !shortcutNote(s())?.ok }}>
-                      <span aria-hidden="true">;</span>
-                      <input
-                        value={s().shortcut}
-                        aria-invalid={!shortcutNote(s())?.ok}
-                        onInput={(e) => edit({ shortcut: e.currentTarget.value })}
-                      />
-                    </span>
-                    <Show when={shortcutNote(s())}>
-                      {(note) => (
-                        <span class="note" classList={{ ok: note().ok, bad: !note().ok && !!s().shortcut.trim() }}>
-                          <Show when={note().ok}>
-                            <Icon name="check" size={12} />
-                          </Show>
-                          {note().text}
-                        </span>
-                      )}
-                    </Show>
-                  </label>
-                </div>
-
-                <div class="field">
-                  <span class="field-head">
-                    <span class="title" id="snippet-text">
-                      Text
-                    </span>
-                    <span class="hint">Click a field to put it where the cursor is</span>
-                  </span>
-                  <div class="textbox">
-                    <div class="places" role="toolbar" aria-label="Fields to fill in">
-                      <For each={PLACES}>
-                        {(p) => (
-                          <button type="button" class="place" classList={{ muted: p.key === "cursor" }} onClick={() => insertPlace(p.key)}>
-                            {p.label}
-                          </button>
-                        )}
-                      </For>
-                    </div>
-                    <textarea
-                      ref={text}
-                      rows={7}
-                      aria-labelledby="snippet-text"
-                      value={s().body}
-                      placeholder={"Thanks {first_name}!\n\n{cursor}"}
-                      onInput={(e) => edit({ body: e.currentTarget.value })}
-                    />
-                  </div>
-                </div>
-                </Group>
-
-                <Group title="When it's used">
-                <div class="pair">
-                  <Show when={props.accounts.length > 1}>
-                    <div class="field">
-                      <span class="title">Available in</span>
-                      <Dropdown
-                        label="Available in"
-                        value={String(s().accountId ?? "")}
-                        choices={[{ value: "", label: "All accounts" }, ...props.accounts.map((a) => ({ value: String(a.id), label: `${accountName(a)} only` }))]}
-                        onChange={(v) => edit({ accountId: v ? Number(v) : null })}
-                      />
-                      <span class="help">Keep a snippet to the account it is written for.</span>
-                    </div>
+                    )}
                   </Show>
-                  <div class="field">
-                    <span class="title">Also fill in</span>
-                    <Dropdown
-                      label="Also fill in"
-                      value={String(extras())}
-                      choices={[
-                        { value: "0", label: "Text only" },
-                        { value: "1", label: "Text and subject" },
-                        { value: "2", label: "Text, subject and Cc" },
-                      ]}
-                      onChange={(v) => {
-                        const n = Number(v) as 0 | 1 | 2;
-                        setExtras(n);
-                        if (n === 0) edit({ subject: null, cc: [] });
-                        else if (n === 1) edit({ cc: [] });
-                      }}
-                    />
-                    <span class="help">A snippet can set the subject or add people, too.</span>
+                }
+              >
+                <span class="prefixed snippet-key" classList={{ invalid: !shortcutNote(s())?.ok }}>
+                  <span aria-hidden="true">;</span>
+                  <input aria-label="Shortcut" value={s().shortcut} aria-invalid={!shortcutNote(s())?.ok} onInput={(e) => edit({ shortcut: e.currentTarget.value })} />
+                </span>
+              </Row>
+              <div class="setting-block">
+                <span class="field-head">
+                  <span class="title" id="snippet-text">
+                    Text
+                  </span>
+                  <span class="help">Click a field to put it where the cursor is</span>
+                </span>
+                <div class="textbox">
+                  <div class="places" role="toolbar" aria-label="Fields to fill in">
+                    <For each={PLACES}>
+                      {(p) => (
+                        <button type="button" class="place" classList={{ muted: p.key === "cursor" }} onClick={() => insertPlace(p.key)}>
+                          {p.label}
+                        </button>
+                      )}
+                    </For>
                   </div>
+                  <textarea
+                    ref={text}
+                    rows={7}
+                    aria-labelledby="snippet-text"
+                    value={s().body}
+                    placeholder={"Thanks {first_name}!\n\n{cursor}"}
+                    onInput={(e) => edit({ body: e.currentTarget.value })}
+                  />
                 </div>
-                <Show when={extras() > 0}>
-                  <div class="pair">
-                    <label class="field">
-                      <span class="title">Subject</span>
-                      <input
-                        value={s().subject ?? ""}
-                        placeholder="Used when the subject is empty"
-                        onInput={(e) => edit({ subject: e.currentTarget.value })}
-                      />
-                    </label>
-                    <Show when={extras() > 1}>
-                      <label class="field">
-                        <span class="title">Cc</span>
-                        <input
-                          value={s().cc.join(", ")}
-                          placeholder="sales@example.com, …"
-                          onChange={(e) => edit({ cc: e.currentTarget.value.split(/[,;\s]+/).filter(Boolean) })}
-                        />
-                      </label>
-                    </Show>
-                  </div>
-                </Show>
+              </div>
+            </Group>
 
-                </Group>
-
-                <Group title="Preview">
-                  <MailPreview
-                    head={[
-                      ["To", "Ana Rossi <ana.rossi@example.com>"],
-                      ["Subject", sample(s()).subject ?? "Q4 offer"],
-                    ]}
-                  >
-                    <p class="preview-text">
-                      {sample(s()).before}
-                      <span class="caret" role="img" aria-label="The cursor goes here" />
-                      {sample(s()).after}
-                    </p>
-                  </MailPreview>
-                </Group>
-
-                <footer class="detail-foot">
-                  <span class="meta">
-                    {s().id === 0
-                      ? "Not saved until it has a shortcut"
-                      : s().used
-                        ? `Saved · used ${s().used === 1 ? "once" : `${s().used} times`}${s().lastUsed ? `, last ${lastDay(s().lastUsed!)}` : ""}`
-                        : "Saved · not used yet"}
-                  </span>
-                  <span class="actions">
-                    <button onClick={() => duplicate(s())} disabled={!s().shortcut.trim()}>
-                      Duplicate
-                    </button>
-                    <button class="link danger" onClick={() => remove(s().key)}>
-                      Delete
-                    </button>
-                  </span>
-                </footer>
-              </section>
-            )}
-          </Show>
-        </div>
+            <Group title="When it's used">
+              <Show when={props.accounts.length > 1}>
+                <Row title="Available in" help="Keep a snippet to the account it is written for.">
+                  <Dropdown
+                    label="Available in"
+                    value={String(s().accountId ?? "")}
+                    choices={[{ value: "", label: "All accounts" }, ...props.accounts.map((a) => ({ value: String(a.id), label: `${accountName(a)} only` }))]}
+                    onChange={(v) => edit({ accountId: v ? Number(v) : null })}
+                  />
+                </Row>
+              </Show>
+              <Row title="Also fill in" help="A snippet can set the subject or add people, too.">
+                <Dropdown
+                  label="Also fill in"
+                  value={String(extras())}
+                  choices={[
+                    { value: "0", label: "Text only" },
+                    { value: "1", label: "Text and subject" },
+                    { value: "2", label: "Text, subject and Cc" },
+                  ]}
+                  onChange={(v) => {
+                    const n = Number(v) as 0 | 1 | 2;
+                    setExtras(n);
+                    if (n === 0) edit({ subject: null, cc: [] });
+                    else if (n === 1) edit({ cc: [] });
+                  }}
+                />
+              </Row>
+              <Show when={extras() > 0}>
+                <label class="setting sub">
+                  <span class="title">Subject</span>
+                  <input value={s().subject ?? ""} placeholder="Used when the subject is empty" onInput={(e) => edit({ subject: e.currentTarget.value })} />
+                </label>
+              </Show>
+              <Show when={extras() > 1}>
+                <label class="setting sub">
+                  <span class="title">Cc</span>
+                  <input
+                    value={s().cc.join(", ")}
+                    placeholder="sales@example.com, …"
+                    onChange={(e) => edit({ cc: e.currentTarget.value.split(/[,;\s]+/).filter(Boolean) })}
+                  />
+                </label>
+              </Show>
+              <div class="list-foot">
+                <span>
+                  {s().id === 0
+                    ? "Not saved until it has a shortcut"
+                    : s().used
+                      ? `Saved · used ${s().used === 1 ? "once" : `${s().used} times`}${s().lastUsed ? `, last ${lastDay(s().lastUsed!)}` : ""}`
+                      : "Saved · not used yet"}
+                </span>
+                <span class="style-foot-actions">
+                  <button type="button" class="link" onClick={() => duplicate(s())} disabled={!s().shortcut.trim()}>
+                    Duplicate
+                  </button>
+                  <button type="button" class="link danger" onClick={() => remove(s().key)}>
+                    Delete
+                  </button>
+                </span>
+              </div>
+            </Group>
+          </div>
+        )}
       </Show>
     </div>
   );

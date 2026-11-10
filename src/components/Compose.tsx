@@ -26,6 +26,7 @@ import { until } from "./ConversationRow";
 import { SnoozePicker } from "./SnoozePicker";
 import type { SnippetSource } from "./Editor";
 import { Icon } from "./Icon";
+import { kind, middleCut } from "../files";
 import { Dropdown } from "./Dropdown";
 import { wordDiff } from "../wordDiff";
 import { HtmlFrame } from "./HtmlFrame";
@@ -271,6 +272,12 @@ export function Compose(props: {
     Object.fromEntries(files().flatMap((f) => (f.cid && previews()[f.path] ? [[f.cid, previews()[f.path]]] : [])));
   /** Files that show as cards: pictures in the text show there instead. */
   const cards = () => files().filter((f) => !f.cid);
+  // The tray starts folded: the names fit on its one line until there are many.
+  const [trayOpen, setTrayOpen] = createSignal(false);
+  const fileCount = () => {
+    const n = cards().length + (forwardOf() ? (props.init.forwardFiles?.length || 1) : 0);
+    return n === 1 ? "1 file" : `${n} files`;
+  };
   // Pictures being attached, shown on their cards.
   const [previews, setPreviews] = createSignal<Record<string, string>>({});
   createEffect(() => {
@@ -290,6 +297,7 @@ export function Compose(props: {
   });
   onCleanup(() => setWritingTitle(null));
   const [sendMenu, setSendMenu] = createSignal(false);
+  const [sigMenu, setSigMenu] = createSignal(false);
   // Checks before sending (attachment mentioned but missing, no subject). Shown on the first try; sending again
   // with them showing sends anyway. Any change takes them away, since it may have been the fix.
   const [checks, setChecks] = createSignal<{ attachment: string | null; subject: boolean } | null>(null);
@@ -717,7 +725,7 @@ export function Compose(props: {
     if (e.key === "Escape" && aiOpen()) versions().length ? (dropTries(), aiInput?.focus()) : closeAi();
     else if (ctrl && !e.shiftKey && e.key.toLowerCase() === "j" && aiAllowed()) aiOpen() && inSide(e) ? closeAi() : openAi();
     else if (spaceAsks(e)) openAi();
-    else if (e.key === "Escape" && sendMenu()) setSendMenu(false);
+    else if (e.key === "Escape" && (sendMenu() || sigMenu())) (setSendMenu(false), setSigMenu(false));
     else if (e.key === "Escape" && focusMode()) setFocusMode(false);
     else if (e.key === "Escape") void close();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "f" && !props.init.inline) setFocusMode(!focusMode());
@@ -933,7 +941,7 @@ export function Compose(props: {
   const side = () => (
     <aside class="ai-side" ref={asideEl} aria-label="Writing help">
       <header>
-        <kbd class="ai-mark">AI</kbd>
+        <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
         <strong>Writing help</strong>
         <span class="spacer" />
         <kbd>Ctrl J</kbd>
@@ -1242,7 +1250,7 @@ export function Compose(props: {
               )}
             </Show>
             <div class="ai-try-bar">
-              <kbd class="ai-mark">AI</kbd>
+              <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
               <span class="text">
                 {v.written
                   ? `Try ${shown() + 1} of ${versions().length}. It isn't in the email until you keep it.`
@@ -1307,61 +1315,68 @@ export function Compose(props: {
         )}
       </Show>
       <Show when={cards().length || forwardOf()}>
-        <section class="outgoing-files" aria-label="Attachments">
-          <Show when={forwardOf()}>
-            <span class="file-card" title="Attached from the forwarded message when it is sent">
-              <span class="thumb">
-                <Icon name="paperclip" size={18} />
-              </span>
-              <span class="meta">
-                <span class="name">
-                  {props.init.forwardFiles?.length
-                    ? props.init.forwardFiles.map((f) => f.name).join(", ")
-                    : "Attachments of the forwarded message"}
-                </span>
-              </span>
-              <button type="button" class="remove" aria-label="Do not forward the attachments" onClick={() => (setForwardOf(null), changed())}>
-                ×
-              </button>
+        {/* Files as a folded tray: one line with how many, how big and their names; open, a row each (idea 70, C). */}
+        <section class="outgoing-files" classList={{ open: trayOpen() }} aria-label="Attachments">
+          <button type="button" class="tray-head" aria-expanded={trayOpen()} onClick={() => setTrayOpen(!trayOpen())}>
+            <Icon name="paperclip" size={14} />
+            <strong>{fileCount()}</strong>
+            <span class="tray-sum">
+              {total() ? `· ${size(total())} · ` : "· "}
+              {[...(forwardOf() ? ["forwarded files"] : []), ...cards().map((f) => f.name)].join(", ")}
             </span>
+            <Icon name={trayOpen() ? "chevron-up" : "chevron-down"} size={14} />
+          </button>
+          <Show when={trayOpen()}>
+            <ul class="tray-list">
+              <Show when={forwardOf()}>
+                <li class="tray-row" title="Attached from the forwarded message when it is sent">
+                  <span class="badge quiet">
+                    <Icon name="paperclip" size={12} />
+                  </span>
+                  <span class="name">
+                    {props.init.forwardFiles?.length
+                      ? props.init.forwardFiles.map((f) => f.name).join(", ")
+                      : "Attachments of the forwarded message"}
+                  </span>
+                  <span class="size" />
+                  <button type="button" class="remove" aria-label="Do not forward the attachments" onClick={() => (setForwardOf(null), changed())}>
+                    ×
+                  </button>
+                </li>
+              </Show>
+              <For each={cards()}>
+                {(f) => (
+                  <li class="tray-row">
+                    <Show when={previews()[f.path]} fallback={<span class={`badge ${kind(f.name, f.mime).tone}`}>{kind(f.name, f.mime).label.slice(0, 3)}</span>}>
+                      {(uri) => <img class="badge" src={uri()} alt="" />}
+                    </Show>
+                    <span class="name" title={f.name}>
+                      {middleCut(f.name)}
+                    </span>
+                    <span class="size">{size(f.size)}</span>
+                    <button
+                      type="button"
+                      class="remove"
+                      aria-label={`Remove ${f.name}`}
+                      onClick={() => (setFiles(files().filter((x) => x !== f)), changed())}
+                    >
+                      ×
+                    </button>
+                  </li>
+                )}
+              </For>
+            </ul>
           </Show>
-          <For each={cards()}>
-            {(f) => (
-              <span class="file-card" title={f.mime}>
-                <span class="thumb">
-                  <Show when={previews()[f.path]} fallback={<Icon name={f.mime.startsWith("image/") ? "image" : "file"} size={18} />}>
-                    {(uri) => <img src={uri()} alt="" />}
-                  </Show>
-                </span>
-                <span class="meta">
-                  <span class="name">{f.name}</span>
-                  <span class="size">{size(f.size)}</span>
-                </span>
-                <button
-                  type="button"
-                  class="remove"
-                  aria-label={`Remove ${f.name}`}
-                  onClick={() => (setFiles(files().filter((x) => x !== f)), changed())}
-                >
-                  ×
-                </button>
-              </span>
-            )}
-          </For>
         </section>
-        <div class="size-meter" classList={{ near: total() > LARGE_BYTES * 0.7, over: total() > LARGE_BYTES }}>
-          <span class="bar">
-            <span style={{ width: `${Math.min(100, (total() / LARGE_BYTES) * 100)}%` }} />
-          </span>
-          <span>
-            {size(total())} of 25 MB
+        {/* No meter: a bar of "X of 25 MB" read like an upload. Only a size worth a word gets one (idea 71). */}
+        <Show when={total() > LARGE_BYTES * 0.7}>
+          <p class="size-note" classList={{ over: total() > LARGE_BYTES }}>
+            <Icon name="alert" size={14} />
             {total() > LARGE_BYTES
-              ? ". Many servers refuse mail this big; send a link instead."
-              : total() > LARGE_BYTES * 0.7
-                ? ". Bigger files are better sent as a link."
-                : ""}
-          </span>
-        </div>
+              ? `${size(total())}. Most servers refuse mail over 25 MB, so this may not arrive.`
+              : `${size(total())}. Some servers turn away mail over 25 MB.`}
+          </p>
+        </Show>
       </Show>
       <Show when={dragging() && !props.minimized}>
         <div class="drop-zone" aria-hidden="true">
@@ -1428,6 +1443,63 @@ export function Compose(props: {
         </div>
       </Show>
       <footer>
+        {/* Writing tools on the left, what happens to the mail on the right (idea 73, F2). */}
+        <span class="tools">
+          {iconButton("paperclip", "Attach files (Ctrl+Shift+A), or drop them here", () => void pick())}
+          <Show when={aiAllowed()}>
+            <button
+              type="button"
+              class="icon-button ai-button"
+              classList={{ on: aiOpen() }}
+              title="Writing help (Ctrl+J)"
+              aria-label="Writing help"
+              aria-pressed={aiOpen()}
+              onClick={() => (aiOpen() ? closeAi() : openAi())}
+            >
+              <Icon name="sparkles" size={16} />
+            </button>
+          </Show>
+          <Show when={snippetList().length}>
+            <button type="button" class="icon-button snippet-button" title="Snippet (;)" aria-label="Snippet" onClick={openSnippets}>
+              ;
+            </button>
+          </Show>
+          <Show when={accountSignatures().length}>
+            <div class="more-wrap" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setSigMenu(false)}>
+              <button
+                type="button"
+                class="icon-button"
+                title="Signature (Ctrl+Shift+S)"
+                aria-label="Signature"
+                aria-haspopup="menu"
+                aria-expanded={sigMenu()}
+                onClick={() => setSigMenu(!sigMenu())}
+              >
+                <Icon name="pen-line" size={16} />
+              </button>
+              <Show when={sigMenu()}>
+                <div class="send-menu up-left" role="menu">
+                  <For each={[...accountSignatures(), null]}>
+                    {(sig) => (
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={(sigId() ?? null) === (sig?.id ?? null)}
+                        onClick={() => (setSigMenu(false), void switchSignature(sig))}
+                      >
+                        {sig ? sig.name || "Untitled" : "No signature"}
+                        <Show when={(sigId() ?? null) === (sig?.id ?? null)}>
+                          <Icon name="check" size={14} />
+                        </Show>
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
+          </Show>
+        </span>
+        <span class="foot-sep" aria-hidden="true" />
         <Show when={props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length)}>
           <div class="from-pick">
             <span class="word">from</span>
@@ -1477,34 +1549,30 @@ export function Compose(props: {
             </span>
           )}
         </Show>
-        <span class="tools">
-          {iconButton("paperclip", "Attach files (Ctrl+Shift+A), or drop them here", () => void pick())}
-          <Show when={aiAllowed()}>
-            <button
-              type="button"
-              class="icon-button ai-button"
-              classList={{ on: aiOpen() }}
-              title="Writing help (Ctrl+J)"
-              aria-label="Writing help"
-              aria-pressed={aiOpen()}
-              onClick={() => (aiOpen() ? closeAi() : openAi())}
-            >
-              <kbd class="ai-mark">AI</kbd>
-            </button>
-          </Show>
-        </span>
-        {/* Everything else that happens to the mail: other ways to send, snippets, the signature, discard. */}
-        <div class="more-wrap" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setSendMenu(false)}>
+        {/* What happens to the mail, apart from the tools: throw it away, or send it one of three ways (idea 73, F2). */}
+        <button
+          type="button"
+          class="icon-button discard"
+          title="Discard draft (Ctrl+Shift+,)"
+          aria-label="Discard draft"
+          onClick={discard}
+        >
+          <Icon name="trash" size={16} />
+        </button>
+        <div class="send-split" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setSendMenu(false)}>
+          <button type="button" class="primary send" onClick={() => send(false)}>
+            Send <kbd>Ctrl ↵</kbd>
+          </button>
           <button
             type="button"
-            class="icon-button more"
-            title="More"
-            aria-label="More"
+            class="primary send-more"
+            title="Other ways to send"
+            aria-label="Other ways to send"
             aria-haspopup="menu"
             aria-expanded={sendMenu()}
             onClick={() => setSendMenu(!sendMenu())}
           >
-            <Icon name="more" size={16} />
+            <Icon name="chevron-down" size={14} />
           </button>
           <Show when={sendMenu()}>
             <div class="send-menu" role="menu">
@@ -1517,40 +1585,9 @@ export function Compose(props: {
               <button type="button" role="menuitem" onClick={() => (setSendMenu(false), setPicking("followUp"))}>
                 Remind me if no reply… <kbd>Ctrl Shift H</kbd>
               </button>
-              <Show when={snippetList().length}>
-                <hr />
-                <button type="button" role="menuitem" onClick={() => (setSendMenu(false), openSnippets())}>
-                  Snippet… <kbd>;</kbd>
-                </button>
-              </Show>
-              <Show when={accountSignatures().length}>
-                <hr />
-                <For each={[...accountSignatures(), null]}>
-                  {(sig) => (
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={(sigId() ?? null) === (sig?.id ?? null)}
-                      onClick={() => (setSendMenu(false), void switchSignature(sig))}
-                    >
-                      {sig ? `Signature: ${sig.name || "Untitled"}` : "No signature"}
-                      <Show when={(sigId() ?? null) === (sig?.id ?? null)}>
-                        <Icon name="check" size={14} />
-                      </Show>
-                    </button>
-                  )}
-                </For>
-              </Show>
-              <hr />
-              <button type="button" role="menuitem" class="danger" onClick={() => (setSendMenu(false), discard())}>
-                Discard draft <kbd>Ctrl Shift ,</kbd>
-              </button>
             </div>
           </Show>
         </div>
-        <button type="button" class="primary send" onClick={() => send(false)}>
-          Send <kbd>Ctrl ↵</kbd>
-        </button>
       </footer>
       </div>
       <Show when={aiOpen() && !props.init.inline}>{side()}</Show>

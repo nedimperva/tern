@@ -9,7 +9,9 @@ import { fromLink } from "../../app/composing";
 import { setSettingsOpen } from "../../app/state";
 import { setSetting, settings } from "../../settings";
 import { unsubscribeTarget } from "../../unsubscribe";
-import { Select } from "./shared";
+import { Avatar } from "../ConversationView";
+import { Icon } from "../Icon";
+import { Group, Preview, Segmented, Toggle } from "./shared";
 
 const DAYS = 30;
 
@@ -23,6 +25,28 @@ export function SendersSettings() {
   const most = () => Math.max(1, ...(list() ?? []).map((s) => s.count));
   const key = (s: SenderVolume) => `${s.accountId}:${s.addr}`;
   const say = (s: SenderVolume, text: string) => setSaid({ ...said(), [key(s)]: text });
+  // The list is short until asked (idea 57): a find box, filters and Show all.
+  const [query, setQuery] = createSignal("");
+  const [filter, setFilter] = createSignal<"all" | "important" | "other" | "lists">("all");
+  const [all, setAll] = createSignal(false);
+  const matching = () => {
+    const q = query().trim().toLowerCase();
+    return (list() ?? []).filter(
+      (s) =>
+        (!q || `${s.name} ${s.addr}`.toLowerCase().includes(q)) &&
+        (filter() === "all" ||
+          (filter() === "important" && !s.other) ||
+          (filter() === "other" && s.other) ||
+          (filter() === "lists" && !!unsubscribeTarget(s.listUnsubscribe))),
+    );
+  };
+  const shown = () => (all() ? matching() : matching().slice(0, SHORT));
+  const share = () => {
+    const l = list() ?? [];
+    const other = l.filter((s) => s.other).reduce((n, s) => n + s.count, 0);
+    const important = l.filter((s) => !s.other).reduce((n, s) => n + s.count, 0);
+    return { important, other, total: Math.max(1, important + other) };
+  };
 
   const unsubscribe = (s: SenderVolume) => {
     const target = unsubscribeTarget(s.listUnsubscribe);
@@ -35,10 +59,11 @@ export function SendersSettings() {
       fromLink(target.mail);
     }
   };
-  const split = async (s: SenderVolume) => {
-    await api.setSplit([s.newest], !s.other);
-    mutate((l) => l?.map((x) => (key(x) === key(s) ? { ...x, other: !s.other } : x)));
-    say(s, s.other ? "Back in Important, past mail and new." : "In Other from now on, past mail too.");
+  const split = async (s: SenderVolume, other: boolean) => {
+    if (s.other === other) return;
+    await api.setSplit([s.newest], other);
+    mutate((l) => l?.map((x) => (key(x) === key(s) ? { ...x, other } : x)));
+    say(s, other ? "In Other from now on, past mail too." : "Back in Important, past mail and new.");
   };
 
   const domains = (text: string) =>
@@ -48,79 +73,126 @@ export function SendersSettings() {
     );
   return (
     <>
-      <Select
-        name="screener"
-        title="New people"
-        help="First mail from someone you haven't written to waits in New people until you let them in (Y), send them to Other (Shift O) or block them (Shift X). Lists and newsletters go to Other as before. Mail already here stays where it is."
-        choices={[
-          { label: "Off", value: false },
-          { label: "On", value: true },
-        ]}
-      />
-      <Show when={settings.screener}>
-        <label class="setting">
-          <span class="title">People you know at</span>
-          <input
-            value={settings.knownDomains.join(", ")}
-            placeholder="work.example, school.example"
-            onChange={(e) => domains(e.currentTarget.value)}
-            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-          />
-          <span class="help">Everyone at these domains counts as known, so their mail goes straight to Important.</span>
-        </label>
+      <Show when={list()?.length}>
+        <Preview label={`Your last ${DAYS} days`} note="From the senders below: where their mail went.">
+          <div class="split-bar" aria-hidden="true">
+            <span class="important" style={{ width: `${(share().important / share().total) * 100}%` }} />
+            <span class="other" style={{ width: `${(share().other / share().total) * 100}%` }} />
+          </div>
+          <div class="split-legend">
+            <span>
+              <strong>{share().important}</strong> Important
+            </span>
+            <span>
+              <strong>{share().other}</strong> Other
+            </span>
+          </div>
+        </Preview>
       </Show>
-      <div class="senders">
-      <Choices />
-      <Muted />
-      <h2 class="group-title senders-title">Who writes most</h2>
-      <p class="help">
-        Who sent you the most in the last {DAYS} days, most first. Unsubscribe opens the sender's own page, or starts the mail
-        it asks for, for you to send.
-      </p>
-      <Show when={list()} fallback={<p class="help">Counting…</p>}>
-        <ol class="sender-list">
-          <For each={list()} fallback={<li class="help">No mail in the last {DAYS} days.</li>}>
+      <Group title="New people">
+        <Toggle
+          name="screener"
+          title="Screen first mail"
+          help="Mail from someone new waits in New people until you let them in (Y), send them to Other (Shift O) or block them (Shift X). Lists go to Other as before."
+        />
+        <Show when={settings.screener}>
+          <label class="setting sub">
+            <span class="title">People you know at</span>
+            <input
+              value={settings.knownDomains.join(", ")}
+              placeholder="work.example, school.example"
+              onChange={(e) => domains(e.currentTarget.value)}
+              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            />
+            <span class="help">Everyone at these domains counts as known.</span>
+          </label>
+        </Show>
+      </Group>
+      <Group title="Who writes most" note={`most first, last ${DAYS} days`}>
+        <div class="list-head">
+          <input type="search" class="find" placeholder="Find a sender" aria-label="Find a sender" value={query()} onInput={(e) => setQuery(e.currentTarget.value)} />
+          <span class="list-filters">
+            <For each={FILTERS}>
+              {([id, name]) => (
+                <button type="button" aria-pressed={filter() === id} onClick={() => setFilter(id)}>
+                  {name}
+                </button>
+              )}
+            </For>
+          </span>
+        </div>
+        <Show when={list()} fallback={<p class="list-none">Counting…</p>}>
+          <For each={shown()} fallback={<p class="list-none">{list()!.length ? "No sender matches." : `No mail in the last ${DAYS} days.`}</p>}>
             {(s) => (
-              <li>
+              <div class="list-row sender-row">
+                <Avatar addr={s.addr} name={s.name} />
                 <span class="who">
-                  <strong>{s.name || s.addr}</strong>
-                  <span class="addr">{s.addr}</span>
+                  <strong>
+                    {s.name || s.addr}
+                    <Show when={unsubscribeTarget(s.listUnsubscribe)}>
+                      <span class="tag">List</span>
+                    </Show>
+                  </strong>
+                  <span class="sub">{s.addr}</span>
                   <Show when={said()[key(s)]}>
                     <span class="said" role="status">
                       {said()[key(s)]}
                     </span>
                   </Show>
                 </span>
-                <span class="volume" title={`${s.count} messages`}>
-                  <span class="bar" style={{ width: `${Math.max(4, (s.count / most()) * 100)}%` }} />
-                  <span class="count">{s.count}</span>
+                <span class="mini-meter" title={`${s.count} messages`}>
+                  <span class="track">
+                    <span style={{ width: `${Math.max(4, (s.count / most()) * 100)}%` }} />
+                  </span>
+                  {s.count}
                 </span>
-                <span class="actions">
-                  <Show when={unsubscribeTarget(s.listUnsubscribe)}>
-                    <button type="button" onClick={() => unsubscribe(s)}>
-                      Unsubscribe
-                    </button>
-                  </Show>
-                  {/* Where they are now, then the move (idea 48). */}
-                  <span class="now-in">{s.other ? "Other" : "Important"}</span>
-                  <button type="button" onClick={() => void split(s)}>
-                    {s.other ? "Move to Important" : "Move to Other"}
+                <Segmented
+                  label={`Where ${s.name || s.addr}'s mail goes`}
+                  value={s.other}
+                  choices={[
+                    { label: "Important", value: false },
+                    { label: "Other", value: true },
+                  ]}
+                  onChange={(v) => void split(s, v)}
+                />
+                <Show when={unsubscribeTarget(s.listUnsubscribe)} fallback={<span />}>
+                  <button type="button" class="icon-button" title="Unsubscribe" aria-label={`Unsubscribe from ${s.name || s.addr}`} onClick={() => unsubscribe(s)}>
+                    <Icon name="mail-x" size={15} />
                   </button>
-                </span>
-              </li>
+                </Show>
+              </div>
             )}
           </For>
-        </ol>
-      </Show>
-      </div>
+          <Show when={matching().length > SHORT}>
+            <div class="list-foot">
+              <span>
+                {shown().length} of {matching().length} senders
+              </span>
+              <button type="button" class="link" onClick={() => setAll(!all())}>
+                {all() ? "Show fewer" : "Show all"}
+              </button>
+            </div>
+          </Show>
+        </Show>
+      </Group>
+      <Choices />
+      <Muted />
     </>
   );
 }
 
+const SHORT = 8;
+const FILTERS: ["all" | "important" | "other" | "lists", string][] = [
+  ["all", "All"],
+  ["important", "Important"],
+  ["other", "Other"],
+  ["lists", "Lists"],
+];
+
 const GROUPS: [SenderState, string, string][] = [
-  ["blocked", "Blocked", "Their new mail is read and archived as it comes. It can still be found."],
-  ["other", "To Other", "Their mail goes to Other."],
-  ["important", "Kept in Important", "Their mail stays in Important, even when it looks like a list."],
+  ["blocked", "Blocked", "new mail is archived as it comes"],
+  ["other", "Sent to Other", "their mail goes to Other"],
+  ["important", "Kept in Important", "even when it looks like a list"],
 ];
 const BACK: Record<SenderState, string> = { blocked: "Unblock", other: "To Important", important: "Forget" };
 
@@ -135,30 +207,24 @@ function Muted() {
   };
   return (
     <Show when={rows().length}>
-      <section class="sender-choices">
-        <h4>
-          Muted <span class="count">{rows().length}</span>
-        </h4>
-        <p class="help">Replies in these conversations skip the inbox. They can still be found.</p>
-        <ul class="sender-list">
-          <For each={rows()}>
-            {(r) => (
-              <li>
-                <span class="who">
-                  <strong>{r.subject || "(no subject)"}</strong>
-                  <span class="addr">{r.fromName || r.fromAddr}</span>
-                </span>
-                <span />
-                <span class="actions">
-                  <button type="button" onClick={() => void unmute(r)}>
-                    Unmute
-                  </button>
-                </span>
-              </li>
-            )}
-          </For>
-        </ul>
-      </section>
+      <Group title="Muted conversations" note="replies skip the inbox; they can still be found">
+        <For each={rows()}>
+          {(r) => (
+            <div class="list-row">
+              <span class="badge-mark quiet">
+                <Icon name="bell" size={15} />
+              </span>
+              <span class="who">
+                <strong>{r.subject || "(no subject)"}</strong>
+                <span class="sub">{r.fromName || r.fromAddr}</span>
+              </span>
+              <button type="button" onClick={() => void unmute(r)}>
+                Unmute
+              </button>
+            </div>
+          )}
+        </For>
+      </Group>
     </Show>
   );
 }
@@ -176,34 +242,25 @@ function Choices() {
   const label = (c: SenderChoice) => (c.addr.startsWith("@") ? `Everyone at ${c.addr.slice(1)}` : c.name || c.addr);
   return (
     <Show when={choices()?.length}>
-      <h2 class="group-title senders-title">Your choices</h2>
       <For each={GROUPS}>
         {([state, title, help]) => (
           <Show when={choices()!.some((c) => c.state === state)}>
-            <section class="sender-choices">
-              <h4>
-                {title} <span class="count">{choices()!.filter((c) => c.state === state).length}</span>
-              </h4>
-              <p class="help">{help}</p>
-              <ul class="sender-list">
-                <For each={choices()!.filter((c) => c.state === state)}>
-                  {(c) => (
-                    <li>
-                      <span class="who">
-                        <strong>{label(c)}</strong>
-                        <span class="addr">{c.addr.startsWith("@") ? "the whole domain" : c.addr}</span>
-                      </span>
-                      <span />
-                      <span class="actions">
-                        <button type="button" onClick={() => void back(c)}>
-                          {BACK[state]}
-                        </button>
-                      </span>
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </section>
+            <Group title={title} note={help}>
+              <For each={choices()!.filter((c) => c.state === state)}>
+                {(c) => (
+                  <div class="list-row">
+                    <Avatar addr={c.addr} name={c.name || c.addr.replace(/^@/, "")} />
+                    <span class="who">
+                      <strong>{label(c)}</strong>
+                      <span class="sub">{c.addr.startsWith("@") ? "the whole domain" : c.addr}</span>
+                    </span>
+                    <button type="button" onClick={() => void back(c)}>
+                      {BACK[state]}
+                    </button>
+                  </div>
+                )}
+              </For>
+            </Group>
           </Show>
         )}
       </For>

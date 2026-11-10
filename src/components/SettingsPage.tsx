@@ -25,6 +25,8 @@ type Section = {
   dot?: string;
   /** Under the name: an account's address when its name is something else (idea 43). */
   sub?: string;
+  /** One sentence under the title: what the page is for. */
+  lede: string;
 };
 
 /** Ctrl+, : settings over the list (docs/design/ui.md §4.8). Changes apply and are saved at once. */
@@ -40,6 +42,7 @@ export function SettingsPage(props: {
     {
       id: "Appearance",
       name: "Appearance",
+      lede: "How Tern looks. The preview follows each change.",
       icon: "palette",
       group: "General",
       words: "theme dark light density rows sidebar inbox zero empty tern scene",
@@ -48,6 +51,7 @@ export function SettingsPage(props: {
     {
       id: "Reading",
       name: "Reading",
+      lede: "What happens when you open mail, and what it may show you.",
       icon: "book-open",
       group: "General",
       words: "open conversations mark read inbox split important other images logos designed dark start day morning",
@@ -56,18 +60,20 @@ export function SettingsPage(props: {
     {
       id: "Senders",
       name: "Senders",
+      lede: "Who reaches your inbox, and where their mail goes.",
       icon: "inbox",
       group: "General",
       words: "senders who writes most fills inbox unsubscribe newsletters lists volume other important block blocked unblock",
       body: () => <SendersSettings />,
     },
-    { id: "Notifications", name: "Notifications",
+    { id: "Notifications", name: "Notifications", lede: "When Tern may interrupt you, and how.",
       icon: "bell", group: "General", words: "notify new mail quiet hours", body: () => <NotificationSettings /> },
-    { id: "Desktop", name: "Desktop",
+    { id: "Desktop", name: "Desktop", lede: "How Tern lives on this computer.",
       icon: "monitor", group: "General", words: "background tray close login start email links mailto default", body: () => <DesktopSettings /> },
     {
       id: "AI",
       name: "AI",
+      lede: "Off unless you turn it on, and only when you ask. Tern never sends mail to AI in the background.",
       icon: "sparkles",
       group: "General",
       words: "ai claude anthropic openai gpt gemini google api key summary summarize replies suggest write rewrite style voice model privacy",
@@ -76,6 +82,7 @@ export function SettingsPage(props: {
     {
       id: "Todoist",
       name: "Todoist",
+      lede: "Turn mail into tasks, one at a time, when you ask.",
       icon: "check",
       group: "General",
       words: "todoist tasks to do todo task integration token project label",
@@ -84,20 +91,22 @@ export function SettingsPage(props: {
     {
       id: "Backup",
       name: "Backup",
+      lede: "Move Tern to another computer, or keep a copy.",
       icon: "archive",
       group: "General",
       words: "export import move another computer copy file json settings snippets signatures accounts passwords passphrase encrypted",
       body: () => <BackupSettings accounts={props.accounts} onAccountsChanged={props.onAccountsChanged} />,
     },
-    { id: "About", name: "About",
+    { id: "About", name: "About", lede: "Version, updates and help.",
       icon: "info", group: "General", words: "version log bug report problem help beta downloaded attachments cache disk space clear", body: () => <AboutSettings /> },
-    { id: "Compose", name: "Compose",
+    { id: "Compose", name: "Compose", lede: "Safety nets for mail on its way out.",
       icon: "send", group: "Writing", words: "undo send delay attachment forgotten attached prilog anhang", body: () => <ComposeSettings /> },
-    { id: "Snippets", name: "Snippets",
+    { id: "Snippets", name: "Snippets", lede: "Text you type often. Type ; in a message to pick one, or its shortcut and Space.",
       icon: "file-text", group: "Writing", words: "saved replies templates shortcut text", body: () => <SnippetSettings accounts={props.accounts} /> },
     {
       id: "Signatures",
       name: "Signatures",
+      lede: "Each account can have several. Ctrl+Shift+S switches in compose.",
       icon: "pen-line",
       group: "Writing",
       words: "signature replies quoted below above",
@@ -106,6 +115,7 @@ export function SettingsPage(props: {
     {
       id: "Writing style",
       name: "Writing style",
+      lede: "What Tern learned from your sent mail, for suggested replies and Write with AI.",
       icon: "feather",
       group: "Writing",
       words: "ai style voice learn sent tone length greetings sign-offs habits",
@@ -119,6 +129,7 @@ export function SettingsPage(props: {
         group: "Accounts",
         words: `${a.email} ${(a.aliases ?? []).map((x) => x.email).join(" ")} server imap smtp account alias send as from domain`,
         dot: colourOf(props.accounts, a.id),
+        lede: `${a.email} · ${a.auth === "google" ? "signed in with Google" : "signed in with a password"}.`,
         body: () => (
           <AccountPage
             account={props.accounts.find((x) => x.id === a.id) ?? a}
@@ -148,6 +159,48 @@ export function SettingsPage(props: {
     section();
     return untrack(() => open().body());
   });
+  // Searching lands on the row (idea 69): the open page's rows that match are tinted and their words marked, and the
+  // nav names them under the page.
+  let content: HTMLDivElement | undefined;
+  const [matched, setMatched] = createSignal<string[]>([]);
+  createEffect(() => {
+    const q = query().trim().toLowerCase();
+    body();
+    // After the page has drawn (its rows may come a moment later, as settings load).
+    const timer = window.setTimeout(() => findRows(q), 60);
+    onCleanup(() => window.clearTimeout(timer));
+  });
+  const findRows = (q: string) => {
+    const rows = [...(content?.querySelectorAll<HTMLElement>(".setting") ?? [])];
+    const names: string[] = [];
+    for (const row of rows) {
+      const hit = q.length > 1 && (row.textContent ?? "").toLowerCase().includes(q);
+      row.classList.toggle("found", hit);
+      if (hit) names.push(row.querySelector(".title")?.textContent?.trim() ?? "");
+    }
+    setMatched(names.filter(Boolean));
+    if (names.length) rows.find((r) => r.classList.contains("found"))?.scrollIntoView({ block: "nearest" });
+    markWords(q);
+  };
+  const markWords = (q: string) => {
+    if (!("highlights" in CSS)) return;
+    CSS.highlights.delete("settings-find");
+    if (q.length < 2 || !content) return;
+    const ranges: Range[] = [];
+    const walk = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      if (!n.parentElement?.closest(".setting.found")) continue;
+      const text = (n.textContent ?? "").toLowerCase();
+      for (let at = text.indexOf(q); at >= 0; at = text.indexOf(q, at + q.length)) {
+        const r = new Range();
+        r.setStart(n, at);
+        r.setEnd(n, at + q.length);
+        ranges.push(r);
+      }
+    }
+    CSS.highlights.set("settings-find", new Highlight(...ranges));
+  };
+  onCleanup(() => "highlights" in CSS && CSS.highlights.delete("settings-find"));
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape") return;
     e.preventDefault();
@@ -186,8 +239,8 @@ export function SettingsPage(props: {
                     </span>
                     <span class="name">
                       {s.name}
-                      <Show when={s.sub}>
-                        <small>{s.sub}</small>
+                      <Show when={s.id === section() && query().trim() && matched().length ? matched().join(", ") : s.sub}>
+                        {(sub) => <small>{sub()}</small>}
                       </Show>
                     </span>
                   </button>
@@ -208,8 +261,9 @@ export function SettingsPage(props: {
         </button>
       </nav>
       <div class="settings-body">
-        <div class="settings-content" classList={{ wide: open().id === "Snippets" || open().id === "Signatures", look: open().id === "Appearance" }}>
+        <div class="settings-content" ref={content}>
           <h1>{open().name}</h1>
+          <p class="lede">{open().lede}</p>
           {body()}
         </div>
       </div>

@@ -7,7 +7,7 @@ import { setSetting, settings } from "../../settings";
 import { Icon } from "../Icon";
 import { HtmlFrame } from "../HtmlFrame";
 import { htmlSource, htmlText, localPictures, pastedHtml } from "../../htmlSignature";
-import { accountName, Group, MailPreview } from "./shared";
+import { accountName, Group, MailPreview, Preview, Row, Segmented } from "./shared";
 import { formatted, keptHtml } from "./snippets";
 import { Dropdown } from "../Dropdown";
 
@@ -95,15 +95,6 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
 
   return (
     <div class="signatures-settings">
-      <div class="section-intro">
-        <p class="help">
-          Each account can have several. Pick one for new mail and one for replies; switch in compose with{" "}
-          <kbd>Ctrl Shift S</kbd>.
-        </p>
-        <button class="primary" onClick={() => void add()}>
-          <Icon name="plus" size={14} /> New signature
-        </button>
-      </div>
       <Show when={props.accounts.length > 1}>
         <div class="tabs" role="tablist" aria-label="Account">
           <For each={props.accounts}>
@@ -124,86 +115,116 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
       <Show when={error()}>
         <p class="setting-error">{error()}</p>
       </Show>
-      <div class="master-detail">
-        <section class="master panel" aria-label="Signatures for this account">
-          <span class="panel-head">
-            {mine().length} {mine().length === 1 ? "signature" : "signatures"}
-          </span>
-          <ul class="master-list">
-            <For each={mine()}>
-              {(s) => (
-                <li>
-                  <button classList={{ picked: s.id === picked() }} aria-current={s.id === picked()} onClick={() => pick(s.id)}>
-                    <span class="name">{s.name || "Untitled"}</span>
-                    <span class="badges">
-                      <Show when={s.forNew}>
-                        <span class="badge">New mail</span>
-                      </Show>
-                      <Show when={s.forReply}>
-                        <span class="badge">Replies</span>
-                      </Show>
-                      <Show when={!s.forNew && !s.forReply}>
-                        <span class="row-sub">Pick it in compose</span>
-                      </Show>
-                    </span>
-                  </button>
-                </li>
-              )}
-            </For>
-          </ul>
-        </section>
+      <Group
+        title="Signatures"
+        note={props.accounts.length > 1 ? props.accounts.find((a) => a.id === account())?.email : undefined}
+        end={
+          <button type="button" class="link" onClick={() => void add()}>
+            <Icon name="plus" size={13} /> New signature
+          </button>
+        }
+      >
+        <div class="pick-list">
+          <For
+            each={mine()}
+            fallback={
+              <div class="settings-empty-row">
+                <span class="mark">
+                  <Icon name="pen-line" size={18} />
+                </span>
+                <span>
+                  <strong>No signature for this account yet</strong>
+                  <span>Write one here, or paste one from Gmail or Outlook.</span>
+                </span>
+                <button type="button" class="primary" onClick={() => void add()}>
+                  New signature
+                </button>
+              </div>
+            }
+          >
+            {(s) => (
+              <button type="button" class="list-row pick-row" classList={{ picked: s.id === picked() }} aria-current={s.id === picked()} onClick={() => pick(s.id)}>
+                <span class="badge-mark square quiet">
+                  <Icon name="pen-line" size={14} />
+                </span>
+                <span class="who">
+                  <strong>{s.name || "Untitled"}</strong>
+                  <span class="sub">{(s.body.trim().split("\n")[0] || "Empty").slice(0, 80)}</span>
+                </span>
+                <span class="end">
+                  <Show when={s.forNew}>
+                    <span class="tag">New mail</span>
+                  </Show>
+                  <Show when={s.forReply}>
+                    <span class="tag">Replies</span>
+                  </Show>
+                  <Show when={!s.forNew && !s.forReply}>
+                    <span class="sub">Pick it in compose</span>
+                  </Show>
+                </span>
+              </button>
+            )}
+          </For>
+        </div>
+      </Group>
 
-        <Show
-          when={current()}
-          fallback={
-            <div class="settings-empty">
-              <p>No signature for this account yet. New signature starts one.</p>
-            </div>
-          }
-        >
+        <Show when={current()}>
           {(s) => (
-            <section class="detail panel signature-editor" aria-label="Edit signature">
-              <Group title="Signature">
-                <label class="field narrow">
+            <div class="signature-editor">
+              <Preview label="As it goes out">
+                <MailPreview
+                  head={[
+                    ["From", from()],
+                    ["To", "Ana Rossi <ana.rossi@example.com>"],
+                    ["Subject", "Re: Q4 offer"],
+                  ]}
+                >
+                  <p class="preview-text">Thanks, the offer follows tomorrow.</p>
+                  <Show when={settings.signatureBelow}>
+                    <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
+                  </Show>
+                  <Show
+                    when={s().custom && s().html}
+                    fallback={<p class="preview-text preview-signature">{`-- \n${s().body.trim() || "(empty)"}`}</p>}
+                  >
+                    {(html) => <HtmlFrame html={html()} title="The signature as it goes out" />}
+                  </Show>
+                  <Show when={!settings.signatureBelow}>
+                    <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
+                  </Show>
+                </MailPreview>
+              </Preview>
+              <Group title={s().name || "Untitled"}>
+                <label class="setting">
                   <span class="title">Name</span>
                   <input value={s().name} onInput={(e) => edit({ name: e.currentTarget.value })} />
                 </label>
-                <fieldset class="field">
-                  <legend class="title">Format</legend>
-                  <span class="segmented">
-                    <label classList={{ on: !s().custom }}>
-                      <input
-                        type="radio"
-                        name="signature-kind"
-                        checked={!s().custom}
-                        onChange={() => {
-                          if (s().html) keptHtml.set(s().id, s().html!);
-                          edit({ custom: false, html: null });
-                          setVersion(version() + 1);
-                        }}
-                      />
-                      Write it here
-                    </label>
-                    <label classList={{ on: !!s().custom }}>
-                      <input
-                        type="radio"
-                        name="signature-kind"
-                        checked={!!s().custom}
-                        onChange={() => {
-                          const kept = keptHtml.get(s().id);
-                          edit(kept ? { custom: true, html: kept, body: htmlText(kept) } : { custom: true });
-                        }}
-                      />
-                      Paste from another app
-                    </label>
-                  </span>
-                  <span class="help">
-                    For a signature with a logo or a layout of its own: copy it in Gmail's or Outlook's settings and paste
-                    it below. It goes out exactly as it is.
-                  </span>
-                </fieldset>
+                <Row
+                  title="Format"
+                  help="For a signature with a logo or a layout of its own: copy it in Gmail's or Outlook's settings and paste it below. It goes out exactly as it is."
+                >
+                  <Segmented
+                    label="Format"
+                    value={!!s().custom}
+                    choices={[
+                      { label: "Write it here", value: false },
+                      { label: "Paste from another app", value: true },
+                    ]}
+                    onChange={(custom) => {
+                      if (custom === !!s().custom) return;
+                      if (!custom) {
+                        if (s().html) keptHtml.set(s().id, s().html!);
+                        edit({ custom: false, html: null });
+                        setVersion(version() + 1);
+                      } else {
+                        const kept = keptHtml.get(s().id);
+                        edit(kept ? { custom: true, html: kept, body: htmlText(kept) } : { custom: true });
+                      }
+                    }}
+                  />
+                </Row>
                 <Show when={s().custom}>
-                  <div class="field">
+                  <div class="setting-block">
                     {/* biome-ignore lint/a11y/useSemanticElements: it takes pasted HTML (a logo, a layout), which a textarea can't */}
                     <div
                       class="paste-box"
@@ -220,7 +241,7 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
                       {s().html ? "Click here and press Ctrl+V to paste a new one" : "Click here and press Ctrl+V"}
                     </div>
                   </div>
-                  <details class="field html-details">
+                  <details class="setting-block html-details">
                     <summary>Edit the HTML</summary>
                     <textarea
                       class="html-source"
@@ -232,7 +253,7 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
                   </details>
                   <Show when={localPictures(s().html ?? "")}>
                     {(n) => (
-                      <p class="help warn">
+                      <p class="setting-block help warn">
                         {n() === 1 ? "A picture is" : `${n()} pictures are`} only on this computer, so the people you write to
                         won't see {n() === 1 ? "it" : "them"}. Use pictures with a web address (https://…).
                       </p>
@@ -240,7 +261,7 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
                   </Show>
                 </Show>
                 <Show when={!s().custom}>
-                <div class="field">
+                <div class="setting-block">
                   <span class="field-head">
                     <span class="title">Text</span>
                     <Show when={s().html}>
@@ -273,91 +294,46 @@ export function SignatureSettings(props: { accounts: Account[]; account: number 
               </Group>
 
               <Group title="When it's used">
-              <div class="pair">
-                <div class="field">
-                  <span class="title">New messages</span>
-                  <Dropdown
-                    label="New messages"
-                    value={String(forNew() ?? "")}
-                    choices={[...mine().map((x) => ({ value: String(x.id), label: x.name || "Untitled" })), { value: "", label: "None" }]}
-                    onChange={(v) => void setDefault(false, v)}
-                  />
-                </div>
-                <div class="field">
-                  <span class="title">Replies and forwards</span>
-                  <Dropdown
-                    label="Replies and forwards"
-                    value={String(forReply() ?? "")}
-                    choices={[...mine().map((x) => ({ value: String(x.id), label: x.name || "Untitled" })), { value: "", label: "None" }]}
-                    onChange={(v) => void setDefault(true, v)}
-                  />
-                </div>
-              </div>
-
-              <fieldset class="field">
-                <legend class="title">In replies, put it</legend>
-                <span class="segmented">
-                  <label classList={{ on: !settings.signatureBelow }}>
-                    <input
-                      type="radio"
-                      name="signature-place"
-                      checked={!settings.signatureBelow}
-                      onChange={() => setSetting("signatureBelow", false)}
-                    />
-                    Above the quoted message
-                  </label>
-                  <label classList={{ on: settings.signatureBelow }}>
-                    <input
-                      type="radio"
-                      name="signature-place"
-                      checked={settings.signatureBelow}
-                      onChange={() => setSetting("signatureBelow", true)}
-                    />
-                    Below it
-                  </label>
-                </span>
-                <span class="help">
-                  Above is where people read it; below is the older custom. Tern adds a “-- ” line before it so other
-                  apps can fold it away.
-                </span>
-              </fieldset>
-
-              </Group>
-
-              <Group title="Preview">
-                <MailPreview
-                  head={[
-                    ["From", from()],
-                    ["To", "Ana Rossi <ana.rossi@example.com>"],
-                    ["Subject", "Re: Q4 offer"],
+              <Row title="New messages">
+                <Dropdown
+                  label="New messages"
+                  value={String(forNew() ?? "")}
+                  choices={[...mine().map((x) => ({ value: String(x.id), label: x.name || "Untitled" })), { value: "", label: "None" }]}
+                  onChange={(v) => void setDefault(false, v)}
+                />
+              </Row>
+              <Row title="Replies and forwards">
+                <Dropdown
+                  label="Replies and forwards"
+                  value={String(forReply() ?? "")}
+                  choices={[...mine().map((x) => ({ value: String(x.id), label: x.name || "Untitled" })), { value: "", label: "None" }]}
+                  onChange={(v) => void setDefault(true, v)}
+                />
+              </Row>
+              <Row
+                title="In replies, put it"
+                help="Above is where people read it; below is the older custom. Tern adds a “-- ” line before it so other apps can fold it away."
+              >
+                <Segmented
+                  label="In replies, put it"
+                  value={settings.signatureBelow}
+                  choices={[
+                    { label: "Above the quote", value: false },
+                    { label: "Below it", value: true },
                   ]}
-                >
-                  <p class="preview-text">Thanks, the offer follows tomorrow.</p>
-                  <Show when={settings.signatureBelow}>
-                    <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
-                  </Show>
-                  <Show
-                    when={s().custom && s().html}
-                    fallback={<p class="preview-text preview-signature">{`-- \n${s().body.trim() || "(empty)"}`}</p>}
-                  >
-                    {(html) => <HtmlFrame html={html()} title="The signature as it goes out" />}
-                  </Show>
-                  <Show when={!settings.signatureBelow}>
-                    <p class="preview-quote">On Monday, Ana Rossi wrote: Could you send the offer by Friday?</p>
-                  </Show>
-                </MailPreview>
-              </Group>
-
-              <footer class="detail-foot">
-                <span class="meta">Changes save as you type.</span>
-                <button class="link danger" onClick={() => void remove(s().id)}>
+                  onChange={(v) => setSetting("signatureBelow", v)}
+                />
+              </Row>
+              <div class="list-foot">
+                <span>Changes save as you type.</span>
+                <button type="button" class="link danger" onClick={() => void remove(s().id)}>
                   Delete
                 </button>
-              </footer>
-            </section>
+              </div>
+              </Group>
+            </div>
           )}
         </Show>
-      </div>
     </div>
   );
 }

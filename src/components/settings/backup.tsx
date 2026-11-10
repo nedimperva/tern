@@ -1,9 +1,10 @@
 // Settings → Backup: everything set up in Tern as one file, to move to another computer or keep a copy.
 
-import { createSignal, Show } from "solid-js";
+import { createSignal, onMount, Show } from "solid-js";
 import { api, type Account } from "../../api";
 import { makeBackup, readBackup, settingsFrom } from "../../backup";
 import { setSetting, settings, type Settings } from "../../settings";
+import { Chip, Group, Preview, Row, Switch } from "./shared";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -105,76 +106,93 @@ export function BackupSettings(props: { accounts: Account[]; onAccountsChanged: 
       return `${said}${added}${present}${keys}`;
     });
 
+  // What a file made now would hold, for the preview (idea 63).
+  const [counts, setCounts] = createSignal<{ snippets: number; signatures: number } | null>(null);
+  onMount(() => void Promise.all([api.snippets(), api.signatures()]).then(([a, b]) => setCounts({ snippets: a.length, signatures: b.length }), () => {}));
   return (
     <>
-      <div class="setting">
-        <span class="title">Export</span>
-        <span class="value-action">
-          <button onClick={() => void exportNow()} disabled={busy()}>
-            Export settings…
-          </button>
-        </span>
-        <label class="backup-accounts">
-          <input type="checkbox" checked={withAccounts()} onChange={(e) => setWithAccounts(e.currentTarget.checked)} />
-          Include accounts, passwords and AI keys, locked with a passphrase
-        </label>
-        <Show when={withAccounts()}>
-          <span class="ai-key backup-passphrase">
-            <input type="password" aria-label="Passphrase" placeholder="Passphrase" value={passphrase()} onInput={(e) => setPassphrase(e.currentTarget.value)} />
-            <input
-              type="password"
-              aria-label="Passphrase again"
-              placeholder="Again"
-              value={again()}
-              onInput={(e) => setAgain(e.currentTarget.value)}
-              onKeyDown={(e) => e.key === "Enter" && void exportNow()}
-            />
-          </span>
-        </Show>
-        <span class="help">
-          <Show
-            when={withAccounts()}
-            fallback="Saves your settings, snippets, signatures, saved searches and account colours as one file. Passwords and AI keys stay in your system's keyring and are not in it."
-          >
-            The file also holds every account's server details and password (or Google sign-in) and your AI keys,
-            sealed with the passphrase: at least 8 characters. Without it the file can't be opened, and Tern can't get
-            it back for you.
+      <Preview label="What goes in the file">
+        <div class="backup-chips">
+          <Chip tone="ok">Settings</Chip>
+          <Show when={counts()}>
+            {(c) => (
+              <>
+                <Chip tone="ok">{plural(c().snippets, "snippet")}</Chip>
+                <Chip tone="ok">{plural(c().signatures, "signature")}</Chip>
+              </>
+            )}
           </Show>
-        </span>
-      </div>
-      <div class="setting">
-        <span class="title">Import</span>
-        <span class="value-action">
-          <button onClick={() => void importNow()} disabled={busy()}>
-            Import settings…
-          </button>
-        </span>
-        <Show when={locked()}>
-          <span class="ai-key backup-passphrase">
-            <input
-              type="password"
-              aria-label="The file's passphrase"
-              placeholder="The file's passphrase"
-              value={unlockWith()}
-              onInput={(e) => setUnlockWith(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && unlockWith()) void unlock();
-                else if (e.key === "Escape") (e.stopPropagation(), setLocked(false));
-              }}
-              ref={(el) => queueMicrotask(() => el.focus())}
-            />
-            <button onClick={() => (setLocked(false), setUnlockWith(""))}>Cancel</button>
-            <button class="primary" disabled={!unlockWith() || busy()} onClick={() => void unlock()}>
-              {busy() ? "Opening…" : "Open"}
-            </button>
-          </span>
+          <Chip tone="ok">Saved searches</Chip>
+          <Chip tone="ok">Account colours</Chip>
+          <Show when={withAccounts()} fallback={<Chip>Accounts, passwords and AI keys stay here</Chip>}>
+            <Chip tone="ok">{plural(props.accounts.length, "account")}, passwords and AI keys, locked</Chip>
+          </Show>
+        </div>
+      </Preview>
+      <Group title="Export">
+        <Row
+          title="Include accounts and keys"
+          help={
+            withAccounts()
+              ? "Every account's server details and password (or Google sign-in) and your AI keys, sealed with a passphrase of at least 8 characters. Without it the file can't be opened, and Tern can't get it back for you."
+              : "Locked with a passphrase you choose. Otherwise they stay in this computer's keyring."
+          }
+        >
+          <Switch label="Include accounts and keys" on={withAccounts()} onChange={setWithAccounts} />
+        </Row>
+        <Show when={withAccounts()}>
+          <Row title="Passphrase" class="sub">
+            <span class="ai-key backup-passphrase">
+              <input type="password" aria-label="Passphrase" placeholder="Passphrase" value={passphrase()} onInput={(e) => setPassphrase(e.currentTarget.value)} />
+              <input
+                type="password"
+                aria-label="Passphrase again"
+                placeholder="Again"
+                value={again()}
+                onInput={(e) => setAgain(e.currentTarget.value)}
+                onKeyDown={(e) => e.key === "Enter" && void exportNow()}
+              />
+            </span>
+          </Row>
         </Show>
-        <span class="help">
-          Takes the settings from such a file. Snippets and signatures are added to yours; a snippet whose shortcut you
-          already use keeps yours. Signatures go to the accounts with the same address here. A file with accounts asks
-          for its passphrase and adds the accounts and AI keys that aren't here yet.
-        </span>
-      </div>
+        <Row title="Save a backup" help="One file with everything above.">
+          <button class="primary" onClick={() => void exportNow()} disabled={busy()}>
+            Export…
+          </button>
+        </Row>
+      </Group>
+      <Group title="Import">
+        <Row
+          title="Open a backup"
+          help="Snippets and signatures are added to yours; a shortcut you already use keeps yours. Signatures go to the accounts with the same address here."
+        >
+          <button onClick={() => void importNow()} disabled={busy()}>
+            Import…
+          </button>
+        </Row>
+        <Show when={locked()}>
+          <Row title="The file's passphrase" class="sub" help="This file holds accounts. Tern adds the ones that aren't here yet.">
+            <span class="ai-key backup-passphrase">
+              <input
+                type="password"
+                aria-label="The file's passphrase"
+                placeholder="Passphrase"
+                value={unlockWith()}
+                onInput={(e) => setUnlockWith(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && unlockWith()) void unlock();
+                  else if (e.key === "Escape") (e.stopPropagation(), setLocked(false));
+                }}
+                ref={(el) => queueMicrotask(() => el.focus())}
+              />
+              <button onClick={() => (setLocked(false), setUnlockWith(""))}>Cancel</button>
+              <button class="primary" disabled={!unlockWith() || busy()} onClick={() => void unlock()}>
+                {busy() ? "Opening…" : "Open"}
+              </button>
+            </span>
+          </Row>
+        </Show>
+      </Group>
       <Show when={note()}>
         <p class="setting-note">{note()}</p>
       </Show>

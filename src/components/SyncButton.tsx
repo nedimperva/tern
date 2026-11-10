@@ -88,9 +88,12 @@ export function SyncButton() {
         title={headline()}
         onClick={() => setOpen(!open())}
       >
-        <span class="sync-icon" onAnimationIteration={() => !want() && setSpinning(false)}>
-          <Icon name={update() && !state().label ? "download" : state().icon} size={15} />
-        </span>
+        {/* "N to look at" has its amber dot; a warning triangle as well said it twice (idea 80). */}
+        <Show when={!(state().tone === "warn" && state().label && !spinning())}>
+          <span class="sync-icon" onAnimationIteration={() => !want() && setSpinning(false)}>
+            <Icon name={update() && !state().label ? "download" : state().icon} size={15} />
+          </span>
+        </Show>
         <Show when={label()}>
           <span class="sync-label">{label()}</span>
         </Show>
