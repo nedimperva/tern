@@ -4591,7 +4591,7 @@ button.fold {
   accent-color: var(--accent);
 }
 .settings-content
-  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .list-row .end, .settings-card .ai-ask, .settings-card .setting)
+  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .settings-content .list-row .end, .settings-card .ai-ask, .settings-card .setting)
   button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button, .switch, .icon-button, .dropdown, .dropdown *, .word-tag button) {
   height: 32px;
   padding: 0 var(--s-3);
@@ -4603,7 +4603,7 @@ button.fold {
   box-shadow: var(--raise);
 }
 .settings-content
-  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .list-row .end, .settings-card .ai-ask, .settings-card .setting)
+  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .settings-content .list-row .end, .settings-card .ai-ask, .settings-card .setting)
   button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button, .switch, .icon-button, .dropdown, .dropdown *, .word-tag button):hover:not(:disabled) {
   background: var(--bg-2);
   border-color: var(--line-strong);
@@ -4909,23 +4909,23 @@ button.fold {
 
 /* Lists (senders, providers, accounts, addresses): one look. A find box and filters on top, rows of the same
    columns, "Show all" at the foot. */
-.list-head {
+.settings-content .list-head {
   display: flex;
   align-items: center;
   gap: var(--s-2);
   padding: 10px var(--s-3);
   background: var(--bg-0);
 }
-.list-head .find {
+.settings-content .list-head .find {
   flex: 1;
   min-width: 0;
 }
-.list-filters {
+.settings-content .list-filters {
   display: flex;
   gap: 2px;
   flex-wrap: wrap;
 }
-.list-filters button {
+.settings-content .list-filters button {
   height: 26px;
   padding: 0 9px;
   border: 0;
@@ -4934,16 +4934,16 @@ button.fold {
   color: var(--fg-1);
   font-size: var(--t-sm);
 }
-.list-filters button:hover {
+.settings-content .list-filters button:hover {
   color: var(--fg-0);
   background: var(--bg-2);
 }
-.list-filters button[aria-pressed="true"] {
+.settings-content .list-filters button[aria-pressed="true"] {
   background: var(--bg-3);
   color: var(--fg-0);
   font-weight: 500;
 }
-.list-row {
+.settings-content .list-row {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr) auto;
   align-items: center;
@@ -4951,10 +4951,10 @@ button.fold {
   min-height: 56px;
   padding: var(--s-2) 18px;
 }
-.list-row:hover {
+.settings-content .list-row:hover {
   background: var(--bg-0);
 }
-.list-row .badge-mark {
+.settings-content .list-row .badge-mark {
   display: grid;
   place-items: center;
   width: 32px;
@@ -4964,44 +4964,44 @@ button.fold {
   font-size: var(--t-sm);
   font-weight: 600;
 }
-.list-row .badge-mark.square {
+.settings-content .list-row .badge-mark.square {
   border-radius: var(--r-md);
 }
-.list-row .badge-mark.quiet {
+.settings-content .list-row .badge-mark.quiet {
   background: var(--bg-2);
   color: var(--fg-1);
 }
-.list-row .who {
+.settings-content .list-row .who {
   min-width: 0;
 }
-.list-row .who strong,
-.list-row .who .sub {
+.settings-content .list-row .who strong,
+.settings-content .list-row .who .sub {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.list-row .who strong {
+.settings-content .list-row .who strong {
   font-size: 13.5px;
   font-weight: 500;
   color: var(--fg-0);
 }
-.list-row .who .sub {
+.settings-content .list-row .who .sub {
   margin-top: 1px;
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
-.list-row .who .said {
+.settings-content .list-row .who .said {
   display: block;
   font-size: var(--t-sm);
   color: var(--ok);
 }
-.list-row .end {
+.settings-content .list-row .end {
   display: flex;
   align-items: center;
   gap: var(--s-2);
 }
-.list-row .tag {
+.settings-content .list-row .tag {
   margin-left: 6px;
   padding: 1px 7px;
   border-radius: 999px;
@@ -5011,7 +5011,7 @@ button.fold {
   font-weight: 500;
   vertical-align: 1px;
 }
-.list-foot {
+.settings-content .list-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -5021,7 +5021,7 @@ button.fold {
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
-.list-none {
+.settings-content .list-none {
   margin: 0;
   padding: var(--s-4) 18px;
   font-size: var(--t-sm);
@@ -5080,7 +5080,7 @@ button.fold {
 }
 /* A danger row's button: red words, nothing else red. */
 .setting button.danger-text,
-.list-row button.danger-text {
+.settings-content .list-row button.danger-text {
   color: var(--danger);
 }
 /* Searching settings: the rows that match, tinted, their words marked (idea 69). */
@@ -5249,25 +5249,25 @@ button.pill[aria-pressed="true"] {
   font-size: var(--t-sm);
   color: var(--fg-2);
 }
-.detail .prefixed {
+:is(.detail, .snippet-editor, .signature-editor) .prefixed {
   display: flex;
   align-items: center;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg-0);
 }
-.detail .prefixed:focus-within {
+:is(.detail, .snippet-editor, .signature-editor) .prefixed:focus-within {
   border-color: var(--accent);
 }
-.detail .prefixed.invalid:focus-within {
+:is(.detail, .snippet-editor, .signature-editor) .prefixed.invalid:focus-within {
   border-color: var(--danger);
 }
-.detail .prefixed > span {
+:is(.detail, .snippet-editor, .signature-editor) .prefixed > span {
   padding-left: 10px;
   font-family: var(--mono);
   color: var(--fg-2);
 }
-.detail .prefixed input {
+:is(.detail, .snippet-editor, .signature-editor) .prefixed input {
   flex: 1;
   min-width: 0;
   padding-left: 2px;
@@ -5288,18 +5288,18 @@ button.pill[aria-pressed="true"] {
 .detail .note.bad {
   color: var(--danger);
 }
-.detail .textbox {
+:is(.detail, .snippet-editor, .signature-editor) .textbox {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg-0);
   overflow: hidden;
 }
-.detail .textbox:focus-within {
+:is(.detail, .snippet-editor, .signature-editor) .textbox:focus-within {
   border-color: var(--accent);
 }
 
 /* An HTML signature (pasted from another mail app): where it is pasted, its source, and how it looks. */
-.detail .paste-box {
+:is(.detail, .signature-editor) .paste-box {
   padding: var(--s-3);
   border: 1px dashed var(--line);
   border-radius: var(--r-md);
@@ -5307,12 +5307,12 @@ button.pill[aria-pressed="true"] {
   color: var(--fg-2);
   cursor: text;
 }
-.detail .paste-box:focus {
+:is(.detail, .signature-editor) .paste-box:focus {
   outline: none;
   border-color: var(--accent);
   color: var(--fg-1);
 }
-.detail .html-source {
+:is(.detail, .signature-editor) .html-source {
   width: 100%;
   resize: vertical;
   font: var(--t-xs) / 1.5 var(--mono);
@@ -5348,7 +5348,7 @@ button.pill[aria-pressed="true"] {
   background: #fff;
   box-shadow: inset 0 0 0 1px var(--line);
 }
-.detail .places {
+:is(.detail, .snippet-editor, .signature-editor) .places {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -5369,7 +5369,7 @@ button.place.muted {
   background: var(--bg-2);
   color: var(--fg-1);
 }
-.detail .textbox textarea {
+:is(.detail, .snippet-editor, .signature-editor) .textbox textarea {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -5378,11 +5378,11 @@ button.place.muted {
   resize: vertical;
   font: var(--t-rd) / 1.5 var(--font);
 }
-.detail .textbox .editor-body {
+:is(.detail, .snippet-editor, .signature-editor) .textbox .editor-body {
   min-height: 110px;
   padding: var(--s-3) var(--s-4);
 }
-.detail .textbox .editor-body .ProseMirror {
+:is(.detail, .snippet-editor, .signature-editor) .textbox .editor-body .ProseMirror {
   min-height: 86px;
 }
 /* The signature editor's bar: always there, over the text. */
@@ -10117,7 +10117,7 @@ button.link.danger {
   color: var(--fg-0);
   font-variant-numeric: tabular-nums;
 }
-.list-row.sender-row {
+.settings-content .list-row.sender-row {
   grid-template-columns: 32px minmax(0, 1fr) 120px auto 32px;
 }
 .sender-row .avatar {
@@ -10318,4 +10318,110 @@ button.fold.said {
   .conversation-head .tools .vsep {
     display: none;
   }
+}
+
+/* Writing style: each account a group of rows, like every other page. */
+.style-group .settings-card > :is(.style-preview, .style-sample-row, .style-text) {
+  padding: var(--s-4) 18px;
+}
+.style-group .style-sample {
+  margin: 0;
+  max-width: 320px;
+}
+.style-group .style-text textarea {
+  width: 100%;
+  font: var(--t-md) / 1.5 var(--font);
+}
+.style-habits {
+  margin: var(--s-1) 0 0;
+  padding-left: 18px;
+}
+.style-foot-actions {
+  display: flex;
+  gap: var(--s-3);
+}
+.settings-group-head .end button.link {
+  color: var(--accent);
+  font-weight: 500;
+}
+.settings-content .list-foot button.link {
+  color: var(--accent);
+}
+.settings-content .list-foot button.link.danger {
+  color: var(--danger);
+}
+
+/* Snippets and signatures: the list is a card of rows to pick from; the picked one shows below it (canvas 66, 67). */
+.pick-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+.settings-content .pick-row {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-content .pick-row + .pick-row {
+  border-top: 1px solid var(--line);
+}
+.settings-content .pick-row.picked {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.settings-content .pick-row .end .sub {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.pick-row .snippet-key {
+  font: var(--t-sm) var(--mono);
+  color: var(--fg-1);
+}
+/* A field that needs the card's whole width (a text, a pasted signature): its name over it. */
+.settings-card > .setting-block {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3) 18px var(--s-4);
+}
+.setting-block .field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.setting-block .field-head .title {
+  font-size: var(--t-md);
+  font-weight: 500;
+  color: var(--fg-0);
+}
+.setting-block .help {
+  font-size: var(--t-sm);
+  color: var(--fg-2);
+}
+.setting-block .help.warn {
+  color: var(--warn-fg);
+}
+.snippet-editor,
+.signature-editor {
+  margin-top: var(--s-5);
+}
+.settings-card > .setting .prefixed {
+  width: 240px;
+  box-sizing: border-box;
+}
+.setting .help .note.ok {
+  color: var(--ok);
+}
+.setting .help .note.bad {
+  color: var(--danger);
+}
+fieldset.list-filters {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
 }

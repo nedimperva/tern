@@ -7,10 +7,9 @@
 import { createSignal, For, Show } from "solid-js";
 import { api, type Account, type AiLearned, type AiProvider, type AiStats, type AiStyle } from "../../api";
 import { colourOf } from "../../colours";
-import { radioKeys } from "../../a11y";
 import { aiRoute, setSetting, settings, type AiFeatureKey, type AiRoute, type AiSettings } from "../../settings";
 import { Icon } from "../Icon";
-import { accountName, Chip, Group, lastDay, Preview, Row, Switch } from "./shared";
+import { accountName, Chip, Group, lastDay, Preview, Row, Segmented, Switch } from "./shared";
 import { Dropdown } from "../Dropdown";
 
 const PROVIDERS: { id: AiProvider; company: string; family: string; host: string; keys: string; placeholder: string }[] = [
@@ -446,9 +445,7 @@ export function AiStylePage(props: { accounts: Account[]; /** Opens Settings →
         </div>
       }
     >
-      <Group title="Your style" note="learned from your latest 50 sent messages, your own words only">
-        <For each={readable()}>{(a) => <StyleNote account={a} accounts={props.accounts} onChange={() => {}} />}</For>
-      </Group>
+      <For each={readable()}>{(a) => <StyleNote account={a} accounts={props.accounts} onChange={() => {}} />}</For>
     </Show>
   );
 }
@@ -466,6 +463,9 @@ const FEATURES: { key: AiFeatureKey; toggle: "summaries" | "replies" | "writing"
   },
   { key: "style", toggle: "voice", name: "Write in my style", keys: "per account", sends: "Learning: your latest 50 sent messages, your own words only, once each time" },
 ];
+
+/** A note's greeting as it would open a reply to Ada: its "<name>" filled in, else her name after it. */
+const greeting = (open: string) => (/<name>/i.test(open) ? open.replace(/<name>/gi, "Ada") : `${open.replace(/[,!]$/, "")} Ada,`);
 
 /** A style note read as its parts: greetings, sign-offs, length, tone, habits. Lines it doesn't know stay as they are. */
 type NoteParts = { opens: string[]; closes: string[]; length: string; tone: string; habits: string[]; other: string[] };
@@ -547,19 +547,58 @@ function StyleNote(props: { account: Account; accounts: Account[]; onChange: () 
   const change = (patch: Partial<NoteParts>) => save(noteText({ ...parts(), ...patch }));
   const forget = () => (setPreview(null), save(""));
 
+  const learnButton = (
+    <button type="button" class="link" disabled={learning()} onClick={() => void learn()}>
+      {learning() ? "Learning…" : style() ? "Learn again" : "Learn from my sent mail"}
+    </button>
+  );
+  const choice = (name: "length" | "tone", values: string[]) => (
+    <Segmented
+      label={name === "length" ? "Length" : "Tone"}
+      value={parts()[name]}
+      choices={values.map((v) => ({ label: v[0].toUpperCase() + v.slice(1), value: v }))}
+      onChange={(v) => change({ [name]: v })}
+    />
+  );
+  const chips = (key: "opens" | "closes") => (
+    <span class="word-tags">
+      <For each={parts()[key]} fallback={<span class="help">None yet</span>}>
+        {(t) => (
+          <span class="word-tag">
+            {t}
+            <button type="button" aria-label={`Remove ${t}`} onClick={() => change({ [key]: parts()[key].filter((x) => x !== t) })}>
+              ×
+            </button>
+          </span>
+        )}
+      </For>
+    </span>
+  );
+
+  // One account's style in the settings grammar: a heading with when it was learned and Learn at its right, then one
+  // card of rows (the greeting and sign-off, length, tone, habits) and a foot to edit it as text or forget it.
   return (
-    <div class="style-note">
-      <div class="style-head">
-        <span class="dot" style={{ background: colourOf(props.accounts, props.account.id) }} />
-        <strong>{accountName(props.account)}</strong>
-        <span class="meta">
-          {style() ? `${style()!.samples ? `From ${style()!.samples} sent messages, ` : ""}${lastDay(style()!.updated)}` : "Not learned yet"}
-        </span>
-        <button disabled={learning()} onClick={() => void learn()}>
-          {learning() ? "Learning…" : style() ? "Learn again" : "Learn from my sent mail"}
-        </button>
-      </div>
-      <Show when={style()}>
+    <Group
+      title={accountName(props.account)}
+      class="style-group"
+      note={style() ? `${style()!.samples ? `from ${style()!.samples} sent messages, ` : ""}${lastDay(style()!.updated)}` : "not learned yet"}
+      end={learnButton}
+    >
+      <Show
+        when={style()}
+        fallback={
+          <div class="settings-empty-row">
+            <span class="mark">
+              <Icon name="feather" size={18} />
+            </span>
+            <span>
+              <strong>Not learned yet</strong>
+              <span>Tern reads your latest 50 sent messages once, your own words only, and writes a short note on how you write.</span>
+            </span>
+            <span />
+          </div>
+        }
+      >
         <Show
           when={!preview()}
           fallback={
@@ -598,106 +637,62 @@ function StyleNote(props: { account: Account; accounts: Account[]; onChange: () 
             </div>
           }
         >
-          <Show when={structured() && (parts().opens.length || parts().closes.length)}>
-            <div class="preview-sheet style-sample">
-              <span class="small">A reply to Ada, as the note has it</span>
-              <span>{(parts().opens[0] ?? "Hi").replace(/[,!]$/, "")} Ada,</span>
-              <span class="dim">…</span>
-              <span>{parts().closes[0] ?? "Best"}</span>
-            </div>
-          </Show>
           <Show
             when={structured() && !asText()}
             fallback={
-              <textarea
-                aria-label={`Writing style for ${accountName(props.account)}`}
-                value={style()!.note}
-                rows={Math.min(12, style()!.note.split("\n").length + 1)}
-                onBlur={(e) => save(e.currentTarget.value)}
-              />
+              <div class="style-text">
+                <textarea
+                  aria-label={`Writing style for ${accountName(props.account)}`}
+                  value={style()!.note}
+                  rows={Math.min(12, style()!.note.split("\n").length + 1)}
+                  onBlur={(e) => save(e.currentTarget.value)}
+                />
+              </div>
             }
           >
-            <div class="style-profile">
-              <div class="style-part">
-                <span class="kicker">Opens with</span>
-                <div class="chips">
-                  <For each={parts().opens}>
-                    {(t) => (
-                      <span class="chip">
-                        {t}
-                        <button aria-label={`Remove ${t}`} onClick={() => change({ opens: parts().opens.filter((x) => x !== t) })}>
-                          ×
-                        </button>
-                      </span>
-                    )}
-                  </For>
+            <Show when={parts().opens.length || parts().closes.length}>
+              <div class="style-sample-row">
+                <div class="preview-sheet style-sample">
+                  <span class="small">A reply to Ada, as the note has it</span>
+                  <span>{greeting(parts().opens[0] ?? "Hi")}</span>
+                  <span class="dim">…</span>
+                  <span>{parts().closes[0] ?? "Best"}</span>
                 </div>
               </div>
-              <div class="style-part">
-                <span class="kicker">Signs off with</span>
-                <div class="chips">
-                  <For each={parts().closes}>
-                    {(t) => (
-                      <span class="chip">
-                        {t}
-                        <button aria-label={`Remove ${t}`} onClick={() => change({ closes: parts().closes.filter((x) => x !== t) })}>
-                          ×
-                        </button>
-                      </span>
-                    )}
-                  </For>
-                </div>
-              </div>
-              <div class="style-part">
-                <span class="kicker">Length</span>
-                <div class="segmented" role="radiogroup" aria-label="Length" onKeyDown={radioKeys}>
-                  <For each={["short", "medium", "long"]}>
-                    {(v) => (
-                      <button role="radio" aria-checked={parts().length === v} tabIndex={parts().length === v ? 0 : -1} classList={{ on: parts().length === v }} onClick={() => change({ length: v })}>
-                        {v[0].toUpperCase() + v.slice(1)}
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </div>
-              <div class="style-part">
-                <span class="kicker">Tone</span>
-                <div class="segmented" role="radiogroup" aria-label="Tone" onKeyDown={radioKeys}>
-                  <For each={["formal", "plain", "warm"]}>
-                    {(v) => (
-                      <button role="radio" aria-checked={parts().tone === v} tabIndex={parts().tone === v ? 0 : -1} classList={{ on: parts().tone === v }} onClick={() => change({ tone: v })}>
-                        {v[0].toUpperCase() + v.slice(1)}
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </div>
-              <Show when={parts().habits.length}>
-                <div class="style-part wide">
-                  <span class="kicker">Habits</span>
-                  <ul>
+            </Show>
+            <Row title="Opens with">{chips("opens")}</Row>
+            <Row title="Signs off with">{chips("closes")}</Row>
+            <Row title="Length">{choice("length", ["short", "medium", "long"])}</Row>
+            <Row title="Tone">{choice("tone", ["formal", "plain", "warm"])}</Row>
+            <Show when={parts().habits.length}>
+              <Row
+                title="Habits"
+                help={
+                  <ul class="style-habits">
                     <For each={parts().habits}>{(h) => <li>{h}</li>}</For>
                   </ul>
-                </div>
-              </Show>
-            </div>
-          </Show>
-          <div class="style-foot">
-            <span class="spacer" />
-            <Show when={structured()}>
-              <button class="link" onClick={() => setAsText(!asText())}>
-                {asText() ? "Show as parts" : "Edit as text"}
-              </button>
+                }
+              />
             </Show>
-            <button class="link danger" onClick={forget}>
-              Forget
-            </button>
+          </Show>
+          <div class="list-foot">
+            <span>Used by suggested replies and Write with AI for this account.</span>
+            <span class="style-foot-actions">
+              <Show when={structured()}>
+                <button type="button" class="link" onClick={() => setAsText(!asText())}>
+                  {asText() ? "Show as parts" : "Edit as text"}
+                </button>
+              </Show>
+              <button type="button" class="link danger" onClick={forget}>
+                Forget
+              </button>
+            </span>
           </div>
         </Show>
       </Show>
       <Show when={error()}>
         <p class="setting-error">{error()}</p>
       </Show>
-    </div>
+    </Group>
   );
 }
