@@ -7,6 +7,11 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-10
+
+Settings read one way on every page, compose folds its files into one line and gets a calmer footer, and a
+round of polish across the list, threads, the morning screen and the sync panel.
+
 ### Added
 
 - Day headings in the list (Today, Yesterday, the week's days, then months), like a thread's.
