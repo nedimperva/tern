@@ -7,6 +7,18 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Settings → Backup lets you pick what goes in the file, and what to take from one: settings, snippets,
+  signatures, sender choices, notes on people and writing style notes. The last three are new in the backup.
+- A backup can carry the Todoist token, besides accounts with their passwords and the AI keys. Each is off until
+  you turn it on, a warning says the file will hold secrets, and the file is then locked with a passphrase.
+
+### Fixed
+
+- Importing a file with only part of an object setting (Todoist, AI) keeps the defaults for the rest.
+- The passphrase fields in Settings → Backup no longer run past the edge of the card.
+
 ## [2.2.0] - 2026-11-10
 
 Settings read one way on every page, compose folds its files into one line and gets a calmer footer, and a

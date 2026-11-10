@@ -1,7 +1,9 @@
-//! A settings backup that carries accounts and AI keys (Settings → Backup). The window writes the settings part;
-//! accounts, their secrets and the AI keys are added here, so none of them pass through the window, and the whole is sealed with a
-//! passphrase the person chooses: PBKDF2-HMAC-SHA256 for the key, ChaCha20-Poly1305 for the contents. Both come from
-//! `ring`, which is here for TLS already.
+//! A settings backup (Settings → Backup). The window writes the settings part, with what the person picked of it;
+//! the parts kept in the database rather than in settings (`Data`) come from the store by address. Secrets are
+//! added here and only when the person ticks them: accounts with their passwords or Google sign-ins, the AI keys
+//! and the Todoist token. They never pass through the window, and a file that holds any is sealed with a passphrase
+//! the person chooses: PBKDF2-HMAC-SHA256 for the key, ChaCha20-Poly1305 for the contents. Both come from `ring`,
+//! which is here for TLS already.
 
 use anyhow::{anyhow, bail, Result};
 use base64::engine::general_purpose::STANDARD;
@@ -40,14 +42,85 @@ pub struct AiKey {
     pub key: String,
 }
 
-/// What the sealed part holds: the window's settings file as it wrote it, the accounts and the AI keys.
+/// What the sealed part holds: the window's settings file as it wrote it, and the secrets the person ticked.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Contents {
     pub settings: serde_json::Value,
+    #[serde(default)]
     pub accounts: Vec<AccountBackup>,
     #[serde(default)]
     pub ai_keys: Vec<AiKey>,
+    /// The Todoist API token (keyring entry `todoist::KEY`). Files from before 2.3 have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub todoist: Option<String>,
+}
+
+/// Which secrets go in a backup, or come out of one. Each is off unless the person ticks it.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SecretParts {
+    pub accounts: bool,
+    pub ai_keys: bool,
+    pub todoist: bool,
+}
+
+impl SecretParts {
+    pub fn any(&self) -> bool {
+        self.accounts || self.ai_keys || self.todoist
+    }
+}
+
+/// What the person set up that lives in the database, not in settings: where senders' mail goes, their notes on
+/// people and each account's writing style. Accounts are named by address, never by id, which differs from one
+/// computer to the next. Not secret, so it goes in a plain file too.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Data {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub senders: Option<Vec<SenderEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<Vec<PersonNote>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub styles: Option<Vec<StyleNote>>,
+}
+
+/// A sender (an address, or `@domain`) the person sent to Important or Other, or blocked, in one account.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SenderEntry {
+    pub account: String,
+    pub addr: String,
+    pub state: String,
+}
+
+/// The person's own note on someone (the companion).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonNote {
+    pub email: String,
+    pub body: String,
+}
+
+/// An account's writing style note (Settings → Writing style).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StyleNote {
+    pub account: String,
+    pub note: String,
+    #[serde(default)]
+    pub samples: i64,
+}
+
+/// What restoring `Data` added. What is here already keeps what it has; `missing` are accounts the file names
+/// that aren't in Tern here, whose parts were left out.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataRestored {
+    pub senders: usize,
+    pub notes: usize,
+    pub styles: usize,
+    pub missing: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -155,6 +228,7 @@ mod tests {
                 tokens: None,
             }],
             ai_keys: vec![AiKey { provider: Provider::Openai, key: "sk-test-key".into() }],
+            todoist: Some("todoist-test-token".into()),
         }
     }
 
@@ -165,6 +239,7 @@ mod tests {
         assert!(!text.contains("hunter2"), "the password is in the file as written");
         assert!(!text.contains("ada@example.com"), "the address is in the file as written");
         assert!(!text.contains("sk-test-key"), "the AI key is in the file as written");
+        assert!(!text.contains("todoist-test-token"), "the Todoist token is in the file as written");
         let back = open(&text, "correct horse").unwrap();
         assert_eq!(back.accounts.len(), 1);
         assert_eq!(back.accounts[0].config.email, "ada@example.com");
@@ -172,8 +247,19 @@ mod tests {
         assert_eq!(back.accounts[0].password.as_deref(), Some("hunter2 and more"));
         assert_eq!(back.ai_keys[0].provider, Provider::Openai);
         assert_eq!(back.ai_keys[0].key, "sk-test-key");
+        assert_eq!(back.todoist.as_deref(), Some("todoist-test-token"));
         assert_eq!(back.settings, contents().settings);
         assert_eq!(open(&text, "correct horsE").unwrap_err().to_string(), WRONG);
+    }
+
+    #[test]
+    fn a_backup_from_before_todoist_still_opens() {
+        // 2.2 sealed `settings`, `accounts` and `aiKeys` only.
+        let old = serde_json::json!({ "settings": {}, "accounts": [], "aiKeys": [] });
+        let back: Contents = serde_json::from_value(old).unwrap();
+        assert!(back.todoist.is_none() && back.accounts.is_empty());
+        let none: Contents = serde_json::from_value(serde_json::json!({ "settings": {} })).unwrap();
+        assert!(none.ai_keys.is_empty());
     }
 
     #[test]

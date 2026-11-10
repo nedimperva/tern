@@ -4,6 +4,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { codeAsHtml } from "./htmlSignature";
+import type { BackupData } from "./backup";
 
 /** The start of the day: what came in since the person was last here and what needs them (see `day_start`). */
 export type DayStart = {
@@ -91,9 +92,16 @@ export type Account = AccountConfig & { id: number };
 export type Mailto = { to: string[]; cc: string[]; bcc: string[]; subject: string; body: string };
 /** A settings file picked for import (Settings → Backup). A sealed one stays in the engine until its passphrase. */
 export type PickedSettings = { text: string | null; locked: boolean };
-/** What opening a sealed backup did: its settings part, the accounts it added or found here already, and the AI
- * providers whose key it saved. */
-export type UnlockedSettings = { text: string; added: string[]; present: string[]; aiKeys: string[] };
+/** A secret a sealed backup holds, by name only, and whether this computer has its own (then kept). */
+export type HeldSecret = { name: string; here: boolean };
+/** What a sealed backup holds, once opened: its settings part, and its secrets by name. Nothing is taken yet. */
+export type UnlockedSettings = { text: string; accounts: HeldSecret[]; aiKeys: HeldSecret[]; todoist: HeldSecret | null };
+/** Which secrets go in a backup, or come out of one (tern_core::backup::SecretParts). */
+export type SecretParts = { accounts: boolean; aiKeys: boolean; todoist: boolean };
+/** What taking a backup's secrets did: what was added, and what was kept because this computer had its own. */
+export type RestoredSecrets = { added: string[]; present: string[]; aiKeys: string[]; aiKept: string[]; todoist: "added" | "kept" | null };
+/** What restoring a backup's database parts added; `missing` are accounts it names that aren't here. */
+export type RestoredData = { senders: number; notes: number; styles: number; missing: string[] };
 /** Mail a notification was about. */
 /** Saved text that compose inserts after `;shortcut`; `{first_name}` and the like are filled in there. It can be
  * kept to one account, and can also set the subject (when compose has none) and add people to Cc. `used` and
@@ -488,12 +496,21 @@ export interface Api {
   onFilesDropped(f: (paths: string[], at: { x: number; y: number } | null) => void, hover?: (over: boolean) => void): () => void;
   /** Keeps a pasted picture like an attached file, for the text (PNG, JPEG, GIF or WebP). */
   addImage(picture: Blob): Promise<OutgoingAttachment>;
-  /** Saves settings, snippets and signatures (src/backup.ts) where the person picks; false if they cancelled. */
-  exportSettings(contents: string, passphrase?: string | null): Promise<boolean>;
+  /** Saves a backup (src/backup.ts) where the person picks; false if they cancelled. With a passphrase the engine
+   * adds the secrets ticked in `secrets` and seals the file. */
+  exportSettings(contents: string, passphrase?: string | null, secrets?: SecretParts | null): Promise<boolean>;
   /** A settings file the person picks: its text, or `locked` when it needs `unlockSettings`; null if they cancelled. */
   importSettings(): Promise<PickedSettings | null>;
-  /** Opens the sealed file picked last and adds its accounts that aren't here yet; the settings part as text. */
+  /** Opens the sealed file picked last and says what it holds; nothing is taken until `restoreSecrets`. */
   unlockSettings(passphrase: string): Promise<UnlockedSettings>;
+  /** Takes the picked secrets from the file `unlockSettings` opened: new accounts, AI keys, the Todoist token. */
+  restoreSecrets(parts: SecretParts): Promise<RestoredSecrets>;
+  /** Forgets a sealed file picked or opened (Cancel). */
+  forgetBackup(): Promise<void>;
+  /** Sender choices, notes on people and style notes, for a backup. */
+  backupData(): Promise<BackupData>;
+  /** Adds a backup's sender choices, notes and style notes that aren't here. */
+  restoreData(data: BackupData): Promise<RestoredData>;
   /** A picture being attached, as a data: URI for its card; null for other files. */
   outgoingPreview(path: string): Promise<string | null>;
   /** Runs `f` (and waits for it) before the window closes or Tern quits; returns the way to stop. */
@@ -732,9 +749,13 @@ const tauri: Api = {
   outgoingPreview: (path) => invoke("outgoing_preview", { path }),
   addImage: async (picture) =>
     invoke("add_image", new Uint8Array(await picture.arrayBuffer()), { headers: { "x-mime": picture.type } }),
-  exportSettings: (contents, passphrase = null) => invoke("export_settings", { contents, passphrase }),
+  exportSettings: (contents, passphrase = null, secrets = null) => invoke("export_settings", { contents, passphrase, secrets }),
   importSettings: () => invoke("import_settings"),
   unlockSettings: (passphrase) => invoke("unlock_settings", { passphrase }),
+  restoreSecrets: (parts) => invoke("restore_secrets", { parts }),
+  forgetBackup: () => invoke("forget_backup"),
+  backupData: () => invoke("backup_data"),
+  restoreData: (data) => invoke("restore_data", { data }),
   attachmentBytes: (id, index) => invoke("attachment_bytes", { id, index }),
   saveAttachment: (id, index) => invoke("save_attachment", { id, index }),
   contacts: (query) => invoke("contacts", { query }),
@@ -1102,7 +1123,7 @@ function fake(): Api {
   const shelved = new Set<string>();
   // Pictures pasted into compose, by their made-up path, for their previews.
   const pasted = new Map<string, string>();
-  let exported: { contents: string; passphrase: string | null } | null = null;
+  let exported: { contents: string; passphrase: string | null; secrets: SecretParts | null } | null = null;
   const inInbox = (m: ThreadMessage) => folders.find((f) => f.id === m.folderId)?.role === "inbox";
   const labelsOf = (m: ThreadMessage) => {
     const n = Number(m.threadId.slice(1));
@@ -1356,15 +1377,40 @@ function fake(): Api {
     onFilesDropped: () => () => {},
     outgoingPreview: async (path) => pasted.get(path) ?? null,
     // The file goes nowhere in the browser: an import reads back the last export.
-    exportSettings: async (contents, passphrase = null) => {
+    exportSettings: async (contents, passphrase = null, secrets = null) => {
       if (passphrase != null && passphrase.length < 8) throw "Choose a passphrase of at least 8 characters.";
-      exported = { contents, passphrase };
+      exported = { contents, passphrase, secrets };
       return true;
     },
     importSettings: async () => exported && (exported.passphrase ? { text: null, locked: true } : { text: exported.contents, locked: false }),
     unlockSettings: async (passphrase) => {
       if (!exported || passphrase !== exported.passphrase) throw "That passphrase doesn't open this file.";
-      return { text: exported.contents, added: [], present: [account.email], aiKeys: [] };
+      const s = exported.secrets ?? { accounts: true, aiKeys: true, todoist: true };
+      const keys = (["anthropic", "openai", "gemini"] as const).filter((p) => localStorage.getItem(`tern.fake.aiKey.${p}`) != null);
+      return {
+        text: exported.contents,
+        accounts: s.accounts ? [{ name: account.email, here: true }] : [],
+        aiKeys: s.aiKeys ? keys.map((p) => ({ name: p === "anthropic" ? "Anthropic" : p === "openai" ? "OpenAI" : "Google", here: true })) : [],
+        todoist: s.todoist && todoistToken ? { name: "Todoist", here: true } : null,
+      };
+    },
+    restoreSecrets: async (parts) => ({
+      added: [],
+      present: parts.accounts && exported?.secrets?.accounts !== false ? [account.email] : [],
+      aiKeys: [],
+      aiKept: [],
+      todoist: parts.todoist && todoistToken ? "kept" : null,
+    }),
+    forgetBackup: async () => {},
+    backupData: async () => ({
+      senders: [{ account: account.email.toLowerCase(), addr: "news@shop.example", state: "other" }],
+      notes: [...personNotes].map(([email, body]) => ({ email, body })),
+      styles: [...fakeStyles.values()].map((s) => ({ account: account.email.toLowerCase(), note: s.note, samples: s.samples })),
+    }),
+    restoreData: async (data) => {
+      let notes = 0;
+      for (const n of data.notes ?? []) if (!personNotes.has(n.email)) (personNotes.set(n.email, n.body), notes++);
+      return { senders: 0, notes, styles: 0, missing: [] };
     },
     addImage: async (picture) => {
       const uri = await new Promise<string>((done) => {
