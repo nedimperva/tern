@@ -65,7 +65,8 @@ function nameOf(who: string): string {
   const name = who
     .replace(/<[^>]*>|\[mailto:[^\]]*\]|\([^)]*@[^)]*\)/gi, "")
     .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "")
-    .replace(/["'“”]/g, "")
+    // Brackets left over (one inside another) go too: a name never needs them.
+    .replace(/["'“”<>]/g, "")
     .trim()
     .replace(/[,;:]$/, "")
     .trim();
