@@ -62,10 +62,16 @@ const SUBJECT_KEY = /^(Subject|Predmet|Betreff|Objet|Tema)$/i;
 /** The name in "Ana Rossi <ana@x.org>", "Ana Rossi [mailto:ana@x.org]" or "ana@x.org": the address when that is all. */
 function nameOf(who: string): string {
   const addr = who.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0] ?? "";
-  const name = who
-    .replace(/<[^>]*>|\[mailto:[^\]]*\]|\([^)]*@[^)]*\)/gi, "")
+  // Until nothing changes: taking out one bracketed part can join what is left into another.
+  let bare = who;
+  let before: string;
+  do {
+    before = bare;
+    bare = bare.replace(/<[^>]*>|\[mailto:[^\]]*\]|\([^)]*@[^)]*\)/gi, "");
+  } while (bare !== before);
+  const name = bare
     .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "")
-    // Brackets left over (one inside another) go too: a name never needs them.
+    // A bracket left on its own goes too: a name never needs one.
     .replace(/["'“”<>]/g, "")
     .trim()
     .replace(/[,;:]$/, "")
