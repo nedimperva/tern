@@ -369,6 +369,20 @@ impl Store {
         Ok(())
     }
 
+    /// Every file a draft (discarded ones too, which undo can bring back) or queued send still attaches. The
+    /// shell's copies of anything else can go: the copy in Sent carries what was sent.
+    pub fn attachments_in_use(&self) -> Result<HashSet<String>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT json_extract(a.value, '$.path') FROM drafts d, json_each(d.payload, '$.attachments') a
+             UNION
+             SELECT json_extract(a.value, '$.path') FROM outbox o, json_each(o.payload, '$.attachments') a
+             WHERE json_extract(o.payload, '$.kind') = 'send'",
+        )?;
+        let paths = stmt.query_map([], |r| r.get::<_, Option<String>>(0))?;
+        Ok(paths.filter_map(|p| p.transpose()).collect::<rusqlite::Result<_>>()?)
+    }
+
     /// The draft's server copy is gone (or it never had one): forget the draft.
     pub fn draft_removed(&self, id: i64) -> Result<()> {
         self.conn().execute("DELETE FROM drafts WHERE id = ?1", [id])?;

@@ -142,8 +142,8 @@ pub enum SyncState {
     Idle,
     /// The server cannot be reached; trying again with backoff.
     Offline,
-    /// The server refused the password, or Google no longer accepts the sign-in. Not retried until the app starts
-    /// again or is woken (window focus), so a wrong password does not lock the account.
+    /// The server refused the password, or Google no longer accepts the sign-in. Tried again only every
+    /// `AUTH_RETRY` or when woken (window focus), so a wrong password does not lock the account.
     AuthFailed,
     /// Sync is paused: signed out, nothing fetched or sent until it resumes. Changes wait in the outbox.
     Paused,
@@ -1249,11 +1249,14 @@ async fn run_op<S: Stream>(
         }
         OutboxOp::Import { import, folder, .. } => {
             let Some((path, mut done)) = store.import_state(*import)? else { return Ok(Vec::new()) };
-            let file = std::fs::read(&path).map_err(|e| Unworkable(format!("The mbox file is gone: {e}")))?;
+            let file =
+                std::fs::File::open(&path).map_err(|e| Unworkable(format!("The mbox file is gone: {e}")))?;
             within(s.create_folder(folder)).await?;
-            // Counted after each message, so a break part way carries on from the next one rather than twice.
-            for message in crate::mbox::split(&file).iter().skip(done) {
-                within_for(upload_limit(message.len()), s.append(folder, message, false)).await?;
+            // Read one message at a time: a big file never sits in memory whole. Counted after each message, so a
+            // break part way carries on from the next one rather than twice.
+            for message in crate::mbox::Reader::new(std::io::BufReader::new(file)).skip(done) {
+                let message = message?;
+                within_for(upload_limit(message.len()), s.append(folder, &message, false)).await?;
                 done += 1;
                 store.import_done(*import, done)?;
             }

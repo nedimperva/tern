@@ -1,6 +1,6 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { api } from "../api";
-import { restartToUpdate } from "../app/actions";
+import { discardProblem, restartToUpdate } from "../app/actions";
 import { exporting, stopExport } from "../app/files";
 import { refresh } from "../app/list";
 import { plainError } from "../plainError";
@@ -140,7 +140,7 @@ export function SyncButton() {
                           <button type="button" class="mini" onClick={() => void api.retryProblem(p.id).then(() => refresh())}>
                             Retry
                           </button>
-                          <button type="button" class="mini" onClick={() => void api.discardProblem(p.id).then(() => refresh())}>
+                          <button type="button" class="mini" onClick={() => void discardProblem(p.id)}>
                             Discard
                           </button>
                         </Show>

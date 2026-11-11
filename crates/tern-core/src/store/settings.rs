@@ -277,6 +277,92 @@ impl Store {
         self.conn().execute("DELETE FROM ai_styles WHERE account_id = ?1", [account_id])?;
         Ok(())
     }
+
+    // MARK: Backup
+
+    /// The parts of a backup kept in the database (`backup::Data`): sender choices, notes on people, style notes.
+    pub fn backup_data(&self) -> Result<crate::backup::Data> {
+        use crate::backup::{PersonNote, SenderEntry, StyleNote};
+        let conn = self.reader();
+        let senders = conn
+            .prepare(
+                "SELECT lower(a.email), s.addr, s.state FROM sender_state s JOIN accounts a ON a.id = s.account_id
+                 WHERE s.state IN ('important', 'other', 'blocked') ORDER BY a.email, s.addr",
+            )?
+            .query_map([], |r| Ok(SenderEntry { account: r.get(0)?, addr: r.get(1)?, state: r.get(2)? }))?
+            .collect::<rusqlite::Result<_>>()?;
+        let notes = conn
+            .prepare("SELECT email, body FROM person_notes ORDER BY email")?
+            .query_map([], |r| Ok(PersonNote { email: r.get(0)?, body: r.get(1)? }))?
+            .collect::<rusqlite::Result<_>>()?;
+        let styles = conn
+            .prepare(
+                "SELECT lower(a.email), s.note, s.samples FROM ai_styles s JOIN accounts a ON a.id = s.account_id
+                 ORDER BY a.email",
+            )?
+            .query_map([], |r| Ok(StyleNote { account: r.get(0)?, note: r.get(1)?, samples: r.get(2)? }))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(crate::backup::Data { senders: Some(senders), notes: Some(notes), styles: Some(styles) })
+    }
+
+    /// Adds what a backup's `Data` holds that isn't here: a sender, person or account with a choice or note here
+    /// keeps it. A sender choice counts from now, so blocking archives only mail that comes after the import.
+    pub fn restore_data(&self, data: &crate::backup::Data) -> Result<crate::backup::DataRestored> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let ids: HashMap<String, i64> = tx
+            .prepare("SELECT lower(email), id FROM accounts")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        let mut missing = BTreeSet::new();
+        let mut account = |email: &str| {
+            let id = ids.get(&email.to_lowercase()).copied();
+            if id.is_none() {
+                missing.insert(email.to_lowercase());
+            }
+            id
+        };
+        let mut out = crate::backup::DataRestored::default();
+        for s in data.senders.iter().flatten() {
+            let addr = s.addr.trim().to_lowercase();
+            if addr.is_empty()
+                || addr == "@"
+                || !matches!(s.state.as_str(), "important" | "other" | "blocked")
+            {
+                continue;
+            }
+            let Some(id) = account(&s.account) else { continue };
+            out.senders += tx.execute(
+                "INSERT INTO sender_state (account_id, addr, state, since) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (account_id, addr) DO NOTHING",
+                params![id, addr, s.state, now()],
+            )?;
+        }
+        for n in data.notes.iter().flatten() {
+            let email = n.email.trim().to_lowercase();
+            if email.is_empty() || n.body.trim().is_empty() {
+                continue;
+            }
+            out.notes += tx.execute(
+                "INSERT INTO person_notes (email, body, updated) VALUES (?1, ?2, ?3) ON CONFLICT (email) DO NOTHING",
+                params![email, n.body, now()],
+            )?;
+        }
+        for s in data.styles.iter().flatten() {
+            if s.note.trim().is_empty() {
+                continue;
+            }
+            let Some(id) = account(&s.account) else { continue };
+            out.styles += tx.execute(
+                "INSERT INTO ai_styles (account_id, note, samples, updated) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (account_id) DO NOTHING",
+                params![id, s.note, s.samples, now()],
+            )?;
+        }
+        tx.commit()?;
+        out.missing = missing.into_iter().collect();
+        Ok(out)
+    }
 }
 
 /// How long a text of this many characters takes to read: about 6 characters a word with its space, 230 words a

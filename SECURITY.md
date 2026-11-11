@@ -8,7 +8,7 @@ Only the latest release gets security fixes.
 
 | Version | Supported |
 |---|---|
-| Latest 1.x release | Yes |
+| Latest release | Yes |
 | Anything older | No |
 
 ## Reporting a vulnerability

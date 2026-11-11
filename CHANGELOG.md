@@ -7,6 +7,42 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-11
+
+Backups you choose the contents of, quotes that say whose they are, Send that stays in reach, and a cleanup:
+attachment copies tidy themselves, discarding a refused change takes what waited on it, and mbox import streams.
+
+### Added
+
+- A quote's "···" says whose mail it holds and how it starts ("“Evo ponude…” · Ana’s message"), from the
+  "On … wrote:" line or Outlook's and a forward's header, beside the signature's line when a mail has both.
+- "Earlier in this conversation" lists the mails it holds, a line each: who, their own words, when.
+- Settings → Backup lets you pick what goes in the file, and what to take from one: settings, snippets,
+  signatures, sender choices, notes on people and writing style notes. The last three are new in the backup.
+- A backup can carry the Todoist token, besides accounts with their passwords and the AI keys. Each is off until
+  you turn it on, a warning says the file will hold secrets, and the file is then locked with a passphrase.
+
+### Changed
+
+- A closed message's line in a thread shows its own words: the quote it carries, its signature and a lone
+  greeting are left out.
+- Tern deletes its copies of attached files a day after no draft or waiting send needs them; the copy in Sent keeps
+  what was sent.
+- Importing an mbox file reads it one message at a time, so a file of many gigabytes no longer has to fit in memory.
+
+### Fixed
+
+- Send and its menu slipped under compose's footer when the row ran out of room (a long From address, the word
+  count, a narrow window); the From address now gives way instead.
+- A long conversation with unread mail between read ones showed "Earlier in this conversation" more than once,
+  each with the count of all of them.
+- Discarding a refused move also takes back the later changes that waited on it (a star after an archive), instead
+  of leaving them stuck; Tern says when it did. Discarding a refused send drops its "remind me if no reply".
+- Subject threading counts mail to your aliases as yours, so two strangers writing to the same alias with the same
+  subject no longer share a conversation.
+- Importing a file with only part of an object setting (Todoist, AI) keeps the defaults for the rest.
+- The passphrase fields in Settings → Backup no longer run past the edge of the card.
+
 ## [2.2.0] - 2026-11-10
 
 Settings read one way on every page, compose folds its files into one line and gets a calmer footer, and a
@@ -678,7 +714,20 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/nedimperva/tern/compare/v2.2.0...v2.3.0
+[2.2.0]: https://github.com/nedimperva/tern/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/nedimperva/tern/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/nedimperva/tern/compare/v1.8.0...v2.0.0
+[1.8.0]: https://github.com/nedimperva/tern/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/nedimperva/tern/compare/v1.6.0...v1.7.0
+[1.6.0]: https://github.com/nedimperva/tern/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/nedimperva/tern/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/nedimperva/tern/compare/v1.3.1...v1.4.0
+[1.3.1]: https://github.com/nedimperva/tern/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/nedimperva/tern/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/nedimperva/tern/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/nedimperva/tern/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/nedimperva/tern/compare/v0.3.7...v1.0.0
 [0.3.7]: https://github.com/nedimperva/tern/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/nedimperva/tern/compare/v0.3.5...v0.3.6

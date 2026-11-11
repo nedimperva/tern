@@ -22,7 +22,7 @@ import { loadSettings, setSetting, settings } from "./settings";
 import { closeScreen, deck, screen, start, startDay } from "./day";
 import { keyHandler } from "./keys";
 import { hitWords } from "./hits";
-import { act, isMine, label, labelsOf, onShelf, shelve, snoozeThen, snoozeUntil, targets } from "./app/actions";
+import { act, discardProblem, isMine, label, labelsOf, onShelf, shelve, snoozeThen, snoozeUntil, targets } from "./app/actions";
 import { bindings as allBindings, commands as allCommands, menu } from "./app/bindings";
 import { close, open as openConversation, toggleMessage, watchConversation } from "./app/conversation";
 import {
@@ -338,7 +338,7 @@ function Main() {
             })
           }
           onRetry={(id) => void api.retryProblem(id).then(() => refresh())}
-          onDiscard={(id) => void api.discardProblem(id).then(() => refresh())}
+          onDiscard={(id) => void discardProblem(id)}
           onEdit={(id) => void api.problemToDraft(id).then((record) => (setReviewing(false), resume(record), refresh()))}
           onClose={() => setReviewing(false)}
         />

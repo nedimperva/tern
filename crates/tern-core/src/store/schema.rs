@@ -164,7 +164,6 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
             8 => "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
             // Mail HTML is sanitised when stored from now on; the step cleans what is already there (below).
             9 => "",
-            // Muted conversations: new mail in them skips the inbox.
             // People mail goes to and comes from, for recipient autocomplete; filled from existing mail below.
             13 => {
                 "CREATE TABLE contacts (
@@ -374,6 +373,7 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
             // A short name the person gives an account to tell it from another with the same name ("Work"). It is
             // not the name on mail (display_name), so changing it never changes what recipients see.
             36 => "ALTER TABLE accounts ADD COLUMN label TEXT NOT NULL DEFAULT '';",
+            // Muted conversations: new mail in them skips the inbox.
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",
             _ => unreachable!("no migration from schema {from}"),

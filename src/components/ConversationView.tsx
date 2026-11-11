@@ -7,7 +7,7 @@ import { catchUp } from "../catchup";
 import { filesOf, kind } from "../files";
 import { docOf, windowOf } from "../frames";
 import { unsubscribeTarget } from "../unsubscribe";
-import { foldAt, HTML_FOLD_SELECTOR, markQuotes, signatureLine } from "../fold";
+import { foldAt, HTML_FOLD_SELECTOR, markQuotes, quoteLabel, quoteOf, signatureLine, withoutGreeting } from "../fold";
 import { linkify } from "../linkify";
 import { drawHits } from "../hits";
 import { hostOf, misleading } from "../links";
@@ -150,6 +150,8 @@ function HtmlBody(props: {
   const [unfolded, setUnfolded] = createSignal(false);
   // When the fold starts with a signature, the pill says whose it is.
   const [sigLine, setSigLine] = createSignal<string | null>(null);
+  // And whose mail the quote under it is, so "···" says what it holds.
+  const [quoted, setQuoted] = createSignal<Quoted | null>(null);
   let frame: HTMLIFrameElement | undefined;
   let sizer: ResizeObserver | undefined;
   onCleanup(() => sizer?.disconnect());
@@ -225,6 +227,7 @@ function HtmlBody(props: {
       markQuotes(doc);
       setFoldable(!reading() && doc.querySelector(HTML_FOLD_SELECTOR) !== null);
       setSigLine(htmlSignature(doc));
+      setQuoted(htmlQuote(doc));
       doc.documentElement.classList.toggle("tern-fold", !unfolded());
       size();
       quietMenu(doc);
@@ -314,6 +317,7 @@ function HtmlBody(props: {
       <Show when={foldable()}>
         <FoldPill
           signature={sigLine()}
+          quote={quoted()}
           open={unfolded()}
           onClick={() => {
             setUnfolded(!unfolded());
@@ -339,18 +343,39 @@ function htmlSignature(doc: Document): string | null {
   return signatureLine(lines.join("\n"));
 }
 
-/** The pill under a message that unfolds what it folded: "···" for a quote, or whose signature it is. */
-export function FoldPill(props: { signature: string | null; open: boolean; onClick: () => void }) {
-  const what = () => (props.signature ? "the signature" : "quoted text");
+type Quoted = { who: string; said: string };
+
+/** What the fold's quote holds (whose mail, its first words), read from the folded blocks' text in order. Read
+ * before the fold hides them, like the signature. */
+function htmlQuote(doc: Document): Quoted | null {
+  const parts: string[] = [];
+  let prev: Element | null = null;
+  for (const el of doc.querySelectorAll(HTML_FOLD_SELECTOR)) {
+    if (prev?.contains(el)) continue;
+    prev = el;
+    // biome-ignore lint/performance/useDomNodeTextContent: innerText keeps the quote's line breaks, which say where its header ends
+    parts.push((el as HTMLElement).innerText ?? el.textContent ?? "");
+  }
+  return parts.length ? quoteOf(parts.join("\n")) : null;
+}
+
+/** The pill under a message that unfolds what it folded: whose signature it is, and whose mail the quote is with
+ * its first words ("“Evo ponude…” · Ana Rossi’s message"), or "···" when neither can be said. */
+export function FoldPill(props: { signature: string | null; quote?: Quoted | null; open: boolean; onClick: () => void }) {
+  const what = () => (props.signature ? (props.quote ? "the signature and quoted text" : "the signature") : "quoted text");
   return (
-    <button class="fold" classList={{ sig: !!props.signature }} title={`${props.open ? "Hide" : "Show"} ${what()}`} aria-expanded={props.open} onClick={props.onClick}>
-      <Show when={props.signature} fallback="···">
-        {(s) => (
-          <>
-            <span>{s()}</span>
-            <Icon name={props.open ? "chevron-up" : "chevron-down"} size={12} />
-          </>
-        )}
+    <button
+      type="button"
+      class="fold"
+      classList={{ sig: !!props.signature || !!props.quote, both: !!props.signature && !!props.quote }}
+      title={`${props.open ? "Hide" : "Show"} ${what()}`}
+      aria-expanded={props.open}
+      onClick={props.onClick}
+    >
+      <Show when={props.signature || props.quote} fallback="···">
+        <Show when={props.signature}>{(s) => <span class="who">{s()}</span>}</Show>
+        <Show when={props.quote}>{(q) => <span class="quoted">{quoteLabel(q())}</span>}</Show>
+        <Icon name={props.open ? "chevron-up" : "chevron-down"} size={12} />
       </Show>
     </button>
   );
@@ -372,7 +397,12 @@ function PlainBody(props: { text: string }) {
         </pre>
       </Show>
       <Show when={at() >= 0}>
-        <FoldPill signature={signatureLine(props.text.slice(at()))} open={unfolded()} onClick={() => setUnfolded(!unfolded())} />
+        <FoldPill
+          signature={signatureLine(props.text.slice(at()))}
+          quote={quoteOf(props.text.slice(at()))}
+          open={unfolded()}
+          onClick={() => setUnfolded(!unfolded())}
+        />
       </Show>
     </>
   );
@@ -683,11 +713,27 @@ export function ConversationView(props: {
   };
   /** In a long conversation the older lines that were read, closed and not in hand wait behind one line. */
   const earlier = () => props.messages.length - 1;
-  const tucked = (i: number) => {
+  const tuckable = (i: number) => {
     const m = props.messages[i];
     return !allLines() && earlier() > FOLD_PAST && i < earlier() - 2 && m.seen && !fresh().has(m.id) && !props.expanded(m.id) && i !== props.focused;
   };
-  const tuckedCount = createMemo(() => props.messages.slice(0, -1).filter((_, i) => tucked(i)).length);
+  /** The runs of tucked lines, by the index each starts at: an unread or open message between them splits them, and
+   * each says only what it holds. A run of one or two stays out, as a heading over it would take more room. */
+  const tuckedRuns = createMemo(() => {
+    const runs = new Map<number, ThreadMessage[]>();
+    let start = -1;
+    props.messages.slice(0, -1).forEach((m, i) => {
+      if (!tuckable(i)) return void (start = -1);
+      if (start < 0) runs.set((start = i), []);
+      runs.get(start)!.push(m);
+    });
+    for (const [at, run] of runs) if (run.length < 3) runs.delete(at);
+    return runs;
+  });
+  const tuckedAt = createMemo(() => new Set([...tuckedRuns()].flatMap(([at, run]) => run.map((_, k) => at + k))));
+  const tucked = (i: number) => tuckedAt().has(i);
+  /** A run said a line each: all of a few, else the first two and the last two around how many more. */
+  const runLines = (run: ThreadMessage[]): (ThreadMessage | number)[] => (run.length <= 5 ? run : [...run.slice(0, 2), run.length - 4, ...run.slice(-2)]);
   // Stepping up into the tucked lines with the keys brings them all out, rather than one at a time.
   createEffect(
     on(
@@ -828,6 +874,23 @@ export function ConversationView(props: {
     doc.querySelectorAll("br, p, div, li, tr, h1, h2, h3").forEach((n) => n.append("\n"));
     return doc.body.textContent ?? "";
   };
+  /** A closed line's words: the message's own, without its quote or signature (a reply's "On … wrote:" and its
+   * sender's sign-off took the snippet's room before), on one line. The snippet until the body is here. */
+  // Worked out when a line is drawn, once per message as it came (a changed message is a new object).
+  const lineCache = new WeakMap<ThreadMessage, string>();
+  const lineOf = (m: ThreadMessage): string => {
+    let line = lineCache.get(m);
+    if (line === undefined) {
+      const own = m.bodyLoaded ? withoutGreeting(newWords(m)).replace(/\s+/g, " ").trim() : "";
+      line = own ? (own.length > 200 ? `${own.slice(0, 200)}…` : own) : m.snippet;
+      lineCache.set(m, line);
+    }
+    return line;
+  };
+  /** The conversation's subject without Re: and Fwd:, to tell a message that changed it. */
+  const bare = (s: string) => s.replace(/^\s*((re|fwd?|aw|wg|odg|sv|tr)\s*(\[\d+\])?\s*:\s*)+/i, "").trim().toLowerCase();
+  /** A message's own subject, when it is not the conversation's. */
+  const ownSubject = (m: ThreadMessage) => (m.subject && bare(m.subject) !== bare(subject()) ? m.subject : "");
   /** What the newest message holds. A list's mail asks nothing of anyone in particular, and neither does your own. */
   const facts = createMemo(() => {
     const m = last();
@@ -1206,17 +1269,49 @@ export function ConversationView(props: {
               {(m, i) => {
                 const newest = () => i() === props.messages.length - 1;
                 const open = () => props.expanded(m.id) || newest();
-                const firstTucked = () => tucked(i()) && (i() === 0 || !tucked(i() - 1));
+                const run = () => tuckedRuns().get(i());
                 return (
                   <Show
                     when={!tucked(i())}
                     fallback={
-                      <Show when={firstTucked()}>
-                        <button type="button" class="tucked" onClick={() => setAllLines(true)}>
-                          <span class="rule" />
-                          Earlier in this conversation · {tuckedCount()} {tuckedCount() === 1 ? "message" : "messages"}
-                          <span class="rule" />
-                        </button>
+                      <Show when={run()}>
+                        {(run) => (
+                          <div class="tucked-group">
+                            <button type="button" class="tucked" onClick={() => setAllLines(true)}>
+                              <span class="rule" />
+                              Earlier in this conversation · {run().length} {run().length === 1 ? "message" : "messages"}
+                              <span class="rule" />
+                            </button>
+                            {/* What waits there, a line each: who, the words of their own, when. No AI: the text
+                                itself, its quote and signature left out (owner, 2026-11-10). */}
+                            <ul class="tucked-lines">
+                              <For each={runLines(run())}>
+                                {(t) =>
+                                  typeof t === "number" ? (
+                                    <li class="more">
+                                      <button type="button" onClick={() => setAllLines(true)}>
+                                        {t} more
+                                      </button>
+                                    </li>
+                                  ) : (
+                                    <li>
+                                      <button type="button" title={full(t.date)} onClick={() => (setAllLines(true), jumpTo(t.id))}>
+                                        <span class="who">{props.mine(t.fromAddr) ? "You" : t.fromName || t.fromAddr}</span>
+                                        <span class="what">
+                                          <Show when={ownSubject(t)}>
+                                            <span class="subject">{ownSubject(t)}</span>
+                                          </Show>
+                                          {lineOf(t)}
+                                        </span>
+                                        <time>{when(t.date)}</time>
+                                      </button>
+                                    </li>
+                                  )
+                                }
+                              </For>
+                            </ul>
+                          </div>
+                        )}
                       </Show>
                     }
                   >
@@ -1244,7 +1339,7 @@ export function ConversationView(props: {
                           <Show when={m.draftId != null}>
                             <span class="draft-label">Draft · R to continue</span>
                           </Show>
-                          <Show when={open()} fallback={<span class="snippet">{m.snippet}</span>}>
+                          <Show when={open()} fallback={<span class="snippet">{lineOf(m)}</span>}>
                             <span class="detail">
                               {[recipients(m.toAddrs, props.mine, names()), stamp(m.date)].filter(Boolean).join(" · ")}
                             </span>

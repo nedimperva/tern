@@ -30,6 +30,9 @@ pub struct AppState {
     pub pause: tokio::sync::watch::Sender<bool>,
     /// Sync changed the store: `watch_changes` tells the window, at most every 100 ms.
     pub changed: Arc<Notify>,
+    /// Tern's copies of files being attached, beside the database they belong to: a dev build or another store
+    /// tidying the installed Tern's folder would delete files its drafts still need.
+    pub attachments: std::path::PathBuf,
 }
 
 /// How long changes gather before the window hears of them: a backfill writes many batches a second, and one read
@@ -66,6 +69,17 @@ fn watch_optimize(store: Arc<Store>) {
             if let Ok(Err(e)) = ran {
                 log::warn!("optimize: {e:#}");
             }
+        }
+    });
+}
+
+/// Tidies the copies of attached files at start, then every six hours.
+fn watch_attachments(store: Arc<Store>, dir: std::path::PathBuf) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let (s, d) = (store.clone(), dir.clone());
+            let _ = tauri::async_runtime::spawn_blocking(move || cache::tidy_attachments(&s, &d)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
         }
     });
 }
@@ -206,9 +220,11 @@ fn main() {
                 states: Default::default(),
                 pause: tokio::sync::watch::channel(false).0,
                 changed: Default::default(),
+                attachments: db.parent().unwrap_or(&dir).join("attachments"),
             };
             watch_changes(app.handle(), state.store.clone(), state.changed.clone());
             watch_optimize(state.store.clone());
+            watch_attachments(state.store.clone(), state.attachments.clone());
             // Sends scheduled for a time that passed while Tern was closed wait to be confirmed.
             let held = state.store.hold_overdue(desktop::now())?;
             if held > 0 {
@@ -253,6 +269,10 @@ fn main() {
             commands::export_settings,
             commands::import_settings,
             commands::unlock_settings,
+            commands::restore_secrets,
+            commands::forget_backup,
+            commands::backup_data,
+            commands::restore_data,
             commands::mark_all_read,
             commands::clear_received_cache,
             commands::google_available,

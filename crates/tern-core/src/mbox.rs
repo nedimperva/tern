@@ -3,7 +3,7 @@
 //! of '>', gets one more '>' so it can't pass for the next message, and reading takes that '>' off again. Messages
 //! are kept as bytes: headers that aren't UTF-8 and binary parts come back exactly as they went in.
 
-use std::io::{self, Write};
+use std::io::{self, BufRead, Write};
 
 /// Writes one message: its "From " line, the message with quoted "From " lines, and the blank line that ends it.
 /// `from` is the envelope sender (an address, else "MAILER-DAEMON"); `date` is Unix seconds.
@@ -29,40 +29,65 @@ pub fn write_message(out: &mut impl Write, raw: &[u8], from: &str, date: i64) ->
 }
 
 /// The messages in an mbox file, each as it was before `write_message` quoted it, with CRLF line ends (as mail is
-/// sent and stored on servers).
-pub fn split(mbox: &[u8]) -> Vec<Vec<u8>> {
-    let mut messages: Vec<Vec<u8>> = Vec::new();
-    let mut current: Option<Vec<u8>> = None;
-    let mut blank_before = true;
-    let mut lines = mbox.split(|&b| b == b'\n').peekable();
-    while let Some(line) = lines.next() {
-        // The piece after the file's last newline is no line.
-        if lines.peek().is_none() && line.is_empty() {
-            break;
-        }
-        let line = line.strip_suffix(b"\r").unwrap_or(line);
-        if blank_before && line.starts_with(b"From ") {
-            if let Some(m) = current.take() {
-                messages.push(trimmed(m));
+/// sent and stored on servers). It reads one message at a time, so a file of many gigabytes needs no more memory
+/// than its biggest message.
+pub struct Reader<R> {
+    input: R,
+    line: Vec<u8>,
+    current: Option<Vec<u8>>,
+    blank_before: bool,
+}
+
+impl<R: BufRead> Reader<R> {
+    pub fn new(input: R) -> Self {
+        Reader { input, line: Vec::new(), current: None, blank_before: true }
+    }
+}
+
+impl<R: BufRead> Iterator for Reader<R> {
+    type Item = io::Result<Vec<u8>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            self.line.clear();
+            match self.input.read_until(b'\n', &mut self.line) {
+                Err(e) => return Some(Err(e)),
+                // The end: the last message, if it holds anything.
+                Ok(0) => match self.current.take().map(trimmed) {
+                    Some(m) if !m.is_empty() => return Some(Ok(m)),
+                    _ => return None,
+                },
+                Ok(_) => {}
             }
-            current = Some(Vec::new());
-            blank_before = false;
-            continue;
+            let line = self.line.strip_suffix(b"\n").unwrap_or(&self.line);
+            let line = line.strip_suffix(b"\r").unwrap_or(line);
+            if self.blank_before && line.starts_with(b"From ") {
+                self.blank_before = false;
+                match self.current.replace(Vec::new()).map(trimmed) {
+                    Some(m) if !m.is_empty() => return Some(Ok(m)),
+                    _ => continue,
+                }
+            }
+            self.blank_before = line.is_empty();
+            let Some(m) = self.current.as_mut() else { continue };
+            let unquoted = match line.iter().position(|&b| b != b'>') {
+                Some(at) if at > 0 && line[at..].starts_with(b"From ") => &line[1..],
+                _ => line,
+            };
+            m.extend_from_slice(unquoted);
+            m.extend_from_slice(b"\r\n");
         }
-        blank_before = line.is_empty();
-        let Some(m) = current.as_mut() else { continue };
-        let unquoted = match line.iter().position(|&b| b != b'>') {
-            Some(at) if at > 0 && line[at..].starts_with(b"From ") => &line[1..],
-            _ => line,
-        };
-        m.extend_from_slice(unquoted);
-        m.extend_from_slice(b"\r\n");
     }
-    if let Some(m) = current {
-        messages.push(trimmed(m));
+}
+
+/// How many messages the mbox file at `path` holds, read one at a time.
+pub fn count(path: &std::path::Path) -> io::Result<usize> {
+    let mut n = 0;
+    for message in Reader::new(io::BufReader::new(std::fs::File::open(path)?)) {
+        message?;
+        n += 1;
     }
-    messages.retain(|m| !m.is_empty());
-    messages
+    Ok(n)
 }
 
 /// Without the one blank line that separates it from the next message (`write_message` puts it after each); a
@@ -143,5 +168,24 @@ mod tests {
         );
         assert!(split(b"").is_empty());
         assert!(split(b"not an mbox at all\n").is_empty(), "text before any From line is no message");
+        assert_eq!(
+            split(b"From x\nSubject: c\n\nno newline at the end"),
+            [b"Subject: c\r\n\r\nno newline at the end\r\n"]
+        );
+    }
+
+    #[test]
+    fn reads_from_a_file_a_little_at_a_time() {
+        let all = mbox_of(&[b"Subject: one\r\n\r\nFrom me\r\n", b"Subject: two\r\n\r\nhi\r\n"]);
+        let path = std::env::temp_dir().join(format!("tern-mbox-{}.mbox", std::process::id()));
+        std::fs::write(&path, &all).unwrap();
+        assert_eq!(count(&path).unwrap(), 2);
+        std::fs::remove_file(&path).unwrap();
+        let small = Reader::new(io::BufReader::with_capacity(3, &all[..])).collect::<io::Result<Vec<_>>>();
+        assert_eq!(small.unwrap(), split(&all));
+    }
+
+    fn split(mbox: &[u8]) -> Vec<Vec<u8>> {
+        Reader::new(mbox).collect::<io::Result<_>>().unwrap()
     }
 }

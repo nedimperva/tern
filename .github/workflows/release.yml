@@ -55,7 +55,7 @@ jobs:
             echo '### Install'
             echo
             echo 'Linux: the `.AppImage` runs as is and updates itself; `.deb` and `.rpm` install with the system'"'"'s package'
-            echo 'tool, and on Arch `yay -S tern-bin`.'
+            echo 'tool.'
             echo 'Windows: download the `-setup.exe` and run it. The installer isn'"'"'t signed yet, so Windows may show'
             echo '"Windows protected your PC": choose More info, then Run anyway.'
           } > "$RUNNER_TEMP/notes.md"

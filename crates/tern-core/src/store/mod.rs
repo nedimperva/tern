@@ -209,11 +209,13 @@ fn own_addresses(conn: &Connection, account_id: i64) -> Result<Vec<String>> {
     Ok([vec![own], aliases].concat())
 }
 
+/// What mail apps put before the subject of a reply or a forward, in the languages seen so far.
+const REPLY_PREFIXES: &[&str] =
+    &["re", "fw", "fwd", "aw", "wg", "sv", "vs", "antw", "tr", "rv", "ref", "odp", "odg"];
+
 /// A subject as conversations compare it: lowercase, without reply and forward prefixes ("Re:", "Fwd:", "AW:",
 /// "Re[2]:") or leading list tags ("[team]"). None when nothing is left, so empty subjects never join up.
 pub fn subject_norm(subject: &str) -> Option<String> {
-    const PREFIXES: &[&str] =
-        &["re", "fw", "fwd", "aw", "wg", "sv", "vs", "antw", "tr", "rv", "ref", "odp", "odg"];
     let mut s = subject.trim().to_lowercase();
     loop {
         let before = s.len();
@@ -225,7 +227,7 @@ pub fn subject_norm(subject: &str) -> Option<String> {
         if let Some(colon) = s.find(':') {
             let head = s[..colon].trim();
             let word = head.split('[').next().unwrap_or(head).trim();
-            if PREFIXES.contains(&word) {
+            if REPLY_PREFIXES.contains(&word) {
                 s = s[colon + 1..].trim_start().to_string();
             }
         }
@@ -240,7 +242,7 @@ pub fn subject_norm(subject: &str) -> Option<String> {
 /// The Starred split of the inbox, as a list target: `ListTarget::Role("starred")`.
 pub const STARRED: &str = "starred";
 
-/// SQL keeping the messages `m` that are in `target`, and the value for its parameter, numbered `n`.
+/// The Important split of the inbox.
 pub const IMPORTANT: &str = "important";
 /// The Other split. Not "other": that is the role of every folder without a special one.
 pub const OTHER: &str = "bulk";
@@ -306,6 +308,7 @@ const IS_LATER: &str = "EXISTS (SELECT 1 FROM read_later l
 const IS_MARKED: &str = "m.id IN (SELECT x.id FROM marks k JOIN messages x
                                   ON x.account_id = k.account_id AND COALESCE(x.message_id, '#' || x.id) = k.message_key)";
 
+/// SQL keeping the messages `m` that are in `target`, and the value for its parameter, numbered `n`.
 fn target_filter(target: &ListTarget, n: u8) -> (String, Value) {
     let inbox = format!("m.folder_id IN (SELECT id FROM folders WHERE role = ?{n})");
     let role = match target {
@@ -536,7 +539,6 @@ impl Store {
     }
 }
 
-/// Puts the local store back as it was before `op`.
 /// A Message-ID without its angle brackets, as messages store them.
 fn bare_id(id: &str) -> String {
     id.trim().trim_start_matches('<').trim_end_matches('>').to_string()
@@ -645,23 +647,49 @@ fn queued(conn: &Connection, account_id: i64) -> Result<Vec<OutboxOp>> {
 
 /// Whether work queued after `id` waits on a message that `op` moves.
 fn waited_on(conn: &Connection, id: i64, op: &OutboxOp) -> Result<bool> {
-    let OutboxOp::Move { revert, .. } = op else { return Ok(false) };
+    Ok(!waiting_on(conn, id, op)?.is_empty())
+}
+
+/// The work queued after `id` that waits on a message `op` moves, with its op and whether it is being sent now.
+fn waiting_on(conn: &Connection, id: i64, op: &OutboxOp) -> Result<Vec<(i64, OutboxOp, bool)>> {
+    let OutboxOp::Move { revert, .. } = op else { return Ok(Vec::new()) };
     let moved: HashSet<i64> = revert.iter().map(|r| r.0).collect();
     let mut stmt = conn.prepare_cached(
-        "SELECT payload FROM outbox WHERE id > ?1 AND account_id = (SELECT account_id FROM outbox WHERE id = ?1)",
+        "SELECT id, payload, claimed != 0 FROM outbox
+         WHERE id > ?1 AND account_id = (SELECT account_id FROM outbox WHERE id = ?1) ORDER BY id",
     )?;
-    let later = stmt.query_map([id], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    for payload in later {
-        match serde_json::from_str::<OutboxOp>(&payload)? {
-            OutboxOp::Flags { waiting, .. } | OutboxOp::Move { waiting, .. }
-                if waiting.iter().any(|w| moved.contains(w)) =>
-            {
-                return Ok(true)
+    let later = stmt
+        .query_map([id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, bool>(2)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut out = Vec::new();
+    for (later_id, payload, claimed) in later {
+        let later_op = serde_json::from_str::<OutboxOp>(&payload)?;
+        let waits = match &later_op {
+            OutboxOp::Flags { waiting, .. } | OutboxOp::Move { waiting, .. } => {
+                waiting.iter().any(|w| moved.contains(w))
             }
-            _ => {}
+            _ => false,
+        };
+        if waits {
+            out.push((later_id, later_op, claimed));
         }
     }
-    Ok(false)
+    Ok(out)
+}
+
+/// Reverts `op` (queued as `id`) and drops it with what only it needed.
+fn forget_op(tx: &Connection, id: i64, op: &OutboxOp) -> Result<()> {
+    revert(tx, op)?;
+    // A message that never went out gets no answer to wait for.
+    if let OutboxOp::Send(draft) = op {
+        tx.execute(
+            "DELETE FROM reminders WHERE kind = 'followup' AND message_id = ?2
+             AND account_id = (SELECT account_id FROM outbox WHERE id = ?1)",
+            params![id, bare_id(draft.message_id.as_deref().unwrap_or_default())],
+        )?;
+    }
+    tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
+    Ok(())
 }
 
 /// Reverts queued work that has not reached the server and drops it. `tried`: also work that failed a try (the
@@ -682,7 +710,6 @@ fn take_back(tx: &Connection, id: i64, tried: bool) -> Result<bool> {
     if waited_on(tx, id, &op)? {
         return Ok(false);
     }
-    revert(tx, &op)?;
     // An unsent message that was a draft is a draft again, back in Drafts.
     if let OutboxOp::Send(draft) = &op {
         let account_id: i64 =
@@ -695,16 +722,12 @@ fn take_back(tx: &Connection, id: i64, tried: bool) -> Result<bool> {
         if restored > 0 {
             mirror_draft(tx, account_id, draft)?;
         }
-        // A message that never went out gets no answer to wait for.
-        tx.execute(
-            "DELETE FROM reminders WHERE account_id = ?1 AND kind = 'followup' AND message_id = ?2",
-            params![account_id, bare],
-        )?;
     }
-    tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
+    forget_op(tx, id, &op)?;
     Ok(true)
 }
 
+/// Puts the local store back as it was before `op`.
 fn revert(conn: &Connection, op: &OutboxOp) -> Result<()> {
     match op {
         OutboxOp::Label { label_folder, add, message_ids, .. } => {
@@ -847,25 +870,23 @@ fn thread_for(conn: &Connection, account_id: i64, folder_id: i64, m: &NewMessage
 
 /// Whether a subject starts like a reply or a forward ("Re:", "AW:", "Fwd[2]:", "Odg:").
 pub(crate) fn is_reply_subject(subject: &str) -> bool {
-    const PREFIXES: &[&str] =
-        &["re", "fw", "fwd", "aw", "wg", "sv", "vs", "antw", "tr", "rv", "ref", "odp", "odg"];
     let s = subject.trim_start();
     let Some((head, _)) = s.split_once(':') else { return false };
     let word = head.split('[').next().unwrap_or(head).trim().to_lowercase();
-    PREFIXES.contains(&word.as_str())
+    REPLY_PREFIXES.contains(&word.as_str())
 }
 
 /// The conversation of a message with the same normalised subject, within SUBJECT_WINDOW, that shares someone
-/// other than the account itself (which is on nearly every message), nearest in time first.
+/// other than the account itself (its address or an alias: those are on nearly every message), nearest in time
+/// first.
 fn thread_by_subject(conn: &Connection, account_id: i64, m: &NewMessage) -> Result<Option<String>> {
     let Some(norm) = subject_norm(&m.subject) else { return Ok(None) };
-    let me: String =
-        conn.query_row("SELECT lower(email) FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
+    let me = own_addresses(conn, account_id)?;
     let people = |from: &str, to: &str| -> HashSet<String> {
         std::iter::once(from)
             .chain(to.split(','))
             .map(|a| a.trim().to_lowercase())
-            .filter(|a| !a.is_empty() && *a != me)
+            .filter(|a| !a.is_empty() && !me.contains(a))
             .collect()
     };
     let ours = people(&m.from_addr, &m.to_addrs);

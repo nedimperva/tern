@@ -583,8 +583,11 @@ impl Store {
         Ok(())
     }
 
-    /// Drops given-up work and puts the local store back as it was before, as undo would.
-    pub fn discard_outbox(&self, id: i64) -> Result<()> {
+    /// Drops given-up work and puts the local store back as it was before, as undo would. Later work that waits on
+    /// a message this moves goes with it, newest first: it was queued against where the message would be, and
+    /// reverting it after the move was put back would leave the message there. Returns how many of those later
+    /// changes went too, or None (and changes nothing) while one of them is being sent.
+    pub fn discard_outbox(&self, id: i64) -> Result<Option<usize>> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         let payload: Option<String> = tx
@@ -592,12 +595,26 @@ impl Store {
                 r.get(0)
             })
             .optional()?;
-        if let Some(payload) = payload {
-            revert(&tx, &serde_json::from_str(&payload)?)?;
-            tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
+        let Some(payload) = payload else { return Ok(Some(0)) };
+        let mut chain = vec![(id, serde_json::from_str::<OutboxOp>(&payload)?)];
+        let mut i = 0;
+        while i < chain.len() {
+            for (later, op, claimed) in waiting_on(&tx, chain[i].0, &chain[i].1)? {
+                if claimed {
+                    return Ok(None);
+                }
+                if !chain.iter().any(|c| c.0 == later) {
+                    chain.push((later, op));
+                }
+            }
+            i += 1;
+        }
+        chain.sort_by_key(|c| std::cmp::Reverse(c.0));
+        for (id, op) in &chain {
+            forget_op(&tx, *id, op)?;
         }
         tx.commit()?;
-        Ok(())
+        Ok(Some(chain.len() - 1))
     }
 
     /// When the account's next queued work falls due.

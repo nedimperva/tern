@@ -233,5 +233,3 @@ export function factsOf(text: string, html: string | null, sentSeconds: number, 
     links: findLinks(html, text, linkLimit),
   };
 }
-
-export const anyFact = (f: Facts) => !!(f.when || f.where || f.asks.length || f.codes.length || f.links.length);

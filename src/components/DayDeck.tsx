@@ -6,7 +6,7 @@ import { typing } from "../keys";
 import { aiOn } from "../settings";
 import { AiReplies } from "./AiReplies";
 import { FoldPill } from "./ConversationView";
-import { foldAt, signatureLine } from "../fold";
+import { foldAt, quoteOf, signatureLine } from "../fold";
 
 /** A message's words for the card: its text, else its HTML's words, else the snippet. */
 function words(m: ThreadMessage): string {
@@ -172,7 +172,7 @@ function DeckText(props: { text: string }) {
     <div class="text">
       <Show when={at() > 0} fallback={props.text}>
         {open() ? props.text : props.text.slice(0, at()).trimEnd()}
-        <FoldPill signature={signatureLine(props.text.slice(at()))} open={open()} onClick={() => setOpen(!open())} />
+        <FoldPill signature={signatureLine(props.text.slice(at()))} quote={quoteOf(props.text.slice(at()))} open={open()} onClick={() => setOpen(!open())} />
       </Show>
     </div>
   );

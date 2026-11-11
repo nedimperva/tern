@@ -1,6 +1,7 @@
 //! What the UI can ask for. Reads answer from the store and never touch the network, except signing in to a new
-//! account, the first open of a received attachment, (opt-in) a sender's logo, fetched in the background, and
-//! (opt-in, on request) AI.
+//! account, a message's source on its own connection (the first open of a received attachment or of its inline
+//! images, Show original, Save as .eml, an mbox export), Search the server, (opt-in) a sender's logo, fetched in the
+//! background, (once connected) Todoist's projects and task states, and (opt-in, on request) AI.
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tern_core::ai::{self, providers, Provider};
@@ -279,7 +280,6 @@ pub async fn search(state: State<'_, AppState>, query: String, limit: i64) -> Re
     state.store.search(&query, limit).map_err(text)
 }
 
-/// Applies at once; the server hears about it after the undo window.
 #[tauri::command]
 pub async fn list_threads(
     state: State<'_, AppState>,
@@ -341,6 +341,7 @@ pub async fn apply_conversations(
     apply(app, state, ids, action).await
 }
 
+/// Applies at once; the server hears about it after the undo window.
 #[tauri::command]
 pub async fn apply(
     app: AppHandle,
@@ -486,12 +487,13 @@ pub async fn retry_problem(app: AppHandle, state: State<'_, AppState>, id: i64) 
     Ok(())
 }
 
-/// Drops the work and puts the mailbox back as it was before it, as undo would.
+/// Drops the work and puts the mailbox back as it was before it, as undo would, with the later work that waited
+/// on it. Returns how many later changes went too, or None while one of them is being sent.
 #[tauri::command]
-pub async fn discard_problem(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<()> {
-    state.store.discard_outbox(id).map_err(text)?;
+pub async fn discard_problem(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<Option<usize>> {
+    let gone = state.store.discard_outbox(id).map_err(text)?;
     let _ = app.emit("mail-changed", ());
-    Ok(())
+    Ok(gone)
 }
 
 /// Work still on its way to the server, for the "changes waiting" list.
@@ -696,7 +698,7 @@ pub async fn pick_files(app: AppHandle) -> Reply<Vec<String>> {
 
 /// Tern's own folder for files being attached.
 fn attachments_dir(app: &AppHandle) -> Reply<std::path::PathBuf> {
-    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("attachments"))
+    Ok(app.state::<AppState>().attachments.clone())
 }
 
 /// Refuses a draft that names a file outside Tern's folder for attachments: every attachment is a copy made
@@ -848,6 +850,11 @@ pub async fn person_files(state: State<'_, AppState>, email: String) -> Reply<Ve
     state.store.person_files(&email, 60).map_err(text)
 }
 
+/// The account a message belongs to, to fetch from its server.
+fn account_of(store: &tern_core::Store, account_id: i64) -> Reply<Account> {
+    store.account(account_id).map_err(text)?.ok_or_else(|| "The account of this message is gone".to_string())
+}
+
 /// Where a received message's downloaded files are kept: per account, under a name only that message gets.
 fn received_dir(app: &AppHandle, account_id: i64, at: &tern_core::ForwardOf) -> Reply<std::path::PathBuf> {
     Ok(crate::cache::received(app)?.join(format!("a{account_id}")).join(at.cache_key(account_id)))
@@ -873,13 +880,7 @@ async fn received_file(
     if place(index).is_file() {
         return Ok(place(index));
     }
-    let account = state
-        .store
-        .accounts()
-        .map_err(text)?
-        .into_iter()
-        .find(|a| a.id == account_id)
-        .ok_or("The account of this message is gone")?;
+    let account = account_of(&state.store, account_id)?;
     let raw = sync::download(&account.config, &crate::login(&account), &at).await.map_err(text)?;
     let files = mime::attachment_files(&raw);
     for i in 0..listed.len() {
@@ -911,13 +912,7 @@ pub async fn message_source(state: State<'_, AppState>, id: i64) -> Reply<String
         .attachment_source(id)
         .map_err(text)?
         .ok_or("This message is not on the server yet; try again once it has synced")?;
-    let account = state
-        .store
-        .accounts()
-        .map_err(text)?
-        .into_iter()
-        .find(|a| a.id == account_id)
-        .ok_or("The account of this message is gone")?;
+    let account = account_of(&state.store, account_id)?;
     let raw = sync::download(&account.config, &crate::login(&account), &at).await.map_err(text)?;
     Ok(source_text(&raw))
 }
@@ -968,7 +963,7 @@ pub async fn attachment_preview(
 /// window can't read anything else on disk this way.
 #[tauri::command]
 pub async fn outgoing_preview(app: AppHandle, path: String) -> Reply<Option<String>> {
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?.join("attachments");
+    let base = attachments_dir(&app)?;
     let file = std::path::PathBuf::from(&path);
     let (Ok(base), Ok(file)) = (base.canonicalize(), file.canonicalize()) else { return Ok(None) };
     if !file.starts_with(&base) {
@@ -1011,13 +1006,7 @@ pub async fn inline_images(
             return Ok(images);
         }
     }
-    let account = state
-        .store
-        .accounts()
-        .map_err(text)?
-        .into_iter()
-        .find(|a| a.id == account_id)
-        .ok_or("The account of this message is gone")?;
+    let account = account_of(&state.store, account_id)?;
     let raw = sync::download(&account.config, &crate::login(&account), &at).await.map_err(text)?;
     let images: HashMap<String, String> = mime::inline_images(&raw, INLINE_LIMIT).into_iter().collect();
     // Cached whole or not at all, as attachments are.
@@ -1073,20 +1062,10 @@ pub async fn save_attachment(
     id: i64,
     index: usize,
 ) -> Reply<bool> {
-    use tauri_plugin_dialog::DialogExt;
     let (_, _, listed) =
         state.store.attachment_source(id).map_err(text)?.ok_or("This message is not on the server yet")?;
     let name = listed.get(index).ok_or("That attachment is not in this message")?;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    let mut dialog =
-        app.dialog().file().set_title("Save attachment").set_file_name(mime::safe_file_name(name));
-    if let Some(window) = app.get_webview_window("main") {
-        dialog = dialog.set_parent(&window);
-    }
-    dialog.save_file(move |chosen| {
-        let _ = tx.send(chosen);
-    });
-    let Some(path) = rx.await.ok().flatten().and_then(|p| p.into_path().ok()) else { return Ok(false) };
+    let Some(path) = save_path(&app, "Save attachment", name).await else { return Ok(false) };
     let file = received_file(&app, &state, id, index).await?;
     std::fs::copy(&file, &path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(true)
@@ -1117,13 +1096,7 @@ pub async fn save_eml(app: AppHandle, state: State<'_, AppState>, id: i64) -> Re
     let subject = state.store.message_rows(&[id]).map_err(text)?.pop().map(|m| m.subject).unwrap_or_default();
     let name = format!("{}.eml", if subject.trim().is_empty() { "message" } else { subject.trim() });
     let Some(path) = save_path(&app, "Save as .eml", &name).await else { return Ok(false) };
-    let account = state
-        .store
-        .accounts()
-        .map_err(text)?
-        .into_iter()
-        .find(|a| a.id == account_id)
-        .ok_or("The account of this message is gone")?;
+    let account = account_of(&state.store, account_id)?;
     let raw = sync::download(&account.config, &crate::login(&account), &at).await.map_err(text)?;
     std::fs::write(&path, raw).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(true)
@@ -1251,8 +1224,12 @@ pub async fn import_mbox(
         let _ = tx.send(picked);
     });
     let Some(picked) = rx.await.ok().flatten().and_then(|p| p.into_path().ok()) else { return Ok(None) };
-    let bytes = std::fs::read(&picked).map_err(|e| format!("{}: {e}", picked.display()))?;
-    let total = tern_core::mbox::split(&bytes).len();
+    // Counted a message at a time and copied as a file: an mbox can be many gigabytes.
+    let source = picked.clone();
+    let total = tauri::async_runtime::spawn_blocking(move || tern_core::mbox::count(&source))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{}: {e}", picked.display()))?;
     if total == 0 {
         return Err("There are no messages in that file".into());
     }
@@ -1264,7 +1241,11 @@ pub async fn import_mbox(
     let dir = if cfg!(debug_assertions) { dir.join("dev") } else { dir }.join("imports");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let copy = dir.join(format!("{}.mbox", tern_core::store::now()));
-    std::fs::write(&copy, &bytes).map_err(|e| format!("{}: {e}", copy.display()))?;
+    let (from, to) = (picked.clone(), copy.clone());
+    tauri::async_runtime::spawn_blocking(move || std::fs::copy(from, to))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{}: {e}", copy.display()))?;
     let token = state
         .store
         .queue_import(account, &folder, &copy.display().to_string(), total, UNDO_SECONDS)
@@ -1277,44 +1258,60 @@ pub async fn import_mbox(
 /// Most a settings file may hold: settings, snippets and signatures are text, far below this.
 const BACKUP_LIMIT: u64 = 5_000_000;
 
-/// Saves the window's export of settings, snippets and signatures where the person picks. False if they cancelled.
-/// With a passphrase the accounts go in too, with their passwords or Google sign-ins from the keyring, and the AI
-/// keys; the file is sealed (`tern_core::backup`).
+/// Saves the window's export where the person picks. False if they cancelled. With a passphrase the secrets the
+/// person ticked go in too, read here from the keyring: the accounts with their passwords or Google sign-ins, the
+/// AI keys, the Todoist token. Then the file is sealed (`tern_core::backup`).
 #[tauri::command]
 pub async fn export_settings(
     app: AppHandle,
     state: State<'_, AppState>,
     contents: String,
     passphrase: Option<String>,
+    secrets: Option<tern_core::backup::SecretParts>,
 ) -> Reply<bool> {
     use tauri_plugin_dialog::DialogExt;
     // Sealed before the dialog opens, so a short passphrase is said before a file is picked.
     let contents = match passphrase {
         None => contents,
         Some(passphrase) => {
+            let parts = secrets.unwrap_or(tern_core::backup::SecretParts {
+                accounts: true,
+                ai_keys: true,
+                todoist: true,
+            });
             let settings = serde_json::from_str(&contents).map_err(|e| e.to_string())?;
-            let accounts = state
-                .store
-                .accounts()
-                .map_err(text)?
-                .into_iter()
-                .map(|a| tern_core::backup::AccountBackup {
-                    password: secrets::password(&a.config.email).ok(),
-                    tokens: secrets::tokens(&a.config.email).ok(),
-                    config: a.config,
-                })
-                .collect();
-            let ai_keys = Provider::ALL
-                .into_iter()
-                .filter_map(|provider| {
-                    providers::saved_key(provider).map(|key| tern_core::backup::AiKey { provider, key })
-                })
-                .collect();
-            let sealed = tern_core::backup::Contents { settings, accounts, ai_keys };
-            tokio::task::spawn_blocking(move || tern_core::backup::seal(&sealed, &passphrase))
-                .await
-                .map_err(|e| e.to_string())?
-                .map_err(text)?
+            let sealed = tokio::task::spawn_blocking({
+                let accounts = if parts.accounts { state.store.accounts().map_err(text)? } else { vec![] };
+                move || {
+                    let accounts = accounts
+                        .into_iter()
+                        .map(|a| tern_core::backup::AccountBackup {
+                            password: secrets::password(&a.config.email).ok(),
+                            tokens: secrets::tokens(&a.config.email).ok(),
+                            config: a.config,
+                        })
+                        .collect();
+                    let ai_keys = if parts.ai_keys {
+                        Provider::ALL
+                            .into_iter()
+                            .filter_map(|provider| {
+                                providers::saved_key(provider)
+                                    .map(|key| tern_core::backup::AiKey { provider, key })
+                            })
+                            .collect()
+                    } else {
+                        vec![]
+                    };
+                    let todoist =
+                        if parts.todoist { secrets::password(tern_core::todoist::KEY).ok() } else { None };
+                    let sealed = tern_core::backup::Contents { settings, accounts, ai_keys, todoist };
+                    tern_core::backup::seal(&sealed, &passphrase)
+                }
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(text)?;
+            sealed
         }
     };
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -1335,9 +1332,35 @@ pub async fn export_settings(
     Ok(true)
 }
 
-/// A sealed backup the person picked, kept here until they give its passphrase; the window never holds it.
+/// Sender choices, notes on people and style notes, for the window to put in a backup (`backup::Data`).
+#[tauri::command]
+pub fn backup_data(state: State<'_, AppState>) -> Reply<tern_core::backup::Data> {
+    state.store.backup_data().map_err(text)
+}
+
+/// Adds the parts of a backup's `Data` the person picked; what is here already is kept.
+#[tauri::command]
+pub fn restore_data(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    data: tern_core::backup::Data,
+) -> Reply<tern_core::backup::DataRestored> {
+    let restored = state.store.restore_data(&data).map_err(text)?;
+    if restored.senders > 0 {
+        let _ = app.emit("mail-changed", ());
+    }
+    Ok(restored)
+}
+
+/// A sealed backup the person picked: the file until they give its passphrase, then what it holds until they say
+/// which parts to take. The window never holds either.
 #[derive(Default)]
-pub struct Locked(Mutex<Option<String>>);
+pub struct Locked(Mutex<Option<Sealed>>);
+
+enum Sealed {
+    File(String),
+    Opened(tern_core::backup::Contents),
+}
 
 /// The settings file the person picked: its text, or `locked` when it is sealed and needs `unlock_settings`.
 #[derive(serde::Serialize)]
@@ -1367,67 +1390,152 @@ pub async fn import_settings(app: AppHandle, locked: State<'_, Locked>) -> Reply
     }
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     if tern_core::backup::is_sealed(&text) {
-        *locked.0.lock().unwrap() = Some(text);
+        *locked.0.lock().unwrap() = Some(Sealed::File(text));
         return Ok(Some(Picked { text: None, locked: true }));
     }
     *locked.0.lock().unwrap() = None;
     Ok(Some(Picked { text: Some(text), locked: false }))
 }
 
-/// What opening a sealed backup did: the settings part for the window, and which accounts it added.
+/// A secret a sealed backup holds, and whether this computer has one of its own already (which is then kept).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeldSecret {
+    name: String,
+    here: bool,
+}
+
+/// What a sealed backup holds, once opened: the settings part for the window, and its secrets by name only.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Unlocked {
     text: String,
-    added: Vec<String>,
-    /// Accounts the file has that were here already; they keep what they have.
-    present: Vec<String>,
-    /// The AI providers whose key the file brought; a key already saved here is kept.
-    ai_keys: Vec<String>,
+    /// The accounts, by address.
+    accounts: Vec<HeldSecret>,
+    /// The AI providers whose key it has.
+    ai_keys: Vec<HeldSecret>,
+    todoist: Option<HeldSecret>,
 }
 
-/// Opens the sealed backup picked last with its passphrase and adds the accounts that aren't here yet, with their
-/// passwords or Google sign-ins put in the keyring, and the AI keys not saved here yet. Their mail starts downloading at once. A wrong passphrase
-/// keeps the file, so the person can try again.
+/// Opens the sealed backup picked last with its passphrase and says what it holds; nothing is taken until
+/// `restore_secrets`. A wrong passphrase keeps the file, so the person can try again.
 #[tauri::command]
 pub async fn unlock_settings(
-    app: AppHandle,
     state: State<'_, AppState>,
     locked: State<'_, Locked>,
     passphrase: String,
 ) -> Reply<Unlocked> {
-    let file = locked.0.lock().unwrap().clone().ok_or("Pick the file again")?;
-    let contents = tokio::task::spawn_blocking(move || tern_core::backup::open(&file, &passphrase))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(text)?;
+    let file = match &*locked.0.lock().unwrap() {
+        Some(Sealed::File(text)) => text.clone(),
+        _ => return Err("Pick the file again".into()),
+    };
     let here = state.store.accounts().map_err(text)?;
-    let (mut added, mut present) = (vec![], vec![]);
-    for a in contents.accounts {
-        let email = a.config.email.clone();
-        if here.iter().any(|h| h.config.email.eq_ignore_ascii_case(&email)) {
-            present.push(email);
-            continue;
+    let (contents, ai_here, todoist_here) = tokio::task::spawn_blocking(move || {
+        tern_core::backup::open(&file, &passphrase).map(|c| {
+            let ai: Vec<bool> = c.ai_keys.iter().map(|k| providers::has_key(k.provider)).collect();
+            let todoist = c.todoist.is_some() && secrets::password(tern_core::todoist::KEY).is_ok();
+            (c, ai, todoist)
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(text)?;
+    let unlocked = Unlocked {
+        text: contents.settings.to_string(),
+        accounts: contents
+            .accounts
+            .iter()
+            .map(|a| HeldSecret {
+                here: here.iter().any(|h| h.config.email.eq_ignore_ascii_case(&a.config.email)),
+                name: a.config.email.clone(),
+            })
+            .collect(),
+        ai_keys: contents
+            .ai_keys
+            .iter()
+            .zip(ai_here)
+            .map(|(k, here)| HeldSecret { name: k.provider.name().to_string(), here })
+            .collect(),
+        todoist: contents.todoist.as_ref().map(|_| HeldSecret { name: "Todoist".into(), here: todoist_here }),
+    };
+    *locked.0.lock().unwrap() = Some(Sealed::Opened(contents));
+    Ok(unlocked)
+}
+
+/// What taking a sealed backup's secrets did. Each list names what was added, or kept because one was here.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Restored {
+    added: Vec<String>,
+    /// Accounts the file has that were here already; they keep their password.
+    present: Vec<String>,
+    ai_keys: Vec<String>,
+    ai_kept: Vec<String>,
+    /// "added", "kept", or None when it wasn't taken.
+    todoist: Option<&'static str>,
+}
+
+/// Takes the secrets the person picked from the backup `unlock_settings` opened: accounts that aren't here yet,
+/// with their passwords or Google sign-ins put in the keyring (their mail starts downloading at once), the AI keys
+/// and the Todoist token where none is saved here. The opened backup is then forgotten.
+#[tauri::command]
+pub async fn restore_secrets(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    locked: State<'_, Locked>,
+    parts: tern_core::backup::SecretParts,
+) -> Reply<Restored> {
+    let contents = match locked.0.lock().unwrap().take() {
+        Some(Sealed::Opened(c)) => c,
+        _ => return Err("Open the file again".into()),
+    };
+    let here = state.store.accounts().map_err(text)?;
+    let mut out =
+        Restored { added: vec![], present: vec![], ai_keys: vec![], ai_kept: vec![], todoist: None };
+    if parts.accounts {
+        for a in contents.accounts {
+            let email = a.config.email.clone();
+            if here.iter().any(|h| h.config.email.eq_ignore_ascii_case(&email)) {
+                out.present.push(email);
+                continue;
+            }
+            if let Some(password) = &a.password {
+                secrets::set_password(&email, password).map_err(text)?;
+            }
+            if let Some(tokens) = &a.tokens {
+                secrets::set_tokens(&email, tokens).map_err(text)?;
+            }
+            let account = state.store.add_account(&a.config).map_err(text)?;
+            start_account(&app, &state, account);
+            out.added.push(email);
         }
-        if let Some(password) = &a.password {
-            secrets::set_password(&email, password).map_err(text)?;
-        }
-        if let Some(tokens) = &a.tokens {
-            secrets::set_tokens(&email, tokens).map_err(text)?;
-        }
-        let account = state.store.add_account(&a.config).map_err(text)?;
-        start_account(&app, &state, account);
-        added.push(email);
     }
-    let mut ai_keys = vec![];
-    for k in contents.ai_keys {
-        if !providers::has_key(k.provider) {
-            providers::set_key(k.provider, &k.key).map_err(text)?;
-            ai_keys.push(k.provider.name().to_string());
+    if parts.ai_keys {
+        for k in contents.ai_keys {
+            let name = k.provider.name().to_string();
+            if providers::has_key(k.provider) {
+                out.ai_kept.push(name);
+            } else {
+                providers::set_key(k.provider, &k.key).map_err(text)?;
+                out.ai_keys.push(name);
+            }
         }
     }
+    if let (true, Some(token)) = (parts.todoist, contents.todoist) {
+        if secrets::password(tern_core::todoist::KEY).is_ok() {
+            out.todoist = Some("kept");
+        } else {
+            secrets::set_password(tern_core::todoist::KEY, &token).map_err(text)?;
+            out.todoist = Some("added");
+        }
+    }
+    Ok(out)
+}
+
+/// Forgets a sealed backup picked or opened, when the person cancels.
+#[tauri::command]
+pub fn forget_backup(locked: State<'_, Locked>) {
     *locked.0.lock().unwrap() = None;
-    Ok(Unlocked { text: contents.settings.to_string(), added, present, ai_keys })
 }
 
 /// The `mailto:` link Tern was started with, once; the window asks when it is ready.
@@ -1477,13 +1585,13 @@ pub fn update_ready(app: AppHandle) -> Option<String> {
     crate::update::ready(&app)
 }
 
-/// Installs the waiting update and restarts (the window has saved what was being written).
 /// The update channel changed: look for an update on it now.
 #[tauri::command]
 pub fn look_for_update(app: AppHandle) {
     crate::update::look_now(&app);
 }
 
+/// Installs the waiting update and restarts (the window has saved what was being written).
 #[tauri::command]
 pub fn restart_to_update(app: AppHandle) -> Reply<()> {
     crate::update::install(&app).map_err(|e| format!("{e:#}"))
