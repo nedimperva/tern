@@ -1,6 +1,7 @@
 //! What the UI can ask for. Reads answer from the store and never touch the network, except signing in to a new
-//! account, the first open of a received attachment, (opt-in) a sender's logo, fetched in the background, and
-//! (opt-in, on request) AI.
+//! account, a message's source on its own connection (the first open of a received attachment or of its inline
+//! images, Show original, Save as .eml, an mbox export), Search the server, (opt-in) a sender's logo, fetched in the
+//! background, (once connected) Todoist's projects and task states, and (opt-in, on request) AI.
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tern_core::ai::{self, providers, Provider};
@@ -279,7 +280,6 @@ pub async fn search(state: State<'_, AppState>, query: String, limit: i64) -> Re
     state.store.search(&query, limit).map_err(text)
 }
 
-/// Applies at once; the server hears about it after the undo window.
 #[tauri::command]
 pub async fn list_threads(
     state: State<'_, AppState>,
@@ -341,6 +341,7 @@ pub async fn apply_conversations(
     apply(app, state, ids, action).await
 }
 
+/// Applies at once; the server hears about it after the undo window.
 #[tauri::command]
 pub async fn apply(
     app: AppHandle,
@@ -486,12 +487,13 @@ pub async fn retry_problem(app: AppHandle, state: State<'_, AppState>, id: i64) 
     Ok(())
 }
 
-/// Drops the work and puts the mailbox back as it was before it, as undo would.
+/// Drops the work and puts the mailbox back as it was before it, as undo would, with the later work that waited
+/// on it. Returns how many later changes went too, or None while one of them is being sent.
 #[tauri::command]
-pub async fn discard_problem(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<()> {
-    state.store.discard_outbox(id).map_err(text)?;
+pub async fn discard_problem(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<Option<usize>> {
+    let gone = state.store.discard_outbox(id).map_err(text)?;
     let _ = app.emit("mail-changed", ());
-    Ok(())
+    Ok(gone)
 }
 
 /// Work still on its way to the server, for the "changes waiting" list.
@@ -696,7 +698,7 @@ pub async fn pick_files(app: AppHandle) -> Reply<Vec<String>> {
 
 /// Tern's own folder for files being attached.
 fn attachments_dir(app: &AppHandle) -> Reply<std::path::PathBuf> {
-    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("attachments"))
+    Ok(app.state::<AppState>().attachments.clone())
 }
 
 /// Refuses a draft that names a file outside Tern's folder for attachments: every attachment is a copy made
@@ -848,6 +850,11 @@ pub async fn person_files(state: State<'_, AppState>, email: String) -> Reply<Ve
     state.store.person_files(&email, 60).map_err(text)
 }
 
+/// The account a message belongs to, to fetch from its server.
+fn account_of(store: &tern_core::Store, account_id: i64) -> Reply<Account> {
+    store.account(account_id).map_err(text)?.ok_or_else(|| "The account of this message is gone".to_string())
+}
+
 /// Where a received message's downloaded files are kept: per account, under a name only that message gets.
 fn received_dir(app: &AppHandle, account_id: i64, at: &tern_core::ForwardOf) -> Reply<std::path::PathBuf> {
     Ok(crate::cache::received(app)?.join(format!("a{account_id}")).join(at.cache_key(account_id)))
@@ -873,13 +880,7 @@ async fn received_file(
     if place(index).is_file() {
         return Ok(place(index));
     }
-    let account = state
-        .store
-        .accounts()
-        .map_err(text)?
-        .into_iter()
-        .find(|a| a.id == account_id)
-        .ok_or("The account of this message is gone")?;
+    let account = account_of(&state.store, account_id)?;
     let raw = sync::download(&account.config, &crate::login(&account), &at).await.map_err(text)?;
     let files = mime::attachment_files(&raw);
     for i in 0..listed.len() {
@@ -911,13 +912,7 @@ pub async fn message_source(state: State<'_, AppState>, id: i64) -> Reply<String
         .attachment_source(id)
         .map_err(text)?
         .ok_or("This message is not on the server yet; try again once it has synced")?;
-    let account = state
-        .store
-        .accounts()
-        .map_err(text)?
-        .into_iter()
-        .find(|a| a.id == account_id)
-        .ok_or("The account of this message is gone")?;
+    let account = account_of(&state.store, account_id)?;
     let raw = sync::download(&account.config, &crate::login(&account), &at).await.map_err(text)?;
     Ok(source_text(&raw))
 }
@@ -968,7 +963,7 @@ pub async fn attachment_preview(
 /// window can't read anything else on disk this way.
 #[tauri::command]
 pub async fn outgoing_preview(app: AppHandle, path: String) -> Reply<Option<String>> {
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?.join("attachments");
+    let base = attachments_dir(&app)?;
     let file = std::path::PathBuf::from(&path);
     let (Ok(base), Ok(file)) = (base.canonicalize(), file.canonicalize()) else { return Ok(None) };
     if !file.starts_with(&base) {
@@ -1011,13 +1006,7 @@ pub async fn inline_images(
             return Ok(images);
         }
     }
-    let account = state
-        .store
-        .accounts()
-        .map_err(text)?
-        .into_iter()
-        .find(|a| a.id == account_id)
-        .ok_or("The account of this message is gone")?;
+    let account = account_of(&state.store, account_id)?;
     let raw = sync::download(&account.config, &crate::login(&account), &at).await.map_err(text)?;
     let images: HashMap<String, String> = mime::inline_images(&raw, INLINE_LIMIT).into_iter().collect();
     // Cached whole or not at all, as attachments are.
@@ -1073,20 +1062,10 @@ pub async fn save_attachment(
     id: i64,
     index: usize,
 ) -> Reply<bool> {
-    use tauri_plugin_dialog::DialogExt;
     let (_, _, listed) =
         state.store.attachment_source(id).map_err(text)?.ok_or("This message is not on the server yet")?;
     let name = listed.get(index).ok_or("That attachment is not in this message")?;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    let mut dialog =
-        app.dialog().file().set_title("Save attachment").set_file_name(mime::safe_file_name(name));
-    if let Some(window) = app.get_webview_window("main") {
-        dialog = dialog.set_parent(&window);
-    }
-    dialog.save_file(move |chosen| {
-        let _ = tx.send(chosen);
-    });
-    let Some(path) = rx.await.ok().flatten().and_then(|p| p.into_path().ok()) else { return Ok(false) };
+    let Some(path) = save_path(&app, "Save attachment", name).await else { return Ok(false) };
     let file = received_file(&app, &state, id, index).await?;
     std::fs::copy(&file, &path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(true)
@@ -1117,13 +1096,7 @@ pub async fn save_eml(app: AppHandle, state: State<'_, AppState>, id: i64) -> Re
     let subject = state.store.message_rows(&[id]).map_err(text)?.pop().map(|m| m.subject).unwrap_or_default();
     let name = format!("{}.eml", if subject.trim().is_empty() { "message" } else { subject.trim() });
     let Some(path) = save_path(&app, "Save as .eml", &name).await else { return Ok(false) };
-    let account = state
-        .store
-        .accounts()
-        .map_err(text)?
-        .into_iter()
-        .find(|a| a.id == account_id)
-        .ok_or("The account of this message is gone")?;
+    let account = account_of(&state.store, account_id)?;
     let raw = sync::download(&account.config, &crate::login(&account), &at).await.map_err(text)?;
     std::fs::write(&path, raw).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(true)
@@ -1251,8 +1224,12 @@ pub async fn import_mbox(
         let _ = tx.send(picked);
     });
     let Some(picked) = rx.await.ok().flatten().and_then(|p| p.into_path().ok()) else { return Ok(None) };
-    let bytes = std::fs::read(&picked).map_err(|e| format!("{}: {e}", picked.display()))?;
-    let total = tern_core::mbox::split(&bytes).len();
+    // Counted a message at a time and copied as a file: an mbox can be many gigabytes.
+    let source = picked.clone();
+    let total = tauri::async_runtime::spawn_blocking(move || tern_core::mbox::count(&source))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{}: {e}", picked.display()))?;
     if total == 0 {
         return Err("There are no messages in that file".into());
     }
@@ -1264,7 +1241,11 @@ pub async fn import_mbox(
     let dir = if cfg!(debug_assertions) { dir.join("dev") } else { dir }.join("imports");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let copy = dir.join(format!("{}.mbox", tern_core::store::now()));
-    std::fs::write(&copy, &bytes).map_err(|e| format!("{}: {e}", copy.display()))?;
+    let (from, to) = (picked.clone(), copy.clone());
+    tauri::async_runtime::spawn_blocking(move || std::fs::copy(from, to))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{}: {e}", copy.display()))?;
     let token = state
         .store
         .queue_import(account, &folder, &copy.display().to_string(), total, UNDO_SECONDS)
@@ -1477,13 +1458,13 @@ pub fn update_ready(app: AppHandle) -> Option<String> {
     crate::update::ready(&app)
 }
 
-/// Installs the waiting update and restarts (the window has saved what was being written).
 /// The update channel changed: look for an update on it now.
 #[tauri::command]
 pub fn look_for_update(app: AppHandle) {
     crate::update::look_now(&app);
 }
 
+/// Installs the waiting update and restarts (the window has saved what was being written).
 #[tauri::command]
 pub fn restart_to_update(app: AppHandle) -> Reply<()> {
     crate::update::install(&app).map_err(|e| format!("{e:#}"))

@@ -841,21 +841,6 @@ button.primary kbd {
 .search-note .spacer {
   flex: 1;
 }
-/* A small outlined pill button, for a second action beside a line of text. */
-.soft-button {
-  flex: none;
-  height: 26px;
-  padding: 0 var(--s-3);
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  background: var(--bg-0);
-  color: var(--accent);
-  font-size: var(--t-sm);
-  font-weight: 600;
-}
-.soft-button:hover {
-  background: var(--accent-soft);
-}
 /* Tern's right-click menu on a link in a message. */
 .link-menu {
   position: fixed;
@@ -4308,15 +4293,6 @@ button.fold {
   font-size: var(--t-xs);
   color: var(--fg-2);
 }
-/* A setting that is already as it should be says so where its button would be. */
-.setting-state {
-  justify-self: end;
-  font-size: var(--t-sm);
-  white-space: nowrap;
-}
-.setting-state.ok {
-  color: var(--ok);
-}
 .settings-page nav button:hover,
 .settings-page nav button:focus-visible {
   outline: none;
@@ -4483,7 +4459,7 @@ button.fold {
   color: var(--fg-2);
 }
 /* What needs the row's width: a form that opens in it, details, a list of accounts. */
-.setting > :is(.ai-key, .about-details, .backup-accounts, .backup-passphrase, .aliases) {
+.setting > :is(.ai-key, .about-details, .backup-passphrase, .aliases) {
   grid-column: 1 / -1;
   margin-top: var(--s-2);
 }
@@ -4591,7 +4567,7 @@ button.fold {
   accent-color: var(--accent);
 }
 .settings-content
-  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .settings-content .list-row .end, .settings-card .ai-ask, .settings-card .setting)
+  :is(.ai-sheet-actions, .style-actions, .settings-content .list-row .end, .settings-card .ai-ask, .settings-card .setting)
   button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button, .switch, .icon-button, .dropdown, .dropdown *, .word-tag button) {
   height: 32px;
   padding: 0 var(--s-3);
@@ -4603,7 +4579,7 @@ button.fold {
   box-shadow: var(--raise);
 }
 .settings-content
-  :is(.ai-status, .ai-provider, .ai-card, .ai-kept, .ai-turn-on, .ai-styles, .ai-sheet-actions, .detail-foot, .style-actions, .style-foot, .ask-actions, .settings-content .list-row .end, .settings-card .ai-ask, .settings-card .setting)
+  :is(.ai-sheet-actions, .style-actions, .settings-content .list-row .end, .settings-card .ai-ask, .settings-card .setting)
   button:not(.link, .primary, .danger, [role="radio"], .chip button, .segmented button, .switch, .icon-button, .dropdown, .dropdown *, .word-tag button):hover:not(:disabled) {
   background: var(--bg-2);
   border-color: var(--line-strong);
@@ -4617,17 +4593,6 @@ button.fold {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--card);
-}
-.master.panel {
-  padding: var(--s-3);
-  position: sticky;
-  top: 0;
-}
-.panel-head {
-  padding: 0 var(--s-1) var(--s-1);
-  font-size: var(--t-sm);
-  font-weight: 600;
-  color: var(--fg-2);
 }
 .detail.panel {
   gap: 0;
@@ -4645,30 +4610,6 @@ button.fold {
   font-size: var(--t-sm);
   font-weight: 600;
   color: var(--fg-2);
-}
-.detail.panel .detail-foot {
-  padding: var(--s-3) var(--s-5);
-  border-top: none;
-  background: var(--bg-1);
-}
-.section-intro {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-4);
-  margin-bottom: var(--s-4);
-}
-.section-intro .help,
-.section-lead {
-  margin: 0;
-}
-.section-lead {
-  margin-bottom: var(--s-4);
-}
-.section-intro button.primary {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
 }
 .about-details {
   grid-column: 1 / -1;
@@ -4699,16 +4640,8 @@ button.fold {
   font-size: var(--t-sm);
   color: var(--danger);
 }
-.backup-accounts,
 .backup-passphrase {
   grid-column: 1 / -1;
-}
-.backup-accounts {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  font-size: var(--t-sm);
-  color: var(--fg-1);
 }
 .setting-note {
   margin: var(--s-3) 0 0;
@@ -5088,31 +5021,6 @@ button.fold {
   background: var(--accent-soft);
   box-shadow: inset 3px 0 0 var(--accent);
 }
-.settings-empty {
-  flex: 1;
-  padding: var(--s-6) var(--s-5);
-  border-radius: var(--r-lg);
-  background: var(--soft);
-  color: var(--fg-1);
-  text-align: center;
-}
-
-/* A list on the left, the picked one's editor on the right (snippets, signatures). */
-.master-detail {
-  display: flex;
-  gap: var(--s-5);
-  align-items: flex-start;
-}
-.master {
-  width: 280px;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-.signatures-settings .master {
-  width: 260px;
-}
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -5131,72 +5039,6 @@ button.pill[aria-pressed="true"] {
   background: var(--bg-3);
   color: var(--fg-0);
   font-weight: 500;
-}
-.master-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.master-list .none {
-  padding: var(--s-3);
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.master-list button {
-  position: relative;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px var(--s-3);
-  border: none;
-  border-radius: var(--r-md);
-  background: none;
-  text-align: left;
-  font-size: var(--t-md);
-}
-.master-list button:hover {
-  background: var(--bg-2);
-}
-.master-list button.picked {
-  background: var(--bg-3);
-}
-.master-list .row-head {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--s-2);
-}
-.master-list .name {
-  font-weight: 500;
-}
-.master-list .picked .name {
-  font-weight: 600;
-}
-.master-list .snippet-key {
-  font: var(--t-sm) / 18px var(--mono);
-  color: var(--fg-1);
-}
-.master-list .row-sub {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--fg-2);
-}
-.master-list .badges {
-  display: flex;
-  gap: var(--s-1);
-}
-.master-list .badges .badge {
-  padding: 0;
-  background: none;
-  color: var(--fg-2);
-  font-weight: 400;
-}
-.master-list .badges .badge + .badge::before {
-  content: "· ";
 }
 .badge {
   padding: 0 6px;
@@ -5491,22 +5333,6 @@ button.place.muted {
   height: 1.1em;
   vertical-align: -0.2em;
   background: var(--accent);
-}
-.detail-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--s-3);
-  padding-top: var(--s-3);
-  border-top: 1px solid var(--line);
-}
-.detail-foot .meta {
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.detail-foot .actions {
-  display: flex;
-  gap: var(--s-2);
 }
 .tabs {
   display: flex;
@@ -6001,13 +5827,6 @@ body:has(.viewer) .titlebar > :not(.window-buttons) {
   width: 220px;
   font-family: var(--mono);
 }
-.ai-key .saved-key {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-  font-size: var(--t-sm);
-  color: var(--ok);
-}
 .ai-test {
   grid-column: 1 / -1;
   font-size: var(--t-sm);
@@ -6096,57 +5915,6 @@ button.ai-line:hover {
   flex-direction: column;
   gap: var(--s-1);
   line-height: 1.5;
-}
-.ai-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  margin-top: var(--s-2);
-  padding-left: var(--s-6);
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.ai-actions span {
-  margin-right: auto;
-}
-
-/* Settings → Writing style: a card per account, its name and Learn on top. */
-.ai-styles {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-4);
-}
-/* Inside a style card, its parts sit on the sidebar's tone: --soft is too close to --card in dark mode. */
-.ai-styles :is(.style-part, .style-preview) {
-  background: var(--bg-1);
-}
-.ai-styles .style-note {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
-  padding: var(--s-4);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--card);
-}
-.style-head {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  font-size: var(--t-rd);
-}
-.style-head strong {
-  font-weight: 600;
-}
-.style-head .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.style-head .meta {
-  margin-right: auto;
-  font-size: var(--t-sm);
-  color: var(--fg-2);
 }
 .style-note textarea {
   width: 100%;
@@ -6292,323 +6060,13 @@ fieldset.plain {
   padding: 0;
   border: 0;
 }
-
-/* Settings → AI as four steps, the last a table of what each feature sends. */
-.ai-status {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  margin-bottom: var(--s-4);
-}
-.ai-status .help {
-  margin: 0;
-}
-/* On: a card with what it sends to and Turn off. */
-.ai-status:has(.on) {
-  padding: var(--s-3) var(--s-4);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--card);
-}
-.ai-status .on {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-  font-size: var(--t-rd);
-  color: var(--ok);
-}
-.ai-status .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--ok);
-}
-.ai-step {
-  display: flex;
-  gap: var(--s-3);
-  padding: var(--s-3) 0 var(--s-5);
-}
-.ai-step-mark {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: var(--t-md);
-  font-weight: 600;
-  background: var(--bg-3);
-  color: var(--fg-1);
-}
-.ai-step.current .ai-step-mark {
-  background: var(--accent);
-  color: var(--accent-fg);
-}
-.ai-step.done .ai-step-mark {
-  background: var(--ok);
-  color: var(--accent-fg);
-}
-.ai-step-body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-.ai-step-body h2 {
-  margin: 3px 0 var(--s-1);
-  font-size: var(--t-rd);
-  font-weight: 600;
-}
-.ai-step-body .help {
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.ai-step .ai-key .spacer {
-  flex: 1;
-}
-.ai-providers {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--s-2);
-}
-.ai-providers button {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: var(--s-2) var(--s-3);
-  border: 2px solid transparent;
-  border-radius: var(--r-md);
-  background: var(--bg-2);
-  color: var(--fg-0);
-  font: inherit;
-  text-align: left;
-}
-.ai-providers button.picked {
-  border-color: var(--accent);
-  background: var(--bg-0);
-}
-.ai-providers strong {
-  font-size: var(--t-md);
-  font-weight: 600;
-}
-.ai-providers span {
-  font-size: var(--t-sm);
-  color: var(--fg-1);
-}
-.ai-ledger {
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--card);
-  overflow: hidden;
-}
-.ai-ledger .row {
-  display: grid;
-  grid-template-columns: 150px minmax(0, 1fr) 170px 32px;
-  gap: var(--s-3);
-  align-items: center;
-  padding: var(--s-3) var(--s-4);
-  border-top: 1px solid var(--line);
-}
-.ai-ledger .row.head {
-  background: var(--bg-1);
-  border-top: none;
-  padding-block: var(--s-2);
-  font-size: var(--t-sm);
-  font-weight: 600;
-  color: var(--fg-2);
-}
-.ai-ledger .name {
-  font-size: var(--t-md);
-  font-weight: 600;
-}
-.ai-ledger .keys {
-  display: block;
-  font-weight: 400;
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.ai-ledger .sends {
-  font-size: var(--t-md);
-  line-height: 1.45;
-  color: var(--fg-1);
-}
-.ai-ledger input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-}
-.ai-ledger .foot {
-  margin: 0;
-  padding: var(--s-3) var(--s-4);
-  border-top: 1px solid var(--line);
-  background: var(--bg-1);
-  font-size: var(--t-sm);
-  line-height: 1.5;
-  color: var(--fg-1);
-}
-.ai-turn-on {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  margin: var(--s-4) 0;
-  padding: var(--s-3) var(--s-4);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--card);
-  font-size: var(--t-md);
-  color: var(--fg-1);
-}
-.ai-turn-on span {
-  flex: 1;
-}
-.ai-usage {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-3);
-  margin: var(--s-4) 0;
-}
-.ai-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  padding: var(--s-3) var(--s-4);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--card);
-  font-size: var(--t-md);
-}
-.ai-card .kicker,
 .style-note .kicker {
   font-size: var(--t-sm);
   font-weight: 600;
   color: var(--fg-1);
 }
-.ai-card .meter {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--bg-3);
-  overflow: hidden;
-}
-.ai-card .meter div {
-  height: 100%;
-  background: var(--accent);
-}
-.ai-inline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-2);
-  color: var(--fg-1);
-}
-.ai-inline .dropdown {
-  max-width: 60%;
-}
-/* Mail it may read: the accounts and the redaction as rows of one card. */
-.ai-checks {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--card);
-  overflow: hidden;
-}
-.ai-checks label {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  min-height: 48px;
-  box-sizing: border-box;
-  padding: var(--s-2) var(--s-4);
-  font-size: var(--t-md);
-  cursor: pointer;
-}
-.ai-checks label + label {
-  border-top: 1px solid var(--line);
-}
-.ai-checks input {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  margin: 0;
-}
-.ai-checks .dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.ai-checks .redact .what {
-  padding-left: 0;
-}
-/* A row's words with a quieter line under them, in the AI cards. */
-:is(.ai-checks, .ai-link) .what {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  color: var(--fg-0);
-  font-weight: 500;
-}
-:is(.ai-checks, .ai-link) .sub {
-  font-size: var(--t-sm);
-  font-weight: 400;
-  color: var(--fg-2);
-}
-/* Writing style, its own page: a card row that goes there. */
-.ai-link {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  width: 100%;
-  margin: var(--s-4) 0 0;
-  padding: var(--s-3) var(--s-4);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--card);
-  font-size: var(--t-md);
-  text-align: left;
-}
-.ai-link:hover {
-  border-color: var(--line-strong);
-}
-.ai-link .what {
+.style-actions .spacer {
   flex: 1;
-}
-.ai-link svg {
-  flex: none;
-  color: var(--fg-2);
-}
-.ai-kept {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  margin-top: var(--s-4);
-  padding: var(--s-3) var(--s-4);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--card);
-  font-size: var(--t-md);
-  color: var(--fg-1);
-}
-.ai-kept .spacer,
-.style-actions .spacer,
-.style-foot .spacer {
-  flex: 1;
-}
-@media (max-width: 760px) {
-  .ai-providers,
-  .ai-usage {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .ai-ledger .row {
-    grid-template-columns: minmax(0, 1fr) 32px;
-  }
-  .ai-ledger .row > :nth-child(3) {
-    grid-column: 1 / -1;
-  }
 }
 
 /* A style note: first a sample written both ways, then its parts to tune. */
@@ -6678,55 +6136,10 @@ fieldset.plain {
   background: var(--accent-soft);
   color: var(--fg-0);
 }
-.style-actions,
-.style-foot {
+.style-actions {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-}
-.style-profile {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-2);
-}
-.style-part {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  padding: var(--s-3);
-  border-radius: var(--r-lg);
-  background: var(--soft);
-}
-.style-part.wide {
-  grid-column: 1 / -1;
-}
-.style-part ul {
-  margin: 0;
-  padding-left: var(--s-4);
-  font-size: var(--t-md);
-  line-height: 1.6;
-  color: var(--fg-1);
-}
-.style-part .chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-1);
-}
-.style-part .chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-  padding: 2px 2px 2px var(--s-2);
-  border-radius: var(--r-sm);
-  background: var(--bg-0);
-  font-size: var(--t-md);
-}
-.style-part .chip button {
-  border: none;
-  background: none;
-  padding: 0 var(--s-1);
-  color: var(--fg-2);
-  font: inherit;
 }
 .segmented button {
   flex: 1;
@@ -6752,8 +6165,7 @@ button.link.danger {
   color: var(--danger);
 }
 @media (max-width: 760px) {
-  .style-compare,
-  .style-profile {
+  .style-compare {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -6772,70 +6184,6 @@ button.link.danger {
   margin: 0;
   font-size: var(--t-sm);
   color: var(--danger);
-}
-
-/* Settings → AI → Providers: any of them, each with its key; the feature table picks models from those set up. */
-.ai-provider-list {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--card);
-  overflow: hidden;
-}
-.ai-provider {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2);
-  min-height: 52px;
-  box-sizing: border-box;
-  padding: var(--s-2) var(--s-3) var(--s-2) var(--s-4);
-  border-top: 1px solid var(--line);
-}
-.ai-provider:first-child {
-  border-top: none;
-}
-.ai-provider .who {
-  flex: 1;
-  display: flex;
-  align-items: baseline;
-  gap: var(--s-2);
-  min-width: 140px;
-}
-.ai-provider .who strong {
-  font-size: var(--t-md);
-  font-weight: 600;
-}
-.ai-provider .who span {
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.ai-provider .saved-key {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-  font-size: var(--t-sm);
-  color: var(--ok);
-}
-.ai-provider .ai-test,
-.ai-provider .help {
-  flex-basis: 100%;
-}
-.ai-ledger .dropdown {
-  width: 100%;
-  min-width: 0;
-}
-.ai-ledger .row.ask {
-  grid-template-columns: minmax(0, 1fr) auto;
-  background: var(--accent-soft);
-  font-size: var(--t-md);
-  line-height: 1.5;
-}
-.ai-ledger .ask-actions {
-  display: flex;
-  gap: var(--s-2);
-  align-items: center;
 }
 
 .tide,
@@ -7573,124 +6921,6 @@ button.link.danger {
   color: inherit;
 }
 
-.senders-title {
-  margin-top: var(--s-5);
-}
-.senders > .senders-title:first-child {
-  margin-top: 0;
-}
-/* Settings → Senders, Your choices: a heading per choice, then its senders as rows like Who writes most. */
-.sender-choices h4 {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s-2);
-  margin: var(--s-4) 0 0;
-  font-size: var(--t-md);
-  font-weight: 600;
-}
-.sender-choices h4 .count {
-  font-weight: 500;
-  color: var(--fg-2);
-}
-.sender-choices .help {
-  margin: var(--s-1) 0 0;
-}
-
-/* Settings → Who writes most: a sender a row, a bar for how much they wrote, and what to do about them. */
-.sender-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
-  margin: var(--s-3) 0 0;
-  padding: 0;
-  list-style: none;
-}
-.sender-list li {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(80px, 1fr) 220px;
-  align-items: center;
-  gap: var(--s-4);
-  padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-md);
-}
-.sender-list li:hover {
-  background: var(--soft);
-}
-.sender-list .who {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.sender-list .who strong,
-.sender-list .addr {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.sender-list .who strong {
-  font-weight: 600;
-}
-.sender-list .addr,
-.sender-list .said {
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.sender-list .said {
-  color: var(--fg-1);
-}
-.sender-list .volume {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-}
-/* Grey, so the names lead the page, not the bars. */
-.sender-list .bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--line-strong);
-}
-.ai-step.later {
-  opacity: 0.45;
-}
-.ai-next {
-  margin: calc(-1 * var(--s-2)) 0 var(--s-4) 32px;
-  font-size: var(--t-sm);
-  font-weight: 600;
-  color: var(--accent);
-}
-.sender-list .now-in {
-  font-size: var(--t-xs);
-  color: var(--fg-2);
-}
-.sender-list .count {
-  font-size: var(--t-sm);
-  font-variant-numeric: tabular-nums;
-  color: var(--fg-1);
-}
-.sender-list .actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--s-2);
-}
-.sender-list .actions button {
-  padding: var(--s-1) var(--s-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--card);
-  color: var(--fg-0);
-  font: inherit;
-  font-size: var(--t-sm);
-}
-.sender-list .actions button:hover {
-  background: var(--bg-2);
-}
-@media (max-width: 760px) {
-  .sender-list li {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--s-1);
-  }
-}
-
 /* MARK: Companion (§4.2b): one column, the person on top, Ask at the foot. */
 
 .companion {
@@ -8228,34 +7458,6 @@ button.link.danger {
 }
 .companion .task-do button:disabled {
   opacity: 0.5;
-}
-/* Settings → Todoist. */
-.todoist-connect {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-}
-.todoist-connect input {
-  flex: 1;
-  min-width: 0;
-}
-/* A list under its title, the row's whole width, not in the column a choice takes (idea 45). */
-.setting:has(> .todoist-what) {
-  display: block;
-}
-.setting:has(> .todoist-what) > .title {
-  display: block;
-  margin-bottom: var(--s-1);
-}
-.setting > .title + .todoist-what {
-  grid-column: 1 / -1;
-  justify-self: stretch;
-  max-width: none;
-  margin: 0;
-  padding-left: var(--s-4);
-  color: var(--fg-1);
-  font-size: var(--t-sm);
-  line-height: 1.6;
 }
 /* Files: this conversation's, or every file with the person, by kind and month. */
 .companion fieldset {
@@ -9295,8 +8497,7 @@ button.link.danger {
 }
 .compose.focus .fields,
 .compose.focus .editor-wrap,
-.compose.focus .ai-try,
-.compose.focus .focus-column {
+.compose.focus .ai-try {
   width: 100%;
   max-width: 640px;
   margin-left: auto;
@@ -10234,11 +9435,6 @@ button.link.danger {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-}
-
-/* Snippets and signatures: the button above the list, the preview at the head of the editor. */
-.section-intro.end {
-  justify-content: flex-end;
 }
 .detail.panel > .settings-preview {
   margin: var(--s-4) var(--s-4) 0;

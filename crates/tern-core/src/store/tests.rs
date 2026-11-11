@@ -746,6 +746,63 @@ fn waiting_work_that_later_work_depends_on_cannot_be_discarded() {
 }
 
 #[test]
+fn discarding_a_given_up_move_takes_the_work_waiting_on_it_too() {
+    let (store, account, inbox, _) = setup();
+    store.insert_messages(account, inbox, &[message(1, "a", 1)]).unwrap();
+    let id = store.list(&ListTarget::Folder(inbox), None, 1).unwrap()[0].id;
+    let archived = store.apply(&[id], Action::Archive, 0).unwrap().token[0];
+    let starred = store.apply(&[id], Action::Star, 0).unwrap().token[0];
+    store.outbox_failed(archived, "550", Failure::Permanent).unwrap();
+    store.conn().execute("UPDATE outbox SET claimed = 1 WHERE id = ?1", [starred]).unwrap();
+    assert_eq!(store.discard_outbox(archived).unwrap(), None, "not while the star is being sent");
+    assert_eq!(store.outbox_problems().unwrap().len(), 1);
+    store.release_claims(account).unwrap();
+    assert_eq!(store.discard_outbox(archived).unwrap(), Some(1));
+    let rows: i64 = store.conn().query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0)).unwrap();
+    assert_eq!(rows, 0, "the star waited on the move, so it went too");
+    let back = &store.list(&ListTarget::Folder(inbox), None, 10).unwrap()[0];
+    assert!(back.id == id && !back.flagged, "in the inbox again, as before both");
+}
+
+#[test]
+fn discarding_a_send_drops_its_follow_up() {
+    let (store, account, _, _) = setup();
+    let work = store.queue_send_at(account, draft_to("any news?"), 0, None, Some(now() + 1_000)).unwrap();
+    store.outbox_failed(work, "550", Failure::Permanent).unwrap();
+    assert_eq!(store.discard_outbox(work).unwrap(), Some(0));
+    let left: i64 = store
+        .conn()
+        .query_row("SELECT count(*) FROM reminders WHERE kind = 'followup'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(left, 0);
+}
+
+#[test]
+fn attached_files_are_in_use_until_their_draft_and_send_are_gone() {
+    let (store, account, _, _) = setup();
+    let with = |subject: &str, path: &str| Draft {
+        attachments: vec![OutgoingAttachment {
+            path: path.into(),
+            name: "x.pdf".into(),
+            mime: "application/pdf".into(),
+            size: 1,
+            cid: None,
+        }],
+        ..draft_to(subject)
+    };
+    let kept = store.save_draft(None, account, with("kept", "/a/1/x.pdf"), false).unwrap();
+    let binned = store.save_draft(None, account, with("binned", "/a/2/x.pdf"), false).unwrap();
+    store.discard_draft(binned).unwrap();
+    let send = store.queue_send(account, with("sent", "/a/3/x.pdf"), 0).unwrap();
+    let in_use = store.attachments_in_use().unwrap();
+    assert_eq!(in_use.len(), 3, "a discarded draft can come back with undo: {in_use:?}");
+    store.draft_removed(kept).unwrap();
+    store.draft_removed(binned).unwrap();
+    store.outbox_sent(send, None).unwrap();
+    assert!(store.attachments_in_use().unwrap().is_empty());
+}
+
+#[test]
 fn released_claims_are_handed_out_again() {
     let (store, account, inbox, _) = setup();
     let work = queued_mark_read(&store, account, inbox);
@@ -800,6 +857,30 @@ fn mail_without_references_joins_by_subject_and_people() {
     assert_eq!(t[0], t[1]);
     assert_ne!(t[0], t[2]);
     assert_ne!(t[0], t[3]);
+}
+
+#[test]
+fn an_alias_is_not_someone_two_mails_have_in_common() {
+    let (store, account, inbox, _) = setup();
+    store.set_aliases(account, &[Alias { email: "hi@custom.example".into(), name: String::new() }]).unwrap();
+    let day = 86_400;
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[
+                mail(1, "Invoice", day, "ada@x.com", "hi@custom.example"),
+                // Someone else, the same subject, also to the alias: only the account itself is on both.
+                mail(2, "Re: Invoice", 2 * day, "bob@y.com", "hi@custom.example"),
+                // Ada again, from the alias: Ada is on both.
+                mail(3, "Re: Invoice", 3 * day, "hi@custom.example", "ada@x.com"),
+            ],
+        )
+        .unwrap();
+    let rows = store.list(&ListTarget::Folder(inbox), None, 10).unwrap();
+    let thread = |uid: i64| rows.iter().find(|r| r.id == uid).unwrap().thread_id.as_str();
+    assert_ne!(thread(1), thread(2));
+    assert_eq!(thread(1), thread(3));
 }
 
 #[test]

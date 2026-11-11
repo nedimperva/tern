@@ -46,9 +46,8 @@ impl std::error::Error for MaybeSent {
 /// A file to attach that is already in memory (a forwarded message's attachments): name, type, contents.
 pub type FileBytes = (String, String, Vec<u8>);
 
-/// Sends a plain-text message with the draft's attachments and `extra` ones. Returns it exactly as sent, for the
-/// copy in Sent.
-/// TODO: HTML (with the rich editor).
+/// Sends the draft (plain text, with an HTML alternative when it has formatting) with its attachments and `extra`
+/// ones. Returns it exactly as sent, for the copy in Sent.
 pub async fn send(
     config: &AccountConfig,
     credential: &Credential,

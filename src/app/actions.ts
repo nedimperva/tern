@@ -333,6 +333,14 @@ export function switchAccount(index: number) {
   if (inbox) go({ folder: inbox.id });
 }
 
+/** Discards a problem, and says so when later changes to the same messages had to go with it. */
+export async function discardProblem(id: number) {
+  const later = await api.discardProblem(id);
+  if (later === null) showToast("A later change to these messages is being sent. Try again in a moment.", []);
+  else if (later > 0) showToast(later === 1 ? "A later change to these messages went too." : `${later} later changes to these messages went too.`, []);
+  void refresh();
+}
+
 export async function restartToUpdate() {
   try {
     await api.restartToUpdate();

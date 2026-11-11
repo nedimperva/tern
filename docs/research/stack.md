@@ -27,9 +27,10 @@ release scope; calendar, advanced contacts and optional AI are expansion, not co
 
 ### IMAP library probe (package 01 gate, 2026-10-13)
 
-`crates/imap-probe`: the same checks for each library over tokio-rustls with `TCP_NODELAY`, against the local
-Stalwart 0.15.5 server (`scripts/dev-mail-server.sh`), plus a scripted fake server for Gmail-only responses.
-Run: `cargo run --release -p imap-probe --bin probe_async_imap` (or `probe_io_imap`). Folder: 200 small messages
+`crates/imap-probe` (removed 2026-11-11 once the decision was long settled; git history keeps it): the same checks for each library
+over tokio-rustls with `TCP_NODELAY`, against the local Stalwart 0.15.5 server (`scripts/dev-mail-server.sh`),
+plus a scripted fake server for Gmail-only responses. It ran as
+`cargo run --release -p imap-probe --bin probe_async_imap` (or `probe_io_imap`). Folder: 200 small messages
 and one 20 MB message; out of band, 150 flagged and 3 expunged before the QRESYNC resync.
 
 | Check | async-imap 0.12 | io-imap 0.7.1 |

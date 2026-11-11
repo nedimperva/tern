@@ -568,8 +568,11 @@ export interface Api {
   replyInit(id: number, kind: ReplyKind): Promise<ReplyInit>;
   problems(): Promise<OutboxProblem[]>;
   retryProblem(id: number): Promise<void>;
-  /** Drops the work and puts the mailbox back as it was before it, as undo would. */
-  discardProblem(id: number): Promise<void>;
+  /**
+   * Drops the work and puts the mailbox back as it was before it, as undo would, with later work that waited on
+   * it. Resolves to how many later changes went too, or null while one of them is being sent.
+   */
+  discardProblem(id: number): Promise<number | null>;
   waiting(): Promise<OutboxWaiting[]>;
   /** Takes waiting work back, as undo would; false if it was sent meanwhile or later work depends on it. */
   discardWaiting(id: number): Promise<boolean>;
@@ -1511,6 +1514,7 @@ function fake(): Api {
     discardProblem: async (id) => {
       problems = problems.filter((p) => p.id !== id);
       changed();
+      return 0;
     },
     // Open the page with #offline to see changes waiting for the connection.
     waiting: async () => waiting,

@@ -43,6 +43,36 @@ pub fn tidy(app: &AppHandle) {
     }
 }
 
+/// How long a copy of an attached file stays after nothing in the store needs it. Compose saves its draft a moment
+/// after each change, but a picture taken out of the text is left out of the draft while undo can still bring it
+/// back, so only copies older than this go.
+const ATTACHED_GRACE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+
+/// Deletes Tern's copies of attached files (one folder each, under `dir`) that no draft or queued send names any
+/// more: once a message is sent, its copy in Sent carries them.
+pub fn tidy_attachments(store: &tern_core::Store, dir: &Path) {
+    let in_use = match store.attachments_in_use() {
+        Ok(paths) => paths,
+        Err(e) => return log::warn!("attachments: {e:#}"),
+    };
+    let in_use: Vec<PathBuf> = in_use.iter().map(PathBuf::from).collect();
+    let old = SystemTime::now() - ATTACHED_GRACE;
+    let mut gone = 0;
+    for folder in read_dirs(dir) {
+        // The folder's own time: on Windows a copied file keeps the original's, however old.
+        let made = std::fs::metadata(&folder).and_then(|m| m.modified()).unwrap_or(SystemTime::now());
+        if made < old
+            && !in_use.iter().any(|p| p.starts_with(&folder))
+            && std::fs::remove_dir_all(&folder).is_ok()
+        {
+            gone += 1;
+        }
+    }
+    if gone > 0 {
+        log::info!("deleted {gone} copies of attached files nothing needs any more");
+    }
+}
+
 /// How much the folder holds, in bytes.
 pub fn size(app: &AppHandle) -> u64 {
     received(app).map(|base| weigh(&base).0).unwrap_or(0)

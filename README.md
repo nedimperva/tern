@@ -14,14 +14,14 @@ Linux and Windows · Rust · Tauri 2 · SolidJS · SQLite
 
 </div>
 
-![Tern with a conversation open beside the inbox](docs/images/reading.png)
+![Tern with a conversation open beside the inbox, its brief on top](docs/images/reading.png)
 
-| | |
-|---|---|
-| ![Writing a message in the dark theme](docs/images/compose.png) | ![Inbox Zero: the tern's migration from pole to pole](docs/images/inbox-zero.png) |
+| | | |
+|---|---|---|
+| ![Answering inline in the dark theme](docs/images/compose.png) | ![The morning screen: what needs you, what you wait on, what to read](docs/images/morning.png) | ![Inbox Zero: a tern scene for the day](docs/images/inbox-zero.png) |
 
 > [!WARNING]
-> **Tern is young software (2.0 is in beta).** It syncs and sends real mail and its author uses it every day on
+> **Tern is young software.** It syncs and sends real mail and its author uses it every day on
 > Linux and Windows, but expect rough edges. Try it with a test account, or keep another mail client around.
 > Installers are not code-signed yet.
 
@@ -36,11 +36,15 @@ a 5-second undo window. If you're offline, it goes once you're back.
 - **Any IMAP/SMTP account.** IDLE for new mail, QRESYNC for fast resyncs, headers first so the inbox fills quickly.
   Gmail and Google Workspace sign in with Google in the browser, or with an app password. See [Gmail](#gmail).
 - **Keyboard first.** Gmail-style keys and a command bar (`Ctrl K`) for every action. See [Keys](#keys).
+- **One title bar.** The list's tabs, search and an open conversation's tools sit in Tern's own title bar, and a
+  selection turns it into its actions. Sync is one button there: a dot when all is well, a word when something
+  needs a look, and a click for each account, what waits and what the server refused.
 - **Undo everything.** Archive, move, star and send wait 5 seconds before reaching the server; `z` takes them back.
   A send that may already have gone out is never retried on its own.
 - **Gmail labels.** All Mail is the archive, labels show as coloured chips, and `l` puts one on or takes it off.
 - **Triage.** Important / Other splits, local snooze, Read later, send later, "remind me if no reply", and fast
-  full-text search with filters. A morning screen (`g o`) shows what needs you, what you wait on and what to read.
+  full-text search with filter chips, plus Search the server for mail whose text isn't on this computer yet. A
+  morning screen (`g o`) shows what needs you, what you wait on and what to read.
 - **Your inbox, your rules.** New people (off by default): first mail from someone you haven't written to waits in
   its own place in the sidebar (`g n`), one row per person, until you let them in (`y`), send them to Other
   (`Shift O`) or block them (`Shift X`). Block a sender or a whole domain, and unsubscribe in one click from lists
@@ -65,7 +69,10 @@ a 5-second undo window. If you're offline, it goes once you're back.
 - **Compose.** Drafts, attachments, address autocomplete, snippets (`;`), quoting a selection, more than one From
   address per account, focus mode with an outline for long mails, checks before sending (a mentioned attachment
   that isn't there, in twelve languages), and signatures, including HTML ones pasted from Gmail or Outlook.
+- **Your mail as files.** Save a message as `.eml`, a folder or a search as one mbox file, and import an mbox file
+  into a new folder on the server.
 - **Optional AI, off by default.** With your own Claude, OpenAI or Gemini key: Explain a conversation, Ask about it,
+  Ask your mail (`A`) across everything on this computer, a summary of what came in on the morning screen,
   suggested replies (`q`), and writing help beside compose (`Ctrl J`). Each feature and account is opted in, every
   request says what it sent, and nothing runs in the background.
 - **Desktop integration.** Tray icon, notifications with Archive and Reply, quiet hours, background running, start
@@ -137,12 +144,14 @@ Found a vulnerability? Please report it privately; see [SECURITY.md](SECURITY.md
 
 ## Building from source
 
+Every system needs [Node.js](https://nodejs.org) 22 or newer; on Debian/Ubuntu, install it from NodeSource or nvm.
 
 ### Windows
 
 1. Install Rust from https://rustup.rs, using the default MSVC toolchain.
 2. Install the Visual Studio Build Tools with the "Desktop development with C++" workload. On Windows 11 the WebView2
    runtime is already there.
+3. Install Node.js from https://nodejs.org.
 
 ### Linux (Arch, including Omarchy)
 
@@ -205,7 +214,7 @@ cargo deny (`deny.toml`) and CodeQL. The Linux job installs the Debian/Ubuntu pa
 
 ## Keys
 
-These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
+These follow Gmail's shortcuts. `Ctrl K` opens the command bar and `?` lists every key.
 
 | | |
 |---|---|
@@ -216,8 +225,11 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 | `s` | star |
 | `u` | mark read / unread |
 | `U` | mark everything in the list read |
+| `x` / `Shift J` / `Shift K` | select / select and move down / up |
+| `m` | mute the conversation |
 | `z` | undo |
 | `h` / `Shift H` | snooze / back from snooze now |
+| `Shift L` | read later |
 | `Tab` | next split (Important, Other, Starred) |
 | `c` | compose |
 | `r` | reply (with text selected in the message, quote just that) |
@@ -226,6 +238,7 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 | `Shift I` | fold or open the person card |
 | `t` | add a task to Todoist (once connected) |
 | `Shift S` | explain the conversation with AI (when on) |
+| `Shift A` | ask your mail with AI (when on) |
 | `Ctrl U` | unsubscribe from a list |
 | `y` / `Shift O` / `Shift X` | in New people: let them in / send to Other / block |
 | `Ctrl Enter` | send |
@@ -234,6 +247,7 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 | `g i` | Inbox (Important) |
 | `g h` | Snoozed |
 | `g n` | New people |
+| `g r` | Read later |
 | `g o` | the morning screen |
 | `g ;` | edit snippets |
 | `Ctrl Q` | quit (closing the window keeps Tern in the tray) |
@@ -244,12 +258,11 @@ These follow Gmail's shortcuts. `Ctrl K` opens the command bar.
 |---|---|
 | Moving down the list, per key | < 5 ms |
 | One page of a list from the store | < 1 ms |
-| Search across 50,000 messages | < 10 ms |
+| Search across 100,000 messages | < 10 ms |
 | Opening a thread | < 50 ms |
 | Archiving 50 messages | < 20 ms |
 
 ## Project layout
-
 
 ```
 crates/tern-core/        the engine (Rust, no UI)
@@ -263,7 +276,8 @@ crates/tern-core/        the engine (Rust, no UI)
   src/ai/                optional AI: the gate every request passes, prompts, Claude / OpenAI / Gemini
   src/todoist.rs         the Todoist client (tasks go through the outbox)
   src/unsubscribe.rs     one-click unsubscribe (RFC 8058)
-  examples/store_bench.rs  timings on a 50,000-message mailbox
+  src/mbox.rs            mail as files: mbox export and import
+  examples/store_bench.rs  timings on a 100,000-message mailbox
 src-tauri/               the desktop shell: commands the UI calls, one sync worker per account
 src/                     the UI (SolidJS): virtualized list, thread view, compose, command bar
   src/app/               the main window's state, keys and actions (App.tsx lays them out)
@@ -272,8 +286,9 @@ src/                     the UI (SolidJS): virtualized list, thread view, compos
 ## Roadmap
 
 Delivery follows milestones: safe foundation → Linux private alpha → focused Linux beta → Windows release (1.0) →
-expansion. Tern 1.x is out for Linux and Windows; 2.0 ("your inbox, your rules": New people, blocking, one-click
-unsubscribe, the companion, the brief and Todoist) is in beta. Calendar and more providers come later. See
+expansion. Tern 2.x is out for Linux and Windows: 2.0 brought "your inbox, your rules" (New people, blocking,
+one-click unsubscribe, the companion, the brief and Todoist), 2.1 the title bar, Search the server and mail as
+files, and 2.2 one grammar for every settings page. Next: an AUR package, then calendar and more providers. See
 [docs/PLAN.md](docs/PLAN.md).
 
 ## Contributing
