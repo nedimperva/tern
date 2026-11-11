@@ -2826,6 +2826,64 @@ span.tool {
   height: 1px;
   background: var(--line-strong);
 }
+/* What waits behind "Earlier in this conversation": a quiet line per message, who, their own words, when. */
+.tucked-lines {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 var(--s-2);
+  padding: 0;
+  list-style: none;
+}
+.tucked-lines button {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  width: 100%;
+  min-width: 0;
+  padding: 3px 10px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+}
+.tucked-lines button:hover {
+  background: var(--soft-hover);
+  color: var(--fg-1);
+}
+.tucked-lines .who {
+  flex: none;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-1);
+  font-weight: 500;
+}
+.tucked-lines .what {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tucked-lines .subject {
+  color: var(--fg-1);
+}
+.tucked-lines .subject::after {
+  content: " · ";
+  color: var(--fg-2);
+}
+.tucked-lines time {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.tucked-lines .more button {
+  justify-content: center;
+  color: var(--fg-2);
+}
 /* The thread on the page itself, a heading over each day (canvas "Tern thread directions", A, 2026-10-30). */
 .history {
   display: flex;
@@ -3086,6 +3144,18 @@ button.fold.sig span {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+/* With both, the signature gives way first: the quote is what the pill is mostly asked about. */
+button.fold.both .who {
+  flex: 0 1 auto;
+  max-width: 45%;
+}
+button.fold.both .quoted::before {
+  content: "· ";
+}
+button.fold.sig .quoted {
+  flex: 0 1 auto;
+  color: var(--fg-2);
 }
 button.fold.sig:hover {
   background: var(--soft-hover);
@@ -8431,6 +8501,38 @@ button.link.danger {
 .compose-main > footer .send-split {
   border-radius: var(--r-md);
   box-shadow: var(--shadow);
+}
+/* One row, always: Send and discard keep their size and their place at the right end. When the row runs out of
+   room (a long From address, the word count, a follow-up chip, an AI sidebar beside it), the From address and the
+   Saved line give way with an ellipsis instead of pushing Send onto a line of its own under the footer. */
+.compose-main > footer {
+  flex-wrap: nowrap;
+}
+.compose-main > footer > * {
+  flex: none;
+}
+.compose-main > footer > .spacer {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.compose-main > footer > .from-pick {
+  flex: 0 1 auto;
+  min-width: 48px;
+  overflow: hidden;
+}
+.compose-main > footer > .from-pick .dropdown {
+  min-width: 0;
+}
+.compose-main > footer > .saved,
+.compose-main > footer > .hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compose-main > footer > .saved {
+  flex-shrink: 2;
 }
 .send-menu hr {
   margin: var(--s-1) 0;
