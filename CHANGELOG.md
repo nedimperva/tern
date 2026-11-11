@@ -7,6 +7,11 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-11
+
+Backups you choose the contents of, quotes that say whose they are, Send that stays in reach, and a cleanup:
+attachment copies tidy themselves, discarding a refused change takes what waited on it, and mbox import streams.
+
 ### Added
 
 - A quote's "···" says whose mail it holds and how it starts ("“Evo ponude…” · Ana’s message"), from the
@@ -709,7 +714,8 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/nedimperva/tern/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/nedimperva/tern/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/nedimperva/tern/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/nedimperva/tern/compare/v1.8.0...v2.0.0

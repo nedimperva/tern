@@ -5037,7 +5037,7 @@ dependencies = [
 
 [[package]]
 name = "tern"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5061,7 +5061,7 @@ dependencies = [
 
 [[package]]
 name = "tern-core"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "ammonia",
  "anyhow",
