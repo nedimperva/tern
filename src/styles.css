@@ -4713,6 +4713,38 @@ button.fold {
 .backup-passphrase {
   grid-column: 1 / -1;
 }
+/* Two fields (or a field and its buttons) in the control's 340 px: the fields share what is left. */
+.setting .backup-passphrase {
+  width: 340px;
+}
+.setting .backup-passphrase input {
+  width: 0;
+  min-width: 0;
+  flex: 1 1 0;
+}
+.backup-accounts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--fg-1);
+}
+/* Secrets ticked for a backup: said once, on --warn-soft, before the passphrase. */
+.setting.backup-warning {
+  background: var(--warn-soft);
+}
+.setting.backup-warning > .title {
+  color: var(--warn-fg);
+}
+.setting.backup-warning > .help {
+  color: var(--fg-1);
+}
+/* The import's buttons, at the end of what the file holds. */
+.setting.backup-take {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
 .setting-note {
   margin: var(--s-3) 0 0;
   font-size: var(--t-sm);

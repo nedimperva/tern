@@ -12,6 +12,10 @@ every release needs one here before it is tagged.
 - A quote's "···" says whose mail it holds and how it starts ("“Evo ponude…” · Ana’s message"), from the
   "On … wrote:" line or Outlook's and a forward's header, beside the signature's line when a mail has both.
 - "Earlier in this conversation" lists the mails it holds, a line each: who, their own words, when.
+- Settings → Backup lets you pick what goes in the file, and what to take from one: settings, snippets,
+  signatures, sender choices, notes on people and writing style notes. The last three are new in the backup.
+- A backup can carry the Todoist token, besides accounts with their passwords and the AI keys. Each is off until
+  you turn it on, a warning says the file will hold secrets, and the file is then locked with a passphrase.
 
 ### Changed
 
@@ -31,6 +35,8 @@ every release needs one here before it is tagged.
   of leaving them stuck; Tern says when it did. Discarding a refused send drops its "remind me if no reply".
 - Subject threading counts mail to your aliases as yours, so two strangers writing to the same alias with the same
   subject no longer share a conversation.
+- Importing a file with only part of an object setting (Todoist, AI) keeps the defaults for the rest.
+- The passphrase fields in Settings → Backup no longer run past the edge of the card.
 
 ## [2.2.0] - 2026-11-10
 

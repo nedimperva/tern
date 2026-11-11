@@ -2762,3 +2762,44 @@ fn undoing_an_import_forgets_its_copy_of_the_file() {
     assert_eq!(store.import_state(1).unwrap(), None);
     assert!(!path.exists());
 }
+
+#[test]
+fn a_backup_carries_sender_choices_notes_and_styles_by_address() {
+    let (store, account, _, _) = setup();
+    store.set_sender(account, "Ada@example.com", Some("other")).unwrap();
+    store.set_sender(account, "@spam.example", Some("blocked")).unwrap();
+    store.set_person_note("ada@example.com", "Prefers calls.").unwrap();
+    store.set_ai_style(account, "- Short.", 12).unwrap();
+    let data = store.backup_data().unwrap();
+    assert_eq!(data.senders.as_ref().unwrap().len(), 2);
+    assert_eq!(data.senders.as_ref().unwrap()[0].account, "me@example.com");
+    let json = serde_json::to_string(&data).unwrap();
+
+    // Another computer: the same account under another id, a choice and a note of its own already there.
+    let other = Store::open_in_memory().unwrap();
+    other.add_account(&AccountConfig { email: "first@example.com".into(), ..config() }).unwrap();
+    let here = other.add_account(&AccountConfig { email: "ME@example.com".into(), ..config() }).unwrap().id;
+    other.set_sender(here, "ada@example.com", Some("important")).unwrap();
+    other.set_person_note("ada@example.com", "Mine.").unwrap();
+    let mut back: crate::backup::Data = serde_json::from_str(&json).unwrap();
+    back.senders.as_mut().unwrap().push(crate::backup::SenderEntry {
+        account: "gone@example.com".into(),
+        addr: "x@example.com".into(),
+        state: "other".into(),
+    });
+    let restored = other.restore_data(&back).unwrap();
+    assert_eq!((restored.senders, restored.notes, restored.styles), (1, 0, 1));
+    assert_eq!(restored.missing, ["gone@example.com"]);
+    let choices = other.sender_choices().unwrap();
+    let ada = choices.iter().find(|c| c.addr == "ada@example.com").unwrap();
+    assert_eq!(ada.state, "important", "a choice made here is kept");
+    assert!(choices
+        .iter()
+        .any(|c| c.addr == "@spam.example" && c.state == "blocked" && c.account_id == here));
+    assert_eq!(other.ai_style(here).unwrap().unwrap().note, "- Short.");
+    assert_eq!(other.backup_data().unwrap().notes.unwrap()[0].body, "Mine.");
+
+    // Only the parts picked go in: a part left out restores nothing.
+    let none = other.restore_data(&crate::backup::Data::default()).unwrap();
+    assert_eq!(none, crate::backup::DataRestored::default());
+}
