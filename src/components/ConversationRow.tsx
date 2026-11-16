@@ -119,6 +119,11 @@ export function ConversationRow(props: {
         <Show when={props.row.group?.length}>
           {(more) => <span class="more">and {more()} more</span>}
         </Show>
+        <Show when={!props.narrow && props.row.snippet}>
+          <span class="snippet">{lit(props.row.snippet)}</span>
+        </Show>
+        {/* Labels after the words, so subjects and snippets start in one column and the labels make one of their
+            own at the end of the row (idea 96). Beside a mail there is no snippet: they follow the subject. */}
         <Show when={props.row.labels?.length}>
           <span class="labels">
             <For each={props.row.labels!.slice(0, 2)}>
@@ -134,9 +139,6 @@ export function ConversationRow(props: {
               </span>
             </Show>
           </span>
-        </Show>
-        <Show when={!props.narrow && props.row.snippet}>
-          <span class="snippet">{lit(props.row.snippet)}</span>
         </Show>
       </span>
       <span class="glyphs">

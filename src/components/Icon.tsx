@@ -114,6 +114,8 @@ const PATHS = {
     "m21.854 2.147-10.94 10.939",
   ],
   highlighter: ["m9 11-6 6v3h9l3-3", "m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"],
+  // A snippet: lines of text with one going in.
+  snippet: ["M4 6h16", "M4 12h10", "M4 18h6", "m17 15 3 3-3 3"],
   trash: ["M3 6h18", "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6", "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"],
 } as const;
 

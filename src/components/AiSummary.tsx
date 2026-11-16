@@ -10,6 +10,7 @@ import { Icon } from "./Icon";
 
 type Action = { name: string; run: () => void; primary?: boolean };
 type Row = { tag: string; tone: "ask" | "day" | "plain" | "done"; text: string; actions: Action[] };
+type Chip = { icon: "clock" | "map-pin"; text: string; tip: string; run: () => void };
 // The same icons the companion gives these facts, so the card and the companion say it one way (idea 76).
 const TONE_ICON = { ask: "message", day: "clock", plain: "map-pin", done: "check" } as const;
 
@@ -61,22 +62,24 @@ export function Brief(props: {
         });
       }
     }
+    return out;
+  });
+
+  // The day and the place this computer found are short: chips beside the first line, not rows of their own, so
+  // the mail starts higher (idea 88). Each does what its row did: snooze till then, open the map.
+  const chips = createMemo((): Chip[] => {
+    const out: Chip[] = [];
     const w = props.facts?.when;
     if (w && snoozeFor(w) > Date.now() / 1000) {
-      out.push({
-        tag: "When",
-        tone: "day",
-        text: whenSaid(w),
-        actions: [{ name: "Snooze till then", run: () => props.onSnooze(snoozeFor(w)) }, ...task(last()?.subject ?? "", dayWord(w.at))],
-      });
+      out.push({ icon: "clock", text: whenSaid(w), tip: "Snooze till then", run: () => props.onSnooze(snoozeFor(w)) });
     }
     const where = props.facts?.where;
     if (where) {
       out.push({
-        tag: "Where",
-        tone: "plain",
+        icon: "map-pin",
         text: where,
-        actions: [{ name: "Map", run: () => api.openUrl(`https://www.openstreetmap.org/search?query=${encodeURIComponent(where)}`) }],
+        tip: "Open the map",
+        run: () => api.openUrl(`https://www.openstreetmap.org/search?query=${encodeURIComponent(where)}`),
       });
     }
     return out;
@@ -89,10 +92,10 @@ export function Brief(props: {
         ? { tag: "Due", tone: "day", text: f.text, actions: task(last()?.subject ?? "", f.text) }
         : { tag: "Decided", tone: "done", text: f.text, actions: [] };
 
-  const shown = () => !!props.back || rows().length > 0 || props.ai;
+  const shown = () => !!props.back || rows().length > 0 || chips().length > 0 || props.ai;
   return (
     <Show when={shown()}>
-      <section class="brief" classList={{ bare: !props.back && !rows().length && ai.state() === "idle" }} aria-label="In brief">
+      <section class="brief" classList={{ bare: !props.back && !rows().length && !chips().length && ai.state() === "idle" }} aria-label="In brief">
         <div class="brief-head">
           <Show when={props.back}>
             {(b) => (
@@ -105,6 +108,14 @@ export function Brief(props: {
               </span>
             )}
           </Show>
+          <For each={chips()}>
+            {(c) => (
+              <button type="button" class="brief-chip" title={c.tip} onClick={c.run}>
+                <Icon name={c.icon} size={13} />
+                <span>{c.text}</span>
+              </button>
+            )}
+          </For>
           <span class="spacer" />
           <Show when={props.ai}>
             <Show

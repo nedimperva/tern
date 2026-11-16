@@ -35,7 +35,7 @@ import { taskRows } from "../app/tasks";
 import { Icon } from "./Icon";
 import { Original } from "./Original";
 import { PersonCard, type PersonActions } from "./PersonCard";
-import { convSlot, detailsSlot, ownTitleBar, setUnsubscribed, showCompanion, unsubscribed } from "../app/state";
+import { convSlot, detailsSlot, ownTitleBar, setUnsubscribed, showCompanion, toggleCompanion, unsubscribed } from "../app/state";
 import { unsubscribe } from "../app/actions";
 import { Details } from "./Details";
 import { logoFor } from "../logos";
@@ -529,7 +529,9 @@ export function takeQuote(): { id: number; text: string } | null {
   return null;
 }
 
-const PALETTE = ["#5b5bd6", "#2f9e6e", "#d0453f", "#c98a1b", "#0e9bb5", "#b24fb0", "#7a7f8a", "#e07a30"];
+// No grey: a grey circle reads as "no picture" or "unknown", so a person gets rose in its place (idea 94). Accounts
+// and labels keep grey (colours.ts).
+const PALETTE = ["#5b5bd6", "#2f9e6e", "#d0453f", "#c98a1b", "#0e9bb5", "#b24fb0", "#b8527a", "#e07a30"];
 
 /** A colour per sender, the same every time (docs/design/ui.md §4.2). */
 function colour(addr: string): string {
@@ -622,6 +624,25 @@ function minutesOf(m: ThreadMessage): number {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+/** A body still on its way from the server: soft lines in the shape of a mail, so the page keeps its shape when the
+ * words land (idea 92). They wait a moment first, so a body that comes out of the store at once never flashes them. */
+function Loading() {
+  const [shown, setShown] = createSignal(false);
+  const wait = setTimeout(() => setShown(true), 150);
+  onCleanup(() => clearTimeout(wait));
+  return (
+    <div class="loading-lines" role="status" aria-label="Loading message…">
+      <Show when={shown()}>
+        <i style={{ width: "18%" }} />
+        <i style={{ width: "92%" }} />
+        <i style={{ width: "86%" }} />
+        <i style={{ width: "61%" }} />
+        <i class="gap" style={{ width: "24%" }} />
+      </Show>
+    </div>
+  );
+}
+
 /** One message's body: its HTML in a frame, or its text, then its files. */
 function MessageBody(props: {
   m: ThreadMessage;
@@ -636,7 +657,7 @@ function MessageBody(props: {
 }) {
   return (
     <>
-      <Show when={props.m.bodyLoaded} fallback={<p class="loading">Loading message…</p>}>
+      <Show when={props.m.bodyLoaded} fallback={<Loading />}>
         <Show when={props.web} fallback={<PlainBody text={props.m.bodyText ?? ""} />}>
           {(web) => (
             <HtmlBody
@@ -746,16 +767,44 @@ export function ConversationView(props: {
   );
   const subject = () => props.messages[0]?.subject || "(no subject)";
   const names = createMemo(() => new Map(props.messages.map((m) => [m.fromAddr.toLowerCase(), m.fromName] as const)));
-  const people = createMemo(() => {
+  /** Who wrote, in order: "Ana Rossi, Tom Berg, you" (you read best last), or first names only ("Ana, Tom, you"). */
+  const peopleSaid = (short: boolean) => {
     const out: string[] = [];
     for (const m of props.messages) {
-      const name = props.mine(m.fromAddr) ? "you" : m.fromName || m.fromAddr;
+      const full = props.mine(m.fromAddr) ? "you" : m.fromName || m.fromAddr;
+      const name = short && full !== "you" ? (m.fromName ? m.fromName.split(/\s+/)[0] : m.fromAddr.split("@")[0]) : full;
       if (!out.includes(name)) out.push(name);
     }
-    // "Ana Rossi, Tom Berg, you": you read best last.
     out.sort((a, b) => Number(a === "you") - Number(b === "you"));
     return out.length > 4 ? `${out.slice(0, 3).join(", ")} and ${out.length - 3} others` : out.join(", ");
+  };
+  const people = createMemo(() => peopleSaid(false));
+  // The line under the subject drops whole parts when it runs out of room (idea 93), never half a word: first the
+  // days, then the surnames, then the count. Only the shortest is cut at its end, as a last resort.
+  const saidVariants = createMemo(() => {
+    const count = `${props.messages.length} messages`;
+    const days = props.messages.length ? span(props.messages[0].date, last().date) : "";
+    if (settings.companion) return [`${count} · ${days}`, count];
+    const full = people();
+    const short = peopleSaid(true);
+    return [`${full} · ${count} · ${days}`, `${full} · ${count}`, `${short} · ${count}`, short];
   });
+  let said: HTMLSpanElement | undefined;
+  const fitSaid = () => {
+    if (!said?.isConnected) return;
+    for (const text of saidVariants()) {
+      said.textContent = text;
+      if (said.scrollWidth <= said.clientWidth + 1) return;
+    }
+  };
+  createEffect(on(saidVariants, () => queueMicrotask(fitSaid)));
+  const watchSaid = (el: HTMLSpanElement) => {
+    said = el;
+    const room = new ResizeObserver(fitSaid);
+    room.observe(el);
+    queueMicrotask(() => el.parentElement && room.observe(el.parentElement));
+    onCleanup(() => room.disconnect());
+  };
   /** The first message of each sender, for the avatars under the subject. */
   const senders = createMemo(() => {
     const seen = new Set<string>();
@@ -1053,11 +1102,35 @@ export function ConversationView(props: {
   // the pane. The bar takes no space, so nothing moves as it comes and goes, and nothing can flicker.
   let title!: HTMLHeadingElement;
   const [compact, setCompact] = createSignal(false);
+  const [at, setAt] = createSignal(-1);
+  createEffect(on(() => props.messages[0]?.id, () => setAt(-1), { defer: true }));
+  /** In a thread, whose message the compact bar is over: "Alan Turing · 12:56 PM · 2 of 3" (idea 91). */
+  const whereAt = () => {
+    const m = props.messages[at()];
+    return m ? `${name(m)} · ${clock.format(new Date(m.date * 1000))} · ${at() + 1} of ${props.messages.length}` : "";
+  };
   onMount(() => {
     const pane = title.closest(".conversation-pane");
     const watch = new IntersectionObserver(([e]) => setCompact(!e.isIntersecting), { root: pane });
     watch.observe(title);
-    const scrolled = () => (setPick(null), setHovered(null));
+    // Which message the top of the pane is in, for the compact bar: the last one whose top has passed under it.
+    let frame = 0;
+    const findAt = () => {
+      frame = 0;
+      if (!pane || props.messages.length < 2) return setAt(-1);
+      const line = pane.getBoundingClientRect().top + 56;
+      let found = -1;
+      for (const card of pane.querySelectorAll<HTMLElement>(".history .card[data-message]")) {
+        if (card.getBoundingClientRect().top > line) break;
+        found = props.messages.findIndex((m) => m.id === Number(card.dataset.message));
+      }
+      setAt(found);
+    };
+    const scrolled = () => {
+      setPick(null);
+      setHovered(null);
+      if (!frame) frame = requestAnimationFrame(findAt);
+    };
     pane?.addEventListener("scroll", scrolled, { passive: true });
     onCleanup(() => {
       watch.disconnect();
@@ -1141,7 +1214,7 @@ export function ConversationView(props: {
         aria-pressed={settings.companion}
         data-tip={settings.companion ? "Hide the companion (Ctrl+.)" : "The person, details, promises, files and Ask (Ctrl+.)"}
         aria-label="The companion"
-        onClick={() => setSetting("companion", !settings.companion)}
+        onClick={toggleCompanion}
       >
         <Icon name="panel-right" size={15} />
       </button>
@@ -1196,7 +1269,10 @@ export function ConversationView(props: {
       >
         <div class="compact" classList={{ shown: compact() && !inBar() }} aria-hidden={!compact() || !!inBar()}>
           <div class="bar">
-            <span class="subject">{subject()}</span>
+            <span class="subject">
+              {subject()}
+              <Show when={whereAt()}>{(w) => <span class="at">{w()}</span>}</Show>
+            </span>
             <button class="primary" tabIndex={compact() ? 0 : -1} onClick={props.onDone}>
               Done <kbd>E</kbd>
             </button>
@@ -1228,10 +1304,7 @@ export function ConversationView(props: {
                     <For each={senders()}>{(m) => <Avatar addr={m.fromAddr} name={m.fromName} />}</For>
                   </span>
                 </Show>
-                <span class="said">
-                  {settings.companion ? "" : `${people()} · `}
-                  {props.messages.length} messages · {span(props.messages[0].date, last().date)}
-                </span>
+                <span class="said" ref={watchSaid} />
                 <Show when={props.labels.length}>{labelChips()}</Show>
               </div>
             </Show>
@@ -1340,7 +1413,7 @@ export function ConversationView(props: {
                             <span class="draft-label">Draft · R to continue</span>
                           </Show>
                           <Show when={open()} fallback={<span class="snippet">{lineOf(m)}</span>}>
-                            <span class="detail">
+                            <span class="detail" title={`${full(m.date)} · ${ago(m.date)}`}>
                               {[recipients(m.toAddrs, props.mine, names()), stamp(m.date)].filter(Boolean).join(" · ")}
                             </span>
                           </Show>
@@ -1392,8 +1465,9 @@ export function ConversationView(props: {
                       <span class="draft-label">Draft · R to continue</span>
                     </Show>
                   </div>
-                  <div class="detail" title={full(m().date)}>
-                    {[recipients(m().toAddrs, props.mine, names()), ago(m().date)].filter(Boolean).join(" · ")}
+                  {/* The time the same way a thread says it; how long ago on hover (idea 95). */}
+                  <div class="detail" title={`${full(m().date)} · ${ago(m().date)}`}>
+                    {[recipients(m().toAddrs, props.mine, names()), stamp(m().date)].filter(Boolean).join(" · ")}
                   </div>
                 </div>
               </div>

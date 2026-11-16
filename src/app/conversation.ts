@@ -2,6 +2,7 @@
 
 import { batch, createEffect, on } from "solid-js";
 import { api, type ThreadRow } from "../api";
+import { glide, settle, shift, type Shift } from "../motion";
 import { settings } from "../settings";
 import { act } from "./actions";
 import { resume } from "./composing";
@@ -19,15 +20,22 @@ import {
   setOpenRow,
   setViewing,
 } from "./state";
+import { keyOf } from "./rows";
 import { showToast } from "./toast";
 
 let readTimer: number | undefined;
 
 /** Opens a conversation. From search, `row` is the message that matched: it opens and comes into view, wherever
- * it sits in the conversation; otherwise the newest message is the one to read. */
-export async function open(row: ThreadRow | undefined, matched = searching()) {
+ * it sits in the conversation; otherwise the newest message is the one to read. It comes in from the right, or
+ * fades in where another stood; `how` says otherwise, as for the one after a mail that was just done. */
+export async function open(row: ThreadRow | undefined, matched = searching(), how?: Shift) {
   clearTimeout(readTimer);
   if (!row) return close();
+  if (openRow() && keyOf(openRow()!) === keyOf(row)) return show(row, matched);
+  shift(how ?? (openRow() ? "switch" : "open"), () => settle(show(row, matched)));
+}
+
+async function show(row: ThreadRow, matched: boolean) {
   // A draft being written in Tern opens in compose, not as a conversation.
   if (folders().find((f) => f.id === row.folderId)?.role === "drafts") {
     const record = await api.draftForMessage(row.id);
@@ -64,7 +72,9 @@ export async function open(row: ThreadRow | undefined, matched = searching()) {
 
 export function close() {
   clearTimeout(readTimer);
-  batch(() => (setOpenRow(null), setMessages([])));
+  const now = () => batch(() => (setOpenRow(null), setMessages([])));
+  if (openRow()) shift("close", now);
+  else now();
 }
 
 export const toggleMessage = (index: number) => {
@@ -73,7 +83,7 @@ export const toggleMessage = (index: number) => {
   const next = new Set(expanded());
   if (next.has(m.id)) next.delete(m.id);
   else next.add(m.id);
-  batch(() => (setExpanded(next), setMessageFocus(index)));
+  glide(() => batch(() => (setExpanded(next), setMessageFocus(index))));
 };
 export const moveMessage = (by: number) => setMessageFocus(Math.max(0, Math.min(messages.length - 1, messageFocus() + by)));
 

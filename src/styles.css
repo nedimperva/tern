@@ -606,6 +606,15 @@ button.primary kbd {
   width: auto;
   max-width: 760px;
 }
+.search-box .search-key {
+  flex: none;
+  margin: 0;
+  pointer-events: none;
+}
+.app.split .search-box .search-key,
+.in-titlebar.split .search-box .search-key {
+  display: none;
+}
 .search-box .search {
   flex: 1;
   min-width: 40px;
@@ -649,7 +658,9 @@ button.primary kbd {
   margin: 0;
   min-inline-size: 0;
 }
+/* A floated legend is laid out as a child, inside the box, not across its top border (idea 100). */
 .search-quick .kicker {
+  float: left;
   padding: 0;
   font-size: 11px;
   font-weight: 600;
@@ -692,6 +703,36 @@ button.primary kbd {
   color: var(--accent);
   font-weight: 600;
 }
+/* With results, the filters are one row under the count instead of a panel over the results (idea 100). */
+.search-quick.docked {
+  position: static;
+  width: auto;
+  flex-direction: row;
+  align-items: center;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+}
+.search-quick.docked .kicker {
+  flex: none;
+  margin-right: var(--s-1);
+  white-space: nowrap;
+}
+.search-quick.docked .quick-row {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.search-quick.docked button {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+}
 .app.split .list-header,
 .list-header.in-titlebar.split {
   position: relative;
@@ -721,6 +762,9 @@ button.primary kbd {
     width: 30px;
     padding: 0;
     justify-content: center;
+  }
+  .list-header .search-box .search-key {
+    display: none;
   }
   .list-header .search-box:not(.open) .search {
     position: absolute;
@@ -1283,6 +1327,12 @@ button.primary kbd {
   overflow-x: auto;
   scrollbar-width: none;
 }
+/* There the sync button says its words on hover only, as it does in the title bar beside a mail, so every tab's
+   icon is whole: Other was cut through its middle (idea 97). Its dot keeps the colour. */
+.app.split .list-header .sync-label,
+.in-titlebar.split .sync-label {
+  display: none;
+}
 .splits button {
   white-space: nowrap;
   background: none;
@@ -1491,6 +1541,31 @@ button.primary kbd {
   margin-left: var(--s-2);
   vertical-align: 1px;
 }
+/* A one-line row: the subject, then the snippet taking what is left, then the labels at the end (idea 96). */
+.crow:not(.two) .what {
+  display: flex;
+  align-items: center;
+}
+.crow:not(.two) .what > .subject {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.crow:not(.two) .what > .more {
+  flex: none;
+}
+.crow:not(.two) .what > .snippet {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.crow:not(.two) .what > .labels {
+  flex: none;
+  margin-left: auto;
+  padding-left: var(--s-3);
+}
 .label-chip {
   display: inline-flex;
   align-items: center;
@@ -1634,6 +1709,11 @@ button.primary kbd {
   }
   .crow:hover:has(.row-quick) .date {
     visibility: hidden;
+  }
+  /* The words fade out under the buttons rather than stop mid-letter (idea 101). */
+  .crow:hover:has(.row-quick) .what {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 88px), transparent calc(100% - 40px));
+    mask-image: linear-gradient(to right, #000 calc(100% - 88px), transparent calc(100% - 40px));
   }
 }
 
@@ -1950,6 +2030,157 @@ button.primary kbd {
   color: inherit;
 }
 
+/* MARK: Between screens (ideas 82–86, `shift` in motion.ts)
+
+   A view transition draws the old and new screen as pictures while the panes move, then hands back the real ones.
+   The panes get their names only while one runs (`data-shift` on the root), so nothing else about them changes: a
+   name makes an element a containing block for what is fixed inside it, which would move the popups. The rest of
+   the window changes at once, as it did. Under reduced motion `shift` never starts one. */
+:root[data-shift] .list-pane {
+  view-transition-name: list;
+}
+:root[data-shift] .conversation-pane {
+  view-transition-name: reader;
+}
+:root[data-shift] .app > .companion {
+  view-transition-name: companion;
+}
+/* The undo pill comes in while a mail leaves: it stays on top of the moving panes. */
+:root[data-shift] .float-pills {
+  view-transition-name: pills;
+}
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+::view-transition-group(*) {
+  animation-duration: var(--d-base);
+  animation-timing-function: var(--ease);
+}
+/* A pane that changes width (the list narrowing beside a mail) is shown at its own size, cut to the new one, not
+   stretched. */
+::view-transition-old(list),
+::view-transition-new(list),
+::view-transition-old(reader),
+::view-transition-new(reader) {
+  height: 100%;
+  width: auto;
+  object-fit: none;
+  object-position: left top;
+}
+::view-transition-old(*) {
+  animation: shift-fade-out var(--d-fast) linear both;
+}
+::view-transition-new(*) {
+  animation: shift-fade-in var(--d-base) var(--ease) both;
+}
+/* Opening: the list settles into its column under the mail, which comes in from the right. Closing: the reverse,
+   a little quicker. */
+:root[data-shift="open"]::view-transition-new(reader) {
+  animation: shift-from-right calc(var(--d-base) + 60ms) var(--ease) both;
+}
+:root[data-shift="close"]::view-transition-old(reader) {
+  animation: shift-to-right var(--d-fast) cubic-bezier(0.4, 0, 1, 1) both;
+}
+/* Another mail in the same place: only a short fade, the list holds still. */
+:root[data-shift="switch"]::view-transition-old(reader) {
+  animation-duration: 70ms;
+}
+:root[data-shift="switch"]::view-transition-new(reader) {
+  animation: shift-fade-in var(--d-fast) 30ms ease-out both;
+}
+/* A mail that was acted on leaves the way its row does: Done to the right, Trash to the left, snoozed up. */
+:root[data-shift="gone-right"]::view-transition-old(reader) {
+  animation: shift-gone-right calc(var(--d-base) + 20ms) cubic-bezier(0.4, 0, 1, 1) both;
+}
+:root[data-shift="gone-left"]::view-transition-old(reader) {
+  animation: shift-gone-left calc(var(--d-base) + 20ms) cubic-bezier(0.4, 0, 1, 1) both;
+}
+:root[data-shift="gone-up"]::view-transition-old(reader) {
+  animation: shift-gone-up calc(var(--d-base) + 20ms) cubic-bezier(0.4, 0, 1, 1) both;
+}
+:root[data-shift^="gone"]::view-transition-new(reader) {
+  animation: shift-fade-in var(--d-base) var(--d-fast) ease-out both;
+}
+/* Only the open mail moves when the list beside it changes on its own (a switch, a row done, the companion). */
+:root:is([data-shift="switch"], [data-shift^="gone"], [data-shift="side"])::view-transition-group(list) {
+  animation: none;
+}
+:root:is([data-shift="switch"], [data-shift^="gone"], [data-shift="side"])::view-transition-old(list) {
+  display: none;
+}
+:root:is([data-shift="switch"], [data-shift^="gone"], [data-shift="side"])::view-transition-new(list) {
+  animation: none;
+}
+/* The companion: in from the right edge and back out; the mail beside it makes room in the same stroke. */
+:root[data-shift="side"]::view-transition-old(reader) {
+  display: none;
+}
+:root[data-shift="side"]::view-transition-new(reader) {
+  animation: none;
+}
+::view-transition-new(companion):only-child {
+  animation: shift-side-in var(--d-base) var(--ease) both;
+}
+::view-transition-old(companion):only-child {
+  animation: shift-side-out var(--d-fast) cubic-bezier(0.4, 0, 1, 1) both;
+}
+@keyframes shift-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes shift-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes shift-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+}
+@keyframes shift-to-right {
+  to {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+}
+@keyframes shift-gone-right {
+  to {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+}
+@keyframes shift-gone-left {
+  to {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+}
+@keyframes shift-gone-up {
+  to {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+@keyframes shift-side-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+@keyframes shift-side-out {
+  to {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
 /* MARK: Rail (§3) */
 
 .scrim {
@@ -2008,11 +2239,9 @@ button.primary kbd {
 .rail-compose svg {
   color: var(--accent);
 }
+/* Boxed like every other key hint (idea 102). */
 .rail-compose kbd {
   margin-left: auto;
-  border: 0;
-  background: none;
-  color: var(--fg-2);
 }
 .rail-group {
   display: flex;
@@ -2347,6 +2576,17 @@ button.primary kbd {
 .conversation.replying {
   padding-bottom: var(--s-4);
 }
+/* The reply bar keeps one place: at the foot of the pane after a short mail, and over the foot of a long one while
+   it scrolls (idea 89). The conversation fills the pane so the bar can sit at its end; an inline reply takes the
+   bar's place and follows the thread instead. */
+.reading:not(:has(> .conversation.replying)) {
+  height: 100%;
+}
+.reading > .conversation:not(.replying) {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding-bottom: var(--s-4);
+}
 /* The conversation and, when the pane has room, the column beside it (§4.2a). */
 .conversation-head {
   display: flex;
@@ -2547,6 +2787,13 @@ span.tool {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Whose message is under the bar, in a thread (idea 91). */
+.compact .subject .at {
+  margin-left: var(--s-3);
+  color: var(--fg-2);
+  font-size: var(--t-md);
+  font-weight: 400;
+}
 /* Avatars: initials on the sender's colour, or a logo on white (most are drawn for a light page). */
 .conversation .avatar {
   width: 28px;
@@ -2701,6 +2948,36 @@ span.tool {
 .brief-head .since .link {
   margin-left: var(--s-2);
   font-size: inherit;
+  color: var(--accent);
+  font-weight: 500;
+}
+/* The day and the place, beside the first line (idea 88): a click snoozes till then or opens the map. */
+.brief-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+.brief-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.brief-chip svg {
+  flex: none;
+  color: var(--fg-2);
+}
+.brief-chip:hover {
+  background: var(--soft-hover);
+  color: var(--fg-0);
 }
 .brief .ai-by {
   display: inline-flex;
@@ -2996,20 +3273,45 @@ span.tool {
 .card.row .body {
   padding: 2px var(--s-5) var(--s-4) 58px;
 }
+/* The newest message is the page you came to read, not a box on it (idea 90): a hairline above it, where no day's
+   heading already draws one, and the mail on the page's own ground. Earlier ones opened in place keep their card. */
+.card.row.open.newest {
+  border-color: transparent;
+  border-top-color: var(--line);
+  border-radius: 0;
+  background: none;
+}
+.history .day + .card.row.open.newest {
+  border-top-color: transparent;
+}
+.card.row.mine.open.newest .avatar {
+  box-shadow:
+    0 0 0 2px var(--bg-0),
+    0 0 0 3.5px var(--accent);
+}
 
 /* Answering, right under the newest message (canvas "Tern thread directions", C's panel): suggested replies when
    AI is on, then a field-like Reply, with Reply all and Forward beside it. Their keys show on hover; R always. */
 .reply-end {
+  position: sticky;
+  bottom: var(--s-4);
+  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
-  margin-top: var(--s-1);
+  margin-top: auto;
   padding: var(--s-3);
   border-radius: var(--r-lg);
   background: var(--soft);
+  /* The page's ground around it, so the mail scrolling under it doesn't show at its edges. */
+  box-shadow: 0 0 0 var(--s-4) var(--bg-0);
 }
-.reply-end.stage {
-  margin-top: var(--s-5);
+/* The least room between the mail and the bar, where it sits right after it. */
+.conversation > :has(+ .reply-end) {
+  margin-bottom: var(--s-1);
+}
+.conversation > :has(+ .reply-end.stage) {
+  margin-bottom: var(--s-5);
 }
 .reply-end .end {
   display: flex;
@@ -3070,6 +3372,34 @@ span.tool {
 }
 .loading {
   color: var(--fg-2);
+}
+/* A body on its way (idea 92): lines in the shape of a mail, breathing slowly; still under reduced motion. */
+.loading-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 112px;
+  padding: 6px 0 12px;
+}
+.loading-lines i {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--soft-hover);
+  animation: loading-breathe 1.6s ease-in-out infinite;
+}
+.loading-lines i.gap {
+  margin-top: 10px;
+}
+@keyframes loading-breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-lines i {
+    animation: none;
+  }
 }
 /* Message bodies (docs/design/ui.md §4.2): text mail in Tern's reading type, designed mail framed on a well. */
 .plain {
@@ -3340,6 +3670,25 @@ button.fold {
   padding-top: 20vh;
   z-index: 10;
 }
+/* Dialogs arrive rather than appear (idea 87): the dim fades in and the box settles a few pixels into place. Only
+   the way in: Esc closes at once, as a key should. */
+.overlay:not(.minimized) {
+  animation: overlay-in var(--d-fast) var(--ease);
+}
+.overlay:not(.minimized) > * {
+  animation: dialog-in var(--d-base) var(--ease);
+}
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+}
 
 .command-bar {
   width: min(560px, 92vw);
@@ -3351,11 +3700,16 @@ button.fold {
 .command-bar .head {
   display: flex;
   align-items: center;
+  padding-left: var(--s-4);
   border-bottom: 1px solid var(--line);
+}
+.command-bar .head > svg {
+  flex: none;
+  color: var(--fg-2);
 }
 .command-bar .context {
   flex: none;
-  margin-left: var(--s-3);
+  margin-left: var(--s-2);
   padding: 2px var(--s-2);
   border-radius: var(--r-sm);
   background: var(--accent-soft);
@@ -3369,7 +3723,7 @@ button.fold {
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 14px var(--s-4);
+  padding: 14px var(--s-4) 14px var(--s-2);
   font-size: var(--t-lg);
 }
 .command-bar ul {
@@ -3391,12 +3745,21 @@ button.fold {
 .command-bar li.active {
   background: var(--accent-soft);
 }
-.command-bar li.group {
-  height: 24px;
+/* A group's name: small capitals on the left, like the headings everywhere else (idea 99). Its own class: the
+   settings' .group (a panel with a rule under it) once drew it centred over a line. */
+.command-bar li.cmd-group {
+  height: 28px;
   padding-top: var(--s-2);
-  font-size: var(--t-sm);
+  align-items: flex-end;
+  font-size: var(--t-xs);
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--fg-2);
+}
+.command-bar ul.more {
+  -webkit-mask-image: linear-gradient(#000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(#000 calc(100% - 40px), transparent);
 }
 .command-bar .pick-key {
   display: inline-block;
@@ -3424,7 +3787,8 @@ button.fold {
   font-weight: 600;
 }
 
-.sheet {
+/* Named for the shortcut sheet alone: a bare .sheet also styled every spreadsheet badge, which then cast the dialog's shadow (idea 103). */
+.keys-sheet {
   width: min(640px, 92vw);
   max-height: 70vh;
   display: flex;
@@ -3434,7 +3798,7 @@ button.fold {
   box-shadow: var(--shadow);
   overflow: hidden;
 }
-.sheet input {
+.keys-sheet input {
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
@@ -3448,7 +3812,7 @@ button.fold {
   columns: 2 260px;
   column-gap: var(--s-5);
 }
-.sheet section {
+.keys-sheet section {
   break-inside: avoid;
 }
 /* A heading at the top of the second column loses its margin at the break; the first one drops its own too, so both
@@ -3456,7 +3820,7 @@ button.fold {
 .sheet-body > section:first-child h3 {
   margin-top: 0;
 }
-.sheet h3 {
+.keys-sheet h3 {
   font-size: var(--t-sm);
   font-weight: 600;
   color: var(--fg-2);
@@ -4292,11 +4656,6 @@ button.fold {
   font-size: var(--t-lg);
   font-weight: 600;
   margin: 0;
-}
-.settings-page .nav-head kbd {
-  border: 0;
-  background: none;
-  color: var(--fg-2);
 }
 .settings-page .find {
   width: 100%;
@@ -8514,17 +8873,15 @@ button.link.danger {
   margin: 0 var(--s-1);
   background: var(--line);
 }
-.compose-main > footer .snippet-button {
-  font: 600 15px / 1 var(--mono);
-}
 /* Discard: red and small, only an icon, a step from Send but not beside it by accident. */
+/* Grey until the pointer is on it: the button that throws the mail away doesn't compete with Send (idea 98). */
 .compose-main > footer .discard {
   margin-right: var(--s-2);
-  color: var(--danger);
-  opacity: 0.8;
+  color: var(--fg-2);
 }
-.compose-main > footer .discard:hover {
-  opacity: 1;
+.compose-main > footer .discard:hover,
+.compose-main > footer .discard:focus-visible {
+  color: var(--danger);
   background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 .compose-main > footer .send-split .send {
@@ -9162,7 +9519,8 @@ button.link.danger {
 /* With the companion open, what the thread's brief would list (asked of you, the day, the place) is in the
    companion's You owe and In this message: the brief keeps its one line (canvas "Tern polish, now and after", 8).
    AI's points stay, as the companion doesn't hold them. */
-.window:has(aside.companion) .brief-rows.local {
+.window:has(aside.companion) .brief-rows.local,
+.window:has(aside.companion) .brief-chip {
   display: none;
 }
 .window:has(aside.companion) .brief:not(:has(.since, .ai-ask, .ai-by, .brief-line, .brief-rows:not(.local))) {

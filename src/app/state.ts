@@ -18,6 +18,7 @@ import type {
 import type { ComposeInit } from "../components/Compose";
 import type { Context } from "../keys";
 import { deck, screen } from "../day";
+import { shift } from "../motion";
 import { setSetting, settings } from "../settings";
 
 export const [accounts, setAccounts] = createSignal<Account[]>([]);
@@ -128,9 +129,10 @@ export const toggleSidebar = () =>
   width() >= SIDEBAR_WIDTH && !focusMode() ? (setRail(false), setSetting("sidebar", !settings.sidebar)) : setRail(!rail());
 
 /** The companion beside the open conversation (`i`, `Ctrl+.`). */
-export const toggleCompanion = () => setSetting("companion", !settings.companion);
+/** The companion slides in at the right edge and back out (idea 86). */
+export const toggleCompanion = () => shift("side", () => setSetting("companion", !settings.companion));
 export const showCompanion = () => {
-  if (!settings.companion) setSetting("companion", true);
+  if (!settings.companion) shift("side", () => setSetting("companion", true));
 };
 /** Where the companion's Details are drawn: the open conversation fills it, as the facts, contents and marks are
  * its own (ConversationView portals them in). */

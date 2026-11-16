@@ -179,6 +179,33 @@ export function ListPane(props: {
     searchBox.input?.focus();
   };
 
+  /** The filters a tap adds, as a panel under the field or, docked, one row above the results. */
+  const Quick = (p: { docked?: boolean }) => (
+    <fieldset class="search-quick" classList={{ docked: p.docked }}>
+      <legend class="kicker">Narrow it</legend>
+      <div class="quick-row">
+        <For each={QUICK}>
+          {([name, token]) => (
+            <button
+              type="button"
+              classList={{ on: chips().includes(token) }}
+              aria-pressed={chips().includes(token)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggleQuick(token)}
+            >
+              {name} <code>{token}</code>
+            </button>
+          )}
+        </For>
+      </div>
+      {/* The words each chip adds show on it, so they can be typed next time (idea 16). */}
+      <Show when={!p.docked}>
+        <p class="quick-hint">Or type them. Quote a phrase, put - before a word to leave it out.</p>
+      </Show>
+    </fieldset>
+  );
+  const filtersDocked = () => searching() && rows().length > 0;
+
   /** Which list this is and searching it: in Tern's own title bar when there is one, else a row of its own. One
    * element (`display: contents`, so the row's layout holds), not loose parts: loose, swapping the tabs for
    * "Search: …" on the first letter took the search field out and put it back, and it lost the focus. */
@@ -223,7 +250,7 @@ export function ListPane(props: {
             ref={(el) => (searchBox.input = el)}
             class="search"
             aria-label="Search mail"
-            placeholder={chips().length && growing() ? "" : props.split ? "/" : "Search   /"}
+            placeholder={chips().length && growing() ? "" : "Search"}
             value={growing() ? words() : query()}
             onInput={(e) => setWords(e.currentTarget.value)}
             onKeyDown={(e) => {
@@ -238,27 +265,14 @@ export function ListPane(props: {
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
           />
-          <Show when={searchFocused()}>
-            <fieldset class="search-quick">
-              <legend class="kicker">Narrow it</legend>
-              <div class="quick-row">
-                <For each={QUICK}>
-                  {([name, token]) => (
-                    <button
-                      type="button"
-                      classList={{ on: chips().includes(token) }}
-                      aria-pressed={chips().includes(token)}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => toggleQuick(token)}
-                    >
-                      {name} <code>{token}</code>
-                    </button>
-                  )}
-                </For>
-              </div>
-              {/* The words each chip adds show on it, so they can be typed next time (idea 16). */}
-              <p class="quick-hint">Or type them. Quote a phrase, put - before a word to leave it out.</p>
-            </fieldset>
+          {/* The key as a keycap like every other hint, not a "/" typed after the placeholder (idea 102). */}
+          <Show when={!growing()}>
+            <kbd class="search-key">/</kbd>
+          </Show>
+          {/* Before there are results the filters float under the field; after, they take a row under the count, so
+              they stop covering the first results (idea 100). */}
+          <Show when={searchFocused() && !filtersDocked()}>
+            <Quick />
           </Show>
         </div>
         <Show when={searching()}>
@@ -352,6 +366,9 @@ export function ListPane(props: {
           </Show>
           </Show>
         </div>
+      </Show>
+      <Show when={searchFocused() && filtersDocked()}>
+        <Quick docked />
       </Show>
       <Show
         when={rows().length}
