@@ -7,6 +7,11 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-17
+
+A reading view that moves: mail slides in beside the list and back out, threads say whose message you are in,
+and many small details in the list, the reading pane and search.
+
 ### Added
 
 - Opening a mail slides it in beside the list, and Esc slides it back. Done, Trash and Snooze from an open mail send
@@ -745,7 +750,8 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/nedimperva/tern/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/nedimperva/tern/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/nedimperva/tern/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/nedimperva/tern/compare/v2.0.0...v2.1.0
