@@ -11,6 +11,7 @@ import { openScreen } from "../day";
 import { keyLabel, shortName, type Binding } from "../keys";
 import { jumpHit } from "../hits";
 import { jumpMark, showRange } from "../marks";
+import { glide } from "../motion";
 import { aiOn, omarchyAvailable, setSetting, settings, type Settings } from "../settings";
 import {
   accountOf,
@@ -130,7 +131,7 @@ export const bindings = (): Binding[] => [
   { keys: "[", name: "Previous mark", context: "conversation", run: () => jumpMark(-1), repeat: true },
   { keys: "Enter", name: "Reply all", context: "conversation", run: () => respond(messages[messageFocus()], "replyAll") },
   { keys: "f", name: "Forward", context: "conversation", run: () => respond(messages[messageFocus()], "forward") },
-  { keys: "O", name: "Expand all messages", context: "conversation", run: () => setExpanded(new Set(messages.map((m) => m.id))) },
+  { keys: "O", name: "Expand all messages", context: "conversation", run: () => glide(() => setExpanded(new Set(messages.map((m) => m.id)))) },
   { keys: "r", name: "Reply (or continue the draft)", context: "conversation", run: reply },
   { keys: "v", name: "View attachments", context: "conversation", run: viewFiles },
   ...(role() === "new_people"
@@ -176,7 +177,7 @@ export const bindings = (): Binding[] => [
   { keys: "g d", name: "Go to Drafts", run: () => go({ role: "drafts" }) },
   { keys: "g a", name: "Go to All Mail", run: () => go({ role: "all" }) },
   { keys: "g !", name: "Go to Spam", run: () => go({ role: "junk" }) },
-  { keys: "g l", name: "Go to folder …", run: () => choose("Go to folder …") },
+  { keys: "g l", name: "Go to folder…", run: () => choose("Go to folder…") },
   ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
     keys: `Ctrl+${n}`,
     name: `Go to account ${n}`,
@@ -223,7 +224,7 @@ export const menu = (all: Binding[]) => {
     return [{ name: shortName(b.name), keys: keyLabel(b.keys), group, run: () => void b.run() }];
   });
   const spam = items.findIndex((i) => i.name === "Mark as spam");
-  items.splice(spam, 0, { name: "Move to …", group: "sort", run: () => void choose("Move to …") }, ...blocking());
+  items.splice(spam, 0, { name: "Move to…", group: "sort", run: () => void choose("Move to…") }, ...blocking());
   // The message the keys are on, else the newest: its source from the server, as a file.
   const m = messages[messageFocus()] ?? messages[messages.length - 1];
   if (m) items.push({ name: "Save as .eml", group: "view", run: () => void saveEml(m.id) });
@@ -263,7 +264,7 @@ export const commands = (all: Binding[]): Command[] => [
   ...(exportable() ? [{ name: `Export ${exportName()} as mbox`, group: "Actions", run: () => void exportList() }] : []),
   { name: "Import an mbox file…", group: "Actions", run: () => void importMbox() },
   {
-    name: "Move to …",
+    name: "Move to…",
     group: "Actions",
     args: () => {
       // Folders of the accounts the conversations are in, except where they are now.
@@ -279,7 +280,7 @@ export const commands = (all: Binding[]): Command[] => [
     },
   },
   {
-    name: "Go to folder …",
+    name: "Go to folder…",
     keys: keyLabel("g l"),
     group: "Go to",
     args: () =>
@@ -289,13 +290,13 @@ export const commands = (all: Binding[]): Command[] => [
       })),
   },
   {
-    name: "Switch account …",
+    name: "Switch account…",
     keys: "Ctrl 1–9",
     group: "Accounts",
     args: () => accounts().map((a, i) => ({ name: a.email, keys: `Ctrl ${i + 1}`, run: () => switchAccount(i) })),
   },
   {
-    name: "Mood …",
+    name: "Mood…",
     group: "Settings",
     args: () =>
       (

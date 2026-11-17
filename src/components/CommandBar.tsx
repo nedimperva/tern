@@ -1,11 +1,12 @@
-import { batch, createMemo, createSignal, For, Show } from "solid-js";
+import { batch, createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { Icon } from "./Icon";
 
 export type Command = {
   name: string;
   keys?: string;
   group?: string;
   run?: () => void;
-  /** A command that needs a choice ("Move to …"): Enter or Tab shows these instead, under its name. */
+  /** A command that needs a choice ("Move to…"): Enter or Tab shows these instead, under its name. */
   args?: () => Command[];
 };
 
@@ -129,12 +130,16 @@ export function CommandBar(props: {
   };
 
   let rowsEl!: HTMLUListElement;
+  // More rows below the last one in sight: the list fades out at its foot rather than stop mid-row (idea 99).
+  const [more, setMore] = createSignal(false);
+  const seeMore = () => setMore(rowsEl.scrollTop + rowsEl.clientHeight < rowsEl.scrollHeight - 2);
+  createEffect(on(matches, () => queueMicrotask(seeMore)));
   /** The highlighted row in sight after an arrow key, its group's heading too when it is the group's first. */
   const reveal = () =>
     queueMicrotask(() => {
       const row = rowsEl.querySelector<HTMLElement>("li.active");
       const head = row?.previousElementSibling;
-      if (head?.classList.contains("group")) head.scrollIntoView({ block: "nearest" });
+      if (head?.classList.contains("cmd-group")) head.scrollIntoView({ block: "nearest" });
       row?.scrollIntoView({ block: "nearest" });
     });
 
@@ -155,8 +160,9 @@ export function CommandBar(props: {
     <div class="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <div class="command-bar" role="dialog" aria-modal="true" aria-label="Commands">
         <div class="head">
+          <Icon name="search" size={16} />
           <Show when={parent()}>
-            <span class="context">{parent()!.name.replace(/ …$/, "")}</span>
+            <span class="context">{parent()!.name.replace(/\s?…$/, "")}</span>
           </Show>
           <input
             ref={(el) => queueMicrotask(() => el.focus())}
@@ -166,12 +172,12 @@ export function CommandBar(props: {
             onKeyDown={onKeyDown}
           />
         </div>
-        <ul ref={rowsEl}>
+        <ul ref={rowsEl} classList={{ more: more() }} onScroll={seeMore}>
           <For each={matches()} fallback={<li class="none">No command matches</li>}>
             {(m, i) => (
               <>
                 <Show when={m.group && m.group !== (matches()[i() - 1]?.group ?? "")}>
-                  <li class="group">{m.group}</li>
+                  <li class="cmd-group">{m.group}</li>
                 </Show>
                 <li
                   classList={{ active: i() === index() }}

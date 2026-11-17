@@ -752,6 +752,8 @@ export function Compose(props: {
   };
 
   const words = () => (ownText().match(/\p{L}[\p{L}\p{N}'’-]*/gu) ?? []).length;
+  /** More than one address to send from: the footer offers the choice. */
+  const choosesFrom = () => props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length);
 
   // While the person types, the tools step back; a pause, the mouse or a Tab into them brings them again.
   const [typing, setTyping] = createSignal(false);
@@ -1172,7 +1174,7 @@ export function Compose(props: {
           </div>
         </Show>
         <RecipientField
-          label="to"
+          label="To"
           placeholder="add people"
           value={to()}
           onChange={(v) => (setTo(v), changed())}
@@ -1194,10 +1196,10 @@ export function Compose(props: {
           }
         />
         <Show when={showCc()}>
-          <RecipientField label="cc" value={cc()} onChange={(v) => (setCc(v), changed())} ref={(el) => (ccInput = el)} outside={isOutside} />
+          <RecipientField label="Cc" value={cc()} onChange={(v) => (setCc(v), changed())} ref={(el) => (ccInput = el)} outside={isOutside} />
         </Show>
         <Show when={showBcc()}>
-          <RecipientField label="bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} outside={isOutside} />
+          <RecipientField label="Bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} outside={isOutside} />
         </Show>
       </div>
       {/* A try from the AI shows in the text's place; the editor stays as it was underneath until it is kept. */}
@@ -1461,7 +1463,7 @@ export function Compose(props: {
           </Show>
           <Show when={snippetList().length}>
             <button type="button" class="icon-button snippet-button" title="Snippet (;)" aria-label="Snippet" onClick={openSnippets}>
-              ;
+              <Icon name="snippet" size={16} />
             </button>
           </Show>
           <Show when={accountSignatures().length}>
@@ -1499,10 +1501,13 @@ export function Compose(props: {
             </div>
           </Show>
         </span>
-        <span class="foot-sep" aria-hidden="true" />
-        <Show when={props.accounts.length > 1 || props.accounts.some((a) => a.aliases?.length)}>
+        {/* Only between the tools and something after them: a divider with nothing beside it read as a slip (idea 98). */}
+        <Show when={choosesFrom() || saveState() || words()}>
+          <span class="foot-sep" aria-hidden="true" />
+        </Show>
+        <Show when={choosesFrom()}>
           <div class="from-pick">
-            <span class="word">from</span>
+            <span class="word">From</span>
             <Dropdown
               class="bare"
               label="From"

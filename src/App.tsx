@@ -18,7 +18,7 @@ import { PerfOverlay } from "./components/PerfOverlay";
 import { DayDeck } from "./components/DayDeck";
 import { DayScreen } from "./components/DayScreen";
 import { timeKey } from "./perf";
-import { loadSettings, setSetting, settings } from "./settings";
+import { loadSettings, settings } from "./settings";
 import { closeScreen, deck, screen, start, startDay } from "./day";
 import { keyHandler } from "./keys";
 import { hitWords } from "./hits";
@@ -96,6 +96,7 @@ import {
   snoozing,
   syncStates,
   ownTitleBar,
+  toggleCompanion,
   toggleSidebar,
   viewing,
   askingMail,
@@ -315,7 +316,7 @@ function Main() {
               if (i >= 0 && i < messages.length - 1 && !expanded().has(id)) toggleMessage(i);
               requestAnimationFrame(() => document.querySelector(`[data-message="${id}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" }));
             }}
-            onClose={() => setSetting("companion", false)}
+            onClose={toggleCompanion}
             onOpenAi={() => setSettingsOpen("AI")}
           />
         </Suspense>

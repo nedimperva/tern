@@ -76,7 +76,8 @@ function dropRows(hit: ThreadRow[], way: Way = "fade") {
     setFocus(next);
     setSelection(new Set<string>());
   });
-  if (wasOpen) void open(left[next]);
+  // The open mail leaves the way its row did, and the next one fades in after it (idea 83).
+  if (wasOpen) void open(left[next], undefined, way === "right" ? "gone-right" : way === "left" ? "gone-left" : way === "up" ? "gone-up" : "switch");
 }
 
 // What snoozing from the one-at-a-time run does once a time is picked: that card leaves the run.

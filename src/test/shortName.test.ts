@@ -8,7 +8,7 @@ describe("shortName", () => {
     expect(shortName("Start of the day: what waits on you")).toBe("Start of the day");
   });
   it("keeps a name with nothing to drop", () => {
-    expect(shortName("Move to …")).toBe("Move to …");
+    expect(shortName("Move to…")).toBe("Move to…");
     expect(shortName("Snooze")).toBe("Snooze");
   });
 });

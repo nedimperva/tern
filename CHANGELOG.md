@@ -7,6 +7,37 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- Opening a mail slides it in beside the list, and Esc slides it back. Done, Trash and Snooze from an open mail send
+  it off the way its row goes, and the next one comes in behind it. Next and previous only cross-fade, and holding
+  `j` or `k` skips the motion.
+- Folding a message open or shut moves the messages below it smoothly; the companion, the palette and dialogs arrive
+  the same way. All of it stays still with reduced motion.
+- The brief's day and place are chips: "Snooze till then" and "Open the map".
+- Scrolled down a thread, the bar at the top says whose message you are in ("Ada Lovelace · 4:35 PM · 3 of 3").
+- A message that takes a moment shows grey lines where its text will be instead of "Loading message…".
+- While you search, the "Narrow it" filters become one row under the count once there are results, instead of a
+  panel over them.
+
+### Changed
+
+- The reply bar stays at the foot of the reading pane, however short the mail.
+- The newest message in a thread sits on the page without a box around it.
+- The people line drops whole parts (days, then full names) when it runs out of room, instead of cutting a name.
+- People without a picture get a colour, never grey; bylines use one time format, with the full date on hover.
+- Labels sit at the end of a list row, after the snippet; hovering a row fades the snippet under its buttons.
+- Beside an open mail, the sync label leaves the list header, so the split tabs fit.
+- Compose: the bin is grey until you point at it, the footer has no lone divider, snippets have their own icon, and
+  the fields read "To", "Cc", "Bcc", "From".
+- The palette has a search icon, left-aligned headings and a fade where the list goes on.
+- Every key hint is a keycap, including New mail's `C`, Settings' `Ctrl ,` and search's `/`.
+- Menu names end in a single ellipsis character with no space before it ("Move to…").
+
+### Fixed
+
+- Spreadsheet badges (XLSX, CSV) no longer cast a shadow; they had picked up the shortcut sheet's style.
+
 ## [2.3.0] - 2026-11-11
 
 Backups you choose the contents of, quotes that say whose they are, Send that stays in reach, and a cleanup:

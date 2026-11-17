@@ -88,11 +88,20 @@ Mail HTML is rendered in its own iframe with the sender's styling; we only set a
   (`.vrow` eases its transform over `--d-base`), and a copy of the leaving row slides off over `--d-slow`: right
   for Done, left for Trash and Junk, up for Snooze and Read later, a fade for other moves. A new star grows for a
   moment. No motion on a row that only changes (read, labels).
+- Between screens (`shift()` in `src/motion.ts`, ideas 82–87): opening a mail slides the reader in from the right
+  over `--d-base` while the list stays put; Esc slides it back out. Done, Trash and Snooze from an open mail send the
+  reader the way the row goes (right, left, up) and the next mail comes in behind it; `j`/`k` with a mail open only
+  cross-fade. The companion slides in from the right edge. All of these are view transitions: the panes get
+  `view-transition-name`s only while `:root[data-shift]` is set, because a named pane is a containing block for
+  fixed popups. A key held down (under 180 ms apart) skips the motion, and a slow load waits at most 120 ms before
+  the screen moves on. Folding a message open or shut glides the messages below it (`glide()`, a FLIP over
+  `--d-base`), not a view transition. The palette and dialogs arrive with a fade and a 6 px drop over `--d-base`.
 - Density setting: `dense` row 36 px (default), `comfortable` 44 px, `spacious` 52 px. Only row height and a 1–2 px type bump change.
 
 ### Keycaps
 
-Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 px border, `--r-sm`, 18 px tall, min-width 18 px, mono digits. Chords render as two keycaps with `then` between (`G then I`).
+Keys are shown everywhere as keycaps: `--t-xs`, `--bg-2` background, `--line` 1 px border, `--r-sm`, 18 px tall, min-width 18 px, mono digits. Chords render as two keycaps with `then` between (`G then I`). No bare letters: New mail's `C`, Settings' `Ctrl ,` and the search field's `/` are boxed too, and the
+search field's placeholder is "Search" alone with the `/` keycap at its end (idea 102).
 
 ## 3. Layout
 
