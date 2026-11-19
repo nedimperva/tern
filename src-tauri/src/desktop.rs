@@ -740,11 +740,11 @@ fn copy(_app: &AppHandle, text: &str) {
 
 #[cfg(windows)]
 fn win_clipboard(text: &str) -> windows::core::Result<()> {
-    use windows::Win32::Foundation::{HANDLE, HGLOBAL};
+    use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
     };
-    use windows::Win32::System::Memory::{GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
     const CF_UNICODETEXT: u32 = 13;
 
     let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
@@ -753,11 +753,14 @@ fn win_clipboard(text: &str) -> windows::core::Result<()> {
         let to = GlobalLock(mem) as *mut u16;
         if to.is_null() {
             let _ = GlobalFree(Some(mem));
-            return Err(windows::core::Error::from_win32());
+            return Err(windows::core::Error::from_thread());
         }
         std::ptr::copy_nonoverlapping(wide.as_ptr(), to, wide.len());
         let _ = GlobalUnlock(mem);
-        OpenClipboard(None)?;
+        if let Err(e) = OpenClipboard(None) {
+            let _ = GlobalFree(Some(mem));
+            return Err(e);
+        }
         let put = EmptyClipboard().and_then(|()| SetClipboardData(CF_UNICODETEXT, Some(HANDLE(mem.0))));
         let _ = CloseClipboard();
         // The clipboard owns the memory once it took it; otherwise it is still ours to free.
