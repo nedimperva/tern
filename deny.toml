@@ -10,7 +10,11 @@ all-features = false
 # Unmaintained crates deep in the GTK stack Tauri needs on Linux can't be swapped from here; only flag our own
 # direct dependencies. Vulnerabilities always fail.
 unmaintained = "workspace"
-ignore = []
+ignore = [
+  # chrono is unmaintained (2026-11), with no fix to move to. io-imap's codec needs it whatever Tern does, and Tern's
+  # own use (local time for quiet hours, dates in the engine) can move to jiff later without changing that.
+  { id = "RUSTSEC-2026-0543", reason = "pulled in by io-imap; no maintained release to move to yet" },
+]
 
 [licenses]
 # Tern is MIT. Everything it links must allow that: permissive licences, plus MPL-2.0 (file-level copyleft, used by

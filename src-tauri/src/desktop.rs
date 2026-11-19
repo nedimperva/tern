@@ -717,20 +717,54 @@ fn code_in(m: &NewMail) -> Option<String> {
     tern_core::otp::one_time_code(&format!("{}\n{}", m.subject, m.snippet))
 }
 
-/// Puts text on the clipboard from the engine side: the button is pressed with no Tern window in front. On Linux
-/// the text is only there while its owner lives, so the clipboard is kept for the life of Tern (it runs on in the
-/// tray).
-fn copy(text: &str) {
-    static CLIPBOARD: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
-    let mut held = CLIPBOARD.lock().unwrap();
-    if held.is_none() {
-        match arboard::Clipboard::new() {
-            Ok(c) => *held = Some(c),
-            Err(e) => return log::warn!("clipboard: {e}"),
-        }
-    }
-    if let Some(Err(e)) = held.as_mut().map(|c| c.set_text(text)) {
+/// Puts text on the clipboard from the engine side: the button is pressed with no Tern window in front. GTK holds
+/// the text for as long as Tern runs (it runs on in the tray), and wants to be asked from its own thread.
+#[cfg(target_os = "linux")]
+fn copy(app: &AppHandle, text: &str) {
+    let text = text.to_string();
+    let put = app.run_on_main_thread(move || {
+        gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD).set_text(&text);
+    });
+    if let Err(e) = put {
         log::warn!("clipboard: {e}");
+    }
+}
+
+/// Puts text on the clipboard from the engine side. Windows keeps the copy itself, so nothing has to stay alive.
+#[cfg(windows)]
+fn copy(_app: &AppHandle, text: &str) {
+    if let Err(e) = win_clipboard(text) {
+        log::warn!("clipboard: {e}");
+    }
+}
+
+#[cfg(windows)]
+fn win_clipboard(text: &str) -> windows::core::Result<()> {
+    use windows::Win32::Foundation::{HANDLE, HGLOBAL};
+    use windows::Win32::System::DataExchange::{
+        CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
+    };
+    use windows::Win32::System::Memory::{GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    const CF_UNICODETEXT: u32 = 13;
+
+    let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let mem: HGLOBAL = GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2)?;
+        let to = GlobalLock(mem) as *mut u16;
+        if to.is_null() {
+            let _ = GlobalFree(Some(mem));
+            return Err(windows::core::Error::from_win32());
+        }
+        std::ptr::copy_nonoverlapping(wide.as_ptr(), to, wide.len());
+        let _ = GlobalUnlock(mem);
+        OpenClipboard(None)?;
+        let put = EmptyClipboard().and_then(|()| SetClipboardData(CF_UNICODETEXT, Some(HANDLE(mem.0))));
+        let _ = CloseClipboard();
+        // The clipboard owns the memory once it took it; otherwise it is still ours to free.
+        if put.is_err() {
+            let _ = GlobalFree(Some(mem));
+        }
+        put.map(|_| ())
     }
 }
 
@@ -752,7 +786,7 @@ fn noticed(app: &AppHandle, action: Option<&str>, latest: &NewMail) {
         }
         Some(action @ ("copy" | "copy-done")) => {
             let Some(code) = code_in(latest) else { return };
-            copy(&code);
+            copy(app, &code);
             if action == "copy-done" {
                 if let Err(e) = archive(app, latest) {
                     log::warn!("done from a notification: {e:#}");
