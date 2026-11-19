@@ -84,6 +84,20 @@ export type Settings = {
   todoist: { project: string; label: string };
   /** Optional AI, read by the engine too, which refuses what it does not allow (tern_core::ai::AiSettings). */
   ai: AiSettings;
+  /** The keyboard coach (idea 136): a tip after a few clicks on something with a key. */
+  keyTips: boolean;
+  /** Keys the person has pressed at least once (bindings' `keys`), so the shortcut sheet can lift the others. */
+  keysUsed: string[];
+  /** Clicks on something whose key has not been told yet, by key. */
+  keyClicks: Record<string, number>;
+  /** Keys already told about: a tip comes once. */
+  keyTipsTold: string[];
+  /** "Your week" on Friday's morning screen (idea 134). */
+  weekCard: boolean;
+  /** The language Translate (idea 122) writes in, by name; empty is the window's own language. */
+  translateTo: string;
+  /** Groups of people for To (idea 126), by the name typed to get them. */
+  groups: { name: string; emails: string[] }[];
 };
 
 export type NotifyMode = "off" | "important" | "all";
@@ -113,6 +127,13 @@ export type AiSettings = {
 
 export const DEFAULTS: Settings = {
   theme: "system",
+  keyTips: true,
+  keysUsed: [],
+  keyClicks: {},
+  keyTipsTold: [],
+  weekCard: true,
+  translateTo: "",
+  groups: [],
   density: "dense",
   sidebar: true,
   openMode: "auto",

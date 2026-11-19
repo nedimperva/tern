@@ -233,3 +233,29 @@ export function factsOf(text: string, html: string | null, sentSeconds: number, 
     links: findLinks(html, text, linkLimit),
   };
 }
+
+// A sign-in code (idea 114): a word that says what it is ("verification code", "kod za prijavu") and a short
+// number near it. Kept to what such mail says, so an order number or a price is not offered to copy. The engine
+// has the same rules for notifications (`tern_core::otp`); keep the two alike.
+const OTP_KIND =
+  /(verif|security|one[- ]?time|sign[- ]?in|log[- ]?in|confirm|two[- ]factor|2fa|authenticat|access code|your code|jednokrat|verifikac|sigurnosn|prijav|potvrd|vaš kod|tvoj kod)/i;
+const OTP_WORD = /(?<![\p{L}\p{N}])(code|kod|otp|passcode|pin|šifr\p{L}*|lozink\p{L}*)(?![\p{L}\p{N}])/iu;
+const OTP_VALUE = /(?<![\p{L}\p{N}-])(?:[A-Z]{1,3}-)?(\d{3} ?\d{3}|\d{4,8})(?![\p{L}\p{N}]|-\d)/gu;
+
+/** The one-time code in a subject and opening, or null. */
+export function oneTimeCode(text: string): string | null {
+  const word = OTP_WORD.exec(text);
+  if (!word || !OTP_KIND.test(text)) return null;
+  let best: { value: string; gap: number } | null = null;
+  for (const m of text.matchAll(OTP_VALUE)) {
+    const value = m[1].replace(" ", "");
+    if (value.length === 4 && /^(19|20)\d\d$/.test(value)) continue;
+    // Prices and times sit beside a currency or a colon; a code stands alone.
+    const before = text.slice(Math.max(0, m.index! - 2), m.index!);
+    const after = text.slice(m.index! + m[0].length, m.index! + m[0].length + 2);
+    if (/[:.,]$/.test(before) || /[$€£]$/.test(before.trim()) || /^[:.,]\d|^\s?(€|eur|usd|km|kn)/i.test(after)) continue;
+    const gap = Math.abs(m.index! - word.index);
+    if (!best || gap < best.gap) best = { value, gap };
+  }
+  return best && best.gap <= 160 ? best.value : null;
+}

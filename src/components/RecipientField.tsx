@@ -1,5 +1,6 @@
 import { createResource, createSignal, createUniqueId, For, Show, type JSX } from "solid-js";
 import { api } from "../api";
+import { settings } from "../settings";
 
 /** A plausible address: something@something.tld. The server has the last word; this only flags typos. */
 export const validAddress = (a: string) => /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(a);
@@ -30,6 +31,26 @@ function nameFor(address: string): Promise<string> {
   return found;
 }
 
+/** Whether someone else Tern knows goes by the same name, so a chip with only the name could be the wrong person
+ * (idea 125). Asked once per name while the app runs. */
+const twins = new Map<string, Promise<boolean>>();
+function hasTwin(name: string, address: string): Promise<boolean> {
+  const key = `${name.trim().toLowerCase()}\n${address.toLowerCase()}`;
+  let found = twins.get(key);
+  if (!found) {
+    found = name.trim()
+      ? api
+          .contacts(name.trim())
+          .then((list) =>
+            list.some((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase() && c.email.toLowerCase() !== address.toLowerCase()),
+          )
+          .catch(() => false)
+      : Promise.resolve(false);
+    twins.set(key, found);
+  }
+  return found;
+}
+
 /** Two letters for a chip: the name's first and last word, else the address. */
 function initials(name: string, address: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -40,16 +61,23 @@ function initials(name: string, address: string): string {
 /** One address as a chip: initials and the name when Tern knows one, the address on hover. */
 function Chip(props: { address: string; outside: boolean; onRemove: () => void }) {
   const [name] = createResource(() => props.address, nameFor);
+  const [twin] = createResource(name, (n) => hasTwin(n, props.address));
   const valid = () => validAddress(props.address);
   const title = () =>
-    !valid() ? `${props.address} does not look like an address` : props.outside ? `${props.address}, outside your organisation` : props.address;
+    !valid()
+      ? `${props.address} does not look like an address`
+      : props.outside
+        ? `${props.address}, outside your organisation`
+        : twin()
+          ? `${props.address}: you know more than one ${name()}`
+          : props.address;
   return (
     <span class="chip" classList={{ invalid: !valid(), outside: valid() && props.outside }} title={title()}>
       <span class="initials" aria-hidden="true">
         {initials(name() ?? "", props.address)}
       </span>
       <span class="who">{name() || props.address}</span>
-      <Show when={valid() && props.outside}>
+      <Show when={valid() && (props.outside || twin())}>
         <span class="domain">{props.address.slice(props.address.lastIndexOf("@") + 1)}</span>
       </Show>
       <button type="button" tabIndex={-1} aria-label={`Remove ${props.address}`} onClick={props.onRemove}>
@@ -74,7 +102,8 @@ export function RecipientField(props: {
 }) {
   const [text, setText] = createSignal("");
   // Suggestions for what is being typed, and which one ↑/↓ points at.
-  const [people, setPeople] = createSignal<{ email: string; name: string }[]>([]);
+  // A group (idea 126) is offered like a person and comes in as everyone in it.
+  const [people, setPeople] = createSignal<{ email: string; name: string; group?: string[] }[]>([]);
   const [pointed, setPointed] = createSignal(0);
   let asked = 0;
   let input!: HTMLInputElement;
@@ -82,11 +111,18 @@ export function RecipientField(props: {
     const ticket = ++asked;
     const found = q.trim().length ? await api.contacts(q.trim()) : [];
     if (ticket !== asked) return;
-    setPeople(found.filter((p) => !props.value.includes(p.email)));
+    const word = q.trim().toLowerCase();
+    const groups = word
+      ? settings.groups
+          .filter((g) => g.name.toLowerCase().includes(word) && g.emails.some((e) => !props.value.includes(e)))
+          .map((g) => ({ email: "", name: g.name, group: g.emails }))
+      : [];
+    setPeople([...groups, ...found.filter((p) => !props.value.includes(p.email))]);
     setPointed(0);
   };
-  const pick = (email: string) => {
-    if (!props.value.includes(email)) props.onChange([...props.value, email]);
+  const pick = (p: { email: string; group?: string[] }) => {
+    const add = (p.group ?? [p.email]).filter((e) => !props.value.includes(e));
+    if (add.length) props.onChange([...props.value, ...add]);
     setText("");
     setPeople([]);
   };
@@ -106,7 +142,7 @@ export function RecipientField(props: {
     }
     if (open && ((e.key === "Enter" && !e.ctrlKey && !e.metaKey) || e.key === "Tab")) {
       e.preventDefault();
-      pick(people()[pointed()].email);
+      pick(people()[pointed()]);
       return;
     }
     if (open && e.key === "Escape") {
@@ -173,11 +209,11 @@ export function RecipientField(props: {
                 role="option"
                 aria-selected={i() === pointed()}
                 classList={{ pointed: i() === pointed() }}
-                onMouseDown={(e) => (e.preventDefault(), pick(p.email))}
+                onMouseDown={(e) => (e.preventDefault(), pick(p))}
               >
                 <span class="name">{p.name || p.email}</span>
-                <Show when={p.name}>
-                  <span class="addr">{p.email}</span>
+                <Show when={p.group} fallback={<Show when={p.name}><span class="addr">{p.email}</span></Show>}>
+                  {(g) => <span class="addr">Group · {g().length === 1 ? "1 person" : `${g().length} people`}</span>}
                 </Show>
               </div>
             )}

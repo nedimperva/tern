@@ -50,6 +50,11 @@ import {
 } from "./state";
 
 const PAGE = 100;
+/** A search reads this many at a time, and more as the list is scrolled (idea 107). */
+const SEARCH_PAGE = 200;
+
+/** How many messages the search on show finds in all: its rows while they fit a page, else the engine's count. */
+export const [searchTotal, setSearchTotal] = createSignal<number | null>(null);
 
 let exhausted = false;
 let generation = 0;
@@ -94,7 +99,9 @@ export async function load() {
   const ticket = ++generation;
   const key = listKey();
   const q = query().trim();
-  const found = q ? await api.search(q, 500) : null;
+  // A reload keeps as many search results as were scrolled into, as the list does.
+  const want = Math.max(SEARCH_PAGE, rows().filter((r) => !r.fromServer).length);
+  const found = q ? await api.search(q, null, want) : null;
   // New people is read whole (it is short) and shown a row per person.
   const screening = !found && role() === "new_people";
   const read = found
@@ -104,10 +111,15 @@ export async function load() {
   // What the server found for this search stays under the local results, until its text is here and they are
   // found locally too.
   const local = new Set(read.map(keyOf));
-  const fromServer = found && serverFound().query === q ? serverFound().rows.filter((r) => !local.has(keyOf(r))) : [];
+  // Only under the last page of local results: until then the list still grows.
+  const more = !!found && read.length >= want;
+  const fromServer = found && !more && serverFound().query === q ? serverFound().rows.filter((r) => !local.has(keyOf(r))) : [];
   const page = screening ? people(read) : [...read, ...fromServer];
   setPartial(found?.partial ?? false);
-  exhausted = q !== "" || screening || page.length < PAGE;
+  exhausted = found ? !more : screening || page.length < PAGE;
+  if (found && !more) setSearchTotal(read.length);
+  else if (found) void api.searchCount(q).then((n) => ticket === generation && setSearchTotal(Math.max(n, read.length)), () => {});
+  else setSearchTotal(null);
   // Focus stays on the same conversation if it is still there, else on the same place in the list.
   const focusedKey = current() && keyOf(current()!);
   batch(() => {
@@ -122,9 +134,25 @@ export async function load() {
 
 export async function loadMore() {
   const last = rows()[rows().length - 1];
-  if (exhausted || !last || searching()) return;
+  if (exhausted || !last) return;
   exhausted = true;
   const ticket = generation;
+  const q = query().trim();
+  if (searching() && q) {
+    // The next page of a search starts after the oldest result shown (idea 107).
+    const found = await api.search(q, { date: last.date, id: last.id }, SEARCH_PAGE);
+    if (ticket !== generation) return;
+    const shown = new Set(rows().map(keyOf));
+    const page = found.rows.map(asRow).filter((r) => !shown.has(keyOf(r)));
+    exhausted = found.rows.length < SEARCH_PAGE;
+    setRows([...rows(), ...page]);
+    // The last page is in: what the server found goes under it.
+    if (exhausted && serverFound().query === q) {
+      const local = new Set(rows().map(keyOf));
+      setRows([...rows(), ...serverFound().rows.filter((r) => !local.has(keyOf(r)))]);
+    }
+    return;
+  }
   const page = await api.listThreads(target(), { date: last.date, id: last.id }, PAGE);
   if (ticket !== generation) return;
   exhausted = page.length < PAGE;

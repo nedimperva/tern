@@ -197,6 +197,16 @@ export function ReadingSettings() {
           title="In this message"
           help="The day, place and codes the newest message names, in the companion (i). Found on this computer."
         />
+        <Toggle
+          name="weekCard"
+          title="Your week, on Fridays"
+          help="A short look back on Friday's morning screen: what came, what you answered, what still waits."
+        />
+        <Toggle
+          name="keyTips"
+          title="Key tips"
+          help="After a few clicks on something that has a key, one line says the key. Once for each key."
+        />
       </Group>
       <Group title="Privacy">
         <Segments

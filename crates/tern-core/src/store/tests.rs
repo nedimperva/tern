@@ -60,10 +60,10 @@ fn searches_by_prefix() {
     store
         .insert_messages(account, inbox, &[message(1, "Invoice from ACME", 1), message(2, "Lunch", 2)])
         .unwrap();
-    let hits = store.search("inv acme", 10).unwrap().rows;
+    let hits = store.search("inv acme", None, 10).unwrap().rows;
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].subject, "Invoice from ACME");
-    assert!(store.search("\"", 10).unwrap().rows.is_empty());
+    assert!(store.search("\"", None, 10).unwrap().rows.is_empty());
 }
 
 #[test]
@@ -78,7 +78,7 @@ fn search_filters_narrow_by_field_folder_and_state() {
     store.insert_messages(account, inbox, &[from_grace, to_me]).unwrap();
     store.insert_messages(account, archive, &[message(3, "Old budget", 50)]).unwrap();
     let subjects = |q: &str| -> Vec<String> {
-        store.search(q, 10).unwrap().rows.into_iter().map(|r| r.subject).collect()
+        store.search(q, None, 10).unwrap().rows.into_iter().map(|r| r.subject).collect()
     };
     assert_eq!(subjects("budget"), ["Budget follow-up", "Budget", "Old budget"]);
     assert_eq!(subjects("budget from:grace"), ["Budget"]);
@@ -89,7 +89,7 @@ fn search_filters_narrow_by_field_folder_and_state() {
     assert_eq!(subjects("budget -follow"), ["Budget", "Old budget"]);
     assert_eq!(subjects("before:1970-01-01"), Vec::<String>::new());
     assert_eq!(subjects("after:1970-01-01 is:read"), ["Budget follow-up"]);
-    assert!(!store.search("budget", 10).unwrap().partial, "every body is here");
+    assert!(!store.search("budget", None, 10).unwrap().partial, "every body is here");
 }
 
 #[test]
@@ -136,7 +136,7 @@ fn search_finds_the_newest_matches_whatever_order_mail_arrived_in() {
             .collect::<rusqlite::Result<_>>()
             .unwrap();
         drop(conn);
-        let got: Vec<i64> = store.search(query, 50).unwrap().rows.iter().map(|r| r.id).collect();
+        let got: Vec<i64> = store.search(query, None, 50).unwrap().rows.iter().map(|r| r.id).collect();
         assert!(!want.is_empty(), "{query}");
         assert_eq!(got, want, "{query}");
     }
@@ -491,7 +491,7 @@ fn marks_list_and_search_find_marked_conversations() {
     assert_eq!(marked[0].latest.subject, "Issue 112");
     assert_eq!(marked[0].latest.snippet, "\u{201c}the deadline moved\u{201d} Ask Ada about Friday");
     let subjects = |q: &str| -> Vec<String> {
-        store.search(q, 10).unwrap().rows.into_iter().map(|r| r.subject).collect()
+        store.search(q, None, 10).unwrap().rows.into_iter().map(|r| r.subject).collect()
     };
     assert_eq!(subjects("is:marked"), ["Issue 112"]);
     assert_eq!(subjects("-is:marked"), ["Lunch"]);
@@ -530,7 +530,7 @@ fn a_search_result_previews_the_text_around_the_words() {
     );
     let m = NewMessage { body_text: Some(long), ..message(1, "Numbers", 100) };
     store.insert_messages(account, inbox, &[m, message(2, "Invoice early", 200)]).unwrap();
-    let found = store.search("invoice", 10).unwrap();
+    let found = store.search("invoice", None, 10).unwrap();
     let deep = found.rows.iter().find(|r| r.subject == "Numbers").unwrap();
     assert!(deep.snippet.starts_with('…') && deep.snippet.contains("invoice for March"), "{}", deep.snippet);
     assert!(deep.snippet.chars().count() <= 162);
@@ -552,7 +552,7 @@ fn search_finds_snoozed_conversations() {
     let (store, account, inbox, _) = setup();
     store.insert_messages(account, inbox, &[message(1, "Tickets", 100), message(2, "Lunch", 200)]).unwrap();
     let subjects = |q: &str| -> Vec<String> {
-        store.search(q, 10).unwrap().rows.into_iter().map(|r| r.subject).collect()
+        store.search(q, None, 10).unwrap().rows.into_iter().map(|r| r.subject).collect()
     };
     assert!(subjects("is:snoozed").is_empty());
     let rows = store.list_threads(&ListTarget::Role("inbox".into()), None, 9).unwrap();
@@ -569,8 +569,8 @@ fn search_says_when_bodies_were_not_all_searched() {
     let (store, account, inbox, _) = setup();
     let headers = NewMessage { headers_only: true, body_text: None, ..message(1, "Plans", 1) };
     store.insert_messages(account, inbox, &[headers]).unwrap();
-    assert!(store.search("plans", 10).unwrap().partial);
-    assert!(!store.search("is:unread", 10).unwrap().partial, "no words, nothing missed");
+    assert!(store.search("plans", None, 10).unwrap().partial);
+    assert!(!store.search("is:unread", None, 10).unwrap().partial, "no words, nothing missed");
 }
 
 #[test]
@@ -894,7 +894,7 @@ fn a_store_on_disk_reads_what_it_wrote_on_its_second_connection() {
     store.insert_messages(account, inbox, &[message(1, "zeppelin", 100)]).unwrap();
     assert_eq!(store.folders().unwrap().len(), 1);
     assert_eq!(store.list_threads(&ListTarget::Folder(inbox), None, 10).unwrap().len(), 1);
-    assert_eq!(store.search("zeppelin", 10).unwrap().rows.len(), 1);
+    assert_eq!(store.search("zeppelin", None, 10).unwrap().rows.len(), 1);
     // Reads from several threads at once, each on a reader of its own, while the writer writes.
     let readers: Vec<_> = (0..4)
         .map(|_| {
@@ -962,11 +962,11 @@ fn optimize_runs_once_a_week() {
 fn removing_an_account_takes_its_mail_and_search_with_it() {
     let (store, account, inbox, _) = setup();
     store.insert_messages(account, inbox, &[message(1, "zeppelin", 100)]).unwrap();
-    assert_eq!(store.search("zeppelin", 10).unwrap().rows.len(), 1);
+    assert_eq!(store.search("zeppelin", None, 10).unwrap().rows.len(), 1);
     store.remove_account(account).unwrap();
     assert!(store.accounts().unwrap().is_empty());
     assert!(store.folders().unwrap().is_empty());
-    assert!(store.search("zeppelin", 10).unwrap().rows.is_empty());
+    assert!(store.search("zeppelin", None, 10).unwrap().rows.is_empty());
     let left: i64 = store.conn().query_row("SELECT count(*) FROM messages", [], |r| r.get(0)).unwrap();
     assert_eq!(left, 0);
 }
@@ -1470,7 +1470,7 @@ fn blocking_a_sender_or_their_domain() {
         left.iter().filter(|(_, folder, seen)| *folder != inbox && *seen).map(|l| l.0.as_str()).collect();
     assert_eq!(moved, ["mail 3"], "what was there before stays where it was");
     assert_eq!(store.outbox_waiting().unwrap().len(), 2, "mark read, then archive");
-    assert_eq!(store.search("mail 3", 5).unwrap().rows.len(), 1);
+    assert_eq!(store.search("mail 3", None, 5).unwrap().rows.len(), 1);
 
     // A choice for the address wins over one for the domain.
     store.set_sender(account, "@spam.example", Some("blocked")).unwrap();
@@ -2064,6 +2064,7 @@ fn renumbering_keeps_messages_queued_work_is_about_to_change() {
 fn wind_back(conn: &Connection, version: i64) {
     for from in (version..SCHEMA_VERSION).rev() {
         let undo = match from {
+            37 => "DROP TABLE thread_moves;",
             36 => "ALTER TABLE accounts DROP COLUMN label;",
             35 => "DROP TABLE imports;",
             34 => "ALTER TABLE tasks DROP COLUMN done; ALTER TABLE tasks DROP COLUMN source;",
@@ -2346,7 +2347,7 @@ fn search_shows_a_message_kept_in_two_folders_once() {
     let same = |uid| NewMessage { message_id: Some("q@x".into()), ..message(uid, "quarterly", 1) };
     store.insert_messages(account, inbox, &[same(1)]).unwrap();
     store.insert_messages(account, archive, &[same(2)]).unwrap();
-    assert_eq!(store.search("quarterly", 10).unwrap().rows.len(), 1);
+    assert_eq!(store.search("quarterly", None, 10).unwrap().rows.len(), 1);
 }
 
 #[test]
@@ -2454,7 +2455,7 @@ fn migration_17_adds_the_date_index_and_snippets() {
     let conn = store.conn.into_inner().unwrap();
     wind_back(&conn, 16);
     let store = Store::init(conn).unwrap();
-    assert_eq!(store.search("kept", 10).unwrap().rows.len(), 1);
+    assert_eq!(store.search("kept", None, 10).unwrap().rows.len(), 1);
     assert!(store.snippets().unwrap().is_empty());
 }
 
@@ -2647,7 +2648,7 @@ fn headers_show_in_the_list_before_the_body() {
     let rows = store.list(&ListTarget::Folder(inbox), None, 10).unwrap();
     assert_eq!((rows[0].subject.as_str(), rows[0].snippet.as_str()), ("Lunch?", ""));
     assert!(!store.thread(rows[0].id).unwrap()[0].body_loaded);
-    assert_eq!(store.search("lunch", 10).unwrap().rows.len(), 1, "headers are searchable at once");
+    assert_eq!(store.search("lunch", None, 10).unwrap().rows.len(), 1, "headers are searchable at once");
 }
 
 #[test]
@@ -2671,8 +2672,8 @@ fn filling_a_body_adds_snippet_and_search_text() {
     let thread = store.thread(row.id).unwrap();
     assert!(thread[0].body_loaded);
     assert_eq!(thread[0].body_text.as_deref(), Some("Shall we try the new place on Friday"));
-    assert_eq!(store.search("friday", 10).unwrap().rows.len(), 1, "the body is in the index now");
-    assert_eq!(store.search("lunch", 10).unwrap().rows.len(), 1, "and the headers still are");
+    assert_eq!(store.search("friday", None, 10).unwrap().rows.len(), 1, "the body is in the index now");
+    assert_eq!(store.search("lunch", None, 10).unwrap().rows.len(), 1, "and the headers still are");
 }
 
 #[test]
@@ -2802,4 +2803,56 @@ fn a_backup_carries_sender_choices_notes_and_styles_by_address() {
     // Only the parts picked go in: a part left out restores nothing.
     let none = other.restore_data(&crate::backup::Data::default()).unwrap();
     assert_eq!(none, crate::backup::DataRestored::default());
+}
+
+#[test]
+fn migration_38_keeps_split_and_joined_conversations() {
+    let (store, account, inbox, _) = setup();
+    let conn = store.conn.into_inner().unwrap();
+    wind_back(&conn, 37);
+    let store = Store::init(conn).unwrap();
+    let reply = |uid: u32, parent: u32, date: i64| NewMessage {
+        in_reply_to: Some(format!("{parent}@example.com")),
+        references: vec!["1@example.com".into(), format!("{parent}@example.com")],
+        ..message(uid, "Re: Plans", date)
+    };
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[message(1, "Plans", 100), reply(2, 1, 200), reply(3, 2, 300), message(9, "Lunch", 400)],
+        )
+        .unwrap();
+    let thread = |uid: u32| -> String {
+        store.conn().query_row("SELECT thread_id FROM messages WHERE uid = ?1", [uid], |r| r.get(0)).unwrap()
+    };
+    let id = |uid: u32| -> i64 {
+        store.conn().query_row("SELECT id FROM messages WHERE uid = ?1", [uid], |r| r.get(0)).unwrap()
+    };
+    assert_eq!(thread(1), thread(3));
+    assert!(store.split_conversation(id(1)).is_err(), "the first message starts it already");
+
+    // Split at the second message: it and the third go off together; a new reply to the third follows them, even
+    // though its References name the first.
+    let undo = store.split_conversation(id(2)).unwrap();
+    assert_eq!(undo.moves.len(), 2);
+    assert_ne!(thread(1), thread(2));
+    assert_eq!(thread(2), thread(3));
+    store.insert_messages(account, inbox, &[reply(4, 3, 500)]).unwrap();
+    assert_eq!(thread(4), thread(2), "a reply follows the message it answers");
+
+    // Gone from the store and back with the next sync: still where it was put.
+    store.conn().execute("DELETE FROM messages WHERE uid = 3", []).unwrap();
+    store.insert_messages(account, inbox, &[reply(3, 2, 300)]).unwrap();
+    assert_eq!(thread(3), thread(2));
+
+    // Join Lunch into Plans; undo puts it back.
+    let joined = store.join_conversations(&[id(1), id(9)]).unwrap();
+    assert_eq!(thread(9), thread(1));
+    assert!(store.join_conversations(&[id(1), id(9)]).is_err(), "one conversation already");
+    store.undo_thread_moves(&joined).unwrap();
+    assert_ne!(thread(9), thread(1));
+    store.undo_thread_moves(&undo).unwrap();
+    assert_eq!(thread(2), thread(1));
+    assert_eq!(thread(4), thread(1), "the reply that came after the split goes back too");
 }

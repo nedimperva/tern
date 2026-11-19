@@ -30,3 +30,14 @@ export function skyAt(at: Date): "dawn" | "day" | "dusk" | "night" {
 
 /** December to February: snow on the water (the north's winter, where most of Tern's people are). */
 export const winter = (at: Date) => [11, 0, 1].includes(at.getMonth());
+
+/** A line for the few days the year turns on, in place of the scene's own (idea 135). The solstices and the
+ * equinox are taken as fixed dates: a day off in some years is fine for a greeting. */
+export function dayLine(at: Date): string | null {
+  const [m, d] = [at.getMonth(), at.getDate()];
+  if (m === 0 && d === 1) return "Inbox zero on the first day of the year. A clean start.";
+  if (m === 5 && d === 21) return "Inbox zero on the longest day. The terns up north have no night at all.";
+  if (m === 11 && d === 21) return "Inbox zero on the shortest day. From here the light comes back.";
+  if (m === 2 && d === 20) return "Inbox zero on the first day of spring. The terns are on their way north.";
+  return null;
+}

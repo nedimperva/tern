@@ -3,6 +3,7 @@
 // icons added 4.7 kB to the gzipped bundle.
 
 const PATHS = {
+  copy: ["M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z", "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"],
   activity: ["M22 12h-4l-3 9L9 3l-3 9H2"],
   menu: ["M4 5h16", "M4 12h16", "M4 19h16"],
   star: [

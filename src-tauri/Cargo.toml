@@ -29,6 +29,8 @@ tauri-plugin-autostart = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # No `zip`: release updates are a plain AppImage and an NSIS .exe, and zip 4 carries open advisories.
 tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
+# A sign-in code copied from a notification's button (idea 114), with no window in front to do it.
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 
 # Notifications: the desktop's notification service on Linux, toasts that report clicks on Windows.
 [target.'cfg(target_os = "linux")'.dependencies]

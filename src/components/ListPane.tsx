@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { go, isSaved, loadMore, searchServer, serverFound, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
+import { go, isSaved, loadMore, searchServer, searchTotal, serverFound, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
 import { open } from "../app/conversation";
 import { act } from "../app/actions";
 import { keyOf } from "../app/rows";
@@ -110,10 +110,10 @@ export function ListPane(props: {
     if (!row || document.activeElement?.classList.contains("vlist")) return "";
     return `${participants(row)}, ${row.subject || "no subject"}${row.unread ? ", unread" : ""}, ${focus() + 1} of ${rows().length}`;
   });
-  /** The search's result count; a search reads at most 500 here. */
+  /** The search's result count: everything it finds, not the page read so far (idea 107). */
   const foundCount = () => {
-    const n = rows().length;
-    return n >= 500 ? "500 here" : n === 1 ? "1 conversation" : `${n.toLocaleString()} conversations`;
+    const n = Math.max(searchTotal() ?? 0, rows().length);
+    return n === 1 ? "1 found" : `${n.toLocaleString()} found`;
   };
   /** Read later says how long each one takes to read, from what the morning screen worked out. */
   const [readMinutes, setReadMinutes] = createSignal<Map<number, number | null> | null>(null);
@@ -334,7 +334,7 @@ export function ListPane(props: {
           <Show when={rows().length}>
             <strong class="found">{foundCount()}</strong>
           </Show>
-          <Show when={rows().length >= 500}>
+          <Show when={rows().length > 1}>
             <span>· newest first</span>
           </Show>
           <Show when={partial()}>

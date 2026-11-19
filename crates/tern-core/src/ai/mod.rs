@@ -948,7 +948,7 @@ pub fn ask_mail(
     let words = ask(store, &s, model, &words_req, &mut |_| {})?;
     let words = words.lines().next().unwrap_or_default().replace(['"', ':', '-'], " ");
     // Step two: this computer's search, the accounts the AI may read, a message per conversation.
-    let found = store.search(&words, 200)?;
+    let found = store.search(&words, None, 200)?;
     let mut seen = std::collections::HashSet::new();
     let rows: Vec<_> = found
         .rows
@@ -1043,6 +1043,68 @@ pub fn suggest_task(
         bail!("The AI sent back no task. Try again.");
     }
     Ok(TaskSuggestion { title, due, note, sent_chars: req.user.len(), route: r })
+}
+
+// MARK: Translate
+
+const TRANSLATE: &str = "translate";
+const TRANSLATE_PROMPT: &str = include_str!("prompts/translate.md");
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Translation {
+    /// The message in the asked language; empty when it was in that language already.
+    pub text: String,
+    /// Kept from an earlier ask, so nothing was sent this time.
+    pub cached: bool,
+    pub sent_chars: usize,
+}
+
+/// Translates one message into `to` (idea 122), streaming the words through `on_text`. Behind the summaries
+/// switch: translating is reading the mail. Kept, so opening the message again shows it without asking.
+pub fn translate(
+    store: &Store,
+    model: &dyn Model,
+    id: i64,
+    to: &str,
+    on_text: &mut dyn FnMut(&str),
+) -> Result<Translation> {
+    let s = settings(store)?;
+    let Some(m) = store.thread(id)?.into_iter().find(|m| m.row.id == id) else {
+        bail!("That message is gone.")
+    };
+    let r = allowed(&s, Feature::Summaries, m.row.account_id)?;
+    let to: String = to.chars().filter(|c| c.is_alphanumeric() || " -()".contains(*c)).take(40).collect();
+    if to.trim().is_empty() {
+        bail!("Pick a language to translate into.");
+    }
+    let words = match (&m.body_text, &m.body_html) {
+        (Some(text), _) if !text.trim().is_empty() => own_words(text),
+        (_, Some(html)) => own_words(&html_text(html)),
+        _ => m.row.snippet.clone(),
+    };
+    let words = if s.redact { redact(&words) } else { words };
+    let user = format!("<to>{}</to>\n\n<mail>\n{}\n</mail>", to.trim(), fence(&words));
+    if user.len() > MAX_CHARS {
+        bail!("This message is too long to translate.");
+    }
+    let req = Request { provider: r.provider, model: r.model, system: TRANSLATE_PROMPT, user };
+    let key = key_hash(&req);
+    let sent_chars = req.user.len();
+    let of = |text: String, cached| Translation {
+        text: if text.trim() == "SAME" { String::new() } else { text },
+        cached,
+        sent_chars: if cached { 0 } else { sent_chars },
+    };
+    if let Some(text) = store.ai_cached(TRANSLATE, &key, &req.model)? {
+        return Ok(of(text, true));
+    }
+    let text = ask(store, &s, model, &req, on_text)?;
+    if text.is_empty() {
+        bail!("The AI sent back nothing. Try again.");
+    }
+    store.ai_keep(TRANSLATE, &key, &req.model, Some(m.row.account_id), &text)?;
+    Ok(of(text, false))
 }
 
 /// The three lines of a task answer. "none" and anything missing are empty.
@@ -1385,6 +1447,26 @@ mod tests {
                 && asked[1].user.ends_with("<question>When does the deck come?</question>")
         );
         assert_eq!(a.sent_chars, asked[0].user.len() + asked[1].user.len());
+    }
+
+    #[test]
+    fn a_message_is_translated_once_and_kept() {
+        let (store, account, id) = mailbox();
+        let model = Scripted::new("Hallo, das Deck kommt am Donnerstag.");
+        assert!(translate(&store, &model, id, "German", &mut |_| {}).is_err(), "not while AI is off");
+        turn_on(&store, account);
+        let t = translate(&store, &model, id, "German", &mut |_| {}).unwrap();
+        assert_eq!(t.text, "Hallo, das Deck kommt am Donnerstag.");
+        assert!(!t.cached && t.sent_chars > 0);
+        let req = model.asked.borrow()[0].clone();
+        assert_eq!(req.system, TRANSLATE_PROMPT);
+        assert!(req.user.starts_with("<to>German</to>") && req.user.contains("<mail>"));
+        assert!(!req.user.contains("+387"), "redacted like a summary");
+        let again = translate(&store, &model, id, "German", &mut |_| {}).unwrap();
+        assert!(again.cached, "kept, not asked again");
+        assert_eq!(model.asked.borrow().len(), 1);
+        let same = Scripted::new("SAME");
+        assert_eq!(translate(&store, &same, id, "English", &mut |_| {}).unwrap().text, "");
     }
 
     #[test]

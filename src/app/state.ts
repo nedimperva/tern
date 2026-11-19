@@ -154,8 +154,13 @@ const replyFocused = () => !!document.activeElement?.closest(".inline-reply, .ai
 /** Something is over the list and takes the keys. */
 export const dialog = () =>
   screen() || deck() !== null || reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin() && (!compose()!.inline || replyFocused())) || setup() || rail() || snoozing() !== null || labeling() !== null ||
-  viewing() !== null || askingMail();
+  viewing() !== null || askingMail() || filesOpen() || paperOpen() || eml() !== null;
 export const searching = () => query().trim() !== "";
+/** All files (`g f`, idea 108) and Paper trail (`g $`, idea 115), each over the list. */
+export const [filesOpen, setFilesOpen] = createSignal(false);
+export const [paperOpen, setPaperOpen] = createSignal(false);
+/** A `.eml` file being shown (idea 132), by path. */
+export const [eml, setEml] = createSignal<string | null>(null);
 /** Ask your mail is open (`A`, package 17 F). */
 export const [askingMail, setAskingMail] = createSignal(false);
 /** A question to open Ask your mail with (from the palette's fallback); taken once. */

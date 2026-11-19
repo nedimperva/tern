@@ -61,16 +61,16 @@ fn main() -> anyhow::Result<()> {
         store.split_unread().unwrap();
     });
     bench.report("search one word", 100, SEARCH, || {
-        store.search("invoice", 100).unwrap();
+        store.search("invoice", None, 100).unwrap();
     });
     bench.report("search a rare word", 100, SEARCH, || {
-        store.search("4999", 100).unwrap();
+        store.search("4999", None, 100).unwrap();
     });
     bench.report("search two prefixes", 100, SEARCH, || {
-        store.search("inv bud", 100).unwrap();
+        store.search("inv bud", None, 100).unwrap();
     });
     bench.report("search with filters", 100, SEARCH, || {
-        store.search("inv is:unread in:inbox", 100).unwrap();
+        store.search("inv is:unread in:inbox", None, 100).unwrap();
     });
     bench.report("conversation page (50)", 200, LIST, || {
         store.list_threads(&target, None, 50).unwrap();

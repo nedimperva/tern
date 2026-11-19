@@ -27,6 +27,9 @@ const QUIET_AFTER_FIRST_MAIL: Duration = Duration::from_secs(60);
 const TRAY: &[u8] = include_bytes!("../icons/tray.png");
 /// The same icon with a dot: unread mail in an inbox.
 const TRAY_UNREAD: &[u8] = include_bytes!("../icons/tray-unread.png");
+/// The taskbar's unread dot on Windows.
+#[cfg(windows)]
+const BADGE: &[u8] = include_bytes!("../icons/badge.png");
 /// The app icon for notifications. Only a .deb or .rpm installs it under the icon theme, so it goes in as a file.
 #[cfg(target_os = "linux")]
 const NOTICE_ICON: &[u8] = include_bytes!("../icons/128x128.png");
@@ -37,6 +40,8 @@ pub struct Desktop {
     pause_item: Mutex<Option<MenuItem<Wry>>>,
     /// Whether the tray shows the dot now, so the icon is only set when that changes.
     dot: Mutex<Option<bool>>,
+    /// The inbox's unread count last written for a status bar, so the file and the badge change only with it.
+    unread: Mutex<Option<i64>>,
     /// A `mailto:` link Tern was started with, until the window asks for it.
     pending: Mutex<Option<Mailto>>,
     news: Mutex<News>,
@@ -56,6 +61,7 @@ impl Desktop {
             tray: Mutex::new(None),
             pause_item: Mutex::new(None),
             dot: Mutex::new(None),
+            unread: Mutex::new(None),
             pending: Mutex::new(None),
             news: Mutex::new(News::default()),
         }
@@ -135,6 +141,7 @@ pub fn set_paused(app: &AppHandle, on: bool) {
 
 /// Asks the window to save what is being written and then quit; quits anyway if it does not answer.
 pub fn quit(app: &AppHandle) {
+    crate::status::clear();
     let _ = app.emit("quit", ());
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -172,6 +179,58 @@ pub fn started_with(app: &AppHandle, urls: &[String]) {
             open_links(&app, &urls);
         });
     }
+}
+
+/// The `.eml` files among the arguments Tern was started (or started again) with: a file manager passes a path or a
+/// `file://` link (idea 132).
+pub fn eml_paths(args: &[String]) -> Vec<String> {
+    args.iter()
+        .skip(1)
+        .filter_map(|a| {
+            let path = match a.strip_prefix("file://") {
+                Some(rest) => percent_decode(rest),
+                None => a.clone(),
+            };
+            path.to_lowercase().ends_with(".eml").then_some(path)
+        })
+        .collect()
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Some(b) =
+                std::str::from_utf8(&bytes[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok())
+            {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Shows each `.eml` file in Tern's viewer. At start the window needs a moment to listen first.
+pub fn open_emls(app: &AppHandle, paths: Vec<String>, at_start: bool) {
+    if paths.is_empty() {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if at_start {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        }
+        show(&app);
+        for path in paths {
+            let _ = app.emit("open-eml", path);
+        }
+    });
 }
 
 pub fn take_pending(app: &AppHandle) -> Option<Mailto> {
@@ -351,8 +410,15 @@ fn look(app: &AppHandle) -> anyhow::Result<()> {
     let Some(state) = app.try_state::<AppState>() else { return Ok(()) };
     let desktop = app.state::<Desktop>();
     let store = &state.store;
+    let unread = store.inbox_unread()?;
+    let mut last = desktop.unread.lock().unwrap();
+    if *last != Some(unread) {
+        *last = Some(unread);
+        crate::status::write(unread);
+        badge(app, unread > 0);
+    }
+    drop(last);
     if let Some(tray) = desktop.tray.lock().unwrap().as_ref() {
-        let unread = store.inbox_unread()?;
         let _ =
             tray.set_tooltip(Some(if unread > 0 { format!("Tern: {unread} unread") } else { "Tern".into() }));
         let mut dot = desktop.dot.lock().unwrap();
@@ -388,6 +454,17 @@ fn look(app: &AppHandle) -> anyhow::Result<()> {
         notify(app, &mail, Notice::New);
     }
     Ok(())
+}
+
+/// A dot over Tern's taskbar button while the inbox has unread mail (idea 130). Linux bars read `tern --status`.
+fn badge(app: &AppHandle, on: bool) {
+    #[cfg(windows)]
+    if let Some(w) = app.get_webview_window("main") {
+        let icon = if on { Image::from_bytes(BADGE).ok() } else { None };
+        let _ = w.set_overlay_icon(icon);
+    }
+    #[cfg(not(windows))]
+    let _ = (app, on);
 }
 
 /// Archives a notification's conversation through the outbox, as `e` in the inbox would.
@@ -484,8 +561,10 @@ fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest
         None => note.icon("mail-unread"),
     };
     note.action("default", "Open");
-    // One conversation can be dealt with from the notification itself.
-    if one {
+    // One conversation can be dealt with from the notification itself; a sign-in code is copied from it instead.
+    if one && code_in(&latest).is_some() {
+        note.action("copy", "Copy code").action("copy-done", "Copy and Done");
+    } else if one {
         note.action("archive", "Archive").action("reply", "Reply");
     }
     match note.show() {
@@ -547,7 +626,7 @@ fn show_plain(app: &AppHandle, summary: String, body: String) {
 #[cfg(windows)]
 fn show_plain(app: &AppHandle, summary: String, body: String) {
     let clicked = app.clone();
-    let shown = toast(app, &summary, &body, false, move |_| {
+    let shown = toast(app, &summary, &body, Buttons::None, move |_| {
         show(&clicked);
         let _ = clicked.emit("show-waiting", ());
     });
@@ -556,12 +635,26 @@ fn show_plain(app: &AppHandle, summary: String, body: String) {
     }
 }
 
+/// The buttons a toast gets: none for a count, Archive and Reply for one conversation, Copy for a sign-in code.
+#[cfg(windows)]
+#[derive(Clone, Copy)]
+enum Buttons {
+    None,
+    Mail,
+    Code,
+}
+
 /// Shows one notification as a Windows toast; a click opens the conversation, and one conversation also gets
 /// Archive and Reply. Windows reports clicks while Tern runs, which in the tray it does.
 #[cfg(windows)]
 fn show_notice(app: &AppHandle, summary: String, body: String, one: bool, latest: NewMail) {
     let clicked = app.clone();
-    if let Err(e) = toast(app, &summary, &body, one, move |action| noticed(&clicked, action, &latest)) {
+    let buttons = match (one, code_in(&latest).is_some()) {
+        (true, true) => Buttons::Code,
+        (true, false) => Buttons::Mail,
+        _ => Buttons::None,
+    };
+    if let Err(e) = toast(app, &summary, &body, buttons, move |action| noticed(&clicked, action, &latest)) {
         log::warn!("notification: {e}");
     }
 }
@@ -573,7 +666,7 @@ fn toast(
     app: &AppHandle,
     summary: &str,
     body: &str,
-    buttons: bool,
+    buttons: Buttons,
     clicked: impl Fn(Option<&str>) + Send + 'static,
 ) -> windows::core::Result<()> {
     use windows::core::{IInspectable, Interface, HSTRING};
@@ -582,10 +675,14 @@ fn toast(
     use windows::UI::Notifications::{ToastActivatedEventArgs, ToastNotification, ToastNotificationManager};
 
     let text = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
-    let buttons = if buttons {
-        r#"<actions><action content="Archive" arguments="archive"/><action content="Reply" arguments="reply"/></actions>"#
-    } else {
-        ""
+    let buttons = match buttons {
+        Buttons::Mail => {
+            r#"<actions><action content="Archive" arguments="archive"/><action content="Reply" arguments="reply"/></actions>"#
+        }
+        Buttons::Code => {
+            r#"<actions><action content="Copy code" arguments="copy"/><action content="Copy and Done" arguments="copy-done"/></actions>"#
+        }
+        Buttons::None => "",
     };
     let xml = format!(
         r#"<toast launch="open"><visual><binding template="ToastGeneric"><text>{}</text><text>{}</text></binding></visual>{buttons}</toast>"#,
@@ -615,6 +712,28 @@ fn toast(
     ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(id))?.Show(&toast)
 }
 
+/// The sign-in code a new message carries, from its subject and opening (`tern_core::otp`).
+fn code_in(m: &NewMail) -> Option<String> {
+    tern_core::otp::one_time_code(&format!("{}\n{}", m.subject, m.snippet))
+}
+
+/// Puts text on the clipboard from the engine side: the button is pressed with no Tern window in front. On Linux
+/// the text is only there while its owner lives, so the clipboard is kept for the life of Tern (it runs on in the
+/// tray).
+fn copy(text: &str) {
+    static CLIPBOARD: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
+    let mut held = CLIPBOARD.lock().unwrap();
+    if held.is_none() {
+        match arboard::Clipboard::new() {
+            Ok(c) => *held = Some(c),
+            Err(e) => return log::warn!("clipboard: {e}"),
+        }
+    }
+    if let Some(Err(e)) = held.as_mut().map(|c| c.set_text(text)) {
+        log::warn!("clipboard: {e}");
+    }
+}
+
 /// A notification was clicked (`action` None) or one of its buttons.
 fn noticed(app: &AppHandle, action: Option<&str>, latest: &NewMail) {
     match action {
@@ -629,6 +748,15 @@ fn noticed(app: &AppHandle, action: Option<&str>, latest: &NewMail) {
         Some("archive") => {
             if let Err(e) = archive(app, latest) {
                 log::warn!("archive from a notification: {e:#}");
+            }
+        }
+        Some(action @ ("copy" | "copy-done")) => {
+            let Some(code) = code_in(latest) else { return };
+            copy(&code);
+            if action == "copy-done" {
+                if let Err(e) = archive(app, latest) {
+                    log::warn!("done from a notification: {e:#}");
+                }
             }
         }
         Some(_) => {}
@@ -683,6 +811,16 @@ mod tests {
         assert!(!notices.any_other());
         assert!(notices.wants(&emails, &mail(2, false)), "its own choice wins over New mail off");
         assert!(!notices.wants(&emails, &mail(3, false)));
+    }
+
+    #[test]
+    fn eml_files_come_as_paths_or_file_links() {
+        let args: Vec<String> =
+            ["tern", "--hidden", "/home/a/Mail/bill.EML", "file:///home/a/My%20mail.eml", "mailto:x@y.z"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+        assert_eq!(eml_paths(&args), ["/home/a/Mail/bill.EML", "/home/a/My mail.eml"]);
     }
 
     #[test]

@@ -2,7 +2,7 @@ import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js"
 import type { Account, Folder, SyncState, Target } from "../api";
 import { labelColour } from "../colours";
 import { folderTree, holds, type TreeNode, unreadUnder } from "../folderTree";
-import { newPeople } from "../app/state";
+import { newPeople, setFilesOpen, setPaperOpen } from "../app/state";
 import { settings } from "../settings";
 import { AccountAvatar } from "./AccountAvatar";
 import { Icon } from "./Icon";
@@ -145,6 +145,12 @@ export function Rail(props: {
         </Item>
         <Item active={props.isTarget({ role: "marked" })} onClick={() => go({ role: "marked" })} icon="highlighter">
           <span class="name">Marks</span>
+        </Item>
+        <Item active={false} onClick={() => (setFilesOpen(true), close())} icon="paperclip">
+          <span class="name">Files</span>
+        </Item>
+        <Item active={false} onClick={() => (setPaperOpen(true), close())} icon="file-text">
+          <span class="name">Paper trail</span>
         </Item>
       </div>
       <Show when={props.searches.length}>
@@ -359,7 +365,7 @@ function Count(props: { n: number }) {
 function Item(props: {
   active: boolean;
   onClick: () => void;
-  icon?: "inbox" | "clock" | "book-open" | "highlighter" | "user-plus";
+  icon?: "inbox" | "clock" | "book-open" | "highlighter" | "user-plus" | "paperclip" | "file-text";
   /** Drawn where the icon goes (a label's dot). */
   lead?: JSX.Element;
   children: JSX.Element;

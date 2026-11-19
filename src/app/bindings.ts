@@ -33,10 +33,12 @@ import {
   toggleStar,
   unsubscribe,
   wake,
+  joinSelected,
+  splitHere,
 } from "./actions";
 import { moveMessage, open, toggleMessage, unmute, viewFiles } from "./conversation";
 import { newMessage, reply, respond } from "./composing";
-import { escape, extend, go, isSaved, move, nextSplit, runSearch, toggleSaved, toggleSelected } from "./list";
+import { escape, extend, go, isSaved, load, move, nextSplit, runSearch, toggleSaved, toggleSelected } from "./list";
 import { keyOf, withGroups } from "./rows";
 import { startTask, suggestTask, todoistOn } from "./tasks";
 import { exportable, exportList, exportName, importMbox, saveEml } from "./files";
@@ -59,12 +61,16 @@ import {
   role,
   rows,
   searchBox,
+  selection,
   setExpanded,
   setFocusMode,
   setPalette,
   setPerf,
   setReviewing,
   setSelection,
+  setFilesOpen,
+  setEml,
+  setPaperOpen,
   setSettingsOpen,
   setSetup,
   setAskingMail,
@@ -76,7 +82,8 @@ import {
   update,
 } from "./state";
 import { late, paused } from "./status";
-import { undo } from "./toast";
+import { showToast, undo } from "./toast";
+import { doneLine, putBack, recent, whereNow } from "./recent";
 
 export const bindings = (): Binding[] => [
   { keys: "j", name: "Next conversation", run: () => move(1), repeat: true },
@@ -89,6 +96,7 @@ export const bindings = (): Binding[] => [
   { keys: "End", name: "Last conversation", run: () => move(rows().length), hidden: true },
   { keys: "Enter", name: "Open conversation", context: "list", run: () => open(current()) },
   { keys: "o", name: "Open conversation", context: "list", run: () => open(current()), hidden: true },
+  { keys: "Shift+Enter", name: "Open in its own window", run: () => void inWindow() },
   { keys: "Escape", name: "Back", run: escape },
   { keys: "e", name: "Done (archive)", run: () => act("archive") },
   { keys: "E", name: "Not done (back to Inbox)", run: () => act("inbox") },
@@ -171,6 +179,8 @@ export const bindings = (): Binding[] => [
   { keys: "g h", name: "Go to Snoozed", run: () => go({ role: "snoozed" }) },
   { keys: "g r", name: "Go to Read later", run: () => go({ role: "later" }) },
   { keys: "g m", name: "Go to Marks (what you marked and noted)", run: () => go({ role: "marked" }) },
+  { keys: "g f", name: "All files: every attachment, by kind", run: () => setFilesOpen(true) },
+  { keys: "g $", name: "Paper trail: receipts, invoices and orders", run: () => setPaperOpen(true) },
   { keys: "g s", name: "Go to Starred", run: () => go({ role: "starred" }) },
   { keys: "g e", name: "Go to Done (Archive)", run: () => go({ role: "archive" }) },
   { keys: "g t", name: "Go to Sent", run: () => go({ role: "sent" }) },
@@ -199,6 +209,12 @@ export const bindings = (): Binding[] => [
   { keys: "Ctrl+k", name: "Command palette", run: () => setPalette(!palette()), hidden: true },
 ];
 
+/** The open or focused conversation in a window of its own (idea 123). */
+async function inWindow() {
+  const r = openRow() ?? current();
+  if (r) await api.openWindow(r.id, r.subject || "(no subject)").catch((e) => showToast(String(e), []));
+}
+
 /** The conversation's `…` menu: its actions in the order people reach for them, each with its key. */
 // In groups, with a rule between them (idea 21): answer, sort it, block, throw it away, look at it.
 const MENU_KEYS: [string, string][] = [
@@ -216,6 +232,7 @@ const MENU_KEYS: [string, string][] = [
   ["#", "away"],
   ["O", "view"],
   ["F", "view"],
+  ["Shift+Enter", "view"],
 ];
 export const menu = (all: Binding[]) => {
   const items: MenuItem[] = MENU_KEYS.flatMap(([k, group]) => {
@@ -228,6 +245,8 @@ export const menu = (all: Binding[]) => {
   // The message the keys are on, else the newest: its source from the server, as a file.
   const m = messages[messageFocus()] ?? messages[messages.length - 1];
   if (m) items.push({ name: "Save as .eml", group: "view", run: () => void saveEml(m.id) });
+  // Not the first message: splitting there would change nothing.
+  if (m && messages.indexOf(m) > 0) items.push({ name: "Split the conversation here", group: "sort", run: () => void splitHere(m) });
   return items;
 };
 
@@ -263,6 +282,29 @@ export const commands = (all: Binding[]): Command[] => [
   ...blocking().map((b) => ({ ...b, group: "Actions" })),
   ...(exportable() ? [{ name: `Export ${exportName()} as mbox`, group: "Actions", run: () => void exportList() }] : []),
   { name: "Import an mbox file…", group: "Actions", run: () => void importMbox() },
+  { name: "Open an .eml file…", group: "Actions", run: () => void api.pickFiles().then((p) => p[0] && setEml(p[0])) },
+  ...(selection().size > 1 ? [{ name: `Join the ${selection().size} selected into one conversation`, group: "Actions", run: () => void joinSelected() }] : []),
+  ...(openRow() && messages.length > 1 && messageFocus() > 0
+    ? [{ name: "Split the conversation at this message", group: "Actions", run: () => void splitHere(messages[messageFocus()]) }]
+    : []),
+  ...(recent().length
+    ? [
+        {
+          // Where things went, after the undo window (idea 137): each opens the mail where it is now.
+          name: "Recently done…",
+          group: "Go to",
+          args: () =>
+            recent().flatMap((d) => [
+              {
+                name: doneLine(d),
+                run: () =>
+                  void whereNow(d).then((row) => (row ? open(row, false) : showToast("That mail is no longer here", []))),
+              },
+              ...(d.from ? [{ name: `Put back in the Inbox: ${d.rows.length === 1 ? d.rows[0].subject || "no subject" : `${d.rows.length} conversations`}`, run: () => void putBack(d).then(() => (showToast("Back in the Inbox", []), load())) }] : []),
+            ]),
+        },
+      ]
+    : []),
   {
     name: "Move to…",
     group: "Actions",

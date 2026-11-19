@@ -50,7 +50,7 @@ export function typing(e: KeyboardEvent): boolean {
  * A keydown handler for `bindings`. Chords: after a key that starts one ("g"), the next key completes it; anything
  * else cancels it. Bindings for the current context win over context-free ones with the same key.
  */
-export function keyHandler(bindings: () => Binding[], context: () => Context, blocked: () => boolean) {
+export function keyHandler(bindings: () => Binding[], context: () => Context, blocked: () => boolean, ran?: (b: Binding) => void) {
   let pending = "";
   return (e: KeyboardEvent) => {
     // Something nearer the keyboard (the compose editor) already handled it: Ctrl+K there is a link.
@@ -73,6 +73,7 @@ export function keyHandler(bindings: () => Binding[], context: () => Context, bl
       e.preventDefault();
       if (e.repeat && !found.repeat) return;
       found.run();
+      ran?.(found);
       return;
     }
     if (all.some((b) => b.keys.startsWith(`${name} `))) {

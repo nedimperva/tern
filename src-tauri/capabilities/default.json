@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the main window may do.",
-  "windows": ["main"],
+  "description": "What Tern's windows may do: the main one and a conversation in its own (mail-<id>).",
+  "windows": ["main", "mail-*"],
   "permissions": ["core:default", "core:window:allow-destroy", "core:window:allow-hide", "core:window:allow-set-theme", "core:window:allow-minimize", "core:window:allow-toggle-maximize", "core:window:allow-internal-toggle-maximize", "core:window:allow-start-dragging", "core:window:allow-close", "opener:default"]
 }

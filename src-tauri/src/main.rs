@@ -6,6 +6,7 @@ mod desktop;
 mod diagnostics;
 mod links;
 mod omarchy;
+mod status;
 mod update;
 
 use std::collections::HashMap;
@@ -149,6 +150,10 @@ pub fn start_account(app: &AppHandle, state: &AppState, account: Account) {
 }
 
 fn main() {
+    // For a status bar: print and leave, before the single-instance check would wake the running Tern.
+    if std::env::args().any(|a| a == status::ARG) {
+        return status::print();
+    }
     // WebKitGTK's DMA-BUF renderer leaves the window blank or crashes on some Wayland setups (NVIDIA among them).
     // Set before any thread starts; someone who sets the variable themselves keeps their choice.
     #[cfg(target_os = "linux")]
@@ -164,6 +169,7 @@ fn main() {
             if argv.iter().any(|a| a == desktop::COMPOSE) {
                 let _ = app.emit("compose", ());
             }
+            desktop::open_emls(app, desktop::eml_paths(&argv), false);
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_autostart::init(
@@ -189,6 +195,7 @@ fn main() {
                 links.push("mailto:".into());
             }
             desktop::started_with(app.handle(), &links);
+            desktop::open_emls(app.handle(), desktop::eml_paths(&std::env::args().collect::<Vec<_>>()), true);
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
                 desktop::open_links(&handle, &event.urls().iter().map(|u| u.to_string()).collect::<Vec<_>>())
@@ -288,6 +295,7 @@ fn main() {
             commands::ai_test,
             commands::ai_cached_summary,
             commands::ai_summarize,
+            commands::ai_translate,
             commands::ai_replies,
             commands::ai_ask,
             commands::ai_write,
@@ -302,6 +310,8 @@ fn main() {
             commands::set_mark_note,
             commands::delete_mark,
             commands::search,
+            commands::search_count,
+            commands::message_rows,
             commands::search_server,
             commands::apply,
             commands::undo,
@@ -344,6 +354,13 @@ fn main() {
             commands::person,
             commands::set_person_note,
             commands::person_files,
+            commands::all_files,
+            commands::paper_candidates,
+            commands::save_text,
+            commands::open_eml,
+            commands::import_eml,
+            commands::open_window,
+            commands::reply_in_main,
             commands::todoist_connected,
             commands::todoist_connect,
             commands::todoist_projects,
@@ -357,6 +374,9 @@ fn main() {
             commands::check_tasks,
             commands::muted,
             commands::muted_conversations,
+            commands::split_conversation,
+            commands::join_conversations,
+            commands::undo_thread_moves,
             commands::reading_minutes,
             commands::take_mailto,
             commands::quit,

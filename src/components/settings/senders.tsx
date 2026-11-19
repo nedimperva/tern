@@ -177,6 +177,7 @@ export function SendersSettings() {
       </Group>
       <Choices />
       <Muted />
+      <PeopleGroups />
     </>
   );
 }
@@ -226,6 +227,38 @@ function Muted() {
         </For>
       </Group>
     </Show>
+  );
+}
+
+/** Contact groups (idea 126): saved from a conversation's … menu, typed by name in To. Here to look over and
+ * remove; making one starts from the people of a mail. */
+function PeopleGroups() {
+  const remove = (name: string) => setSetting("groups", settings.groups.filter((g) => g.name !== name));
+  return (
+    <Group title="Groups" note="type a group's name in To or Cc to bring everyone in">
+      <For
+        each={settings.groups}
+        fallback={<p class="group-empty">No groups yet. In a conversation, … → Save these people as a group.</p>}
+      >
+        {(g) => (
+          <div class="list-row">
+            <span class="badge-mark quiet">
+              <Icon name="mail" size={15} />
+            </span>
+            <span class="who">
+              <strong>{g.name}</strong>
+              <span class="sub" title={g.emails.join(", ")}>
+                {g.emails.length === 1 ? "1 person" : `${g.emails.length} people`}: {g.emails.slice(0, 3).join(", ")}
+                {g.emails.length > 3 ? ", …" : ""}
+              </span>
+            </span>
+            <button type="button" onClick={() => remove(g.name)}>
+              Remove
+            </button>
+          </div>
+        )}
+      </For>
+    </Group>
   );
 }
 

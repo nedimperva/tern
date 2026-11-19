@@ -34,6 +34,7 @@ import {
   unsubscribed,
 } from "./state";
 import { showToast } from "./toast";
+import { remember } from "./recent";
 
 const DONE: Record<Exclude<Action, object>, string> = {
   archive: "Archived",
@@ -101,6 +102,7 @@ export async function snoozeUntil(due: number) {
   }
   if (snoozedView) void load();
   const what = hit.length === 1 ? "Snoozed" : `Snoozed ${hit.length} conversations`;
+  remember(`${what}: ${hit[0].subject || "no subject"}`, hit);
   showToast(`${what} until ${until(due)}`, [], undefined, async () => {
     await api.unsnooze(ids);
     void load();
@@ -120,6 +122,7 @@ export async function shelve(hit = targets()) {
     return showToast(String(e), []);
   }
   const said = hit.length === 1 ? (on ? "On the Read later shelf" : "Back in the inbox") : `${hit.length} conversations ${on ? "on the Read later shelf" : "back in the inbox"}`;
+  remember(said, hit);
   showToast(said, [], undefined, async () => {
     await api.readLater(ids, !on);
     void load();
@@ -214,7 +217,10 @@ export async function act(action: Action, hit = targets(), announce = true): Pro
     countCleared(cleared);
     const uncount = cleared ? () => countCleared(-cleared) : undefined;
     // One conversation is named, so the pill says which one went (idea 18).
-    if (announce) showToast(hit.length === 1 ? `${done}: ${hit[0].subject || "no subject"}` : `${done} (${hit.length} conversations)`, token, uncount, undoDrafts);
+    const said = hit.length === 1 ? `${done}: ${hit[0].subject || "no subject"}` : `${done} (${hit.length} conversations)`;
+    if (announce) showToast(said, token, uncount, undoDrafts);
+    // Moves are what people later look for (idea 137); Done and Trash can be put back from where they went.
+    if (announce && moves(action)) remember(said, hit, action === "archive" ? { role: "archive" } : action === "trash" ? { role: "trash" } : undefined);
     return token;
   } catch (e) {
     showToast(String(e), []);
@@ -347,5 +353,33 @@ export async function restartToUpdate() {
     await api.restartToUpdate();
   } catch (e) {
     showToast(`The update didn't install: ${e}`, []);
+  }
+}
+
+/** Splits the open conversation at the message the keys are on: it and what follows become their own (idea 110).
+ * Local only, with an undo; the shape outlasts a resync. */
+export async function splitHere(at: MessageRow | undefined) {
+  if (!at) return;
+  try {
+    const undoIt = await api.splitConversation(at.id);
+    showToast("Split into its own conversation", [], () => load(), () => api.undoThreadMoves(undoIt).then(() => load()));
+    load();
+  } catch (e) {
+    showToast(String(e), []);
+  }
+}
+
+/** Joins the selected conversations into one, the focused (or first) one's (idea 110). */
+export async function joinSelected() {
+  const hit = targets();
+  if (hit.length < 2) return showToast("Select the conversations to join first (x)", []);
+  const first = current() && hit.some((r) => keyOf(r) === keyOf(current()!)) ? current()! : hit[0];
+  try {
+    const undoIt = await api.joinConversations([first.id, ...hit.filter((r) => r !== first).map((r) => r.id)]);
+    setSelection(new Set<string>());
+    showToast(`Joined ${hit.length} conversations`, [], () => load(), () => api.undoThreadMoves(undoIt).then(() => load()));
+    load();
+  } catch (e) {
+    showToast(String(e), []);
   }
 }

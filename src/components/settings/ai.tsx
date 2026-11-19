@@ -11,6 +11,7 @@ import { aiRoute, setSetting, settings, type AiFeatureKey, type AiRoute, type Ai
 import { Icon } from "../Icon";
 import { accountName, Chip, Group, lastDay, Preview, Row, Segmented, Switch } from "./shared";
 import { Dropdown } from "../Dropdown";
+import { ownLanguage } from "../Translation";
 
 const PROVIDERS: { id: AiProvider; company: string; family: string; host: string; keys: string; placeholder: string }[] = [
   { id: "anthropic", company: "Anthropic", family: "Claude", host: "api.anthropic.com", keys: "console.anthropic.com", placeholder: "sk-ant-…" },
@@ -381,6 +382,17 @@ export function AiSettingsPage(props: { accounts: Account[]; /** Opens Settings 
               {used().toLocaleString()} of {ai().dailyTokens > 0 ? ai().dailyTokens.toLocaleString() : "no limit"}
             </span>
           </Row>
+          <Row title="Translate to" help="Translate in a message's … menu writes in this language. It counts as a summary: on with Summaries.">
+            <Dropdown
+              label="Translate to"
+              value={settings.translateTo}
+              choices={[
+                { value: "", label: `${ownLanguage()} (this computer's)` },
+                ...LANGUAGES.filter((l) => l !== ownLanguage()).map((l) => ({ value: l, label: l })),
+              ]}
+              onChange={(v) => setSetting("translateTo", v)}
+            />
+          </Row>
           <Row title="Daily limit" help="Small models cost a fraction of the big ones: summaries and replies need little.">
             <Dropdown
               label="Daily limit"
@@ -451,6 +463,9 @@ export function AiStylePage(props: { accounts: Account[]; /** Opens Settings →
 }
 
 /** The features of step 3: the name in `AiSettings.uses`, the switch that turns each on, and what it sends. */
+// The languages offered beside the computer's own; most of Tern's mail is in these.
+const LANGUAGES = ["English", "Bosnian", "Croatian", "Serbian", "German", "French", "Italian", "Spanish", "Portuguese", "Dutch", "Polish", "Turkish", "Swedish"];
+
 const FEATURES: { key: AiFeatureKey; toggle: "summaries" | "replies" | "writing" | "voice"; name: string; keys: string; sends: string }[] = [
   { key: "summaries", toggle: "summaries", name: "Summaries", keys: "Shift S", sends: "Each message's sender, date and text, without quoted replies" },
   { key: "replies", toggle: "replies", name: "Suggested replies", keys: "Q", sends: "The same as a summary, plus your style note if you use one" },
