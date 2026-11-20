@@ -7,6 +7,12 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-20
+
+Finding and following through: all your files in one place, a paper trail of receipts, sign-in codes you copy
+from the row, conversations you can split or join, translation, a conversation in its own window, `.eml` files and
+a Waybar module, with a new compose header.
+
 ### Added
 
 - All files (`g f`, or Files in the sidebar): every attachment you received or sent, newest first, by kind and by
@@ -789,7 +795,8 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/nedimperva/tern/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/nedimperva/tern/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/nedimperva/tern/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/nedimperva/tern/compare/v2.1.0...v2.2.0
