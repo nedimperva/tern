@@ -8659,6 +8659,11 @@ button.link.danger {
 .compose.with-ai:not(.inline) {
   padding: 0;
 }
+/* Writing help sits beside the text, not in its room: the dialog grows by the sidebar's width (and the AI keeps the
+   same writing width it had before it opened), down to what the window allows. */
+.compose.with-ai:not(.inline):not(.focus) {
+  width: min(calc(740px + 300px), 96vw);
+}
 .compose.with-ai > .compose-main {
   padding: 0;
 }
