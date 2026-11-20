@@ -351,56 +351,47 @@ none).
 
 ### 4.4 Compose
 
-- New mail: a centred modal 720 × up to 80 % height, `--bg-1`. Reply: inline at the bottom of the conversation, same internals.
-- Top row: the From pill (account colour dot, "From Name · address ▾") when > 1 identity; then, right-aligned,
-  "✓ Saved" / "Saving…" in `--fg-2`, and icon buttons Minimize (`Ctrl+Shift+M`), Focus (`Ctrl+Shift+F`) and Close
-  (`Esc`, keeps the draft). An inline reply has no Minimize or Focus.
-- Top (T1, 2026-11-02): the subject first, as the sheet's title (24 px 600, "Subject" as placeholder), then the
-  people in small `--t-md` lines under it: `to` (placeholder "add people", `Cc` `Bcc` toggles at its right end, or
-  `Ctrl+Shift+C/B`), then `cc` `bcc` when used. No rules between rows. People are names with a dashed
-  `--line-strong` underline (× on hover), outside people in `--warn-fg` with a `--warn` underline. The sheet is
-  `--bg-0` with a `--line-strong` border, 44 px side padding.
-- Signature (S): behind its own line. Folded: "▸ Name · signature" in `--fg-2` and a dashed rule. Open: "▾ Signature",
-  the account's signatures and None as words on a `--bg-2` track (the one in the text on `--bg-0`, one click
-  switches; 2026-11-02, a drop-down there felt slow), the rule and Fold in `--accent`; the signature sits under it behind a 2 px
-  `--line` rule. It opens on a click, or when the caret goes in; it folds on Fold, or when the caret leaves it
-  unchanged. A click under the text puts the caret above it.
-  The line sits at the foot of the text area (min 220 px) while the mail is short, in the dialog as in focus. An HTML signature folds the same way. It always goes
-  out whole, and the word count never counts it.
-- Editor body: 15 px / 1.65 in the dialog (`--t-rd` inline), min 160 px, grows with content. Formatting bar appears only on text selection, floating above the selection: B I U S · link · list · quote.
-- Attachments: cards 132 px wide (picture thumbnail, else the file kind's icon; name and size; × on hover) and a
-  size bar against 25 MB, `--warn` from 70 %, `--danger` over. Files dragged over the window show a dashed
-  `--accent` drop zone over compose.
+- New mail (Direction B — Address-First Studio): a centred modal up to 740 px wide on `--bg-0` with a `--line-strong`
+  border and a tinted `--soft` header cap (`From → To → Cc/Bcc → Subject`, separated by a `--line` rule) over a pure
+  writing canvas. Window controls (Minimize `Ctrl+Shift+M`, Focus `Ctrl+Shift+F`, Close `Esc`) sit on the right of the
+  `From` row so no empty bar sits above it.
+- Reply: inline at the bottom of the conversation on `--soft` with a `--line` border. A single compact top row holds
+  `↳ To`, recipient chips, `From` (when > 1 identity), `Cc` / `Bcc` toggles and `×`, with no extra header row above it.
+- People are soft pills with initials (`--bg-2`, × on hover); outside people use `--warn-soft` and `--warn-fg`.
+- Signature (peek drawer + optional body pin): the editor body stays pure (the text signature stays inside the
+  ProseMirror document hidden behind `.sig-hidden` so drafts, outline and sends always carry it, and HTML signatures
+  join on send). A footer pill (`[pen] Name ▾`, or `No signature ▾` — always reachable even when None or before any
+  signature exists) opens an anchored peek drawer showing a live preview (text or rendered `HtmlFrame` for HTML
+  signatures), a one-click segmented switcher (+ `None`), a **Show in email** toggle that pins a live preview block
+  below the body, and inline **Edit** (for text signatures: **This email only** with a Reset button, or **Update
+  "<name>"** saved directly via `saveSignature`; for HTML signatures: paste/HTML edit; plus **New** and a jump to
+  Settings → Signatures). `Ctrl+Shift+S` still cycles through signatures and None.
+- Editor body: 15 px / 1.65 in the dialog (`--t-rd` inline), grows with content. Formatting bar appears only on text
+  selection, floating above the selection: B I U S · link · list · quote.
+- Attachments: folded tray above the footer (one line with count, total size and names; open, one row per file) and a
+  size warning past 70 % / 100 % of 25 MB. Files dragged over the window show a dashed `--accent` drop zone.
 - Checks before sending, one line each above the footer, never a dialog: "You wrote “u prilogu”, but nothing is
   attached" (Attach… / Send anyway; words in many languages, src/attachmentWords.ts, plus the person's own) and
   "There's no subject" on `--warn-soft`; "x is outside example.com" on `--bg-2` when outside people are mixed
   with the sender's own, dismissible. Sending again while they show sends anyway.
 - Only Send sends: the button, `Ctrl Enter` or the menu. `Enter` in a field (Subject, an empty To) never does.
-- The sheet starts 6 vh from the top and never runs past the window: it scrolls inside, the footer staying in
-  sight at its bottom.
+- The sheet starts 6 vh from the top and never runs past the window: it scrolls inside, the footer staying sticky at
+  its bottom.
 - Long mail: the dialog never widens and has no outline; it grows to the window's height, then scrolls with the
   footer in sight. From 150 words or 16 paragraphs (until 120 and 13), one `--soft` line above the footer offers
   focus ("Open in focus  Ctrl Shift F", × hides it for this mail).
-- Footer (G, above a `--line` rule): "from ● address ▾" when there is more than one identity, then "Saved · N words"
-  (words once there are some); at the right attach and AI, a ⋯ menu (Send & Done, Send later…, Remind me if no
-  reply…, Snippet…, the signatures, Discard draft) and Send last. While the person types, the tools, ⋯ and the top
-  row's buttons fade out; a 1.2 s pause, the mouse or focus brings them back. Send never fades.
-- Focus (F, `Ctrl+Shift+F`): the whole window on `--bg-2` (the desk), Exit focus at the top right. The page is a
-  white sheet (V1): `--bg-0`, up to 820 px wide with 64 px sides, rounded top corners, a soft shadow. A 640 px column
-  keeps the subject (28 px) and people editable at its top; the text below runs the window's height at 17 px / 1.75,
-  "Start writing" while empty, the paragraph being written in full colour. The outline is a 220 px column on the
-  left, lying on the desk (hidden under 900 px wide, or with `Ctrl+Shift+O`): each paragraph's first words, a short line over a real
-  paragraph bold, "asks" on parts that ask, the one where the caret is on `--bg-0`. Click goes there, drag
-  moves a part, `Alt ↑/↓` moves the part the caret is in. If the first ask is below the first part, one
-  `--warn-soft` note says where it is (Move it up / Leave it). The signature is the same folded line as in the dialog
-  (S1): at the foot of the sheet while the mail is short, right after the text once it is long. The footer is a
-  floating pill at the bottom: Saved · words · minutes, attach, AI, Send.
-- Signature switching: the open signature line's picker, the ⋯ menu, or `Ctrl+Shift+S` to step through them and
-  None. Changing From brings the new account's.
+- Footer (above a `--line` rule): Attach, Snippet, AI on the left; a divider and the interactive Signature pill; then
+  `Saved · N words` (or brief signature status feedback); at the right, quiet Discard (`--fg-2`, `--danger` on hover)
+  and Send (`Ctrl ↵`) split button with a crisp `--raise` edge. While typing, tools and window icons soften to 35 %
+  opacity and return on pause, pointer move or focus. Send never fades.
+- Focus (F, `Ctrl+Shift+F`): the whole window on `--bg-2` (the desk), Exit focus at the top right of the cap. The page
+  is a white sheet (`--bg-0`, up to 820 px wide with 64 px sides, rounded top corners, soft shadow). A 640 px column
+  keeps `From`, recipients and Subject (24 px) editable over a transparent cap; the text runs at 17 px / 1.75 with the
+  active paragraph in full colour. The outline is a 220 px column on the left (hidden under 900 px wide, or with
+  `Ctrl+Shift+O`). The footer floats as a pill at the bottom with tools, the signature pill, `Saved · words · min` and
+  Send.
 - Minimized: the dialog hides (its editor kept) and a 320 px card waits bottom right: subject, recipients, the
   start of the text, Saved. Click or `Ctrl+Shift+M` opens it again; the app's keys work meanwhile.
-- Focus mode: compose fills the window, fields hidden behind a one-line summary, the text in a 640 px column at
-  16 / 1.7, every paragraph but the caret's at 45 % opacity; word count top right; `Esc` leaves.
 - Snippet picker (`;`): a 600 px popover, matches on the left (name, `;shortcut`, keys), and on `--soft` to the
   right the pointed snippet as it would go in, filled for the person written to.
 - Autocomplete: dropdown under the field, 5 rows, avatar initials + name + address; `Enter`/`Tab` picks.

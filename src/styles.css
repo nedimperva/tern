@@ -8628,9 +8628,8 @@ button.link.danger {
   align-items: center;
 }
 
-/* Paper (ui.md 4.4): compose is a sheet on the warm ground. Who, from where and about what read as one quiet block
-   of words, not a form; the subject is the sheet's title and the text sits at reading size in a measure. */
-/* The sheet always fits the window: it starts higher than other dialogs and scrolls inside once the mail is long. */
+/* Compose Direction B — Address-First Studio (ui.md 4.4): a structured tinted cap (From -> To -> Subject) over a
+   pure writing canvas, with the signature reachable from a footer pill + peek drawer (and optional body pin). */
 .compose-overlay:not(.focused) {
   padding-top: 6vh;
 }
@@ -8638,40 +8637,119 @@ button.link.danger {
   max-height: calc(100vh - var(--titlebar-h) - 12vh);
 }
 .compose:not(.inline) {
-  width: min(760px, 92vw);
+  width: min(740px, 92vw);
   background: var(--bg-0);
   border: 1px solid var(--line-strong);
-  padding: var(--s-3) 44px var(--s-3);
+  padding: 0;
+  overflow: hidden;
+}
+.compose.inline {
+  padding: 0;
+  border: 1px solid var(--line);
+  background: var(--soft);
+}
+.compose-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
 }
 .compose.with-ai:not(.inline) {
   padding: 0;
 }
 .compose.with-ai > .compose-main {
-  padding: var(--s-3) 44px var(--s-3);
+  padding: 0;
 }
-.compose-head {
-  min-height: 24px;
-  margin-bottom: 0;
+
+/* Header cap: tinted band in modal, clean single row in inline reply, transparent inside 640px column in focus. */
+.compose-cap {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-3) var(--s-5);
+  background: var(--soft);
+  border-bottom: 1px solid var(--line);
 }
-/* T1: the subject first, as the sheet's title; the people in small lines under it ("to …", "cc …"). */
+.compose-cap.inline-cap {
+  padding: 10px var(--s-4);
+  background: transparent;
+}
+.compose-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.compose-top .from-row {
+  flex: 1;
+  min-width: 0;
+}
+.compose-win {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  margin-right: -4px;
+}
 .compose .fields {
   display: flex;
   flex-direction: column;
-  margin-bottom: var(--s-4);
+  gap: 2px;
+  margin: 0;
   font-size: var(--t-md);
   color: var(--fg-1);
 }
 .compose .field {
   border-bottom: 0;
-  min-height: 26px;
+  min-height: 28px;
   padding: 0;
   gap: 2px var(--s-2);
 }
 .compose .field .label {
-  width: auto;
-  min-width: 22px;
+  width: 52px;
+  flex: none;
   font-size: var(--t-md);
   color: var(--fg-2);
+}
+.compose-cap.inline-cap .field .label {
+  width: auto;
+  min-width: 22px;
+}
+.inline-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.inline-top .field.recipients {
+  flex: 1;
+  min-width: 0;
+}
+.inline-reply-mark {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  color: var(--fg-2);
+  flex: none;
+}
+.inline-top-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex: none;
+}
+.cap-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: var(--line-strong);
+}
+.compose .icon-button.compact {
+  width: 24px;
+  height: 24px;
 }
 .compose .field input {
   font-size: var(--t-md);
@@ -8681,7 +8759,53 @@ button.link.danger {
   color: var(--fg-2);
 }
 .compose .suggestions {
+  left: 60px;
+}
+.compose.inline .suggestions {
   left: 28px;
+}
+/* From identity: soft pill with account colour dot in the cap, static when there is only one identity. */
+.compose-cap .from-pick {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-2);
+  border-radius: 999px;
+  padding: 0 2px;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  min-width: 0;
+  max-width: 100%;
+}
+.compose-cap .from-pick .dot,
+.compose-cap .from-static .dot {
+  position: static;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.compose-cap .from-pick .dropdown {
+  max-width: 280px;
+  padding: 2px 6px;
+  min-height: 24px;
+  font-size: var(--t-sm);
+}
+.compose-cap .from-static {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compose-cap.inline-cap .from-pick {
+  background: transparent;
 }
 /* People as soft pills with their initials (idea 33), like everywhere else they appear, so a wrong pick stands out. */
 .compose .chip {
@@ -8717,92 +8841,119 @@ button.link.danger {
   border-bottom: 1px dashed var(--danger);
 }
 .compose .field.subject {
-  margin: 2px 0 var(--s-1);
+  margin-top: 2px;
 }
 .compose .field.subject input {
   min-width: 0;
-  padding: 0;
-  font: 600 24px / 1.3 var(--font);
+  padding: 2px 0;
+  font: 600 16px / 1.35 var(--font);
   color: var(--fg-0);
 }
 .compose .field.subject input::placeholder {
   color: var(--fg-2);
   font-weight: 500;
 }
+
+/* Pure writing body. */
+.compose-body {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-4) var(--s-5) var(--s-3);
+}
+.compose.inline .compose-body {
+  padding: var(--s-3) var(--s-4) var(--s-2);
+}
+.compose .editor {
+  margin-top: 0;
+}
 .compose:not(.inline) .editor-wrap,
-.compose:not(.inline) .ai-try,
-.compose:not(.inline) .html-sig {
+.compose:not(.inline) .ai-try {
   width: 100%;
-  max-width: 600px;
 }
 .compose:not(.inline) .editor-body .ProseMirror {
   font-size: 15px;
   line-height: 1.65;
+  padding-top: 0;
 }
 
-/* S: the signature behind its own line. Folded, the line is all there is; open, the line holds the picker and
-   Fold, and the signature sits under it behind a thin rule. */
+/* Signature in the editor stays hidden (still in the document for drafts/send); compose previews and edits it via the
+   footer drawer or optional pinned preview. */
 .editor-body .ProseMirror .sig-hidden {
   display: none;
 }
-.editor-body .ProseMirror .sig-open {
-  margin-left: 2px;
-  padding-left: var(--s-3);
-  border-left: 2px solid var(--line);
-  color: var(--fg-1);
-}
-.sig-line {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  margin: var(--s-1) 0 var(--s-2);
-  font: var(--t-md) / 1.4 var(--font);
-  color: var(--fg-2);
-  user-select: none;
-  white-space: nowrap;
-}
-.sig-line .sig-toggle,
-.sig-line .sig-fold-button {
-  padding: 2px 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.sig-line .sig-toggle:hover {
-  color: var(--fg-0);
-}
-.sig-line .sig-fold-button {
-  color: var(--accent);
-}
-/* Folded, which signature is in the mail: its name from Settings, quiet beside the line's label. */
-.sig-line .sig-name {
-  max-width: 24ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 0 var(--s-2);
-  border-radius: var(--r-sm);
-  background: var(--bg-2);
-  color: var(--fg-1);
-  font: var(--t-sm) / 1.6 var(--font);
-}
-.sig-line .rule {
-  flex: 1;
+
+/* Optional pinned signature block below the body ("Show in email"). */
+.sig-pinned {
+  margin-top: var(--s-3);
+  padding-top: var(--s-2);
   border-top: 1px dashed var(--line);
 }
-/* The account's signatures as words on the open line; the one in the text is marked. */
+.sig-pinned-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin-bottom: 6px;
+  font-size: var(--t-xs);
+  color: var(--fg-2);
+}
+.sig-pinned-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.sig-pinned-label strong {
+  color: var(--fg-1);
+  font-weight: 600;
+}
+.sig-edited-tag {
+  padding: 0 5px;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+.sig-pinned-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.sig-pinned-actions .link {
+  font-size: var(--t-xs);
+}
+.sig-pinned-actions .link.muted {
+  color: var(--fg-2);
+}
+.sig-pinned-body {
+  margin-left: 2px;
+  padding-left: var(--s-3);
+  border-left: 2px solid var(--line-strong);
+}
+.sig-preview-text {
+  white-space: pre-wrap;
+  font: var(--t-md) / 1.5 var(--font);
+  color: var(--fg-1);
+}
+.sig-preview-empty {
+  font: var(--t-sm) / 1.5 var(--font);
+  font-style: italic;
+  color: var(--fg-2);
+}
+
+/* Segmented signature choices (shared by the drawer switcher and edit scope toggle). */
 .sig-choices {
   margin: 0;
   border: 0;
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 2px;
   padding: 2px;
   border-radius: var(--r-md);
   background: var(--bg-2);
 }
 .sig-choices button {
-  padding: 1px var(--s-2);
+  padding: 2px var(--s-2);
   border: 0;
   border-radius: var(--r-sm);
   background: none;
@@ -8817,73 +8968,312 @@ button.link.danger {
   background: var(--bg-0);
   color: var(--fg-0);
   font-weight: 500;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  box-shadow: var(--raise);
   cursor: default;
 }
-.html-sig .html-signature {
-  margin-left: 2px;
-  padding-left: var(--s-3);
-  border-left: 2px solid var(--line);
+
+/* Anchored Signature Peek & Edit Drawer (Portal). */
+.sig-drawer {
+  position: fixed;
+  z-index: 900;
+  width: min(430px, calc(100vw - 24px));
+  max-height: min(460px, calc(100vh - 32px));
+  overflow-y: auto;
+  padding: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  color: var(--fg-0);
+}
+.sig-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-md);
+}
+.sig-drawer-head .spacer,
+.sig-edit-foot .spacer,
+.sig-drawer-foot .spacer {
+  flex: 1;
+}
+.sig-pin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  cursor: pointer;
+}
+.sig-pin-btn:hover {
+  color: var(--fg-0);
+}
+.sig-pin-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sig-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+.sig-close-btn:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.sig-drawer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.sig-bar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.sig-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg-0);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+.sig-edit-btn:hover {
+  background: var(--bg-3);
+}
+.sig-drawer-box {
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+}
+.sig-drawer-box .html-frame {
+  width: 100%;
+  border: 0;
+  border-radius: var(--r-sm);
+  display: block;
+}
+.sig-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.sig-scope-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.sig-name-input {
+  width: 100%;
+  padding: 5px var(--s-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--fg-0);
+  font-size: var(--t-md);
+}
+.sig-paste-box {
+  padding: var(--s-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--soft);
+  color: var(--fg-2);
+  font-size: var(--t-xs);
+  text-align: center;
+  cursor: text;
+}
+.sig-edit-area {
+  width: 100%;
+  padding: 6px var(--s-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--fg-0);
+  font: var(--t-md) / 1.5 var(--font);
+  resize: vertical;
+}
+.sig-edit-area.html-source {
+  font: var(--t-sm) / 1.45 var(--mono);
+}
+.sig-error {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--danger);
+}
+.sig-edit-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.sig-edit-foot .link.muted,
+.sig-drawer-foot .link.muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-2);
+  font-size: var(--t-xs);
+}
+.sig-drawer-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding-top: 2px;
+  font-size: var(--t-xs);
+}
+.sig-drawer-foot .link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--t-xs);
+}
+.sig-key-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-2);
+  font-size: var(--t-xs);
+}
+.sig-cancel-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+.sig-cancel-btn:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.sig-save-btn {
+  padding: 4px 10px;
+  font-size: var(--t-sm);
 }
 
 /* However long the mail, Send stays in sight at the bottom of the sheet. */
 .compose:not(.inline):not(.focus) > .compose-main > footer {
   position: sticky;
-  bottom: calc(-1 * var(--s-3));
+  bottom: 0;
   z-index: 2;
-  padding-bottom: var(--s-3);
-  margin-bottom: calc(-1 * var(--s-3));
+  padding: var(--s-2) var(--s-5) var(--s-3);
+  margin: 0;
   background: var(--bg-0);
 }
-/* G's footer: from, Saved and length on the left; attach, AI and ⋯ (everything else) on the right; Send last. */
+.compose.inline > .compose-main > footer {
+  padding: var(--s-2) var(--s-4) var(--s-3);
+  margin: 0;
+}
+/* Direction B footer: writing tools + signature pill on the left, discard and Send on the right. */
 .compose-main > footer {
   border-top: 1px solid var(--line);
   gap: var(--s-1) var(--s-2);
+  flex-wrap: nowrap;
 }
-.compose-main > footer .from-pick {
-  background: none;
-  border-radius: 0;
-  color: var(--fg-1);
-  font-size: var(--t-md);
-  gap: 6px;
-}
-.compose-main > footer .from-pick .word {
-  color: var(--fg-2);
-}
-.compose-main > footer .from-pick .dot {
-  position: static;
+.compose-main > footer > * {
   flex: none;
 }
-.compose-main > footer .from-pick .dropdown {
-  max-width: 280px;
-  margin-left: -6px;
+.compose-main > footer > .spacer {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.compose-main > footer .sig-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--t-sm);
+  cursor: pointer;
+  transition: background var(--d-fast), color var(--d-fast);
+}
+.compose-main > footer .sig-pill:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.compose-main > footer .sig-pill.open {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.compose-main > footer .sig-pill.none:not(.open) {
+  color: var(--fg-2);
+}
+.compose-main > footer .sig-pill-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compose-main > footer .sig-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
 }
 .compose-main > footer .saved {
   font-size: var(--t-sm);
   color: var(--fg-2);
   white-space: nowrap;
+  flex: 0 1 auto;
+  flex-shrink: 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.compose-main > footer .more-wrap {
-  position: relative;
+.compose-main > footer .sig-notice {
+  color: var(--ok);
+  font-weight: 500;
+}
+.compose-main > footer .hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .compose-main > footer .send-split .send-menu {
   left: auto;
   right: 0;
 }
-/* The signature menu opens up from its button, over the text. */
-.compose-main > footer .send-menu.up-left {
-  min-width: 200px;
-}
 .compose-main > footer .foot-sep {
   width: 1px;
   height: 18px;
-  margin: 0 var(--s-1);
+  margin: 0 2px;
   background: var(--line);
 }
-/* Discard: red and small, only an icon, a step from Send but not beside it by accident. */
-/* Grey until the pointer is on it: the button that throws the mail away doesn't compete with Send (idea 98). */
+/* Discard: grey until the pointer is on it, so it doesn't compete with Send (idea 98). */
 .compose-main > footer .discard {
-  margin-right: var(--s-2);
+  margin-right: var(--s-1);
   color: var(--fg-2);
 }
 .compose-main > footer .discard:hover,
@@ -8896,39 +9286,7 @@ button.link.danger {
 }
 .compose-main > footer .send-split {
   border-radius: var(--r-md);
-  box-shadow: var(--shadow);
-}
-/* One row, always: Send and discard keep their size and their place at the right end. When the row runs out of
-   room (a long From address, the word count, a follow-up chip, an AI sidebar beside it), the From address and the
-   Saved line give way with an ellipsis instead of pushing Send onto a line of its own under the footer. */
-.compose-main > footer {
-  flex-wrap: nowrap;
-}
-.compose-main > footer > * {
-  flex: none;
-}
-.compose-main > footer > .spacer {
-  flex: 1 1 0;
-  min-width: 0;
-}
-.compose-main > footer > .from-pick {
-  flex: 0 1 auto;
-  min-width: 48px;
-  overflow: hidden;
-}
-.compose-main > footer > .from-pick .dropdown {
-  min-width: 0;
-}
-.compose-main > footer > .saved,
-.compose-main > footer > .hint {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.compose-main > footer > .saved {
-  flex-shrink: 2;
+  box-shadow: var(--raise);
 }
 .send-menu hr {
   margin: var(--s-1) 0;
@@ -8944,9 +9302,8 @@ button.link.danger {
   gap: var(--s-2);
 }
 
-/* F: focus takes the whole window. No sheet edges; subject and people stay editable at the top of a 640 px column
-   that runs the window's height; the outline is a column on the left; Send floats in a pill. The signature leaves
-   the page (it still goes out) and is picked from the pill. */
+/* F: focus takes the whole window. The page is a sheet on the warm desk; the outline lies on the desk beside it;
+   Send floats in a pill at the bottom with the signature pill right beside the tools. */
 .compose-overlay.focused {
   padding: 0;
   background: var(--bg-2);
@@ -8963,7 +9320,6 @@ button.link.danger {
   flex-direction: row;
   overflow: hidden;
 }
-/* V1: the page is a sheet on the warm desk; the outline lies on the desk beside it. */
 .compose.focus > .compose-main {
   display: flex;
   flex-direction: column;
@@ -8972,10 +9328,23 @@ button.link.danger {
   max-width: 820px;
   margin: var(--s-5) auto 0;
   overflow-y: auto;
-  padding: var(--s-3) 64px 0;
+  padding: var(--s-4) 64px 0;
   background: var(--bg-0);
   border-radius: var(--r-lg) var(--r-lg) 0 0;
   box-shadow: 0 2px 12px color-mix(in srgb, var(--fg-0) 8%, transparent);
+}
+.compose.focus .compose-cap {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 0 var(--s-3);
+  background: transparent;
+}
+.compose.focus .compose-body {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--s-4) 0 0;
 }
 .compose.focus .outline li.current button {
   background: var(--bg-0);
@@ -8993,16 +9362,8 @@ button.link.danger {
   flex: none;
   width: 220px;
 }
-.compose.focus .fields,
-.compose.focus .editor-wrap,
-.compose.focus .ai-try {
-  width: 100%;
-  max-width: 640px;
-  margin-left: auto;
-  margin-right: auto;
-}
 .compose.focus .field.subject input {
-  font-size: 28px;
+  font-size: 24px;
 }
 .compose.focus .editor-wrap {
   flex: 1 0 auto;
@@ -9018,7 +9379,7 @@ button.link.danger {
 .compose.focus .editor-body {
   max-width: none;
   margin: 0;
-  padding-top: var(--s-2);
+  padding-top: var(--s-1);
 }
 .compose.focus .editor-body .ProseMirror {
   flex: 1;
@@ -9035,28 +9396,17 @@ button.link.danger {
   color: var(--fg-2);
   pointer-events: none;
 }
-/* S1: the signature's line sits at the foot of the sheet while the mail is short, right after the text once long,
-   in the dialog as in focus. */
 .compose:not(.inline) .editor-body .ProseMirror {
   display: flex;
   flex-direction: column;
-  min-height: 220px;
-}
-.compose:not(.inline) .editor-body .ProseMirror > .sig-line {
-  margin-top: auto;
-  padding-top: var(--s-4);
-}
-.compose.focus .compose-head {
-  position: sticky;
-  top: 0;
-  z-index: 3;
+  min-height: 200px;
 }
 .compose.focus .compose-main > footer {
   position: sticky;
   bottom: var(--s-4);
   align-self: center;
   margin: 0 auto var(--s-4);
-  padding: 6px 6px 6px var(--s-4);
+  padding: 6px 6px 6px var(--s-3);
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--bg-0);
@@ -9067,13 +9417,15 @@ button.link.danger {
 .compose.focus .compose-main > footer .tools {
   display: inline-flex;
 }
+.compose.focus .compose-main > footer .sig-pill {
+  border-radius: 999px;
+}
 .compose.focus .compose-main > footer .send {
   border-radius: 999px;
 }
 .compose.focus .compose-main > footer .send-split {
   border-radius: 999px;
 }
-.compose.focus .compose-main > footer .from-pick,
 .compose.focus .compose-main > footer .foot-sep,
 .compose.focus .compose-main > footer .send-more,
 .compose.focus .compose-main > footer .spacer {
@@ -9114,16 +9466,16 @@ button.link.danger {
   }
 }
 
-/* While the person types, the tools fade; a pause, the mouse or focus on them brings them back. */
+/* While the person types, the tools soften gently; a pause, the mouse or focus brings them back to full strength. */
 .compose-main > footer .tools,
 .compose-main > footer .discard,
-.compose-head .icon-button {
+.compose-win .icon-button {
   transition: opacity var(--d-base);
 }
 .compose.typing .compose-main > footer .tools:not(:focus-within),
 .compose.typing .compose-main > footer .discard:not(:focus-visible),
-.compose.typing .compose-head .icon-button:not(:focus-visible) {
-  opacity: 0;
+.compose.typing .compose-win .icon-button:not(:focus-visible) {
+  opacity: 0.35;
 }
 
 /* The outline: in focus, a quiet column on the left of the text (ui.md 4.4). */

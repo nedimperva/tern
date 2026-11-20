@@ -2,11 +2,25 @@
 
 import { Fragment, type Node } from "prosemirror-model";
 import type { Signature } from "./api";
+import { signatureRange } from "./editor/outline";
 import { fromHtml, fromText, schema, toHtml, toText } from "./editor/schema";
 
 /** The signature as editor blocks, after a "-- " line that lets mail apps fold it away. */
 export function signatureDoc(sig: Signature): Node {
   return sig.html ? fromHtml(`<p>-- </p>${sig.html}`) : fromText(`-- \n${sig.body.trim()}`);
+}
+
+/** A per-email signature text edited in compose, wrapped with the "-- " line. */
+export function customSignatureDoc(text: string): Node {
+  return fromText(`-- \n${text.trim()}`);
+}
+
+/** The signature text currently inside `doc` (without its leading "-- " line), or null if none. */
+export function signatureBodyText(doc: Node): string | null {
+  const range = signatureRange(doc);
+  if (!range) return null;
+  const raw = doc.textBetween(range.from, range.to, "\n", "\n");
+  return raw.replace(/^--[^\S\n]*(?:\n|$)/, "").trim();
 }
 
 /** Blocks' words with line breaks and spacing evened out: a draft read back from its HTML loses trailing spaces. */
