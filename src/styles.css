@@ -10849,3 +10849,57 @@ fieldset.list-filters {
 .viewer.eml pre.text {
   white-space: pre-wrap;
 }
+
+/* Writing help: who a new mail's try goes to, and the wait before its first words. */
+.ai-try-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+}
+.ai-try-person {
+  color: var(--fg-1);
+}
+.ai-try-person:not(:last-child)::after {
+  content: ",";
+}
+.ai-try-person.unsure {
+  color: var(--fg-2);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.ai-preview.waiting {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: var(--s-3);
+}
+.ai-preview.waiting span {
+  height: 10px;
+  width: 92%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--bg-3) 0%, var(--accent-soft) 50%, var(--bg-3) 100%);
+  background-size: 200% 100%;
+  animation: ai-wait 1.4s ease-in-out infinite;
+}
+.ai-preview.waiting span:nth-child(2) {
+  width: 78%;
+}
+.ai-preview.waiting span:nth-child(3) {
+  width: 54%;
+}
+@keyframes ai-wait {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+.ai-try-person.stranger {
+  text-decoration: line-through;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-preview.waiting span {
+    animation: none;
+  }
+}

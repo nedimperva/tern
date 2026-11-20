@@ -644,8 +644,10 @@ export function Compose(props: {
   const [hasStyle, setHasStyle] = createSignal(false);
   /** "In your style", for this compose only. */
   const [inStyle, setInStyle] = createSignal(true);
-  /** New mail: the people the latest answer named. They stay after a keep, to add one by one. */
-  const [found, setFound] = createSignal<{ to: AiRecipient[]; cc: AiRecipient[] } | null>(null);
+  /** New mail: the people the latest answer named. Keeping the try adds the ones the contacts settle (one match, or
+   * the one picked); the rest stay here to add by hand. `picked`: the person chose between namesakes. */
+  type Found = AiRecipient & { picked?: boolean };
+  const [found, setFound] = createSignal<{ to: Found[]; cc: Found[] } | null>(null);
   /** Suggested replies, for Starts: none asked yet, being asked, the list, or what went wrong. */
   const [starts, setStarts] = createSignal<AiSuggestion[] | "busy" | { error: string } | null>(null);
   let aiInput: HTMLTextAreaElement | undefined;
@@ -653,10 +655,10 @@ export function Compose(props: {
   let aiRun = 0;
   const current = () => versions()[shown()];
   const pending = () => versions().some((v) => v.written);
-  /** The try in the text's place, while it streams or once written. */
+  /** The try in the text's place, from the moment it is asked: the wait shows where the words will come. */
   const tryShown = () => {
     const v = current();
-    return v && !v.error && (v.written || bodyOf(v.streamed)) ? v : null;
+    return v && !v.error && (v.written || bodyOf(v.streamed) || aiBusy()) ? v : null;
   };
   const inSide = (e: Event) => !!asideEl && e.target instanceof Node && asideEl.contains(e.target);
   const openAi = () => {
@@ -705,6 +707,15 @@ export function Compose(props: {
     const at = streamed.indexOf("\n===");
     return at < 0 ? "" : streamed.slice(at + 4).replace(/^=*\s*/, "");
   };
+  /** New mail's header lines as they stream ("To: Tom", "Subject: …"), to show them before the body starts. */
+  const headOf = (streamed: string) => {
+    const end = streamed.indexOf("\n===");
+    const head = end < 0 ? streamed : streamed.slice(0, end);
+    const line = (key: string) => head.match(new RegExp(`^${key}:[ \t]*(.*)$`, "mi"))?.[1]?.trim() ?? "";
+    return { to: line("To"), cc: line("Cc"), subject: line("Subject") };
+  };
+  /** Someone the contacts settle: one match, or the namesake the person picked. Never a stranger. */
+  const settled = (r: Found) => !!r.address && !r.stranger && (!r.others.length || !!r.picked);
   /** What is selected of the person's own words, for a Reshape that should change only that. */
   const selected = (end: number) => {
     if (!view || versions().length) return "";
@@ -790,7 +801,7 @@ export function Compose(props: {
     queueMicrotask(() => aiInput?.focus());
   };
   /** Tab: the try on show goes into the email as ordinary text (Ctrl+Z in the editor brings back what was there);
-   * in new mail its subject too, when there is none. People are added one by one from the sidebar. */
+   * in new mail its subject too, when there is none, and the people the contacts settle. */
   const keepAi = async () => {
     const w = current()?.written;
     const own = await ownPart();
@@ -798,13 +809,16 @@ export function Compose(props: {
     const { fromText } = await schemaTools();
     view.dispatch(view.state.tr.replaceWith(0, own.end, fromText(w.body).content));
     if (newMail() && w.subject && !subject().trim()) setSubject(w.subject);
+    // The people go in with it when the contacts settle who they are; namesakes and strangers wait in the sidebar.
+    const f = newMail() ? found() : null;
+    if (f) for (const field of ["to", "cc"] as const) for (const r of f[field]) if (settled(r)) addPerson(field, r);
     changed();
     dropTries();
     view.focus();
   };
   /** Adds someone the AI named. A stranger never gets here: an address only the AI came up with may have been planted
    * in what it read. */
-  const addPerson = (field: "to" | "cc", r: AiRecipient) => {
+  const addPerson = (field: "to" | "cc", r: Found) => {
     if (!r.address || r.stranger) return;
     const list = field === "to" ? to() : cc();
     if (list.some((a) => a.toLowerCase() === r.address!.toLowerCase())) return;
@@ -819,7 +833,13 @@ export function Compose(props: {
       if (!f) return f;
       const people = f[field].map((r, k) =>
         k === index && r.address
-          ? { ...r, address: person.email, name: person.name, others: [{ email: r.address, name: r.name }, ...r.others.filter((o) => o.email !== person.email)] }
+          ? {
+              ...r,
+              address: person.email,
+              name: person.name,
+              picked: true,
+              others: [{ email: r.address, name: r.name }, ...r.others.filter((o) => o.email !== person.email)],
+            }
           : r,
       );
       return { ...f, [field]: people };
@@ -1154,8 +1174,11 @@ export function Compose(props: {
           <h3>Brief</h3>
           <label class="ai-brief">
             <span class="hint">
-              {newMail() ? "Who it goes to and what it should say." : "What should the answer say?"} One note, not a chat: change
-              it and write again.
+              {versions().length
+                ? "Change it and write again, or keep the try."
+                : newMail()
+                  ? "Who it's for and what it should say."
+                  : "What should the answer say?"}
             </span>
             <textarea
               ref={aiInput}
@@ -1185,7 +1208,8 @@ export function Compose(props: {
           </label>
           <div class="ai-brief-row">
             <button type="button" class="ai-side-button" disabled={aiBusy()} onClick={writeFromBrief}>
-              {aiAsk().trim() ? (versions().length ? "Write again" : "Write") : chipLabel("Write it out")} <kbd>↵</kbd>
+              {aiBusy() ? "Writing…" : aiAsk().trim() ? (versions().length ? "Write again" : "Write") : chipLabel("Write it out")}{" "}
+              <kbd>↵</kbd>
             </button>
             <span class="spacer" />
             <Show when={versions().length > 1}>
@@ -1208,28 +1232,6 @@ export function Compose(props: {
           </div>
           <Show when={current()?.error}>{(error) => <p class="ai-error">{error()}</p>}</Show>
         </section>
-        <section>
-          <h3>Reshape</h3>
-          <span class="hint">Works on the try on show, your selection, or all your own words.</span>
-          <div class="ai-chips">
-            <For each={AI_CHIPS.filter(([l]) => TONES.has(l))}>
-              {([label, request]) => (
-                <button type="button" class="chip" disabled={aiBusy() || (ownEmpty() && !versions().length)} onClick={() => void askAi({ label, request })}>
-                  {label}
-                </button>
-              )}
-            </For>
-            <Dropdown
-              class="chip translate"
-              label="Translate into"
-              placeholder="Translate…"
-              value=""
-              disabled={aiBusy() || (ownEmpty() && !versions().length)}
-              choices={LANGUAGES.map((l) => ({ value: l, label: l }))}
-              onChange={(lang) => void askAi({ label: `In ${lang}`, request: `Translate it into ${lang}. Keep the meaning, the tone and the names.` })}
-            />
-          </div>
-        </section>
         <Show when={newMail() ? found() : null}>
           {(f) => {
             const people = (field: "to" | "cc") => (
@@ -1248,7 +1250,7 @@ export function Compose(props: {
                           </Show>
                           <Show when={r.others.length}>
                             <span class="others">
-                              also{" "}
+                              {r.picked ? "also" : "or"}{" "}
                               <For each={r.others}>
                                 {(o) => (
                                   <button type="button" class="link" onClick={() => pickPerson(field, k(), o)}>
@@ -1275,10 +1277,34 @@ export function Compose(props: {
                 <h3>People it found</h3>
                 {people("to")}
                 {people("cc")}
-                <span class="hint">Only people in your contacts, and only when you add them.</span>
+                <span class="hint">Keeping the try adds each one your contacts settle. Pick between namesakes here.</span>
               </section>
             );
           }}
+        </Show>
+        <Show when={!ownEmpty() || versions().length}>
+          <section>
+            <h3>Reshape</h3>
+            <span class="hint">Works on the try on show, your selection, or all your own words.</span>
+            <div class="ai-chips">
+              <For each={AI_CHIPS.filter(([l]) => TONES.has(l))}>
+                {([label, request]) => (
+                  <button type="button" class="chip" disabled={aiBusy() || (ownEmpty() && !versions().length)} onClick={() => void askAi({ label, request })}>
+                    {label}
+                  </button>
+                )}
+              </For>
+              <Dropdown
+                class="chip translate"
+                label="Translate into"
+                placeholder="Translate…"
+                value=""
+                disabled={aiBusy() || (ownEmpty() && !versions().length)}
+                choices={LANGUAGES.map((l) => ({ value: l, label: l }))}
+                onChange={(lang) => void askAi({ label: `In ${lang}`, request: `Translate it into ${lang}. Keep the meaning, the tone and the names.` })}
+              />
+            </div>
+          </section>
         </Show>
       </div>
       <footer>
@@ -1490,15 +1516,72 @@ export function Compose(props: {
       <Show when={tryShown()} keyed>
         {(v) => (
           <div class="ai-try" aria-live="polite">
-            <Show when={newMail() && v.written?.subject && !subject().trim()}>
-              <div class="ai-try-subject">
-                <span class="label">Subject</span>
-                {v.written!.subject}
-              </div>
+            <Show when={newMail()}>
+              <For each={["to", "cc"] as const}>
+                {(field) => {
+                  const people = () => (v.written ? (found()?.[field] ?? []) : []);
+                  const raw = () => (v.written ? "" : headOf(v.streamed)[field]);
+                  return (
+                    <Show when={people().length || raw()}>
+                      <div class="ai-try-subject">
+                        <span class="label">{field === "to" ? "To" : "Cc"}</span>
+                        <span class="ai-try-people">
+                          <Show when={people().length} fallback={raw()}>
+                            <For each={people()}>
+                              {(r) => (
+                                <span
+                                  class="ai-try-person"
+                                  classList={{ unsure: !settled(r), stranger: r.stranger || !r.address, added: added(r) }}
+                                  title={
+                                    r.stranger
+                                      ? "Not in your contacts: it won't be added."
+                                      : !r.address
+                                        ? "No one by that name in your contacts."
+                                        : !settled(r)
+                                          ? "More than one in your contacts: pick in Writing help."
+                                          : r.address
+                                  }
+                                >
+                                  {r.stranger || !r.address
+                                    ? r.asked
+                                    : settled(r)
+                                      ? r.name || r.address
+                                      : `${r.name || r.address} or ${r.others.map((o) => o.name || o.email).join(" or ")}?`}
+                                </span>
+                              )}
+                            </For>
+                          </Show>
+                        </span>
+                      </div>
+                    </Show>
+                  );
+                }}
+              </For>
+            </Show>
+            <Show when={newMail() && !subject().trim() ? (v.written?.subject ?? headOf(v.streamed).subject) : null}>
+              {(line) => (
+                <div class="ai-try-subject">
+                  <span class="label">Subject</span>
+                  {line()}
+                </div>
+              )}
             </Show>
             <Show
               when={v.written && v.base ? wordDiff(v.base!, v.written!.body) : null}
-              fallback={<div class="ai-preview">{v.written?.body ?? bodyOf(v.streamed)}</div>}
+              fallback={
+                <Show
+                  when={v.written?.body ?? bodyOf(v.streamed)}
+                  fallback={
+                    <div class="ai-preview waiting" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  }
+                >
+                  {(text) => <div class="ai-preview">{text()}</div>}
+                </Show>
+              }
             >
               {(pieces) => (
                 <div class="ai-preview diff">
@@ -1513,7 +1596,9 @@ export function Compose(props: {
               <span class="text">
                 {v.written
                   ? `Try ${shown() + 1} of ${versions().length}. It isn't in the email until you keep it.`
-                  : "Writing…"}
+                  : props.init.inReplyTo
+                    ? "Writing your answer…"
+                    : "Writing from your brief…"}
               </span>
               <Show when={v.written}>
                 <button type="button" class="link" onClick={() => void keepAi()}>

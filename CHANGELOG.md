@@ -36,6 +36,10 @@ every release needs one here before it is tagged.
 
 ### Changed
 
+- Writing help in a new mail (`Ctrl+J`): the try appears the moment you ask, with its To, Cc and Subject lines as
+  they are written, and Tab keeps the people your contacts settle along with the text. Namesakes wait in the sidebar
+  to be picked, and an address only the AI came up with is never added. Reshape shows once there is text to reshape.
+
 - Search goes past 500 results: more load as you scroll, and the count says how many there are in all.
 - A recipient chip shows the domain when you know two people with the same name.
 
