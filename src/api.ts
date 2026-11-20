@@ -18,6 +18,23 @@ export type DayStart = {
   toRead: (ThreadRow & { minutes: number | null })[];
 };
 /** An AI summary of a conversation (package 10): one line, then the points under it. */
+/** A message in another language (idea 122); `text` is empty when it was in that language already. */
+/** A `.eml` file as the viewer shows it; `html` is cleaned already. */
+export type EmlView = {
+  path: string;
+  subject: string;
+  fromName: string;
+  fromAddr: string;
+  to: string;
+  cc: string;
+  date: number;
+  text: string | null;
+  html: string | null;
+  attachments: string[];
+};
+/** Where messages were before a split or join, handed back for Undo. */
+export type ThreadUndo = { moves: [number, string][]; split: [string, string] | null };
+export type AiTranslation = { text: string; cached: boolean; sentChars: number };
 export type AiSummary = { line: string; facts: AiFact[]; points: string[]; cached: boolean };
 /** A summary's fact, for a chip: the nearest date that matters, what is asked of you, or what was decided. */
 export type AiFact = { kind: "due" | "asked" | "decided"; text: string };
@@ -236,6 +253,8 @@ export type PersonFile = {
   name: string;
   mime: string;
   size: number;
+  /** Who sent the message, by name else address. */
+  from: string;
 };
 export type ThreadMessage = MessageRow & {
   messageId: string | null;
@@ -422,7 +441,11 @@ export interface Api {
   labelConversations(ids: number[], label: number, add: boolean): Promise<Applied>;
   thread(id: number): Promise<ThreadMessage[]>;
   /** Search with filters (see crates/tern-core/src/query.rs). `partial`: words were not looked for in mail without its text. */
-  search(query: string, limit: number): Promise<{ rows: MessageRow[]; partial: boolean }>;
+  search(query: string, before: Cursor | null, limit: number): Promise<{ rows: MessageRow[]; partial: boolean }>;
+  /** How many messages a search finds in all (idea 107). */
+  searchCount(query: string): Promise<number>;
+  /** These messages as rows, where they are now. */
+  messageRows(ids: number[]): Promise<MessageRow[]>;
   /** Each account's server searched for the query's words where mail isn't all here; what it found, newest first. */
   searchServer(query: string): Promise<MessageRow[]>;
   /** A message's source from the server, saved where the person picks; false if they cancelled. */
@@ -459,6 +482,12 @@ export interface Api {
   setPersonNote(email: string, body: string): Promise<void>;
   /** The files exchanged with a person, every conversation, newest first. */
   personFiles(email: string): Promise<PersonFile[]>;
+  /** Every file received or sent, newest first (All files). */
+  allFiles(): Promise<PersonFile[]>;
+  /** Mail that may be a receipt, an invoice or an order since `since`, with its text (Paper trail). */
+  paperCandidates(since: number): Promise<[MessageRow, string][]>;
+  /** Saves text where the person picks; false when they cancel. */
+  saveText(title: string, name: string, text: string): Promise<boolean>;
   /** Whether a Todoist token is saved (nothing is asked of Todoist). */
   todoistConnected(): Promise<boolean>;
   /** Checks the token with Todoist and keeps it in the keyring; the projects it found. */
@@ -570,7 +599,17 @@ export interface Api {
     reply: (m: NewMail) => void;
     /** A notification about scheduled sends that wait: show them. */
     waiting: () => void;
+    /** A `.eml` file opened with Tern (idea 132). */
+    eml: (path: string) => void;
   }): void;
+  /** The conversation of message `id` in a window of its own (idea 123). */
+  openWindow(id: number, title: string): Promise<void>;
+  /** A conversation window's Reply, started in the main window. */
+  replyInMain(id: number): Promise<void>;
+  /** A `.eml` file read for the viewer; nothing is stored. */
+  openEml(path: string): Promise<EmlView>;
+  /** Puts a `.eml` file's message in the account's Imported folder, through the outbox. */
+  importEml(path: string, account: number): Promise<{ token: number; folder: string; total: number }>;
   /** Pauses or resumes sync for every account (also in the tray); `onSyncState` reports "paused" per account. */
   setSyncPaused(on: boolean): Promise<void>;
   /** Every account looks for new mail now. */
@@ -600,6 +639,11 @@ export interface Api {
   onChange(f: (threads: string[] | null) => void): void;
   /** Mutes (or unmutes) the conversations of these messages: later replies skip the inbox. */
   mute(ids: number[], mute: boolean): Promise<void>;
+  /** Message `id` and what follows it become their own conversation (idea 110); local only. */
+  splitConversation(id: number): Promise<ThreadUndo>;
+  /** The conversations of these messages become the first one's. */
+  joinConversations(ids: number[]): Promise<ThreadUndo>;
+  undoThreadMoves(undo: ThreadUndo): Promise<void>;
   /** Every muted conversation, newest first, by its newest message. */
   mutedConversations(): Promise<MessageRow[]>;
   /** Minutes to read each of these messages; null while its text is not here. */
@@ -647,6 +691,8 @@ export interface Api {
   aiCachedSummary(id: number): Promise<AiSummary | null>;
   /** The words come through `onText` as they are written. `fresh` asks again instead of using a kept one. */
   aiSummarize(id: number, fresh: boolean, onText: (text: string) => void): Promise<AiSummary>;
+  /** Message `id` in the language `to`, kept once asked. */
+  aiTranslate(id: number, to: string, onText: (text: string) => void): Promise<AiTranslation>;
   /** Three replies the person could send; kept like summaries unless `fresh`. */
   aiReplies(id: number, fresh: boolean, onText: (text: string) => void): Promise<AiSuggestion[]>;
   /** Answers a question about the conversation of message `id`, with the chat so far as [question, answer]. */
@@ -712,7 +758,9 @@ const tauri: Api = {
   markAllRead: (target) => invoke("mark_all_read", { target }),
   labelConversations: (ids, label, add) => invoke("label_conversations", { ids, label, add }),
   thread: (id) => invoke("thread", { id }),
-  search: (query, limit) => invoke("search", { query, limit }),
+  search: (query, before, limit) => invoke("search", { query, before, limit }),
+  searchCount: (query) => invoke("search_count", { query }),
+  messageRows: (ids) => invoke("message_rows", { ids }),
   searchServer: (query) => invoke("search_server", { query }),
   saveEml: (id) => invoke("save_eml", { id }),
   exportMbox: (folder, query, name) => invoke("export_mbox", { folder, query, name }),
@@ -766,6 +814,9 @@ const tauri: Api = {
   person: (accountId, email) => invoke("person", { accountId, email }),
   setPersonNote: (email, body) => invoke("set_person_note", { email, body }),
   personFiles: (email) => invoke("person_files", { email }),
+  allFiles: () => invoke("all_files"),
+  paperCandidates: (since) => invoke("paper_candidates", { since }),
+  saveText: (title, name, text) => invoke("save_text", { title, name, text }),
   todoistConnected: () => invoke("todoist_connected"),
   todoistConnect: (token) => invoke("todoist_connect", { token }),
   todoistProjects: () => invoke("todoist_projects"),
@@ -820,9 +871,14 @@ const tauri: Api = {
     void listen<NewMail>("open-mail", (e) => h.openMail(e.payload));
     void listen<NewMail>("reply-mail", (e) => h.reply(e.payload));
     void listen("show-waiting", () => h.waiting());
+    void listen<string>("open-eml", (e) => h.eml(e.payload));
     void listen("quit", () => void tauri.quit());
   },
   takeMailto: () => invoke("take_mailto"),
+  openEml: (path) => invoke("open_eml", { path }),
+  openWindow: (id, title) => invoke("open_window", { id, title }),
+  replyInMain: (id) => invoke("reply_in_main", { id }),
+  importEml: (path, account) => invoke("import_eml", { path, account }),
   setSyncPaused: (on) => invoke("set_sync_paused", { on }),
   syncNow: () => invoke("sync_now"),
   setSplit: (ids, other) => invoke("set_split", { ids, other }),
@@ -853,6 +909,9 @@ const tauri: Api = {
   syncStates: () => invoke("sync_states"),
   syncProgress: () => invoke("sync_progress"),
   mute: (ids, mute) => invoke("mute", { ids, mute }),
+  splitConversation: (id) => invoke("split_conversation", { id }),
+  joinConversations: (ids) => invoke("join_conversations", { ids }),
+  undoThreadMoves: (undo) => invoke("undo_thread_moves", { undo }),
   mutedConversations: () => invoke("muted_conversations"),
   readingMinutes: (ids) => invoke("reading_minutes", { ids }),
   muted: (id) => invoke("muted", { id }),
@@ -896,6 +955,7 @@ const tauri: Api = {
   aiTest: (provider, key, model) => invoke("ai_test", { provider, key, model }),
   aiCachedSummary: (id) => invoke("ai_cached_summary", { id }),
   aiSummarize: (id, fresh, onText) => invoke("ai_summarize", { id, fresh, onText: channel(onText) }),
+  aiTranslate: (id, to, onText) => invoke("ai_translate", { id, to, onText: channel(onText) }),
   aiReplies: (id, fresh, onText) => invoke("ai_replies", { id, fresh, onText: channel(onText) }),
   aiAsk: (id, question, earlier, onText) => invoke("ai_ask", { id, question, earlier, onText: channel(onText) }),
   aiOvernight: (since, onText) => invoke("ai_overnight", { since, onText: channel(onText) }),
@@ -996,15 +1056,25 @@ function fake(): Api {
   let nextDraft = 1;
   // Open the page with #big for a mailbox the size the performance targets are set for (about 10,000 conversations).
   const size = location.hash === "#big" ? 25_000 : 5000;
+  const SPECIAL: Record<number, { from: string; subject: string; body: string }> = {
+    8: { from: "Example Accounts", subject: "Your sign-in code", body: "Hi,\n\nYour verification code is 482913. It expires in 10 minutes.\n\nIf this wasn't you, ignore this mail." },
+    3: { from: "Corner Coffee", subject: "Your receipt from Corner Coffee", body: "Thanks for your order!\n\nOrder number: CC-88231\nFlat white x2  €7.80\nCroissant  €3.20\nTotal: €11.00\n\nPaid with card ending 4242." },
+    13: { from: "Rail Example", subject: "Your tickets: Sarajevo to Mostar", body: "Booking confirmation\n\nBooking reference: RX4K9Q\nTotal paid: 24,00 KM\nTravel date: 2 December\n\nShow this mail at the station." },
+    18: { from: "Cloud Host", subject: "Invoice INV-2026-1142 for November", body: "Hello,\n\nYour invoice INV-2026-1142 is ready.\nAmount due: $19.00\nDue date: 1 December 2026\n\nThank you for your business." },
+    23: { from: "Bookshop", subject: "Order shipped: The Arctic Tern", body: "Good news, your order 55-10293 has shipped.\nOrder total: €18.50\nTracking number: 1Z999AA10123456784" },
+  };
   let messages: ThreadMessage[] = Array.from({ length: size }, (_, i) => {
-    const name = names[i % names.length];
-    const subject = `${words[i % words.length]} ${words[(i * 7) % words.length]} #${size - i}`;
+    // A sign-in code (idea 114) and a few receipts (idea 115) among the rest, each a conversation of its own.
+    const special = SPECIAL[i];
+    const name = special?.from ?? names[i % names.length];
+    const subject = special?.subject ?? `${words[i % words.length]} ${words[(i * 7) % words.length]} #${size - i}`;
     // Replies quote what they answer, as mail does, so folding can be worked on.
     const quote = i % 5 > 0 && i % 5 < 3 ? `\n\nOn Mon, ${names[(i + 1) % names.length]} wrote:\n> Earlier message about ${subject}.\n> ${words.join(" ")}.` : "";
     // The newest conversation names a day, a place, an ask and a code, for the column beside it (ui.md §4.2a).
     const day = new Date((now + 10 * 86_400) * 1000).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
-    const body =
-      i === 0
+    const body = special
+      ? special.body
+      : i === 0
         ? `Hi,\n\nThe offsite is set for ${day}, 10:00 to 16:00, at Studio 4, Keizersgracht 120, Amsterdam. Lunch is on us.\n\nThe plan for the day is in the offsite doc: https://docs.example.com/offsite\n\nCan you bring the Q3 deck and walk us through it in 20 minutes?\n\nTrain tickets are booked; the booking code is QX7-44K.\n\nSee you there,\n${name.split(" ")[0]}`
         : `Hi,\n\nThis is about the ${subject}. ${words.join(" ")}.\n\nThanks,\n${name.split(" ")[0]}\n-- \n${name}, Example Corp${quote}`;
     // #two: a second account (Work) holds every third run of five, to see account colours and switching.
@@ -1020,8 +1090,8 @@ function fake(): Api {
       subject,
       fromName: name,
       fromAddr: `${name.toLowerCase().replace(/\s/g, ".")}@example.com`,
-      date: now - i * 1700,
-      snippet: body.replace(/\s+/g, " ").slice(4, 150),
+      date: i === 8 ? now - 240 : now - i * 1700,
+      snippet: body.replace(/\s+/g, " ").slice(special ? 0 : 4, 150),
       seen: i % 4 !== 0,
       flagged: i % 23 === 0,
       hasAttachments: i % 11 === 0,
@@ -1302,7 +1372,7 @@ function fake(): Api {
       const oldest = [...messages].sort((a, b) => a.date - b.date)[0];
       return [...found, ...(oldest ? [oldest] : [])].map(row);
     },
-    search: async (query, limit) => {
+    search: async (query, before, limit) => {
       // Words, is:marked, has:note and is:snoozed only; the filters live in the engine. Shown as partial so the note
       // can be worked on here.
       let terms = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -1316,9 +1386,16 @@ function fake(): Api {
         .filter((m) => !noted || fakeMarks.some((k) => k.message === m.id && k.note))
         .filter((m) => !asleep || snoozed.has(m.threadId))
         .filter((m) => terms.every((t) => `${m.subject} ${m.fromName} ${m.bodyText} ${notes(m)}`.toLowerCase().includes(t)))
+        .sort((a, b) => b.date - a.date || b.id - a.id)
+        .filter((m) => !before || m.date < before.date || (m.date === before.date && m.id < before.id))
         .slice(0, limit)
         .map(row);
       return { rows, partial: terms.length > 0 };
+    },
+    messageRows: async (ids) => messages.filter((m) => ids.includes(m.id)).map(row),
+    searchCount: async (query) => {
+      const terms = query.toLowerCase().split(/\s+/).filter((t) => t && !t.includes(":"));
+      return messages.filter((m) => terms.every((t) => `${m.subject} ${m.fromName} ${m.bodyText}`.toLowerCase().includes(t))).length;
     },
     apply: async (ids, action) => {
       const before = messages.map((m) => ({ ...m }));
@@ -1428,6 +1505,8 @@ function fake(): Api {
     contacts: async (query) => {
       const q = query.toLowerCase();
       const people = names.map((n) => ({ name: n, email: `${n.toLowerCase().replace(/\s/g, ".")}@example.com` }));
+      // Two people with one name, to try the chip that names the domain (idea 125).
+      people.push({ name: "Ada Lovelace", email: "ada@analytical.engine" });
       return q ? people.filter((p) => p.email.startsWith(q) || p.name.toLowerCase().split(" ").some((w) => w.startsWith(q))).slice(0, 5) : [];
     },
     contactCard: async (email) => {
@@ -1521,10 +1600,27 @@ function fake(): Api {
         .filter((m) => m.fromAddr.toLowerCase() === e && m.attachments.length)
         .sort((a, b) => b.date - a.date)
         .flatMap((m) =>
-          m.attachments.map((a, index) => ({ messageId: m.id, accountId: m.accountId, threadId: m.threadId, subject: m.subject, date: m.date, mine: false, index, ...a })),
+          m.attachments.map((a, index) => ({ messageId: m.id, accountId: m.accountId, threadId: m.threadId, subject: m.subject, date: m.date, mine: false, index, from: m.fromName, ...a })),
         )
         .slice(0, 60);
     },
+    paperCandidates: async (since) =>
+      messages
+        .filter((m) => m.date >= since && /receipt|invoice|order|ticket|booking/i.test(m.subject))
+        .sort((a, b) => b.date - a.date)
+        .map((m) => [row(m), m.bodyText ?? ""] as [MessageRow, string]),
+    saveText: async (_title, name, text) => {
+      console.log(name, text);
+      return true;
+    },
+    allFiles: async () =>
+      messages
+        .filter((m) => m.attachments.length && m.folderId !== 4)
+        .sort((a, b) => b.date - a.date)
+        .flatMap((m) =>
+          m.attachments.map((a, index) => ({ messageId: m.id, accountId: m.accountId, threadId: m.threadId, subject: m.subject, date: m.date, mine: false, index, from: m.fromName, ...a })),
+        )
+        .slice(0, 2000),
     problemToDraft: async (id) => {
       problems = problems.filter((p) => p.id !== id);
       const record = { id: nextDraft++, accountId: 1, draft: { to: ["typo@exmaple.com"], subject: "Re: Quarterly numbers", body: "Numbers attached." }, updatedAt: now };
@@ -1595,6 +1691,33 @@ function fake(): Api {
         else mutedThreads.delete(m.threadId);
       }
     },
+    splitConversation: async (id) => {
+      const at = messages.find((m) => m.id === id);
+      if (!at) throw new Error("That message is gone.");
+      const later = messages.filter((m) => m.threadId === at.threadId && m.date >= at.date);
+      if (later.length === messages.filter((m) => m.threadId === at.threadId).length) throw new Error("This is where the conversation starts already.");
+      const undo: ThreadUndo = { moves: later.map((m) => [m.id, m.threadId]), split: null };
+      for (const m of later) m.threadId = `split:${id}`;
+      changed();
+      return undo;
+    },
+    joinConversations: async (ids) => {
+      const target = messages.find((m) => m.id === ids[0])?.threadId;
+      const threads = new Set(ids.slice(1).map((id) => messages.find((m) => m.id === id)?.threadId).filter((t) => t && t !== target));
+      const moving = messages.filter((m) => threads.has(m.threadId));
+      if (!target || !moving.length) throw new Error("Those are one conversation already.");
+      const undo: ThreadUndo = { moves: moving.map((m) => [m.id, m.threadId]), split: null };
+      for (const m of moving) m.threadId = target;
+      changed();
+      return undo;
+    },
+    undoThreadMoves: async (undo) => {
+      for (const [id, thread] of undo.moves) {
+        const m = messages.find((x) => x.id === id);
+        if (m) m.threadId = thread;
+      }
+      changed();
+    },
     muted: async (id) => mutedThreads.has(messages.find((m) => m.id === id)?.threadId ?? ""),
     readingMinutes: async (ids) => ids.map((id) => [id, [6, 3, 12, 2, 9][id % 5]] as [number, number | null]),
     mutedConversations: async () =>
@@ -1629,6 +1752,22 @@ function fake(): Api {
     restartToUpdate: async () => location.reload(),
     lookForUpdate: async () => {},
     onDesktop: () => {},
+    openEml: async (path) => ({
+      path,
+      subject: "Quarterly numbers (saved copy)",
+      fromName: "Ana Rossi",
+      fromAddr: "ana@example.com",
+      to: "ada@analytical.engine",
+      cc: "",
+      date: now - 40 * 86_400,
+      text: "Hi Ada,\n\nHere are the numbers we talked about. The region split is in the second tab.\n\nAna",
+      html: null,
+      attachments: ["numbers-q3.xlsx"],
+    }),
+    importEml: async () => ({ token: 1, folder: "Imported", total: 1 }),
+    // The browser has no second window to give: a tab stands in for it.
+    openWindow: async (id) => void window.open(`${location.pathname}#window=${id}`, "_blank"),
+    replyInMain: async () => {},
     takeMailto: async () => null,
     setSplit: async (ids, other) => {
       for (const m of messages.filter((m) => ids.includes(m.id)))
@@ -1886,6 +2025,12 @@ function fake(): Api {
       };
       fakeSummaries.set(id, { ...done, cached: true });
       return done;
+    },
+    aiTranslate: async (id, to, onText) => {
+      const m = messages.find((x) => x.id === id);
+      const text = `[${to}] ${(m?.bodyText ?? "").split("\n-- ")[0]}`;
+      await stream(text, onText);
+      return { text, cached: false, sentChars: text.length };
     },
     aiReplies: async (_id, _fresh, onText) => {
       const text = "1. Accept | Thursday at 10 works for me. I'll bring the region split.\n2. Another time | Could we move it to Friday morning instead?\n3. Not yet | Let me check and get back to you by [time].";

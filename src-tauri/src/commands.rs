@@ -276,8 +276,25 @@ pub async fn search_server(state: State<'_, AppState>, query: String) -> Reply<V
 }
 
 #[tauri::command]
-pub async fn search(state: State<'_, AppState>, query: String, limit: i64) -> Reply<SearchResult> {
-    state.store.search(&query, limit).map_err(text)
+pub async fn search(
+    state: State<'_, AppState>,
+    query: String,
+    before: Option<Cursor>,
+    limit: i64,
+) -> Reply<SearchResult> {
+    state.store.search(&query, before, limit).map_err(text)
+}
+
+/// These messages as rows, where they are now: Recently done and All files open mail from them.
+#[tauri::command]
+pub async fn message_rows(state: State<'_, AppState>, ids: Vec<i64>) -> Reply<Vec<MessageRow>> {
+    state.store.message_rows(&ids).map_err(text)
+}
+
+/// How many messages a search finds in all, for the count over results longer than a page (idea 107).
+#[tauri::command]
+pub async fn search_count(state: State<'_, AppState>, query: String) -> Reply<i64> {
+    state.store.search_count(&query).map_err(text)
 }
 
 #[tauri::command]
@@ -641,6 +658,42 @@ pub async fn mute(state: State<'_, AppState>, ids: Vec<i64>, mute: bool) -> Repl
     state.store.mute(&ids, mute).map_err(text)
 }
 
+/// Splits the conversation at message `id`: it and what follows become their own (idea 110). Local only.
+#[tauri::command]
+pub async fn split_conversation(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+) -> Reply<tern_core::ThreadUndo> {
+    let undo = state.store.split_conversation(id).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(undo)
+}
+
+/// Joins the conversations of these messages into the first one's (idea 110). Local only.
+#[tauri::command]
+pub async fn join_conversations(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+) -> Reply<tern_core::ThreadUndo> {
+    let undo = state.store.join_conversations(&ids).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(undo)
+}
+
+/// Undoes a split or join.
+#[tauri::command]
+pub async fn undo_thread_moves(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    undo: tern_core::ThreadUndo,
+) -> Reply<()> {
+    state.store.undo_thread_moves(&undo).map_err(text)?;
+    let _ = app.emit("mail-changed", ());
+    Ok(())
+}
+
 /// Minutes to read each of these messages, for Read later.
 #[tauri::command]
 pub async fn reading_minutes(state: State<'_, AppState>, ids: Vec<i64>) -> Reply<Vec<(i64, Option<i64>)>> {
@@ -848,6 +901,144 @@ pub async fn set_person_note(state: State<'_, AppState>, email: String, body: St
 #[tauri::command]
 pub async fn person_files(state: State<'_, AppState>, email: String) -> Reply<Vec<tern_core::PersonFile>> {
     state.store.person_files(&email, 60).map_err(text)
+}
+
+/// Opens the conversation of message `id` in a window of its own (idea 123), or brings that window forward. It
+/// loads the same page, which shows only that conversation (`#window=<id>`).
+#[tauri::command]
+pub async fn open_window(app: AppHandle, id: i64, title: String) -> Reply<()> {
+    let label = format!("mail-{id}");
+    if let Some(w) = app.get_webview_window(&label) {
+        let _ = w.unminimize();
+        return w.set_focus().map_err(|e| e.to_string());
+    }
+    let title: String =
+        if title.trim().is_empty() { "Tern".into() } else { title.chars().take(120).collect() };
+    let url = tauri::WebviewUrl::App(format!("index.html#window={id}").into());
+    tauri::WebviewWindowBuilder::new(&app, label, url)
+        .title(title)
+        .inner_size(880.0, 860.0)
+        .min_inner_size(480.0, 360.0)
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// A conversation window's Reply: the main window opens the conversation and starts the reply there, where
+/// compose lives.
+#[tauri::command]
+pub async fn reply_in_main(app: AppHandle, state: State<'_, AppState>, id: i64) -> Reply<()> {
+    let row = state.store.message_rows(&[id]).map_err(text)?.pop().ok_or("That message is gone")?;
+    let mail = tern_core::NewMail {
+        id: row.id,
+        account_id: row.account_id,
+        thread_id: row.thread_id,
+        from_name: row.from_name,
+        from_addr: row.from_addr,
+        subject: row.subject,
+        snippet: row.snippet,
+        other: false,
+    };
+    crate::desktop::show(&app);
+    app.emit_to("main", "reply-mail", mail).map_err(|e| e.to_string())
+}
+
+/// Receipts, invoices and orders since `since`, with their text, for Paper trail (idea 115).
+#[tauri::command]
+pub async fn paper_candidates(
+    state: State<'_, AppState>,
+    since: i64,
+) -> Reply<Vec<(tern_core::MessageRow, String)>> {
+    let store = state.store.clone();
+    blocking(move || store.paper_candidates(since)).await
+}
+
+/// Saves text the window made (Paper trail's CSV) where the person picks. False when they cancel.
+#[tauri::command]
+pub async fn save_text(app: AppHandle, title: String, name: String, text: String) -> Reply<bool> {
+    let Some(path) = save_path(&app, &title, &name).await else { return Ok(false) };
+    std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(true)
+}
+
+/// A `.eml` file opened from the file manager (idea 132), read for Tern's viewer: never stored, never sent.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmlView {
+    pub path: String,
+    pub subject: String,
+    pub from_name: String,
+    pub from_addr: String,
+    pub to: String,
+    pub cc: String,
+    pub date: i64,
+    pub text: Option<String>,
+    /// Cleaned like any mail before it is shown, and shown without scripts or remote images.
+    pub html: Option<String>,
+    pub attachments: Vec<String>,
+}
+
+/// Reads a `.eml` file for the viewer.
+#[tauri::command]
+pub async fn open_eml(path: String) -> Reply<EmlView> {
+    let raw = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
+    let m =
+        tern_core::mime::parse(0, &raw, true, false).ok_or("That file doesn't look like a mail message")?;
+    let attachments = m
+        .parts
+        .iter()
+        .flatten()
+        .filter(|p| p.attachment)
+        .map(|p| p.name.clone().unwrap_or_else(|| "attachment".into()))
+        .collect();
+    Ok(EmlView {
+        path,
+        subject: m.subject,
+        from_name: m.from_name,
+        from_addr: m.from_addr,
+        to: m.to_addrs,
+        cc: m.cc_addrs,
+        date: m.date,
+        text: m.body_text,
+        html: m.body_html.as_deref().map(tern_core::mime::sanitize_html),
+        attachments,
+    })
+}
+
+/// Puts a `.eml` file's message into an account's "Imported" folder on the server, as an mbox import of one: it
+/// goes up after the undo window and comes back down like any other mail.
+#[tauri::command]
+pub async fn import_eml(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    account: i64,
+) -> Reply<Imported> {
+    let raw = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
+    let m =
+        tern_core::mime::parse(0, &raw, true, false).ok_or("That file doesn't look like a mail message")?;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dir = if cfg!(debug_assertions) { dir.join("dev") } else { dir }.join("imports");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let copy = dir.join(format!("{}-eml.mbox", tern_core::store::now()));
+    let mut out = Vec::with_capacity(raw.len() + 64);
+    tern_core::mbox::write_message(&mut out, &raw, &m.from_addr, m.date).map_err(|e| e.to_string())?;
+    std::fs::write(&copy, out).map_err(|e| format!("{}: {e}", copy.display()))?;
+    let folder = "Imported".to_string();
+    let token = state
+        .store
+        .queue_import(account, &folder, &copy.display().to_string(), 1, UNDO_SECONDS)
+        .map_err(text)?;
+    state.wake(account);
+    let _ = app.emit("mail-changed", ());
+    Ok(Imported { token, folder, total: 1 })
+}
+
+/// Every file received or sent, newest first (All files, idea 108).
+#[tauri::command]
+pub async fn all_files(state: State<'_, AppState>) -> Reply<Vec<tern_core::PersonFile>> {
+    let store = state.store.clone();
+    blocking(move || store.all_files(2000)).await
 }
 
 /// The account a message belongs to, to fetch from its server.
@@ -1129,9 +1320,15 @@ pub async fn export_mbox(
 ) -> Reply<Option<Exported>> {
     let ids = match (folder, query) {
         (Some(f), _) => state.store.folder_message_ids(f).map_err(text)?,
-        (None, Some(q)) => {
-            state.store.search(&q, 100_000).map_err(text)?.rows.into_iter().map(|r| r.id).rev().collect()
-        }
+        (None, Some(q)) => state
+            .store
+            .search(&q, None, 100_000)
+            .map_err(text)?
+            .rows
+            .into_iter()
+            .map(|r| r.id)
+            .rev()
+            .collect(),
         (None, None) => return Err("Nothing to export".into()),
     };
     if ids.is_empty() {
@@ -1862,6 +2059,21 @@ pub async fn ai_summarize(
     let store = state.store.clone();
     blocking(move || {
         ai::summarize(&store, &providers::Router, id, fresh, &mut |t| drop(on_text.send(t.to_string())))
+    })
+    .await
+}
+
+/// Translates message `id` into `to` (idea 122); the words stream through `on_text`.
+#[tauri::command]
+pub async fn ai_translate(
+    state: State<'_, AppState>,
+    id: i64,
+    to: String,
+    on_text: tauri::ipc::Channel<String>,
+) -> Reply<ai::Translation> {
+    let store = state.store.clone();
+    blocking(move || {
+        ai::translate(&store, &providers::Router, id, &to, &mut |t| drop(on_text.send(t.to_string())))
     })
     .await
 }

@@ -546,6 +546,9 @@ pub struct PersonFile {
     pub name: String,
     pub mime: String,
     pub size: u32,
+    /// Who sent the message: their name, else their address (All files lists everyone's).
+    #[serde(default)]
+    pub from: String,
 }
 
 /// A file attached to a draft, as Tern keeps it.

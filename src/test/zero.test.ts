@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { moonPath, moonPhase, skyAt } from "../sky";
+import { dayLine, moonPath, moonPhase, skyAt } from "../sky";
 
 describe("the moon", () => {
   it("is full on a known full moon and new on a known new moon", () => {
@@ -18,5 +18,14 @@ describe("the sky", () => {
   it("follows the hour", () => {
     const at = (h: number) => skyAt(new Date(2026, 9, 29, h));
     expect([at(5), at(7), at(12), at(18), at(22)]).toEqual(["night", "dawn", "day", "dusk", "night"]);
+  });
+});
+
+describe("dayLine", () => {
+  it("greets the turning days and stays quiet on the rest", () => {
+    expect(dayLine(new Date(2027, 0, 1, 9))).toMatch(/first day of the year/);
+    expect(dayLine(new Date(2027, 5, 21, 9))).toMatch(/longest day/);
+    expect(dayLine(new Date(2026, 11, 21, 9))).toMatch(/shortest day/);
+    expect(dayLine(new Date(2026, 10, 19, 9))).toBeNull();
   });
 });

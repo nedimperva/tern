@@ -680,8 +680,8 @@ impl Store {
     }
 
     /// Search with the search box's language (`query::parse`): words over subject, sender and body as prefixes,
-    /// plus filters. Newest first.
-    pub fn search(&self, input: &str, limit: i64) -> Result<SearchResult> {
+    /// plus filters. Newest first, a page at a time: `before` is the last row of the page shown (idea 107).
+    pub fn search(&self, input: &str, before: Option<Cursor>, limit: i64) -> Result<SearchResult> {
         let q = crate::query::parse(input, now());
         if q.is_empty() {
             return Ok(SearchResult::default());
@@ -696,6 +696,10 @@ impl Store {
         }
         conditions.extend(q.conditions);
         values.extend(q.params);
+        if let Some(c) = before {
+            conditions.push("(m.date < ? OR (m.date = ? AND m.id < ?))".to_string());
+            values.extend([Value::Integer(c.date), Value::Integer(c.date), Value::Integer(c.id)]);
+        }
         let noted = self.noted(&conn, &q.words, &conditions, &values, limit)?;
         let mut rows = None;
         if !q.fts.is_empty() {
@@ -759,6 +763,35 @@ impl Store {
             }
         }
         Ok(SearchResult { rows: kept, partial })
+    }
+
+    /// How many messages a search finds in all, counting a message kept in several folders once (idea 107). Asked
+    /// for apart from the search, and only when its first page is full, so the page never waits on the count.
+    pub fn search_count(&self, input: &str) -> Result<i64> {
+        let q = crate::query::parse(input, now());
+        if q.is_empty() {
+            return Ok(0);
+        }
+        let mut conditions = Vec::new();
+        let mut values: Vec<Value> = Vec::new();
+        let mut sql =
+            "SELECT COUNT(DISTINCT COALESCE(m.message_id, '#' || m.id)) FROM messages m".to_string();
+        if !q.fts.is_empty() {
+            sql.push_str(" JOIN messages_fts ON messages_fts.rowid = m.id");
+            conditions.push("messages_fts MATCH ?".to_string());
+            values.push(Value::Text(q.fts.clone()));
+        }
+        if !q.fts_not.is_empty() {
+            conditions
+                .push("m.id NOT IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)".to_string());
+            values.push(Value::Text(q.fts_not.clone()));
+        }
+        conditions.extend(q.conditions);
+        values.extend(q.params);
+        if !conditions.is_empty() {
+            sql.push_str(&format!(" WHERE {}", conditions.join(" AND ")));
+        }
+        Ok(self.reader().query_row(&sql, rusqlite::params_from_iter(values), |r| r.get(0))?)
     }
 
     /// Messages with a mark or note that holds every word (as typed, any case), and that pass the filters. Empty

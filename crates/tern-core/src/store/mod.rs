@@ -23,9 +23,11 @@ mod reading;
 mod schema;
 mod settings;
 mod syncing;
+mod threads;
+pub use threads::ThreadUndo;
 mod writing;
 
-const SCHEMA_VERSION: i64 = 37;
+const SCHEMA_VERSION: i64 = 38;
 
 /// What a mark is kept by: the message's Message-ID, or its row for mail without one.
 const KEY: &str = "COALESCE(m.message_id, '#' || m.id)";
@@ -833,6 +835,17 @@ fn thread_for(conn: &Connection, account_id: i64, folder_id: i64, m: &NewMessage
     let mut related: Vec<&str> = m.references.iter().map(String::as_str).collect();
     if let Some(parent) = &m.in_reply_to {
         related.push(parent);
+    }
+    // A conversation the person split or joined (idea 110) keeps that shape: the message itself, else the nearest
+    // message it answers, was put somewhere by hand.
+    let mut moved =
+        conn.prepare_cached("SELECT thread_id FROM thread_moves WHERE account_id = ?1 AND message_id = ?2")?;
+    for id in m.message_id.iter().map(String::as_str).chain(related.iter().rev().copied()) {
+        if let Some(thread) =
+            moved.query_row(params![account_id, id], |r| r.get::<_, String>(0)).optional()?
+        {
+            return Ok(thread);
+        }
     }
     let mut stmt = conn
         .prepare_cached("SELECT thread_id FROM messages WHERE account_id = ?1 AND message_id = ?2 LIMIT 1")?;

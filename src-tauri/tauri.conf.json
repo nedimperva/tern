@@ -29,6 +29,15 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "fileAssociations": [
+      {
+        "ext": ["eml"],
+        "mimeType": "message/rfc822",
+        "name": "Email message",
+        "description": "Email message",
+        "role": "Viewer"
+      }
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

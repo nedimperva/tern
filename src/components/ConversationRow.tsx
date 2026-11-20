@@ -1,4 +1,5 @@
-import { For, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
+import { oneTimeCode } from "../facts";
 import { litPieces } from "../hits";
 import { Icon } from "./Icon";
 import type { ThreadRow } from "../api";
@@ -49,6 +50,9 @@ function Lit(props: { text: string; words?: string[] }) {
 }
 
 /** One conversation on one line (docs/design/ui.md §4.1). */
+// Sign-in codes stop working within minutes; after half an hour the chip is noise.
+const CODE_FRESH = 30 * 60;
+
 export function ConversationRow(props: {
   row: ThreadRow;
   focused: boolean;
@@ -71,6 +75,10 @@ export function ConversationRow(props: {
   onQuick?: (what: "done" | "snooze" | "star") => void;
 }) {
   const lit = (text: string) => <Lit text={text} words={props.hits} />;
+  // A sign-in code is worth a chip only while it can still be used (idea 114).
+  const code = () =>
+    Date.now() / 1000 - props.row.date < CODE_FRESH ? oneTimeCode(`${props.row.subject}\n${props.row.snippet}`) : null;
+  const [copied, setCopied] = createSignal(false);
   return (
     // biome-ignore lint/a11y/useFocusableInteractive: focus stays on the list, which points at the focused row
     <div
@@ -153,6 +161,28 @@ export function ConversationRow(props: {
           </span>
         </Show>
       </span>
+      <Show when={code()}>
+        {(c) => (
+          <button
+            type="button"
+            class="chip code"
+            tabIndex={-1}
+            title="Copy the sign-in code"
+            onMouseDown={(e) => (e.stopPropagation(), e.preventDefault())}
+            onDblClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              void navigator.clipboard.writeText(c()).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }, () => {});
+            }}
+          >
+            <Icon name={copied() ? "check" : "copy"} size={12} />
+            {copied() ? "Copied" : c()}
+          </button>
+        )}
+      </Show>
       <Show when={props.row.fromServer}>
         <span class="chip from-server" title="Found by the server's search; its text is on its way to this computer">
           From the server

@@ -27,6 +27,9 @@ import {
 import { factsOf } from "../facts";
 import { drawMarks, FRAME_MARK_STYLE, setJumper, showRange } from "../marks";
 import { aiOn, isDark, setSetting, settings } from "../settings";
+import { ownLanguage, Translation } from "./Translation";
+import { GroupDialog } from "./GroupDialog";
+import { showToast } from "../app/toast";
 import { when } from "./ConversationRow";
 import { ActionMenu, type MenuItem } from "./ActionMenu";
 import { AiReplies } from "./AiReplies";
@@ -848,6 +851,19 @@ export function ConversationView(props: {
   const left = unsubscribed;
   // Loading images for good is a choice about a sender, so it sits in the menu, beside the conversation's actions.
   const [original, setOriginal] = createSignal<ThreadMessage | null>(null);
+  const [translating, setTranslating] = createSignal<number | null>(null);
+  const [grouping, setGrouping] = createSignal(false);
+  /** Everyone in the conversation but the person, by address, with the names the mail gave them. */
+  const everyone = () => {
+    const seen = new Map<string, string>();
+    for (const m of props.messages) {
+      if (!props.mine(m.fromAddr)) seen.set(m.fromAddr.toLowerCase(), m.fromName);
+      for (const a of m.toAddrs.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)) {
+        if (!props.mine(a) && !seen.has(a)) seen.set(a, names().get(a) ?? "");
+      }
+    }
+    return [...seen].map(([email, name]) => ({ email, name }));
+  };
   const labelChips = () => (
     <div class="labels">
       <For each={props.labels}>
@@ -867,6 +883,10 @@ export function ConversationView(props: {
       ...(designed().size ? [{ name: reading() ? "Show the original look" : "Reading view", group: "view", run: () => setReading(!reading()) }] : []),
       ...(listMail() && !left() ? [{ name: "Unsubscribe", group: "view", run: () => void unsubscribe() }] : []),
       { name: "Show original", group: "view", run: () => setOriginal(last() ?? null) },
+      ...(everyone().length > 1 ? [{ name: "Save these people as a group…", group: "view", run: () => setGrouping(true) }] : []),
+      ...(last() && aiOn("summaries", last().accountId)
+        ? [{ name: `Translate to ${settings.translateTo || ownLanguage()}`, group: "view", run: () => setTranslating(last().id) }]
+        : []),
     ];
     if (!sender) return items;
     return [
@@ -887,6 +907,7 @@ export function ConversationView(props: {
     readingChosen = false;
     setCurrentMark(null);
     setPick(null);
+    setTranslating(null);
   });
 
   // MARK: The column beside the messages (docs/design/ui.md §4.2a–c)
@@ -1487,6 +1508,9 @@ export function ConversationView(props: {
             </article>
           )}
         </Show>
+        <Show when={translating()} keyed>
+          {(id) => <Translation id={id} to={settings.translateTo || ownLanguage()} onClose={() => setTranslating(null)} />}
+        </Show>
         {replyRow()}
       </div>
       {details()}
@@ -1511,6 +1535,16 @@ export function ConversationView(props: {
       </Show>
       <Show when={original()}>
         {(m) => <Original id={m().id} subject={m().subject || "(no subject)"} onClose={() => setOriginal(null)} />}
+      </Show>
+      <Show when={grouping()}>
+        <GroupDialog
+          people={everyone()}
+          suggested={subject().replace(/^(re|fwd?|aw|sv):\s*/i, "").slice(0, 40)}
+          onClose={(saved) => {
+            setGrouping(false);
+            if (saved) showToast(`Saved the group “${saved}”. Type its name in To to bring everyone in.`, []);
+          }}
+        />
       </Show>
       <Show when={hovered()}>
         {(h) => (

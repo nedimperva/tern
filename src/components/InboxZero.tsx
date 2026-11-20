@@ -6,7 +6,7 @@ import { api, type Account } from "../api";
 import { colourOf } from "../colours";
 import { settings } from "../settings";
 import { weekReport, weekStart } from "../tide";
-import { moonPath, moonPhase, skyAt, winter } from "../sky";
+import { dayLine, moonPath, moonPhase, skyAt, winter } from "../sky";
 import {
   clearedThisYear,
   clearedToday,
@@ -90,6 +90,8 @@ type Scene = {
   /** Under the words (the week of the streak). */
   extra?: () => JSX.Element;
 };
+
+const FLAKES = [[80, 40], [190, 120], [300, 20], [420, 160], [520, 80], [640, 30], [700, 190], [860, 110], [950, 30], [1060, 150], [1130, 70], [250, 250], [600, 280], [1000, 300]];
 
 export function InboxZero(props: { accounts: Account[] }) {
   // The time on screen, and the scene, move on by themselves.
@@ -466,7 +468,8 @@ export function InboxZero(props: { accounts: Account[] }) {
       art: () => (
         <g class="after-dark">
           <rect class="sky" width={W} height={H} />
-          <circle cx="860" cy="120" r="34" style={{ fill: "var(--z-moon)" }} />
+          <circle class="moon-dark" cx="860" cy="120" r="34" />
+          <path d={moonPath(moonPhase(now()), 860, 120, 34)} style={{ fill: "var(--z-moon)" }} />
           <rect class="sea" y="340" width={W} height="60" />
           <path class="sand" d={`M0 380 C 300 360, 700 372, ${W} 352 L${W} ${H} L0 ${H} Z`} />
           <Sitting at="translate(420 392)" asleep />
@@ -479,9 +482,12 @@ export function InboxZero(props: { accounts: Account[] }) {
     }),
   };
 
+  // Scenes that draw their own snow; the rest get it laid over them in winter (idea 135).
+  const ownSnow: SceneId[] = ["horizon", "seasons"];
   const scene = () => {
     const id = sceneFor(now());
-    return { id, ...scenes[id]() };
+    const s = scenes[id]();
+    return { id, ...s, line: dayLine(now()) ?? s.line, snow: winter(now()) && !ownSnow.includes(id) };
   };
 
   return (
@@ -495,6 +501,13 @@ export function InboxZero(props: { accounts: Account[] }) {
             aria-hidden="true"
           >
             {s().art()}
+            <Show when={s().snow}>
+              <g class="snow" classList={{ "after-dark": !!s().dark || s().id === "night" }}>
+                <For each={FLAKES}>
+                  {([x, y], i) => <circle cx={x} cy={y} r={i() % 3 ? 1.6 : 2.4} style={{ "animation-delay": `${-(i() * 0.9)}s` }} />}
+                </For>
+              </g>
+            </Show>
           </svg>
           <div class="zero-words">
             <Show when={s().kicker}>

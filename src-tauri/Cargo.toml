@@ -33,6 +33,16 @@ tauri-plugin-updater = { version = "2", default-features = false, features = ["r
 # Notifications: the desktop's notification service on Linux, toasts that report clicks on Windows.
 [target.'cfg(target_os = "linux")'.dependencies]
 notify-rust = "4"
+# A sign-in code copied from a notification's button (idea 114), with no window in front to do it. GTK is already
+# in the tree through Tauri's webview; Windows uses the Win32 clipboard.
+gtk = "0.18"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Data_Xml_Dom", "Foundation", "UI_Notifications"] }
+windows = { version = "0.62", features = [
+  "Data_Xml_Dom",
+  "Foundation",
+  "UI_Notifications",
+  "Win32_Foundation",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+] }

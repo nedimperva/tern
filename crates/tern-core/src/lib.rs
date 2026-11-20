@@ -11,6 +11,7 @@ pub mod mbox;
 pub mod mime;
 pub mod models;
 pub mod oauth;
+pub mod otp;
 pub mod presets;
 pub mod query;
 #[cfg(test)]
@@ -24,4 +25,4 @@ pub mod triage;
 pub mod unsubscribe;
 
 pub use models::*;
-pub use store::Store;
+pub use store::{Store, ThreadUndo};

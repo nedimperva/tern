@@ -7,6 +7,45 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Added
+
+- All files (`g f`, or Files in the sidebar): every attachment you received or sent, newest first, by kind and by
+  name. Space shows one, Enter opens its mail.
+- Paper trail (`g $`): receipts, invoices, orders and bookings from the last year with their amounts and references,
+  by month with the month's total, and Export CSV. Read on this computer from the mail itself.
+- Sign-in codes: a fresh one shows on its row as a chip that copies it, and its notification has "Copy code" and
+  "Copy and Done" in place of Archive and Reply.
+- Split a conversation at a message (in its … menu) or join selected conversations (palette). Local only, with
+  undo, and the shape stays after a resync; new replies follow the message they answer.
+- Translate to your language from a message's … menu, when AI summaries are on. Shown under the conversation and
+  kept, so opening it again sends nothing. The language is in Settings → AI.
+- Contact groups: "Save these people as a group…" in a conversation's … menu; typing the group's name in To or Cc
+  brings everyone in. Listed in Settings → Senders.
+- A conversation in its own window (`Shift+Enter`), with Reply handing over to the main window.
+- Open `.eml` files with Tern (file manager, or "Open an .eml file…" in the palette), and import one into an
+  account's Imported folder.
+- `tern --status` prints the inbox's unread count as Waybar JSON; the README has the module. On Windows the taskbar
+  button gets a dot while there is unread mail.
+- Recently done (palette): where the last things you moved went, to open them there or put them back in the Inbox.
+- Key tips: after a third click on something that has a key you haven't used, a toast names the key once. The
+  shortcut sheet greys the keys you already use. Off in Settings → General.
+- Your week, on Friday's morning screen: what came in, what you cleared, the quietest day and asks that have waited
+  over a week. "Not on Fridays" turns it off.
+- Inbox Zero in winter snows on every scene, the night scene shows the real moon, and the first day of the year, of
+  spring and the longest and shortest days get their own line.
+
+### Changed
+
+- Writing help in a new mail (`Ctrl+J`): the try appears the moment you ask, with its To, Cc and Subject lines as
+  they are written, and Tab keeps the people your contacts settle along with the text. Namesakes wait in the sidebar
+  to be picked, and an address only the AI came up with is never added. Reshape shows once there is text to reshape.
+- Search goes past 500 results: more load as you scroll, and the count says how many there are in all.
+- A recipient chip shows the domain when you know two people with the same name.
+
+### Fixed
+
+- The sync button said "2 to look at" while offline, hiding why no mail came. It now says "Offline · 2 to look at".
+
 ## [2.4.0] - 2026-11-17
 
 A reading view that moves: mail slides in beside the list and back out, threads say whose message you are in,

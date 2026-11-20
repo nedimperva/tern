@@ -29,6 +29,7 @@ import { Icon } from "./Icon";
 import { kind, middleCut } from "../files";
 import { Dropdown } from "./Dropdown";
 import { wordDiff } from "../wordDiff";
+import { htmlText, pastedHtml } from "../htmlSignature";
 import { HtmlFrame } from "./HtmlFrame";
 // The editor is a chunk of its own (ProseMirror is most of its weight); App loads it once the list is up.
 const Editor = lazy(() => import("./Editor").then((m) => ({ default: m.Editor })));
@@ -114,6 +115,10 @@ export function Compose(props: {
   /** Folded into a card in the corner while the person reads other mail (new mail only). */
   minimized?: boolean;
   onMinimize?: (on: boolean) => void;
+  /** Called after a signature is created or edited inside compose so the app reloads signatures. */
+  onSignaturesChanged?: () => void;
+  /** Opens Settings → Signatures while keeping the current draft alive. */
+  onOpenSignatures?: () => void;
 }) {
   const [from, setFrom] = createSignal(props.init.accountId ?? props.accounts[0]?.id);
   // The alias it goes out as, spelled as the account lists it; null is the account's own address.
@@ -140,21 +145,108 @@ export function Compose(props: {
     setHtml(made.html);
     return made;
   });
-  // The signature in the text now (null: none, or one Tern can't find as written), and the editor showing it.
+  // The signature in the text now (null: none, or a custom one from a reopened draft), and per-email override text.
   const [sigId, setSigId] = createSignal<number | null>(props.init.signature?.id ?? props.init.htmlSignature ?? null);
-  // An HTML signature (pasted from another mail app) isn't in the text: it shows under it and joins it on the way out.
+  const [sigOverride, setSigOverride] = createSignal<string | null>(null);
+  const activeSig = () => props.signatures.find((x) => x.id === sigId()) ?? null;
+  // An HTML signature (pasted from another mail app) isn't in the text: it joins the mail on the way out.
   const htmlSig = () => {
-    const s = props.signatures.find((x) => x.id === sigId());
+    const s = activeSig();
     return s?.custom && s.html ? s : null;
   };
-  // An HTML signature folds to one line like a text one (Editor's signatureFold). One state for both: folded at the
-  // start, then as the person leaves it, through switches between the two kinds.
+  // Direction B: the writing area stays pure by default. The footer pill opens a peek drawer (with switcher, preview
+  // and inline editing); "Show in email" optionally pins the live preview at the bottom of the body.
   const [sigOpen, setSigOpen] = createSignal(false);
+  const [sigPinned, setSigPinned] = createSignal(false);
+  const [sigEdit, setSigEdit] = createSignal<"draft" | "saved" | "new" | null>(null);
+  const [sigEditText, setSigEditText] = createSignal("");
+  const [sigEditName, setSigEditName] = createSignal("");
+  const [sigSaving, setSigSaving] = createSignal(false);
+  const [sigError, setSigError] = createSignal("");
+  const [sigNotice, setSigNotice] = createSignal("");
+  const [sigPlace, setSigPlace] = createSignal({ left: 16, top: 0, bottom: 0, up: true });
+  let sigBtn: HTMLButtonElement | undefined;
+  let sigDrawerEl: HTMLDivElement | undefined;
+  let sigTextarea: HTMLTextAreaElement | undefined;
+  let sigNameInput: HTMLInputElement | undefined;
+  let sigNoticeTimer: number | undefined;
+  const flashSigNotice = (msg: string) => {
+    setSigNotice(msg);
+    clearTimeout(sigNoticeTimer);
+    sigNoticeTimer = window.setTimeout(() => setSigNotice(""), 2400);
+  };
+  onCleanup(() => clearTimeout(sigNoticeTimer));
   const sigBelow = () => props.init.signature?.below ?? (settings.signatureBelow && !!props.init.inReplyTo);
   let tools: Awaited<ReturnType<typeof signatureTools>> | undefined;
   void signatureTools().then((t) => (tools = t));
   const sigKind = props.init.signature?.kind ?? (props.init.inReplyTo ? "reply" : "new");
   const accountSignatures = () => props.signatures.filter((s) => s.accountId === from());
+  const sigLabel = () => {
+    const s = activeSig();
+    if (s) return s.name || "Untitled";
+    return sigOverride() !== null ? "Custom" : "No signature";
+  };
+  const closeSigDrawer = (refocus = false) => {
+    if (!sigOpen()) return;
+    setSigOpen(false);
+    setSigEdit(null);
+    setSigError("");
+    window.removeEventListener("keydown", onSigKey, true);
+    window.removeEventListener("pointerdown", onSigOutside, true);
+    window.removeEventListener("resize", onSigResize);
+    if (refocus) sigBtn?.focus();
+  };
+  const onSigKey = (e: KeyboardEvent) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (sigEdit()) (setSigEdit(null), setSigError(""));
+    else closeSigDrawer(true);
+  };
+  const onSigOutside = (e: PointerEvent) => {
+    const t = e.target as Node;
+    if (!sigBtn?.contains(t) && !sigDrawerEl?.contains(t)) closeSigDrawer(false);
+  };
+  const onSigResize = () => closeSigDrawer(false);
+  onCleanup(() => closeSigDrawer(false));
+  const startSigEdit = (mode: "draft" | "saved" | "new") => {
+    const s = activeSig();
+    setSigError("");
+    if (mode === "new") {
+      setSigEdit("new");
+      setSigEditName(accountSignatures().length ? `Signature ${accountSignatures().length + 1}` : "Signature");
+      setSigEditText("");
+      queueMicrotask(() => sigNameInput?.focus());
+      return;
+    }
+    if (s?.custom) {
+      setSigEdit("saved");
+      setSigEditText(s.html ?? "");
+    } else if (mode === "saved" && s) {
+      setSigEdit("saved");
+      setSigEditText(s.body);
+    } else {
+      setSigEdit("draft");
+      setSigEditText(sigOverride() ?? s?.body ?? "");
+    }
+    queueMicrotask(() => sigTextarea?.focus());
+  };
+  const openSigDrawer = (edit?: "draft" | "saved" | "new") => {
+    if (sigBtn) {
+      const r = sigBtn.getBoundingClientRect();
+      const width = Math.min(430, window.innerWidth - 24);
+      const left = Math.max(12, Math.min(r.left, window.innerWidth - width - 12));
+      const up = r.top > 240 || r.top > window.innerHeight - r.bottom;
+      setSigPlace({ left, top: r.bottom + 6, bottom: window.innerHeight - r.top + 8, up });
+    }
+    if (!sigOpen()) {
+      setSigOpen(true);
+      window.addEventListener("keydown", onSigKey, true);
+      window.addEventListener("pointerdown", onSigOutside, true);
+      window.addEventListener("resize", onSigResize);
+    }
+    if (edit) startSigEdit(edit);
+  };
   let view: EditorView | undefined;
   let formEl: HTMLFormElement | undefined;
   // The view arrives after the first render; what reads it (ownText) runs again then.
@@ -168,11 +260,15 @@ export function Compose(props: {
       const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       requestAnimationFrame(() => formEl?.scrollIntoView({ block: "start", behavior: smooth ? "smooth" : "auto" }));
     }
-    // A saved draft: find which of the account's signatures it holds, so switching replaces that one.
+    // A saved draft: find which of the account's signatures it holds (or a custom one), so switching replaces it.
     if (props.init.signature || props.init.htmlSignature) return;
-    void signatureTools().then(({ findSignature }) => {
+    void signatureTools().then(({ findSignature, signatureBodyText }) => {
       const held = accountSignatures().find((s) => findSignature(v.state.doc, s));
       if (held) setSigId(held.id);
+      else {
+        const customText = signatureBodyText(v.state.doc);
+        if (customText !== null) setSigOverride(customText);
+      }
     });
   };
   /** Puts `next` (or no signature) in place of the current one, where the current one is; else where one goes. */
@@ -180,25 +276,95 @@ export function Compose(props: {
     if (!view) return;
     const { findSignature, signatureDoc, signaturePlace } = await signatureTools();
     const state = view.state;
-    const current = props.signatures.find((s) => s.id === sigId());
-    const at = current ? findSignature(state.doc, current) : null;
+    const current = activeSig();
+    const hadSig = sigId() !== null || sigOverride() !== null;
+    const at = (current ? findSignature(state.doc, current) : null) ?? (hadSig ? signatureRange(state.doc) : null);
     const blocks = next && !next.custom ? signatureDoc(next).content : null;
-    // Which one is in use changes first: the signature line reads it as the swap redraws it.
     setSigId(next?.id ?? null);
+    setSigOverride(null);
+    setSigEdit(null);
+    setSigError("");
     if (at) view.dispatch((blocks ? state.tr.replaceWith(at.from, at.to, blocks) : state.tr.delete(at.from, at.to)).setMeta("signatureSwap", true));
     else if (blocks) {
-      const below = props.init.signature?.below ?? false;
-      view.dispatch(state.tr.insert(signaturePlace(state.doc, below), blocks).setMeta("signatureSwap", true));
+      view.dispatch(state.tr.insert(signaturePlace(state.doc, sigBelow()), blocks).setMeta("signatureSwap", true));
     }
     // The text did not change, but what goes out did.
     if (current?.custom || next?.custom) changed();
   };
+  /** Applies a per-email text edit to the signature inside this draft without changing the saved signature. */
+  const applyDraftSignature = async (text: string) => {
+    if (!view) return;
+    const trimmed = text.trim();
+    if (!trimmed) return void switchSignature(null);
+    const { customSignatureDoc, findSignature, signaturePlace } = await signatureTools();
+    const state = view.state;
+    const current = activeSig();
+    const hadSig = sigId() !== null || sigOverride() !== null;
+    const at = (current ? findSignature(state.doc, current) : null) ?? (hadSig ? signatureRange(state.doc) : null);
+    const blocks = customSignatureDoc(trimmed).content;
+    setSigOverride(trimmed);
+    setSigEdit(null);
+    setSigError("");
+    if (at) view.dispatch(state.tr.replaceWith(at.from, at.to, blocks).setMeta("signatureSwap", true));
+    else view.dispatch(state.tr.insert(signaturePlace(state.doc, sigBelow()), blocks).setMeta("signatureSwap", true));
+    changed();
+    flashSigNotice("Signature updated for this email");
+  };
+  /** Saves the signature edit: for this draft, updating the saved signature, or creating a new one. */
+  const saveSigEdit = async () => {
+    const mode = sigEdit();
+    if (!mode || sigSaving()) return;
+    if (mode === "draft") return void applyDraftSignature(sigEditText());
+    const accountId = from();
+    if (accountId == null) return;
+    setSigSaving(true);
+    setSigError("");
+    try {
+      if (mode === "new") {
+        const bodyText = sigEditText().trim();
+        if (!bodyText) {
+          setSigError("Write something for the signature first.");
+          return;
+        }
+        const first = accountSignatures().length === 0;
+        const created: Signature = {
+          id: 0,
+          accountId,
+          name: sigEditName().trim() || "Signature",
+          body: bodyText,
+          html: null,
+          forNew: first,
+          forReply: first,
+        };
+        const id = await api.saveSignature(created);
+        props.onSignaturesChanged?.();
+        await switchSignature({ ...created, id });
+        flashSigNotice("Signature saved");
+        return;
+      }
+      const s = activeSig();
+      if (!s) return void applyDraftSignature(sigEditText());
+      const updated: Signature = s.custom
+        ? { ...s, html: sigEditText(), body: htmlText(sigEditText()) }
+        : { ...s, body: sigEditText().trim(), html: null };
+      await api.saveSignature(updated);
+      props.onSignaturesChanged?.();
+      await switchSignature(updated);
+      flashSigNotice(`Updated “${updated.name || "Untitled"}”`);
+    } catch (e) {
+      setSigError(String(e));
+    } finally {
+      setSigSaving(false);
+    }
+  };
   /** Ctrl+Shift+S: the account's next signature, then none, then round again. */
   const cycleSignature = () => {
     const list = accountSignatures();
-    if (!list.length) return;
+    if (!list.length) return openSigDrawer();
     const i = list.findIndex((s) => s.id === sigId());
-    void switchSignature(i + 1 < list.length ? list[i + 1] : null);
+    const next = i + 1 < list.length ? list[i + 1] : null;
+    void switchSignature(next);
+    flashSigNotice(next ? `Signature: ${next.name || "Untitled"}` : "No signature");
   };
   /** Writing from another account brings its signature, when the one in the text was the old account's. The
    * picker's value is the account's id, then a space and the alias when it is one. */
@@ -297,7 +463,6 @@ export function Compose(props: {
   });
   onCleanup(() => setWritingTitle(null));
   const [sendMenu, setSendMenu] = createSignal(false);
-  const [sigMenu, setSigMenu] = createSignal(false);
   // Checks before sending (attachment mentioned but missing, no subject). Shown on the first try; sending again
   // with them showing sends anyway. Any change takes them away, since it may have been the fix.
   const [checks, setChecks] = createSignal<{ attachment: string | null; subject: boolean } | null>(null);
@@ -479,8 +644,10 @@ export function Compose(props: {
   const [hasStyle, setHasStyle] = createSignal(false);
   /** "In your style", for this compose only. */
   const [inStyle, setInStyle] = createSignal(true);
-  /** New mail: the people the latest answer named. They stay after a keep, to add one by one. */
-  const [found, setFound] = createSignal<{ to: AiRecipient[]; cc: AiRecipient[] } | null>(null);
+  /** New mail: the people the latest answer named. Keeping the try adds the ones the contacts settle (one match, or
+   * the one picked); the rest stay here to add by hand. `picked`: the person chose between namesakes. */
+  type Found = AiRecipient & { picked?: boolean };
+  const [found, setFound] = createSignal<{ to: Found[]; cc: Found[] } | null>(null);
   /** Suggested replies, for Starts: none asked yet, being asked, the list, or what went wrong. */
   const [starts, setStarts] = createSignal<AiSuggestion[] | "busy" | { error: string } | null>(null);
   let aiInput: HTMLTextAreaElement | undefined;
@@ -488,10 +655,10 @@ export function Compose(props: {
   let aiRun = 0;
   const current = () => versions()[shown()];
   const pending = () => versions().some((v) => v.written);
-  /** The try in the text's place, while it streams or once written. */
+  /** The try in the text's place, from the moment it is asked: the wait shows where the words will come. */
   const tryShown = () => {
     const v = current();
-    return v && !v.error && (v.written || bodyOf(v.streamed)) ? v : null;
+    return v && !v.error && (v.written || bodyOf(v.streamed) || aiBusy()) ? v : null;
   };
   const inSide = (e: Event) => !!asideEl && e.target instanceof Node && asideEl.contains(e.target);
   const openAi = () => {
@@ -540,6 +707,15 @@ export function Compose(props: {
     const at = streamed.indexOf("\n===");
     return at < 0 ? "" : streamed.slice(at + 4).replace(/^=*\s*/, "");
   };
+  /** New mail's header lines as they stream ("To: Tom", "Subject: …"), to show them before the body starts. */
+  const headOf = (streamed: string) => {
+    const end = streamed.indexOf("\n===");
+    const head = end < 0 ? streamed : streamed.slice(0, end);
+    const line = (key: string) => head.match(new RegExp(`^${key}:[ \t]*(.*)$`, "mi"))?.[1]?.trim() ?? "";
+    return { to: line("To"), cc: line("Cc"), subject: line("Subject") };
+  };
+  /** Someone the contacts settle: one match, or the namesake the person picked. Never a stranger. */
+  const settled = (r: Found) => !!r.address && !r.stranger && (!r.others.length || !!r.picked);
   /** What is selected of the person's own words, for a Reshape that should change only that. */
   const selected = (end: number) => {
     if (!view || versions().length) return "";
@@ -625,7 +801,7 @@ export function Compose(props: {
     queueMicrotask(() => aiInput?.focus());
   };
   /** Tab: the try on show goes into the email as ordinary text (Ctrl+Z in the editor brings back what was there);
-   * in new mail its subject too, when there is none. People are added one by one from the sidebar. */
+   * in new mail its subject too, when there is none, and the people the contacts settle. */
   const keepAi = async () => {
     const w = current()?.written;
     const own = await ownPart();
@@ -633,13 +809,16 @@ export function Compose(props: {
     const { fromText } = await schemaTools();
     view.dispatch(view.state.tr.replaceWith(0, own.end, fromText(w.body).content));
     if (newMail() && w.subject && !subject().trim()) setSubject(w.subject);
+    // The people go in with it when the contacts settle who they are; namesakes and strangers wait in the sidebar.
+    const f = newMail() ? found() : null;
+    if (f) for (const field of ["to", "cc"] as const) for (const r of f[field]) if (settled(r)) addPerson(field, r);
     changed();
     dropTries();
     view.focus();
   };
   /** Adds someone the AI named. A stranger never gets here: an address only the AI came up with may have been planted
    * in what it read. */
-  const addPerson = (field: "to" | "cc", r: AiRecipient) => {
+  const addPerson = (field: "to" | "cc", r: Found) => {
     if (!r.address || r.stranger) return;
     const list = field === "to" ? to() : cc();
     if (list.some((a) => a.toLowerCase() === r.address!.toLowerCase())) return;
@@ -654,7 +833,13 @@ export function Compose(props: {
       if (!f) return f;
       const people = f[field].map((r, k) =>
         k === index && r.address
-          ? { ...r, address: person.email, name: person.name, others: [{ email: r.address, name: r.name }, ...r.others.filter((o) => o.email !== person.email)] }
+          ? {
+              ...r,
+              address: person.email,
+              name: person.name,
+              picked: true,
+              others: [{ email: r.address, name: r.name }, ...r.others.filter((o) => o.email !== person.email)],
+            }
           : r,
       );
       return { ...f, [field]: people };
@@ -725,7 +910,7 @@ export function Compose(props: {
     if (e.key === "Escape" && aiOpen()) versions().length ? (dropTries(), aiInput?.focus()) : closeAi();
     else if (ctrl && !e.shiftKey && e.key.toLowerCase() === "j" && aiAllowed()) aiOpen() && inSide(e) ? closeAi() : openAi();
     else if (spaceAsks(e)) openAi();
-    else if (e.key === "Escape" && (sendMenu() || sigMenu())) (setSendMenu(false), setSigMenu(false));
+    else if (e.key === "Escape" && sendMenu()) setSendMenu(false);
     else if (e.key === "Escape" && focusMode()) setFocusMode(false);
     else if (e.key === "Escape") void close();
     else if (ctrl && e.shiftKey && e.key.toLowerCase() === "f" && !props.init.inline) setFocusMode(!focusMode());
@@ -989,8 +1174,11 @@ export function Compose(props: {
           <h3>Brief</h3>
           <label class="ai-brief">
             <span class="hint">
-              {newMail() ? "Who it goes to and what it should say." : "What should the answer say?"} One note, not a chat: change
-              it and write again.
+              {versions().length
+                ? "Change it and write again, or keep the try."
+                : newMail()
+                  ? "Who it's for and what it should say."
+                  : "What should the answer say?"}
             </span>
             <textarea
               ref={aiInput}
@@ -1020,7 +1208,8 @@ export function Compose(props: {
           </label>
           <div class="ai-brief-row">
             <button type="button" class="ai-side-button" disabled={aiBusy()} onClick={writeFromBrief}>
-              {aiAsk().trim() ? (versions().length ? "Write again" : "Write") : chipLabel("Write it out")} <kbd>↵</kbd>
+              {aiBusy() ? "Writing…" : aiAsk().trim() ? (versions().length ? "Write again" : "Write") : chipLabel("Write it out")}{" "}
+              <kbd>↵</kbd>
             </button>
             <span class="spacer" />
             <Show when={versions().length > 1}>
@@ -1043,28 +1232,6 @@ export function Compose(props: {
           </div>
           <Show when={current()?.error}>{(error) => <p class="ai-error">{error()}</p>}</Show>
         </section>
-        <section>
-          <h3>Reshape</h3>
-          <span class="hint">Works on the try on show, your selection, or all your own words.</span>
-          <div class="ai-chips">
-            <For each={AI_CHIPS.filter(([l]) => TONES.has(l))}>
-              {([label, request]) => (
-                <button type="button" class="chip" disabled={aiBusy() || (ownEmpty() && !versions().length)} onClick={() => void askAi({ label, request })}>
-                  {label}
-                </button>
-              )}
-            </For>
-            <Dropdown
-              class="chip translate"
-              label="Translate into"
-              placeholder="Translate…"
-              value=""
-              disabled={aiBusy() || (ownEmpty() && !versions().length)}
-              choices={LANGUAGES.map((l) => ({ value: l, label: l }))}
-              onChange={(lang) => void askAi({ label: `In ${lang}`, request: `Translate it into ${lang}. Keep the meaning, the tone and the names.` })}
-            />
-          </div>
-        </section>
         <Show when={newMail() ? found() : null}>
           {(f) => {
             const people = (field: "to" | "cc") => (
@@ -1083,7 +1250,7 @@ export function Compose(props: {
                           </Show>
                           <Show when={r.others.length}>
                             <span class="others">
-                              also{" "}
+                              {r.picked ? "also" : "or"}{" "}
                               <For each={r.others}>
                                 {(o) => (
                                   <button type="button" class="link" onClick={() => pickPerson(field, k(), o)}>
@@ -1110,10 +1277,34 @@ export function Compose(props: {
                 <h3>People it found</h3>
                 {people("to")}
                 {people("cc")}
-                <span class="hint">Only people in your contacts, and only when you add them.</span>
+                <span class="hint">Keeping the try adds each one your contacts settle. Pick between namesakes here.</span>
               </section>
             );
           }}
+        </Show>
+        <Show when={!ownEmpty() || versions().length}>
+          <section>
+            <h3>Reshape</h3>
+            <span class="hint">Works on the try on show, your selection, or all your own words.</span>
+            <div class="ai-chips">
+              <For each={AI_CHIPS.filter(([l]) => TONES.has(l))}>
+                {([label, request]) => (
+                  <button type="button" class="chip" disabled={aiBusy() || (ownEmpty() && !versions().length)} onClick={() => void askAi({ label, request })}>
+                    {label}
+                  </button>
+                )}
+              </For>
+              <Dropdown
+                class="chip translate"
+                label="Translate into"
+                placeholder="Translate…"
+                value=""
+                disabled={aiBusy() || (ownEmpty() && !versions().length)}
+                choices={LANGUAGES.map((l) => ({ value: l, label: l }))}
+                onChange={(lang) => void askAi({ label: `In ${lang}`, request: `Translate it into ${lang}. Keep the meaning, the tone and the names.` })}
+              />
+            </div>
+          </section>
         </Show>
       </div>
       <footer>
@@ -1131,6 +1322,42 @@ export function Compose(props: {
     </aside>
   );
 
+  const fromControl = () => (
+    <Show
+      when={choosesFrom()}
+      fallback={
+        <span class="from-static">
+          <span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />
+          <span>{sender()}</span>
+        </span>
+      }
+    >
+      <div class="from-pick">
+        <Dropdown
+          class="bare"
+          label="From"
+          title="Send from"
+          lead={<span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />}
+          value={alias() ? `${from()} ${alias()}` : String(from())}
+          choices={props.accounts.flatMap((a) => [
+            { value: String(a.id), label: a.email, detail: a.displayName || undefined },
+            ...(a.aliases ?? []).map((x) => ({ value: `${a.id} ${x.email}`, label: x.email, detail: x.name || a.displayName || undefined })),
+          ])}
+          onChange={changeFrom}
+        />
+      </div>
+    </Show>
+  );
+
+  const sigPreview = () => {
+    const custom = sigOverride();
+    const s = activeSig();
+    if (custom !== null) return <div class="sig-preview-text">{`-- \n${custom}`}</div>;
+    if (s?.custom && s.html) return <HtmlFrame html={s.html} title="Signature" />;
+    if (s) return <div class="sig-preview-text">{`-- \n${s.body.trim() || "(empty)"}`}</div>;
+    return <div class="sig-preview-empty">No signature will be added to this message.</div>;
+  };
+
   const form = (
     <form
       ref={formEl}
@@ -1145,63 +1372,126 @@ export function Compose(props: {
     >
       <Show when={long()}>{outline()}</Show>
       <div class="compose-main">
-      <div class="compose-head">
-        <span class="spacer" />
-        <Show when={!props.init.inline}>
-          <Show
-            when={!focusMode()}
-            fallback={
-              <button type="button" class="exit-focus" onClick={() => setFocusMode(false)}>
-                Exit focus <kbd>Esc</kbd>
-              </button>
-            }
-          >
-            {iconButton("minus", "Minimize (Ctrl+Shift+M)", () => props.onMinimize?.(true))}
-            {iconButton("maximize", "Focus mode (Ctrl+Shift+F)", () => setFocusMode(true))}
-          </Show>
-        </Show>
-        <Show when={!focusMode()}>{iconButton("x", "Close and keep the draft (Esc)", () => void close())}</Show>
-      </div>
-      <div class="fields">
-        <Show when={!props.init.inline || !props.init.inReplyTo}>
-          <div class="field subject">
-            <input
-              aria-label="Subject"
-              placeholder="Subject"
-              value={subject()}
-              onInput={(e) => (setSubject(e.currentTarget.value), changed())}
+      {/* Direction B: structured tinted cap (From -> To -> Subject) in modal/focus; single compact row in inline reply. */}
+      <div class="compose-cap" classList={{ "inline-cap": props.init.inline }}>
+        <Show
+          when={!props.init.inline}
+          fallback={
+            <>
+              <div class="inline-top">
+                <span class="inline-reply-mark" aria-hidden="true">
+                  <Icon name="reply" size={13} />
+                </span>
+                <RecipientField
+                  label="To"
+                  placeholder="add people"
+                  value={to()}
+                  onChange={(v) => (setTo(v), changed())}
+                  ref={(el) => (toInput = el)}
+                  outside={isOutside}
+                  after={
+                    <span class="inline-top-actions">
+                      <Show when={choosesFrom()}>{fromControl()}</Show>
+                      <span class="cc-toggles">
+                        <Show when={!showCc()}>
+                          <button type="button" onClick={() => (setShowCc(true), queueMicrotask(() => ccInput?.focus()))} title="Cc (Ctrl+Shift+C)">
+                            Cc
+                          </button>
+                        </Show>
+                        <Show when={!showBcc()}>
+                          <button type="button" onClick={() => (setShowBcc(true), queueMicrotask(() => bccInput?.focus()))} title="Bcc (Ctrl+Shift+B)">
+                            Bcc
+                          </button>
+                        </Show>
+                      </span>
+                      <span class="cap-sep" aria-hidden="true" />
+                      {iconButton("x", "Close and keep the draft (Esc)", () => void close(), "compact")}
+                    </span>
+                  }
+                />
+              </div>
+              <Show when={showCc()}>
+                <RecipientField label="Cc" value={cc()} onChange={(v) => (setCc(v), changed())} ref={(el) => (ccInput = el)} outside={isOutside} />
+              </Show>
+              <Show when={showBcc()}>
+                <RecipientField label="Bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} outside={isOutside} />
+              </Show>
+              <Show when={!props.init.inReplyTo}>
+                <div class="field subject">
+                  <span class="label">Subject</span>
+                  <input
+                    aria-label="Subject"
+                    placeholder="Add a subject"
+                    value={subject()}
+                    onInput={(e) => (setSubject(e.currentTarget.value), changed())}
+                  />
+                </div>
+              </Show>
+            </>
+          }
+        >
+          <div class="compose-top">
+            <div class="field from-row">
+              <span class="label">From</span>
+              {fromControl()}
+            </div>
+            <div class="compose-win">
+              <Show
+                when={!focusMode()}
+                fallback={
+                  <button type="button" class="exit-focus" onClick={() => setFocusMode(false)}>
+                    Exit focus <kbd>Esc</kbd>
+                  </button>
+                }
+              >
+                {iconButton("minus", "Minimize (Ctrl+Shift+M)", () => props.onMinimize?.(true))}
+                {iconButton("maximize", "Focus mode (Ctrl+Shift+F)", () => setFocusMode(true))}
+                {iconButton("x", "Close and keep the draft (Esc)", () => void close())}
+              </Show>
+            </div>
+          </div>
+          <div class="fields">
+            <RecipientField
+              label="To"
+              placeholder="add people"
+              value={to()}
+              onChange={(v) => (setTo(v), changed())}
+              ref={(el) => (toInput = el)}
+              outside={isOutside}
+              after={
+                <span class="cc-toggles">
+                  <Show when={!showCc()}>
+                    <button type="button" onClick={() => (setShowCc(true), queueMicrotask(() => ccInput?.focus()))} title="Cc (Ctrl+Shift+C)">
+                      Cc
+                    </button>
+                  </Show>
+                  <Show when={!showBcc()}>
+                    <button type="button" onClick={() => (setShowBcc(true), queueMicrotask(() => bccInput?.focus()))} title="Bcc (Ctrl+Shift+B)">
+                      Bcc
+                    </button>
+                  </Show>
+                </span>
+              }
             />
+            <Show when={showCc()}>
+              <RecipientField label="Cc" value={cc()} onChange={(v) => (setCc(v), changed())} ref={(el) => (ccInput = el)} outside={isOutside} />
+            </Show>
+            <Show when={showBcc()}>
+              <RecipientField label="Bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} outside={isOutside} />
+            </Show>
+            <div class="field subject">
+              <span class="label">Subject</span>
+              <input
+                aria-label="Subject"
+                placeholder="Add a subject"
+                value={subject()}
+                onInput={(e) => (setSubject(e.currentTarget.value), changed())}
+              />
+            </div>
           </div>
         </Show>
-        <RecipientField
-          label="To"
-          placeholder="add people"
-          value={to()}
-          onChange={(v) => (setTo(v), changed())}
-          ref={(el) => (toInput = el)}
-          outside={isOutside}
-          after={
-            <span class="cc-toggles">
-              <Show when={!showCc()}>
-                <button type="button" onClick={() => (setShowCc(true), queueMicrotask(() => ccInput?.focus()))} title="Cc (Ctrl+Shift+C)">
-                  Cc
-                </button>
-              </Show>
-              <Show when={!showBcc()}>
-                <button type="button" onClick={() => (setShowBcc(true), queueMicrotask(() => bccInput?.focus()))} title="Bcc (Ctrl+Shift+B)">
-                  Bcc
-                </button>
-              </Show>
-            </span>
-          }
-        />
-        <Show when={showCc()}>
-          <RecipientField label="Cc" value={cc()} onChange={(v) => (setCc(v), changed())} ref={(el) => (ccInput = el)} outside={isOutside} />
-        </Show>
-        <Show when={showBcc()}>
-          <RecipientField label="Bcc" value={bcc()} onChange={(v) => (setBcc(v), changed())} ref={(el) => (bccInput = el)} outside={isOutside} />
-        </Show>
       </div>
+      <div class="compose-body">
       {/* A try from the AI shows in the text's place; the editor stays as it was underneath until it is kept. */}
       <div class="editor-wrap" classList={{ covered: !!tryShown() }}>
       <Suspense fallback={<div class="editor-body" />}>
@@ -1213,14 +1503,7 @@ export function Compose(props: {
               autofocus={bodyFirst ? "start" : false}
               snippets={snippets}
               quoteOpen={props.init.quoteOpen}
-              foldSignature
-              signatures={{
-                options: () => accountSignatures().map((x) => ({ id: x.id, name: x.name || "Untitled" })),
-                current: () => sigId(),
-                pick: (id) => void switchSignature(accountSignatures().find((x) => x.id === id) ?? null),
-                open: sigOpen,
-                setOpen: setSigOpen,
-              }}
+              hideSignature
               ref={editorReady}
               onPictures={pictures}
               pictures={shownPictures}
@@ -1233,15 +1516,72 @@ export function Compose(props: {
       <Show when={tryShown()} keyed>
         {(v) => (
           <div class="ai-try" aria-live="polite">
-            <Show when={newMail() && v.written?.subject && !subject().trim()}>
-              <div class="ai-try-subject">
-                <span class="label">Subject</span>
-                {v.written!.subject}
-              </div>
+            <Show when={newMail()}>
+              <For each={["to", "cc"] as const}>
+                {(field) => {
+                  const people = () => (v.written ? (found()?.[field] ?? []) : []);
+                  const raw = () => (v.written ? "" : headOf(v.streamed)[field]);
+                  return (
+                    <Show when={people().length || raw()}>
+                      <div class="ai-try-subject">
+                        <span class="label">{field === "to" ? "To" : "Cc"}</span>
+                        <span class="ai-try-people">
+                          <Show when={people().length} fallback={raw()}>
+                            <For each={people()}>
+                              {(r) => (
+                                <span
+                                  class="ai-try-person"
+                                  classList={{ unsure: !settled(r), stranger: r.stranger || !r.address, added: added(r) }}
+                                  title={
+                                    r.stranger
+                                      ? "Not in your contacts: it won't be added."
+                                      : !r.address
+                                        ? "No one by that name in your contacts."
+                                        : !settled(r)
+                                          ? "More than one in your contacts: pick in Writing help."
+                                          : r.address
+                                  }
+                                >
+                                  {r.stranger || !r.address
+                                    ? r.asked
+                                    : settled(r)
+                                      ? r.name || r.address
+                                      : `${r.name || r.address} or ${r.others.map((o) => o.name || o.email).join(" or ")}?`}
+                                </span>
+                              )}
+                            </For>
+                          </Show>
+                        </span>
+                      </div>
+                    </Show>
+                  );
+                }}
+              </For>
+            </Show>
+            <Show when={newMail() && !subject().trim() ? (v.written?.subject ?? headOf(v.streamed).subject) : null}>
+              {(line) => (
+                <div class="ai-try-subject">
+                  <span class="label">Subject</span>
+                  {line()}
+                </div>
+              )}
             </Show>
             <Show
               when={v.written && v.base ? wordDiff(v.base!, v.written!.body) : null}
-              fallback={<div class="ai-preview">{v.written?.body ?? bodyOf(v.streamed)}</div>}
+              fallback={
+                <Show
+                  when={v.written?.body ?? bodyOf(v.streamed)}
+                  fallback={
+                    <div class="ai-preview waiting" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  }
+                >
+                  {(text) => <div class="ai-preview">{text()}</div>}
+                </Show>
+              }
             >
               {(pieces) => (
                 <div class="ai-preview diff">
@@ -1256,7 +1596,9 @@ export function Compose(props: {
               <span class="text">
                 {v.written
                   ? `Try ${shown() + 1} of ${versions().length}. It isn't in the email until you keep it.`
-                  : "Writing…"}
+                  : props.init.inReplyTo
+                    ? "Writing your answer…"
+                    : "Writing from your brief…"}
               </span>
               <Show when={v.written}>
                 <button type="button" class="link" onClick={() => void keepAi()}>
@@ -1270,51 +1612,32 @@ export function Compose(props: {
           </div>
         )}
       </Show>
-      <Show when={htmlSig()}>
-        {(s) => (
-          <div class="html-sig">
-            <div class="sig-line" classList={{ open: sigOpen() }}>
-              <button
-                type="button"
-                class="sig-toggle"
-                title={sigOpen() ? "Fold the signature" : "Show the signature"}
-                onClick={() => setSigOpen(!sigOpen())}
-              >
-                {sigOpen() ? "▾ Signature" : "▸ Signature"}
-              </button>
-              <Show when={!sigOpen() && s().name}>
-                <span class="sig-name">{s().name}</span>
+      {/* Optional pinned signature preview ("Show in email" in the footer signature drawer). */}
+      <Show when={sigPinned()}>
+        <div class="sig-pinned">
+          <div class="sig-pinned-head">
+            <span class="sig-pinned-label">
+              <Icon name="pin" size={12} />
+              <span>
+                Showing <strong>{sigLabel()}</strong>
+              </span>
+              <Show when={sigOverride() !== null}>
+                <span class="sig-edited-tag">edited</span>
               </Show>
-              <Show when={sigOpen()}>
-                <fieldset class="sig-choices" aria-label="Signature">
-                  <For each={[...accountSignatures().map((x) => ({ id: x.id, name: x.name || "Untitled" })), { id: 0, name: "None" }]}>
-                    {(o) => (
-                      <button
-                        type="button"
-                        aria-pressed={(sigId() ?? 0) === o.id}
-                        classList={{ on: (sigId() ?? 0) === o.id }}
-                        onClick={() => (sigId() ?? 0) !== o.id && void switchSignature(accountSignatures().find((x) => x.id === o.id) ?? null)}
-                      >
-                        {o.name}
-                      </button>
-                    )}
-                  </For>
-                </fieldset>
-              </Show>
-              <span class="rule" />
-              <Show when={sigOpen()}>
-                <button type="button" class="sig-fold-button" onClick={() => setSigOpen(false)}>
-                  Fold
+            </span>
+            <span class="sig-pinned-actions">
+              <Show when={activeSig() || sigOverride() !== null}>
+                <button type="button" class="link" onClick={() => openSigDrawer(activeSig()?.custom ? "saved" : "draft")}>
+                  Edit
                 </button>
               </Show>
-            </div>
-            <Show when={sigOpen()}>
-              <div class="html-signature" title="Your signature, as it goes out. Change it in Settings → Signatures.">
-                <HtmlFrame html={s().html!} title="Signature" />
-              </div>
-            </Show>
+              <button type="button" class="link muted" onClick={() => setSigPinned(false)}>
+                Hide
+              </button>
+            </span>
           </div>
-        )}
+          <div class="sig-pinned-body">{sigPreview()}</div>
+        </div>
       </Show>
       <Show when={cards().length || forwardOf()}>
         {/* Files as a folded tray: one line with how many, how big and their names; open, a row each (idea 70, C). */}
@@ -1444,10 +1767,16 @@ export function Compose(props: {
           </button>
         </div>
       </Show>
+      </div>
       <footer>
-        {/* Writing tools on the left, what happens to the mail on the right (idea 73, F2). */}
+        {/* Direction B footer: writing tools + interactive signature pill on the left, discard and Send on the right. */}
         <span class="tools">
           {iconButton("paperclip", "Attach files (Ctrl+Shift+A), or drop them here", () => void pick())}
+          <Show when={snippetList().length}>
+            <button type="button" class="icon-button snippet-button" title="Snippet (;)" aria-label="Snippet" onClick={openSnippets}>
+              <Icon name="snippet" size={16} />
+            </button>
+          </Show>
           <Show when={aiAllowed()}>
             <button
               type="button"
@@ -1461,78 +1790,48 @@ export function Compose(props: {
               <Icon name="sparkles" size={16} />
             </button>
           </Show>
-          <Show when={snippetList().length}>
-            <button type="button" class="icon-button snippet-button" title="Snippet (;)" aria-label="Snippet" onClick={openSnippets}>
-              <Icon name="snippet" size={16} />
-            </button>
-          </Show>
-          <Show when={accountSignatures().length}>
-            <div class="more-wrap" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setSigMenu(false)}>
-              <button
-                type="button"
-                class="icon-button"
-                title="Signature (Ctrl+Shift+S)"
-                aria-label="Signature"
-                aria-haspopup="menu"
-                aria-expanded={sigMenu()}
-                onClick={() => setSigMenu(!sigMenu())}
-              >
-                <Icon name="pen-line" size={16} />
-              </button>
-              <Show when={sigMenu()}>
-                <div class="send-menu up-left" role="menu">
-                  <For each={[...accountSignatures(), null]}>
-                    {(sig) => (
-                      <button
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={(sigId() ?? null) === (sig?.id ?? null)}
-                        onClick={() => (setSigMenu(false), void switchSignature(sig))}
-                      >
-                        {sig ? sig.name || "Untitled" : "No signature"}
-                        <Show when={(sigId() ?? null) === (sig?.id ?? null)}>
-                          <Icon name="check" size={14} />
-                        </Show>
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </Show>
-            </div>
-          </Show>
         </span>
-        {/* Only between the tools and something after them: a divider with nothing beside it read as a slip (idea 98). */}
-        <Show when={choosesFrom() || saveState() || words()}>
+        <span class="foot-sep" aria-hidden="true" />
+        <button
+          ref={sigBtn}
+          type="button"
+          class="sig-pill"
+          classList={{ open: sigOpen(), edited: sigOverride() !== null, none: !activeSig() && sigOverride() === null }}
+          title={
+            sigOverride() !== null
+              ? `Signature: ${sigLabel()} (edited for this email) · Ctrl+Shift+S`
+              : `Signature: ${sigLabel()} (Ctrl+Shift+S)`
+          }
+          aria-haspopup="dialog"
+          aria-expanded={sigOpen()}
+          onClick={() => (sigOpen() ? closeSigDrawer(false) : openSigDrawer())}
+        >
+          <Icon name="pen-line" size={13} />
+          <span class="sig-pill-name">{sigLabel()}</span>
+          <Show when={sigOverride() !== null}>
+            <span class="sig-pill-dot" aria-hidden="true" />
+          </Show>
+          <Icon name="chevron-down" size={12} />
+        </button>
+        <Show when={sigNotice() || saveState() || words()}>
           <span class="foot-sep" aria-hidden="true" />
         </Show>
-        <Show when={choosesFrom()}>
-          <div class="from-pick">
-            <span class="word">From</span>
-            <Dropdown
-              class="bare"
-              label="From"
-              title="Send from"
-              lead={<span class="dot" style={{ background: from() != null ? colourOf(props.accounts, from()!) : undefined }} />}
-              value={alias() ? `${from()} ${alias()}` : String(from())}
-              choices={props.accounts.flatMap((a) => [
-                { value: String(a.id), label: a.email, detail: a.displayName || undefined },
-                ...(a.aliases ?? []).map((x) => ({ value: `${a.id} ${x.email}`, label: x.email, detail: x.name || a.displayName || undefined })),
-              ])}
-              onChange={changeFrom}
-            />
-          </div>
-        </Show>
         <span class="saved" aria-live="polite">
-          <Show when={saveState() === "saved"}>Saved</Show>
-          <Show when={saveState() === "saving"}>Saving…</Show>
-          <Show when={words()}>
-            {(n) => (
-              <span>
-                {saveState() ? " · " : ""}
-                {n()} {n() === 1 ? "word" : "words"}
-                {focusMode() && n() >= LONG_WORDS ? ` · ${Math.round(n() / 230)} min` : ""}
-              </span>
-            )}
+          <Show
+            when={!sigNotice()}
+            fallback={<span class="sig-notice">{sigNotice()}</span>}
+          >
+            <Show when={saveState() === "saved"}>Saved</Show>
+            <Show when={saveState() === "saving"}>Saving…</Show>
+            <Show when={words()}>
+              {(n) => (
+                <span>
+                  {saveState() ? " · " : ""}
+                  {n()} {n() === 1 ? "word" : "words"}
+                  {focusMode() && n() >= LONG_WORDS ? ` · ${Math.round(n() / 230)} min` : ""}
+                </span>
+              )}
+            </Show>
           </Show>
         </span>
         <span class="spacer" />
@@ -1554,7 +1853,6 @@ export function Compose(props: {
             </span>
           )}
         </Show>
-        {/* What happens to the mail, apart from the tools: throw it away, or send it one of three ways (idea 73, F2). */}
         <button
           type="button"
           class="icon-button discard"
@@ -1600,6 +1898,212 @@ export function Compose(props: {
         {(slot) => <Portal mount={slot}>{side()}</Portal>}
       </Show>
     </form>
+  );
+
+  /** Anchored Signature Peek Drawer (Direction B): see, switch, pin in body, or edit for this mail / saved signature. */
+  const sigDrawer = (
+    <Show when={sigOpen()}>
+      <Portal>
+        <div
+          ref={sigDrawerEl}
+          class="sig-drawer"
+          role="dialog"
+          aria-label="Signature"
+          style={{
+            left: `${sigPlace().left}px`,
+            top: sigPlace().up ? undefined : `${sigPlace().top}px`,
+            bottom: sigPlace().up ? `${sigPlace().bottom}px` : undefined,
+          }}
+        >
+          <div class="sig-drawer-head">
+            <strong>Signature</strong>
+            <span class="spacer" />
+            <button
+              type="button"
+              class="sig-pin-btn"
+              classList={{ on: sigPinned() }}
+              aria-pressed={sigPinned()}
+              onClick={() => setSigPinned(!sigPinned())}
+              title={sigPinned() ? "Hide signature from the email body" : "Show signature below the email body"}
+            >
+              <Icon name="pin" size={12} />
+              <span>{sigPinned() ? "Shown in email" : "Show in email"}</span>
+            </button>
+            <button type="button" class="sig-close-btn" aria-label="Close signature panel" onClick={() => closeSigDrawer(true)}>
+              <Icon name="x" size={14} />
+            </button>
+          </div>
+
+          <Show when={accountSignatures().length > 0}>
+            <div class="sig-drawer-bar">
+              <fieldset class="sig-choices" aria-label="Choose signature">
+                <For each={[...accountSignatures(), null]}>
+                  {(s) => {
+                    const on = (sigId() ?? null) === (s?.id ?? null) && (s !== null || sigOverride() === null);
+                    return (
+                      <button
+                        type="button"
+                        aria-pressed={on}
+                        classList={{ on }}
+                        onClick={() => !on && void switchSignature(s)}
+                      >
+                        {s ? s.name || "Untitled" : "None"}
+                      </button>
+                    );
+                  }}
+                </For>
+              </fieldset>
+              <Show when={!sigEdit() && (activeSig() || sigOverride() !== null)}>
+                <div class="sig-bar-actions">
+                  <Show when={sigOverride() !== null && activeSig()}>
+                    <button type="button" class="link" onClick={() => void switchSignature(activeSig())}>
+                      Reset
+                    </button>
+                  </Show>
+                  <button
+                    type="button"
+                    class="sig-edit-btn"
+                    onClick={() => startSigEdit(activeSig()?.custom ? "saved" : "draft")}
+                  >
+                    <Icon name="pen-line" size={12} />
+                    <span>Edit</span>
+                  </button>
+                </div>
+              </Show>
+            </div>
+          </Show>
+
+          <div class="sig-drawer-box">
+            <Show
+              when={sigEdit()}
+              fallback={sigPreview()}
+            >
+              {(mode) => (
+                <div class="sig-editor">
+                  <Show when={mode() !== "new" && activeSig() && !activeSig()!.custom}>
+                    <div class="sig-scope-row">
+                      <fieldset class="sig-choices" aria-label="Edit scope">
+                        <button
+                          type="button"
+                          classList={{ on: mode() === "draft" }}
+                          aria-pressed={mode() === "draft"}
+                          onClick={() => startSigEdit("draft")}
+                        >
+                          This email only
+                        </button>
+                        <button
+                          type="button"
+                          classList={{ on: mode() === "saved" }}
+                          aria-pressed={mode() === "saved"}
+                          onClick={() => startSigEdit("saved")}
+                        >
+                          Update “{activeSig()!.name || "Untitled"}”
+                        </button>
+                      </fieldset>
+                    </div>
+                  </Show>
+                  <Show when={mode() === "new"}>
+                    <input
+                      ref={sigNameInput}
+                      class="sig-name-input"
+                      aria-label="Signature name"
+                      placeholder="Signature name"
+                      value={sigEditName()}
+                      onInput={(e) => setSigEditName(e.currentTarget.value)}
+                    />
+                  </Show>
+                  <Show when={mode() === "saved" && activeSig()?.custom}>
+                    {/* biome-ignore lint/a11y/useSemanticElements: takes pasted HTML from another mail app, which a textarea can't */}
+                    <div
+                      class="sig-paste-box"
+                      contentEditable
+                      tabIndex={0}
+                      role="textbox"
+                      aria-label="Paste an HTML signature"
+                      onBeforeInput={(e) => e.preventDefault()}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        if (e.clipboardData) setSigEditText(pastedHtml(e.clipboardData));
+                      }}
+                    >
+                      Click here and press Ctrl+V to paste a signature, or edit the HTML below
+                    </div>
+                  </Show>
+                  <textarea
+                    ref={sigTextarea}
+                    class="sig-edit-area"
+                    classList={{ "html-source": mode() === "saved" && !!activeSig()?.custom }}
+                    rows={mode() === "saved" && activeSig()?.custom ? 6 : 4}
+                    spellcheck={!(mode() === "saved" && activeSig()?.custom)}
+                    placeholder={mode() === "saved" && activeSig()?.custom ? "<table>…</table>" : "Best,\nYour name"}
+                    value={sigEditText()}
+                    onInput={(e) => setSigEditText(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void saveSigEdit();
+                      }
+                    }}
+                  />
+                  <Show when={sigError()}>
+                    <p class="sig-error">{sigError()}</p>
+                  </Show>
+                  <div class="sig-edit-foot">
+                    <Show when={props.onOpenSignatures}>
+                      <button
+                        type="button"
+                        class="link muted"
+                        onClick={() => (closeSigDrawer(false), props.onOpenSignatures?.())}
+                      >
+                        <Icon name="settings" size={12} /> Full editor
+                      </button>
+                    </Show>
+                    <span class="spacer" />
+                    <button type="button" class="sig-cancel-btn" onClick={() => (setSigEdit(null), setSigError(""))}>
+                      Cancel
+                    </button>
+                    <button type="button" class="primary sig-save-btn" disabled={sigSaving()} onClick={() => void saveSigEdit()}>
+                      {mode() === "draft" ? "Apply to draft" : "Save signature"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </Show>
+          </div>
+
+          <Show when={!sigEdit()}>
+            <div class="sig-drawer-foot">
+              <Show
+                when={accountSignatures().length > 0}
+                fallback={
+                  <button type="button" class="link" onClick={() => startSigEdit("new")}>
+                    <Icon name="plus" size={12} /> Write a signature
+                  </button>
+                }
+              >
+                <button type="button" class="link" onClick={() => startSigEdit("new")}>
+                  <Icon name="plus" size={12} /> New
+                </button>
+              </Show>
+              <Show when={props.onOpenSignatures}>
+                <button
+                  type="button"
+                  class="link muted"
+                  onClick={() => (closeSigDrawer(false), props.onOpenSignatures?.())}
+                >
+                  Settings → Signatures
+                </button>
+              </Show>
+              <span class="spacer" />
+              <span class="sig-key-hint">
+                <kbd>Ctrl ⇧ S</kbd> switches
+              </span>
+            </div>
+          </Show>
+        </div>
+      </Portal>
+    </Show>
   );
 
   /** The folded compose: what it is and to whom, a click from opening again. */
@@ -1676,6 +2180,7 @@ export function Compose(props: {
         </div>
         <Show when={props.minimized}>{card}</Show>
       </Show>
+      {sigDrawer}
       {picker}
     </>
   );

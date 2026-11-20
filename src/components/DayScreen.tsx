@@ -4,7 +4,8 @@ import { api, type AiOvernight, type ThreadRow } from "../api";
 import { asRow } from "../app/rows";
 import { closeScreen, start, waitedFor, waitingSince } from "../day";
 import { typing } from "../keys";
-import { settings } from "../settings";
+import { setSetting, settings } from "../settings";
+import { weekReport, weekStart } from "../tide";
 
 const PROVIDER_NAMES: Record<string, string> = { anthropic: "Claude", openai: "OpenAI", gemini: "Gemini" };
 
@@ -83,6 +84,63 @@ const sender = (t: ThreadRow) => t.fromName || t.fromAddr;
 /** The tide (docs/design/ui.md §4.7a): the first open of a day when something waits on the person. A sky that
  * follows the hour, then what needs them, what waits on others, what came back and what there is to read, all
  * from the store on this computer. Enter starts with the first, Esc goes to the inbox. */
+/** Friday's look back at the week (idea 134): what came, what was cleared, the quietest day and asks gone quiet.
+ * All from this computer: arrival times and the Inbox Zero log. */
+function WeekCard(props: { waiting: ThreadRow[]; onOpen: (row: ThreadRow) => void }) {
+  const [arrived, setArrived] = createSignal<number[] | null>(null);
+  void api.arrivals(weekStart(new Date())).then(setArrived, () => setArrived([]));
+  const stale = () => props.waiting.filter((t) => Date.now() / 1000 - t.date > 7 * 86_400);
+  return (
+    <Show when={arrived()}>
+      {(a) => {
+        const r = weekReport(a(), settings.zeroLog, new Date());
+        const most = Math.max(1, ...r.days.map((d) => d.came));
+        return (
+          <section class="tide-week" aria-labelledby="tide-week">
+            <div class="tide-week-words">
+              <h2 id="tide-week">Your week</h2>
+              <p>
+                {r.came.toLocaleString()} came in{r.cleared ? `, you cleared ${r.cleared.toLocaleString()}` : ""}
+                {r.zeroDays ? `, and reached Inbox Zero on ${r.zeroDays === 1 ? "one day" : `${r.zeroDays} days`}` : ""}.{" "}
+                {r.quietest.name} was the quietest.
+              </p>
+              <Show when={stale().length}>
+                <p>
+                  {stale().length === 1 ? "One ask has" : `${stale().length} asks have`} waited more than a week:{" "}
+                  <For each={stale().slice(0, 3)}>
+                    {(t, i) => (
+                      <>
+                        {i() ? ", " : ""}
+                        <button type="button" class="link" onClick={() => props.onOpen(t)}>
+                          {sender(t)}
+                        </button>
+                      </>
+                    )}
+                  </For>
+                  .
+                </p>
+              </Show>
+            </div>
+            <div class="tide-week-bars" aria-hidden="true">
+              <For each={r.days}>
+                {(d) => (
+                  <span class="bar" classList={{ today: d.today, zero: d.zero }} title={`${d.name}: ${d.came}`}>
+                    <i style={{ height: `${Math.max(4, (d.came / most) * 100)}%` }} />
+                    <b>{d.name.slice(0, 1)}</b>
+                  </span>
+                )}
+              </For>
+            </div>
+            <button type="button" class="link quiet" onClick={() => setSetting("weekCard", false)}>
+              Not on Fridays
+            </button>
+          </section>
+        );
+      }}
+    </Show>
+  );
+}
+
 export function DayScreen(props: {
   name: string;
   /** Start the run through what needs the person (Enter). */
@@ -167,6 +225,10 @@ export function DayScreen(props: {
       </div>
 
       <Overnight since={s().since} onOpen={props.onOpen} />
+
+      <Show when={settings.weekCard && new Date().getDay() === 5}>
+        <WeekCard waiting={s().waiting} onOpen={props.onOpen} />
+      </Show>
 
       <div class="tide-columns">
         <section aria-labelledby="tide-need">

@@ -373,6 +373,13 @@ pub(super) fn migrate(conn: &Connection) -> Result<()> {
             // A short name the person gives an account to tell it from another with the same name ("Work"). It is
             // not the name on mail (display_name), so changing it never changes what recipients see.
             36 => "ALTER TABLE accounts ADD COLUMN label TEXT NOT NULL DEFAULT '';",
+            // Conversations split or joined by hand (idea 110): where each moved message belongs, by Message-ID, so
+            // the shape survives a resync and its replies follow.
+            37 => {
+                "CREATE TABLE thread_moves (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                                            message_id TEXT NOT NULL, thread_id TEXT NOT NULL,
+                                            PRIMARY KEY (account_id, message_id));"
+            }
             // Muted conversations: new mail in them skips the inbox.
             10 => "CREATE TABLE muted (account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                                        thread_id TEXT NOT NULL, PRIMARY KEY (account_id, thread_id));",

@@ -145,6 +145,108 @@ impl Store {
                     name: a.name,
                     mime: a.mime,
                     size: a.size,
+                    from: if m.from_name.is_empty() { m.from_addr.clone() } else { m.from_name.clone() },
+                });
+                if files.len() == limit {
+                    return Ok(files);
+                }
+            }
+        }
+        Ok(files)
+    }
+
+    /// Mail that looks like a receipt, an invoice, an order or a booking since `since` (Paper trail, idea 115): the
+    /// rows and up to 6,000 characters of their text, newest first. The amounts and numbers in it are read by the
+    /// window (`src/paper.ts`); this only narrows by subject.
+    pub fn paper_candidates(&self, since: i64) -> Result<Vec<(MessageRow, String)>> {
+        let conn = self.reader();
+        let words = [
+            "receipt",
+            "invoice",
+            "order",
+            "booking",
+            "reservation",
+            "ticket",
+            "payment",
+            "paid",
+            "purchase",
+            "subscription",
+            "renewal",
+            "račun",
+            "faktur",
+            "narudžb",
+            "uplat",
+            "plaćanj",
+            "potvrd",
+            "rezervacij",
+            "rechnung",
+            "bestellung",
+            "quittung",
+        ];
+        let like: Vec<String> = words.iter().map(|w| format!("lower(m.subject) LIKE '%{w}%'")).collect();
+        let sql = format!(
+            "SELECT {ROW}, b.text, b.html FROM messages m INDEXED BY messages_date
+               JOIN folders f ON f.id = m.folder_id
+               LEFT JOIN bodies b ON b.message_id = m.id
+             WHERE m.date >= ?1 AND f.role NOT IN ('trash', 'junk', 'drafts', 'sent') AND ({})
+             ORDER BY m.date DESC, m.id DESC LIMIT 1500",
+            like.join(" OR ")
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let found = stmt
+            .query_map([since], |r| {
+                Ok((row(r)?, r.get::<_, Option<String>>(12)?, r.get::<_, Option<String>>(13)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut seen = HashSet::new();
+        Ok(found
+            .into_iter()
+            .filter(|(m, _, _)| seen.insert((m.account_id, m.subject.clone(), m.date)))
+            .map(|(m, text, html)| {
+                let words = match (text, html) {
+                    (Some(t), _) if !t.trim().is_empty() => t,
+                    (_, Some(h)) => crate::ai::html_text(&h),
+                    _ => m.snippet.clone(),
+                };
+                (m, words.chars().take(6000).collect())
+            })
+            .collect())
+    }
+
+    /// Every file received or sent, newest first (All files, idea 108), up to `limit`. Mail in Trash, Spam and
+    /// Drafts is left out; a message kept in two folders gives its files once.
+    pub fn all_files(&self, limit: usize) -> Result<Vec<PersonFile>> {
+        let conn = self.reader();
+        let mut stmt = conn.prepare_cached(&format!(
+            "SELECT {ROW}, m.parts, {MINE_M} FROM messages m INDEXED BY messages_date
+               JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id
+             WHERE m.has_attachments = 1 AND f.role NOT IN ('trash', 'junk', 'drafts')
+             ORDER BY m.date DESC, m.id DESC LIMIT ?1"
+        ))?;
+        let found = stmt
+            .query_map([limit as i64 * 2], |r| {
+                Ok((row(r)?, r.get::<_, Option<String>>(12)?, r.get::<_, bool>(13)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut seen = HashSet::new();
+        let mut files = Vec::new();
+        for (m, parts, mine) in found {
+            if !seen.insert((m.account_id, m.subject.clone(), m.date)) {
+                continue;
+            }
+            for (index, a) in attachments_of(parts.as_deref()).into_iter().enumerate() {
+                files.push(PersonFile {
+                    message_id: m.id,
+                    account_id: m.account_id,
+                    thread_id: m.thread_id.clone(),
+                    subject: m.subject.clone(),
+                    date: m.date,
+                    mine,
+                    index,
+                    name: a.name,
+                    mime: a.mime,
+                    size: a.size,
+                    from: if m.from_name.is_empty() { m.from_addr.clone() } else { m.from_name.clone() },
                 });
                 if files.len() == limit {
                     return Ok(files);

@@ -928,7 +928,7 @@ function Promises(props: { messages: ThreadMessage[]; mine: (addr: string) => bo
 }
 
 /** A file's kind as a short tag and a tint, so a list of them reads at a glance. */
-function kindOf(name: string, mime: string): [string, string] {
+export function kindOf(name: string, mime: string): [string, string] {
   const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
   if (ext === "pdf") return ["PDF", "pdf"];
   if (["xls", "xlsx", "csv", "ods", "numbers"].includes(ext)) return [ext === "csv" ? "CSV" : "XLS", "sheet"];
@@ -937,7 +937,7 @@ function kindOf(name: string, mime: string): [string, string] {
   return [(ext || "file").slice(0, 4).toUpperCase(), "other"];
 }
 
-const KINDS: Record<string, string> = { pdf: "PDF", sheet: "Sheets", doc: "Docs", image: "Pictures", other: "Other" };
+export const KINDS: Record<string, string> = { pdf: "PDF", sheet: "Sheets", doc: "Docs", image: "Pictures", other: "Other" };
 const kb = (n: number) => (n > 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1000))} kB`);
 const monthOf = (seconds: number) => {
   const d = new Date(seconds * 1000);

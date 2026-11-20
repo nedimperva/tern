@@ -116,11 +116,18 @@ export const syncButton = (): { icon: "refresh" | "alert" | "pause" | "wifi-off"
   const sentence = syncSentence();
   const n = (x: number, one: string, many: string) => (x === 1 ? `1 ${one}` : `${x} ${many}`);
   if (sentence.tone === "danger") return { icon: "alert", label: "Sign in", tone: "danger", turning: false };
+  // A lost connection is said even with refused changes waiting: otherwise "2 to look at" hides why no mail comes
+  // (idea 138). The waiting count rides along after it.
+  const waiting = problems().length
+    ? `${problems().length} to look at`
+    : held().length
+      ? n(held().length, "to confirm", "to confirm")
+      : "";
+  const along = (word: string) => (waiting ? `${word} · ${waiting}` : word);
+  if (sentence.text.startsWith("Offline")) return { icon: "wifi-off", label: along("Offline"), tone: "warn", turning: false };
+  if (sentence.text.startsWith("Can't reach")) return { icon: "wifi-off", label: along("Can't connect"), tone: "warn", turning: false };
   // Refused changes are amber, "to look at": red is kept for a sign-in that stops all sync (idea 34).
-  if (problems().length) return { icon: "alert", label: `${problems().length} to look at`, tone: "warn", turning: false };
-  if (held().length) return { icon: "alert", label: n(held().length, "to confirm", "to confirm"), tone: "warn", turning: false };
-  if (sentence.text.startsWith("Offline")) return { icon: "wifi-off", label: "Offline", tone: "warn", turning: false };
-  if (sentence.text.startsWith("Can't reach")) return { icon: "wifi-off", label: "Can't connect", tone: "warn", turning: false };
+  if (waiting) return { icon: "alert", label: waiting, tone: "warn", turning: false };
   if (paused()) return { icon: "pause", label: "Paused", tone: "warn", turning: false };
   const down = downloadShare();
   const busy = Object.values(syncStates()).some((s) => s === "syncing" || s === "connecting");

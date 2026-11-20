@@ -8,7 +8,7 @@ import type { Account, Signature, Snippet } from "./api";
 import { DEFAULTS, type Settings } from "./settings";
 
 /** What only means something on this computer: when the person was last here, what showed today, the streak. */
-const LOCAL: (keyof Settings)[] = ["lastSeen", "dayShown", "zeroLog"];
+const LOCAL: (keyof Settings)[] = ["lastSeen", "dayShown", "zeroLog", "keyClicks"];
 
 /** The parts of a backup that are not secret. "senders", "notes" and "styles" live in the engine's database. */
 export type Part = "settings" | "snippets" | "signatures" | "senders" | "notes" | "styles";

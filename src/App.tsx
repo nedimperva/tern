@@ -4,6 +4,9 @@ import { AccountSetup } from "./components/AccountSetup";
 import { CommandBar } from "./components/CommandBar";
 import { Compose } from "./components/Compose";
 import { ConversationView } from "./components/ConversationView";
+import { AllFiles } from "./components/AllFiles";
+import { EmlViewer } from "./components/EmlViewer";
+import { PaperTrail } from "./components/PaperTrail";
 import { ListPane } from "./components/ListPane";
 import { Toast } from "./components/Toast";
 import { ProblemsDialog } from "./components/Problems";
@@ -21,6 +24,7 @@ import { timeKey } from "./perf";
 import { loadSettings, settings } from "./settings";
 import { closeScreen, deck, screen, start, startDay } from "./day";
 import { keyHandler } from "./keys";
+import { noteKey, watchClicks } from "./coach";
 import { hitWords } from "./hits";
 import { act, discardProblem, isMine, label, labelsOf, onShelf, shelve, snoozeThen, snoozeUntil, targets } from "./app/actions";
 import { bindings as allBindings, commands as allCommands, menu } from "./app/bindings";
@@ -100,6 +104,10 @@ import {
   toggleSidebar,
   viewing,
   askingMail,
+  filesOpen,
+  paperOpen,
+  eml,
+  setEml,
   setAskFirst,
   setAskingMail,
   width,
@@ -216,6 +224,7 @@ function Main() {
       reply: (m) => void replyToMail(m),
       // A notification about scheduled sends waiting: the list they wait in.
       waiting: () => batch(() => (setSettingsOpen(null), setReviewing(true))),
+      eml: (path) => setEml(path),
     });
     void api.takeMailto().then((m) => m && fromLink(m));
     // Said once as it arrives; the status strip keeps offering it after.
@@ -227,7 +236,9 @@ function Main() {
     else setTimeout(warm, 1500);
   });
 
-  const handleKey = keyHandler(bindings, context, dialog);
+  const handleKey = keyHandler(bindings, context, dialog, (b) => noteKey(b.keys));
+  // The keyboard coach: a tip after the third click on something that has a key (idea 136).
+  onCleanup(watchClicks(bindings, (text) => showToast(text, [])));
   let idleTimer: number | undefined;
   const onKeyDown = (e: KeyboardEvent) => {
     timeKey(e);
@@ -294,7 +305,16 @@ function Main() {
           <Show when={compose()?.inline ? compose() : null} keyed>
             {(init) => (
               <div class="inline-reply">
-                <Compose accounts={accounts()} signatures={signatures()} init={init} onSend={send} onClose={composeClosed} onDiscard={composeDiscarded} />
+                <Compose
+                  accounts={accounts()}
+                  signatures={signatures()}
+                  init={init}
+                  onSend={send}
+                  onClose={composeClosed}
+                  onDiscard={composeDiscarded}
+                  onSignaturesChanged={loadSignatures}
+                  onOpenSignatures={() => setSettingsOpen("Signatures")}
+                />
               </div>
             )}
           </Show>
@@ -387,6 +407,15 @@ function Main() {
       <Show when={viewing()}>
         {(v) => <AttachmentViewer message={v().message} index={v().index} onClose={() => setViewing(null)} />}
       </Show>
+      <Show when={eml()}>
+        {(path) => <EmlViewer path={path()} onClose={() => setEml(null)} />}
+      </Show>
+      <Show when={filesOpen()}>
+        <AllFiles />
+      </Show>
+      <Show when={paperOpen()}>
+        <PaperTrail />
+      </Show>
       <Show when={askingMail()}>
         <AskMail
           onOpen={(id) =>
@@ -430,6 +459,8 @@ function Main() {
             onDiscard={composeDiscarded}
             minimized={composeMin()}
             onMinimize={setComposeMin}
+            onSignaturesChanged={loadSignatures}
+            onOpenSignatures={() => (setComposeMin(true), setSettingsOpen("Signatures"))}
           />
         )}
       </Show>

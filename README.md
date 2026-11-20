@@ -108,6 +108,22 @@ o.window("^(tern)$", { float = true, center = true, size = { 1280, 820 } })
 The launcher entry has a **Compose** action (`tern --compose`), so a launcher such as Walker can start a new
 message directly.
 
+For Waybar, `tern --status` prints the inbox's unread count as a custom module's JSON (empty at zero, class
+`unread`, `zero`, or `off` when Tern isn't running). It only reads a small file the running Tern keeps, so it is
+cheap to call often:
+
+```jsonc
+"custom/tern": {
+  "exec": "tern --status",
+  "return-type": "json",
+  "interval": 10,
+  "format": "󰇮 {}",
+  "on-click": "tern"
+}
+```
+
+On Windows the taskbar button gets a dot while the inbox has unread mail.
+
 On Linux, passwords are kept by the Secret Service, so a keyring such as gnome-keyring or KWallet must be running
 and unlocked. On Windows, SmartScreen warns on first run because the installer is not signed yet; choose
 "More info" → "Run anyway".

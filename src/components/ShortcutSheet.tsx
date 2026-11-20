@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { keyLabel, shortName, type Binding } from "../keys";
 import { fuzzy } from "./CommandBar";
+import { settings } from "../settings";
 
 const PLACES: { context: Binding["context"]; title: string }[] = [
   { context: undefined, title: "Anywhere" },
@@ -41,7 +42,8 @@ export function ShortcutSheet(props: { bindings: Binding[]; onClose: () => void 
                   <h3>{place.title}</h3>
                   <For each={shown().filter((b) => b.context === place.context)}>
                     {(b) => (
-                      <div class="shortcut">
+                      // Keys already in use step back; the ones never pressed stay bright (idea 136).
+                      <div class="shortcut" classList={{ used: settings.keysUsed.includes(b.keys) }}>
                         <span title={shortName(b.name) === b.name ? undefined : b.name}>{shortName(b.name)}</span>
                         <span class="caps">
                           <For each={keyLabel(b.keys).split(" then ")}>
