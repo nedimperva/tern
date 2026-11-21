@@ -18,6 +18,12 @@ export type Settings = {
   filesView: "list" | "grid";
   /** The Paper trail grouped by month or by who sent it. */
   paperBy: "month" | "sender";
+  /** Message ids dismissed from Paper trail ("Not a paper"). */
+  paperHiddenIds: number[];
+  /** Sender addresses (lowercase) excluded from Paper trail. */
+  paperHiddenSenders: string[];
+  /** Verified kind and amount saved from "Check with AI", by message id. */
+  paperOverrides: Record<number, { kind: string; amount: number | null; currency: string | null }>;
   /** How long a conversation stays open before it counts as read; -1 = only when marked by hand. */
   readAfterMs: number;
   /** Remote images in mail: blocked until asked for, or always loaded. */
@@ -143,6 +149,9 @@ export const DEFAULTS: Settings = {
   openMode: "auto",
   filesView: "list",
   paperBy: "month",
+  paperHiddenIds: [],
+  paperHiddenSenders: [],
+  paperOverrides: {},
   readAfterMs: 1000,
   loadImages: "ask",
   imagesFrom: [],

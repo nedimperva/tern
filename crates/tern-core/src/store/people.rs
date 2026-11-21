@@ -206,7 +206,10 @@ impl Store {
             "SELECT {ROW}, b.text, b.html, m.message_id FROM messages m INDEXED BY messages_date
                JOIN folders f ON f.id = m.folder_id
                LEFT JOIN bodies b ON b.message_id = m.id
-             WHERE m.date >= ?1 AND f.role NOT IN ('trash', 'junk', 'drafts', 'sent') AND ({})
+             WHERE m.date >= ?1
+               AND f.role NOT IN ('trash', 'junk', 'drafts', 'sent')
+               AND (m.in_reply_to IS NULL OR m.in_reply_to = '')
+               AND ({})
              ORDER BY m.date DESC, (b.message_id IS NOT NULL) DESC, m.id DESC LIMIT 1500",
             like.join(" OR ")
         );
@@ -225,8 +228,13 @@ impl Store {
         Ok(found
             .into_iter()
             .filter(|(m, _, _, _)| {
-                let lower = m.subject.to_lowercase();
-                words.iter().any(|w| lower.contains(w))
+                let trimmed = m.subject.trim_start();
+                let lower = trimmed.to_lowercase();
+                // Replies and forwards are conversations about a bill, not new receipts or invoices.
+                let is_reply_or_fwd = ["re:", "fwd:", "fw:", "aw:", "wg:", "odg:", "sv:", "tr:"]
+                    .iter()
+                    .any(|p| lower.starts_with(p));
+                !is_reply_or_fwd && words.iter().any(|w| lower.contains(w))
             })
             .filter(|(m, _, _, mid)| {
                 let key = mid.clone().unwrap_or_else(|| format!("{}\0{}", m.subject, m.date));

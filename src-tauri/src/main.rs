@@ -383,6 +383,7 @@ fn main() {
             commands::ai_task,
             commands::ai_overnight,
             commands::ai_ask_mail,
+            commands::ai_check_papers,
             commands::tasks_of,
             commands::task_done,
             commands::check_tasks,

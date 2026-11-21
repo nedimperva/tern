@@ -11,7 +11,7 @@ import { asRow } from "../app/rows";
 import { docked, setPaperOpen, toggleSidebar } from "../app/state";
 import { showToast } from "../app/toast";
 import { type DateRange, rangeLabel, span } from "../dateRange";
-import { moneyText, type Paper, readPaper, repeating, sums, sumsText, toCsv } from "../paper";
+import { moneyText, type Paper, type PaperKind, readPaper, repeating, sums, sumsText, toCsv } from "../paper";
 import { setSetting, settings } from "../settings";
 import { when } from "./ConversationRow";
 import { Chip, Choices, chipOpen, DatePanel, Ticks } from "./Filters";
@@ -36,9 +36,10 @@ const AMOUNTS = [
   { value: "100", label: "100 or more" },
   { value: "1000", label: "1,000 or more" },
 ];
+const PAPER_KINDS = new Set<PaperKind>(["Receipt", "Invoice", "Order", "Booking", "Payment", "Subscription"]);
 
 export function PaperScreen() {
-  const [items, setItems] = createSignal<Item[] | null>(null);
+  const [rawItems, setRawItems] = createSignal<Item[] | null>(null);
   const [range, setRange] = createSignal<DateRange>({ kind: "12months" });
   /** A month picked on the chart, as year * 12 + month; it narrows the date filter. */
   const [month, setMonth] = createSignal<number | null>(null);
@@ -49,20 +50,44 @@ export function PaperScreen() {
   const [repeatsOnly, setRepeatsOnly] = createSignal(false);
   const [typed, setTyped] = createSignal("");
   const [index, setIndex] = createSignal(0);
+  const [checkingAi, setCheckingAi] = createSignal(false);
   const bySender = () => settings.paperBy === "sender";
+  const aiAllowed = () => settings.ai.enabled && settings.ai.summaries && settings.ai.accounts.length > 0;
 
   // The last twelve months are read once; every filter works on them.
   const year = span({ kind: "12months" });
   void api.paperCandidates(year.since).then(
     (found) =>
-      setItems(
+      setRawItems(
         found.flatMap(([row, text]) => {
-          const paper = readPaper(row.subject, text);
+          const paper = readPaper(row.subject, text, row.hasAttachments);
           return paper ? [{ row, paper, from: row.fromName || row.fromAddr }] : [];
         }),
       ),
-    () => setItems([]),
+    () => setRawItems([]),
   );
+  // Apply dismissed rows, excluded senders, and any AI-verified kind/amount corrections.
+  const items = createMemo<Item[] | null>(() => {
+    const raw = rawItems();
+    if (raw === null) return null;
+    const hiddenIds = new Set(settings.paperHiddenIds);
+    const hiddenSenders = new Set(settings.paperHiddenSenders.map((s) => s.toLowerCase()));
+    const overrides = settings.paperOverrides;
+    return raw.flatMap((item) => {
+      if (hiddenIds.has(item.row.id) || hiddenSenders.has(item.row.fromAddr.toLowerCase())) return [];
+      const fix = overrides[item.row.id];
+      if (!fix) return [item];
+      const kind = PAPER_KINDS.has(fix.kind as PaperKind) ? (fix.kind as PaperKind) : item.paper.kind;
+      return [{ ...item, paper: { ...item.paper, kind, amount: fix.amount, currency: fix.currency } }];
+    });
+  });
+  const hiddenCount = () => {
+    const raw = rawItems();
+    if (!raw) return settings.paperHiddenIds.length + settings.paperHiddenSenders.length;
+    const hiddenIds = new Set(settings.paperHiddenIds);
+    const hiddenSenders = new Set(settings.paperHiddenSenders.map((s) => s.toLowerCase()));
+    return raw.filter((i) => hiddenIds.has(i.row.id) || hiddenSenders.has(i.row.fromAddr.toLowerCase())).length;
+  };
   const repeats = createMemo(() => repeating((items() ?? []).map((i) => ({ from: i.from, date: i.row.date }))));
   const dates = () => {
     const m = month();
@@ -110,7 +135,7 @@ export function PaperScreen() {
   });
   /** The rows in the order they are drawn, for the arrows. */
   const flat = createMemo(() => groups().flatMap((g) => g.rows));
-  createEffect(on(flat, () => setIndex(0), { defer: true }));
+  createEffect(on(flat, (list) => setIndex((i) => Math.max(0, Math.min(list.length - 1, i))), { defer: true }));
 
   // The chart: the year's main currency, a bar a month, whatever the other filters leave.
   const chartItems = createMemo(() => (items() ?? []).filter((i) => passes(i, "date")));
@@ -130,6 +155,87 @@ export function PaperScreen() {
     const m = month();
     return { title: m === null ? rangeLabel(range()) : monthName(m), all: sums(shown()), count: shown().length };
   });
+
+  const dismissPaper = (i: Item | undefined) => {
+    if (!i) return;
+    const prev = [...settings.paperHiddenIds];
+    if (prev.includes(i.row.id)) return;
+    setSetting("paperHiddenIds", [...prev, i.row.id]);
+    showToast(`Removed “${i.row.subject || i.from}” from Paper trail`, [], undefined, () => setSetting("paperHiddenIds", prev));
+  };
+  const hideSender = (i: Item | undefined) => {
+    if (!i) return;
+    const addr = i.row.fromAddr.toLowerCase();
+    const prev = [...settings.paperHiddenSenders];
+    if (prev.includes(addr)) return;
+    setSetting("paperHiddenSenders", [...prev, addr]);
+    showToast(`Hidden all papers from ${i.from}`, [], undefined, () => setSetting("paperHiddenSenders", prev));
+  };
+  const restoreHidden = () => {
+    const prevIds = [...settings.paperHiddenIds];
+    const prevSenders = [...settings.paperHiddenSenders];
+    setSetting("paperHiddenIds", []);
+    setSetting("paperHiddenSenders", []);
+    showToast("Restored hidden papers", [], undefined, () => {
+      setSetting("paperHiddenIds", prevIds);
+      setSetting("paperHiddenSenders", prevSenders);
+    });
+  };
+  const checkWithAi = async () => {
+    const list = flat();
+    if (!list.length || checkingAi()) return;
+    setCheckingAi(true);
+    const prevIds = [...settings.paperHiddenIds];
+    const prevOverrides = { ...settings.paperOverrides };
+    try {
+      const res = await api.aiCheckPapers(
+        list.map((i) => ({ id: i.row.id, kind: i.paper.kind, amount: i.paper.amount, currency: i.paper.currency })),
+      );
+      const byId = new Map(list.map((i) => [i.row.id, i]));
+      const nextHidden = new Set(prevIds);
+      const nextOverrides = { ...prevOverrides };
+      let dropped = 0;
+      let fixed = 0;
+      for (const v of res.verdicts) {
+        const current = byId.get(v.id);
+        if (!current) continue;
+        if (!v.keep) {
+          if (!nextHidden.has(v.id)) dropped++;
+          nextHidden.add(v.id);
+        } else {
+          const kind = v.kind && PAPER_KINDS.has(v.kind as PaperKind) ? v.kind : current.paper.kind;
+          const changed =
+            kind !== current.paper.kind || v.amount !== current.paper.amount || v.currency !== current.paper.currency;
+          if (changed) {
+            fixed++;
+            nextOverrides[v.id] = { kind, amount: v.amount, currency: v.currency };
+          }
+        }
+      }
+      if (dropped || fixed) {
+        setSetting("paperHiddenIds", [...nextHidden]);
+        setSetting("paperOverrides", nextOverrides);
+        const parts = [dropped ? `removed ${dropped}` : "", fixed ? `fixed ${fixed}` : ""].filter(Boolean).join(", ");
+        const skippedNote = res.skipped ? ` (${res.skipped} skipped — AI off for that account)` : "";
+        showToast(
+          `AI checked ${res.checked} papers: ${parts}${skippedNote}`,
+          [],
+          undefined,
+          () => {
+            setSetting("paperHiddenIds", prevIds);
+            setSetting("paperOverrides", prevOverrides);
+          },
+        );
+      } else {
+        const skippedNote = res.skipped ? ` (${res.skipped} skipped — AI off for that account)` : "";
+        showToast(`AI checked ${res.checked} papers — all looked real${skippedNote}`, []);
+      }
+    } catch (e) {
+      showToast(String(e), []);
+    } finally {
+      setCheckingAi(false);
+    }
+  };
 
   const close = () => setPaperOpen(false);
   const openMail = (i: Item | undefined) => {
@@ -165,6 +271,7 @@ export function PaperScreen() {
     } else if (e.key === "ArrowDown") point(index() + 1);
     else if (e.key === "ArrowUp") point(index() - 1);
     else if (e.key === "Enter") openMail(flat()[index()]);
+    else if ((e.key === "Delete" || e.key === "Backspace") && !typing) dismissPaper(flat()[index()]);
     else if (e.key === "/" && !typing) search.focus();
     else return;
     e.preventDefault();
@@ -191,6 +298,17 @@ export function PaperScreen() {
           <input ref={search} placeholder="Find by sender, subject or reference" value={typed()} onInput={(e) => setTyped(e.currentTarget.value)} aria-label="Find a paper" />
           <kbd>/</kbd>
         </label>
+        <Show when={aiAllowed()}>
+          <button
+            type="button"
+            class="screen-button ai-check"
+            onClick={() => void checkWithAi()}
+            disabled={!flat().length || checkingAi()}
+            title="Ask AI to drop non-invoices (bank statements, credit offers, reminders) and verify amounts"
+          >
+            <Icon name="sparkles" size={14} /> {checkingAi() ? "Checking…" : "Check with AI"}
+          </button>
+        </Show>
         <button type="button" class="screen-button" onClick={() => void exportCsv()} disabled={!flat().length}>
           <Icon name="download" size={14} /> Export CSV
         </button>
@@ -260,6 +378,16 @@ export function PaperScreen() {
             Clear
           </button>
         </Show>
+        <Show when={hiddenCount() > 0 || settings.paperHiddenIds.length > 0 || settings.paperHiddenSenders.length > 0}>
+          <button
+            type="button"
+            class="link clear"
+            onClick={restoreHidden}
+            title="Show papers and senders you dismissed again"
+          >
+            {hiddenCount() > 0 ? `${hiddenCount()} hidden · Restore` : "Restore hidden"}
+          </button>
+        </Show>
         <span class="chips-end">
           <span class="segmented">
             <button type="button" aria-pressed={!bySender()} classList={{ on: !bySender() }} onClick={() => setSetting("paperBy", "month")}>
@@ -325,6 +453,32 @@ export function PaperScreen() {
                       <span class="what">{i.row.subject || "(no subject)"}</span>
                       <span class="ref">{i.paper.reference ?? ""}</span>
                       <span class="amount">{i.paper.amount != null && i.paper.currency ? moneyText(i.paper.amount, i.paper.currency) : ""}</span>
+                      <span class="ledger-actions">
+                        <button
+                          type="button"
+                          class="icon-button"
+                          tabIndex={-1}
+                          title={`Hide all papers from ${i.from}`}
+                          aria-label={`Hide all papers from ${i.from}`}
+                          onMouseDown={(e) => (e.stopPropagation(), e.preventDefault())}
+                          onDblClick={(e) => e.stopPropagation()}
+                          onClick={(e) => (e.stopPropagation(), hideSender(i))}
+                        >
+                          <Icon name="mail-x" size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          class="icon-button"
+                          tabIndex={-1}
+                          title="Not a paper (Del)"
+                          aria-label="Not a paper"
+                          onMouseDown={(e) => (e.stopPropagation(), e.preventDefault())}
+                          onDblClick={(e) => e.stopPropagation()}
+                          onClick={(e) => (e.stopPropagation(), dismissPaper(i))}
+                        >
+                          <Icon name="x" size={14} />
+                        </button>
+                      </span>
                     </div>
                   )}
                 </For>
@@ -336,7 +490,7 @@ export function PaperScreen() {
 
       <footer class="screen-foot">
         <span>
-          <kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>Enter</kbd> open its mail · <kbd>Esc</kbd> back to the mail
+          <kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>Enter</kbd> open its mail · <kbd>Del</kbd> not a paper · <kbd>Esc</kbd> back to the mail
         </span>
         <span class="quiet">Read on this computer from the mail. Check amounts before you rely on them.</span>
       </footer>

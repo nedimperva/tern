@@ -2137,6 +2137,16 @@ pub async fn ai_ask_mail(
     .await
 }
 
+/// Checks Paper trail candidates with AI to filter out statements, credit offers and reminders.
+#[tauri::command]
+pub async fn ai_check_papers(
+    state: State<'_, AppState>,
+    candidates: Vec<ai::PaperCandidate>,
+) -> Reply<ai::PaperCheck> {
+    let store = state.store.clone();
+    blocking(move || ai::check_papers(&store, &providers::Router, &candidates)).await
+}
+
 /// A task the AI proposes from the conversation of message `id`, for the task box; nothing is created.
 #[tauri::command]
 pub async fn ai_task(state: State<'_, AppState>, id: i64) -> Reply<ai::TaskSuggestion> {

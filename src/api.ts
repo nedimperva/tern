@@ -49,6 +49,11 @@ export type Imported = { token: number; folder: string; total: number };
 export type Exported = { written: number; missing: number; stopped: boolean; path: string };
 /** What came in overnight, in a few lines, and what was sent to get it. */
 export type AiOvernight = { points: AiPoint[]; conversations: number; sentChars: number; route: { provider: AiProvider; model: string } };
+/** A local Paper trail candidate handed to the AI to verify. */
+export type AiPaperCandidate = { id: number; kind: string; amount: number | null; currency: string | null };
+/** The AI's verdict on one Paper trail candidate: drop it, or keep it with verified kind and amount. */
+export type AiPaperVerdict = { id: number; keep: boolean; kind: string | null; amount: number | null; currency: string | null; reason: string };
+export type AiPaperCheck = { verdicts: AiPaperVerdict[]; checked: number; skipped: number; sentChars: number; route: { provider: AiProvider; model: string } };
 /** One suggested reply: a few words on what it does, and the reply. */
 export type AiSuggestion = { label: string; text: string };
 /** A style just learned, with made-up notes written plainly and in that style, shown once. */
@@ -702,6 +707,8 @@ export interface Api {
   aiOvernight(since: number, onText: (text: string) => void): Promise<AiOvernight>;
   /** Ask your mail: a question over all the mail the AI may read; `messages` are the ids its [n] count by. */
   aiAskMail(question: string, earlier: [string, string][], onText: (text: string) => void): Promise<AiAnswer>;
+  /** Paper trail check: asks AI which candidates are real invoices/receipts/orders and verifies their amounts. */
+  aiCheckPapers(candidates: AiPaperCandidate[]): Promise<AiPaperCheck>;
   aiWrite(input: AiWriteInput, onText: (text: string) => void): Promise<AiWritten>;
   aiClearCache(): Promise<number>;
   aiStats(): Promise<AiStats>;
@@ -967,6 +974,7 @@ const tauri: Api = {
   aiAsk: (id, question, earlier, onText) => invoke("ai_ask", { id, question, earlier, onText: channel(onText) }),
   aiOvernight: (since, onText) => invoke("ai_overnight", { since, onText: channel(onText) }),
   aiAskMail: (question, earlier, onText) => invoke("ai_ask_mail", { question, earlier, onText: channel(onText) }),
+  aiCheckPapers: (candidates) => invoke("ai_check_papers", { candidates }),
   aiWrite: (input, onText) => invoke("ai_write", { input, onText: channel(onText) }),
   aiClearCache: () => invoke("ai_clear_cache"),
   aiStats: () => invoke("ai_stats"),
@@ -2015,6 +2023,13 @@ function fake(): Api {
       await stream(text, onText);
       return { text, messages: ids, sentChars: 6_120, route: { provider: "anthropic", model: "claude-haiku-5-5" } };
     },
+    aiCheckPapers: async (candidates) => ({
+      verdicts: candidates.map((c) => ({ id: c.id, keep: true, kind: c.kind, amount: c.amount, currency: c.currency, reason: "" })),
+      checked: candidates.length,
+      skipped: 0,
+      sentChars: candidates.length * 120,
+      route: { provider: "anthropic", model: "claude-haiku-5-5" },
+    }),
     aiSummarize: async (id, fresh, onText) => {
       if (!fresh && fakeSummaries.has(id)) return fakeSummaries.get(id)!;
       const subject = messages.find((m) => m.id === id)?.subject ?? "this";

@@ -11146,6 +11146,7 @@ fieldset.list-filters {
   font-variant-numeric: tabular-nums;
 }
 .ledger-row {
+  position: relative;
   min-height: 40px;
   border-bottom: 1px solid var(--line);
   cursor: default;
@@ -11191,6 +11192,32 @@ fieldset.list-filters {
 }
 .ledger-row .amount {
   font-weight: 600;
+}
+.ledger-row .ledger-actions {
+  position: absolute;
+  right: var(--s-4);
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding-left: var(--s-3);
+  background: linear-gradient(to right, transparent, var(--bg-1) 14px);
+}
+.ledger-row.active .ledger-actions {
+  background: linear-gradient(to right, transparent, var(--bg-2) 14px);
+}
+.ledger-row:hover .ledger-actions,
+.ledger-row.active:focus-within .ledger-actions {
+  display: inline-flex;
+}
+.ledger-row .ledger-actions .icon-button {
+  width: 26px;
+  height: 26px;
+  color: var(--fg-2);
+}
+.ledger-row .ledger-actions .icon-button:hover {
+  color: var(--fg-0);
 }
 .repeats {
   display: inline-flex;
