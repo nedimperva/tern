@@ -433,7 +433,9 @@ function HtmlBody(props: {
       classList={{
         active: active() === slot,
         staging: active() !== slot,
-        waiting: active() === slot && !hasShown(),
+        // Only darkened mail waits for its first paint (it would flash white). Every open mounts a new body, so
+        // hiding all mail until then made each one blink in; text and light mail show as they parse.
+        waiting: active() === slot && !hasShown() && darkened(),
         own: slotStyle()[slot].own,
         framed: slotStyle()[slot].framed,
       }}
