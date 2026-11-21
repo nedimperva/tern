@@ -7,6 +7,19 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+### Changed
+
+- One toolbar on Windows and Linux: no title bar any more. The sidebar, the list and the open mail each have their
+  own head at the same height, so one line runs across the window. On Windows the window's buttons end the
+  rightmost head; on Omarchy there are none, and everything else is the same.
+- The subject is a heading at the top of the mail. A back arrow closes the conversation, and once the heading has
+  scrolled away the subject shows in the mail's head.
+- Loading pictures once from a sender trusts that sender: their mail loads its pictures from then on. The `…` menu
+  takes it back ("Ask before loading this sender's images").
+- Newsletters open as their sender made them. Reading view is still a click on the book icon, or the default again
+  in Settings → Reading.
+- The reading view's "Original look" and "Read later" buttons no longer wrap onto two lines in a narrow pane.
+
 ## [2.5.0] - 2026-11-20
 
 Finding and following through: all your files in one place, a paper trail of receipts, sign-in codes you copy

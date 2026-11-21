@@ -86,8 +86,10 @@
   --d-slow: 240ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  /* Tern's own title bar, and the sidebar docked under it (§3). */
-  --titlebar-h: 40px;
+  /* Every column's head (sidebar, list, mail) is this high, so one line runs across the window (§3). The window's
+     own buttons (Windows) are as high, and the rightmost head keeps --window-buttons-w for them. */
+  --head-h: 48px;
+  --window-buttons-w: 0px;
   --side-w: 240px;
 
   --participants-w: 180px;
