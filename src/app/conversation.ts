@@ -24,6 +24,7 @@ import { keyOf } from "./rows";
 import { showToast } from "./toast";
 
 let readTimer: number | undefined;
+let openGen = 0;
 
 /** Opens a conversation. From search, `row` is the message that matched: it opens and comes into view, wherever
  * it sits in the conversation; otherwise the newest message is the one to read. It comes in from the right, or
@@ -42,14 +43,15 @@ export async function open(row: ThreadRow | undefined, matched = searching(), ho
 }
 
 async function show(row: ThreadRow, matched: boolean) {
+  const gen = ++openGen;
   // A draft being written in Tern opens in compose, not as a conversation.
   if (folders().find((f) => f.id === row.folderId)?.role === "drafts") {
     const record = await api.draftForMessage(row.id);
+    if (gen !== openGen) return;
     if (record) return resume(record);
   }
-  setOpenRow(row);
   const found = await api.thread(row.id);
-  if (openRow() !== row) return;
+  if (gen !== openGen) return;
   // The conversation lists each message once, so the copy that matched may be another folder's row of it.
   const at = !matched
     ? -1
@@ -57,6 +59,7 @@ async function show(row: ThreadRow, matched: boolean) {
       ? found.findIndex((m) => m.id === row.id)
       : found.findIndex((m) => m.date === row.date && m.fromAddr === row.fromAddr && m.subject === row.subject);
   batch(() => {
+    setOpenRow(row);
     setMessages(found);
     // Only the newest message starts open (owner, 2026-10-29): the rest are one line each, opened as the person
     // goes. Unread ones keep their dot, and "Since you last read" jumps to the first.
@@ -77,6 +80,7 @@ async function show(row: ThreadRow, matched: boolean) {
 }
 
 export function close() {
+  openGen++;
   clearTimeout(readTimer);
   const now = () => batch(() => (setOpenRow(null), setMessages([])));
   if (openRow()) shift("close", now);

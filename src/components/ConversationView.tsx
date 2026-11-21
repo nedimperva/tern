@@ -192,11 +192,20 @@ function HtmlBody(props: {
   });
 
   let lastMsgId: number | undefined;
+  const reveal = (gen: number) => {
+    // Wait for the darkened & sized iframe to paint before revealing it, so WebKitGTK never flashes the
+    // un-darkened white background or un-sized initial 150px box for one frame.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (gen === loadGen) setReady(true);
+      }),
+    );
+  };
 
   // Same-origin without scripts: the frame cannot run anything, but we can measure it and catch link clicks.
   // Called as soon as the parsed DOM is ready (interactive) or on load; idempotent per document so load after an
   // early interactive pass only refreshes sizing and marks.
-  const dress = (el: HTMLIFrameElement, doc: Document) => {
+  const dress = (el: HTMLIFrameElement, doc: Document, gen: number) => {
     const scheduleFit = () =>
       requestAnimationFrame(() => {
         if (el.isConnected && docOf(el) === doc) fitFrame(el, doc);
@@ -205,7 +214,7 @@ function HtmlBody(props: {
       fitFrame(el, doc);
       scheduleFit();
       sizeTimers.push(window.setTimeout(scheduleFit, 250));
-      setReady(true);
+      if (!ready()) reveal(gen);
       window.dispatchEvent(new Event(FRAME_LOADED));
       return;
     }
@@ -252,7 +261,6 @@ function HtmlBody(props: {
     sizer?.disconnect();
     sizer = new ResizeObserver(size);
     if (doc.body) sizer.observe(doc.body);
-    sizer.observe(doc.documentElement);
     // WebKitGTK does not always report a change inside a script-less frame (its own listeners never run there), and
     // newsletters grow after load as their pictures and fonts come in: measured then, the frame stayed short. So the
     // frame's own width is watched from out here, capture-phase load/error listeners catch every picture as it lands,
@@ -311,7 +319,7 @@ function HtmlBody(props: {
     // Sizing and revealing always run after darkening so a newsletter never flashes white or stays hidden.
     fitFrame(el, doc);
     size();
-    setReady(true);
+    reveal(gen);
     window.dispatchEvent(new Event(FRAME_LOADED));
   };
 
@@ -330,7 +338,7 @@ function HtmlBody(props: {
     // Ignore the initial about:blank load before our srcdoc commits, so early-ready polls stay armed.
     if (!doc.head?.querySelector('meta[http-equiv="Content-Security-Policy"]')) return;
     clearPolls();
-    dress(frame, doc);
+    dress(frame, doc, loadGen);
   };
 
   // Drive srcdoc from one effect so setReady(false) always happens strictly before the iframe reloads, and only
@@ -362,17 +370,18 @@ function HtmlBody(props: {
         doc.head?.querySelector('meta[http-equiv="Content-Security-Policy"]')
       ) {
         clearPolls();
-        dress(frame, doc);
+        dress(frame, doc, gen);
       }
     };
     for (const ms of [30, 100, 250, 600, 1500]) pollTimers.push(window.setTimeout(checkEarly, ms));
+    pollTimers.push(window.setTimeout(() => gen === loadGen && setReady(true), 2000));
   });
 
   const body = (
     <iframe
       ref={frame}
       class="html-body"
-      classList={{ waiting: darkened() && !ready(), own: !designed() || reading() }}
+      classList={{ waiting: !ready(), own: !designed() || reading() }}
       sandbox="allow-same-origin"
       onLoad={onLoad}
       title="Message"
@@ -1012,16 +1021,23 @@ export function ConversationView(props: {
     ];
   };
 
-  // Another conversation starts with its images blocked, reading view off and nobody unsubscribed.
+  /** A newsletter: mail its sender designed, sent to a list. It opens as sent unless Settings → Reading asks for
+   * reading view (owner, 2026-11-21); the book icon still switches. Decided once per conversation, when its body is
+   * here. */
+  const newsletter = () => !!last() && designed().has(last().id) && !!last().listUnsubscribe;
+  let readingChosen = false;
+
+  // Another conversation starts with its images blocked, reading view at its default and nobody unsubscribed.
   let shown: number | undefined;
   createEffect(() => {
     const first = props.messages[0]?.id;
     if (first === shown) return;
     shown = first;
+    const isNews = newsletter();
     setAsked(false);
     setUnsubscribed("");
-    setReading(false);
-    readingChosen = false;
+    setReading(isNews && settings.newsletterReading);
+    readingChosen = isNews;
     setCurrentMark(null);
     setPick(null);
     setTranslating(null);
@@ -1031,11 +1047,6 @@ export function ConversationView(props: {
 
   // MARK: The column beside the messages (docs/design/ui.md §4.2a–c)
 
-  /** A newsletter: mail its sender designed, sent to a list. It opens as sent unless Settings → Reading asks for
-   * reading view (owner, 2026-11-21); the book icon still switches. Decided once per conversation, when its body is
-   * here. */
-  const newsletter = () => !!last() && designed().has(last().id) && !!last().listUnsubscribe;
-  let readingChosen = false;
   createEffect(() => {
     if (readingChosen || !newsletter()) return;
     readingChosen = true;

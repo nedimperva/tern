@@ -45,4 +45,31 @@ describe("fitFrame", () => {
     expect(doc.body.style.getPropertyValue("height")).toBe("auto");
     expect(doc.body.style.getPropertyPriority("height")).toBe("important");
   });
+
+  it("does not clear and reapply zoom on repeated fit passes once zoomed to fit", () => {
+    const doc = document.implementation.createHTMLDocument("mail");
+    doc.body.innerHTML = "<p>Wide table</p>";
+    Object.defineProperty(doc.documentElement, "clientWidth", { value: 680, configurable: true });
+    Object.defineProperty(doc.documentElement, "scrollWidth", { value: 680, configurable: true });
+    Object.defineProperty(doc.body, "scrollWidth", { value: 800, configurable: true });
+    Object.defineProperty(doc.body, "scrollHeight", { value: 2000, configurable: true });
+    doc.body.getBoundingClientRect = () => ({ height: 1700 }) as DOMRect;
+    const frame = document.createElement("iframe");
+    fitFrame(frame, doc);
+    expect(Number(doc.body.style.zoom)).toBeCloseTo(680 / 800, 4);
+
+    let zoomWrites = 0;
+    const original = doc.body.style;
+    const zoomSetter = Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype, "zoom")?.set;
+    Object.defineProperty(original, "zoom", {
+      get: () => String(680 / 800),
+      set: (v: string) => {
+        zoomWrites++;
+        zoomSetter?.call(original, v);
+      },
+      configurable: true,
+    });
+    fitFrame(frame, doc);
+    expect(zoomWrites).toBe(0);
+  });
 });

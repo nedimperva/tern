@@ -130,12 +130,15 @@ export function fitFrame(frame: HTMLIFrameElement, doc: Document) {
   // Newsletter templates routinely include `<style>html,body{height:100%!important}</style>` or inline heights;
   // inline !important here beats every stylesheet or body attribute so the frame measures the full document.
   for (const el of [doc.documentElement, body]) {
-    el.style.setProperty("height", "auto", "important");
-    el.style.setProperty("min-height", "0", "important");
-    el.style.setProperty("max-height", "none", "important");
+    if (el.style.height !== "auto") el.style.setProperty("height", "auto", "important");
+    if (el.style.minHeight !== "0px" && el.style.minHeight !== "0") el.style.setProperty("min-height", "0", "important");
+    if (el.style.maxHeight !== "none") el.style.setProperty("max-height", "none", "important");
   }
   const room = doc.documentElement.clientWidth;
-  const overflows = () => Math.max(body.scrollWidth, doc.documentElement.scrollWidth) > room + 1;
+  const curZoom = Number.parseFloat(body.style.zoom) || 1;
+  // body.scrollWidth stays in unzoomed coordinates, so scale it by curZoom before checking for overflow;
+  // otherwise every resize tick thinks a zoomed newsletter still overflows and flashes by resetting zoom.
+  const overflows = () => Math.max(body.scrollWidth * curZoom, doc.documentElement.scrollWidth) > room + 1;
   // The zoom is worked out again only when the frame's width changed or the mail no longer fits (a picture came
   // in). Resetting it on every resize made the body change size, which fired the observer that calls this, around
   // and around: the mail flashed, many times a second.
