@@ -2399,14 +2399,19 @@ button.primary kbd {
   padding-bottom: var(--s-4);
 }
 /* The reply bar keeps one place: at the foot of the pane after a short mail, and over the foot of a long one while
-   it scrolls (idea 89). The conversation fills the pane so the bar can sit at its end; an inline reply takes the
-   bar's place and follows the thread instead. */
-.reading:not(:has(> .conversation.replying)) {
-  height: 100%;
+   it scrolls (idea 89). Using min-height: 100% (not height: 100%) on .reading lets it grow with long newsletters so
+   the sticky .conv-head stays pinned to the top for the entire scroll instead of scrolling away after one viewport. */
+.reading {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.reading > .conversation {
+  width: 100%;
+  box-sizing: border-box;
 }
 .reading > .conversation:not(.replying) {
-  box-sizing: border-box;
-  min-height: 100%;
+  flex: 1 0 auto;
   padding-bottom: var(--s-4);
 }
 /* The conversation and, when the pane has room, the column beside it (§4.2a). */
@@ -2477,6 +2482,7 @@ button.primary kbd {
   position: sticky;
   top: 0;
   z-index: 5;
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--s-2);

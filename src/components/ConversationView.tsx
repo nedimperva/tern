@@ -191,12 +191,20 @@ function HtmlBody(props: {
     sizer?.disconnect();
   });
 
+  let lastMsgId: number | undefined;
+
   // Same-origin without scripts: the frame cannot run anything, but we can measure it and catch link clicks.
   // Called as soon as the parsed DOM is ready (interactive) or on load; idempotent per document so load after an
   // early interactive pass only refreshes sizing and marks.
   const dress = (el: HTMLIFrameElement, doc: Document) => {
+    const scheduleFit = () =>
+      requestAnimationFrame(() => {
+        if (el.isConnected && docOf(el) === doc) fitFrame(el, doc);
+      });
     if (dressed.has(doc)) {
       fitFrame(el, doc);
+      scheduleFit();
+      sizeTimers.push(window.setTimeout(scheduleFit, 250));
       setReady(true);
       window.dispatchEvent(new Event(FRAME_LOADED));
       return;
@@ -244,19 +252,21 @@ function HtmlBody(props: {
     sizer?.disconnect();
     sizer = new ResizeObserver(size);
     if (doc.body) sizer.observe(doc.body);
+    sizer.observe(doc.documentElement);
     // WebKitGTK does not always report a change inside a script-less frame (its own listeners never run there), and
     // newsletters grow after load as their pictures and fonts come in: measured then, the frame stayed short. So the
-    // frame's own width is watched from out here, and it is measured again as pictures arrive and while the mail settles.
+    // frame's own width is watched from out here, capture-phase load/error listeners catch every picture as it lands,
+    // and the frame is measured again while the mail settles.
     sizer.observe(el);
+    doc.addEventListener("load", size, true);
+    doc.addEventListener("error", size, true);
     for (const img of doc.images) {
-      if (!img.complete) {
-        img.addEventListener("load", size, { once: true });
-        img.addEventListener("error", size, { once: true });
-      }
+      if (img.loading === "lazy") img.loading = "eager";
+      if (img.complete) void img.decode?.().then(size, () => {});
     }
     void doc.fonts?.ready.then(size, () => {});
     clearSizeTimers();
-    for (const ms of [100, 400, 1200, 3000]) sizeTimers.push(window.setTimeout(size, ms));
+    for (const ms of [100, 400, 1200, 3000, 6000]) sizeTimers.push(window.setTimeout(size, ms));
     // The rest only dresses the message: a step that fails (a mail no rule expected) is skipped, not fatal.
     try {
       if (darkened()) darken(doc);
@@ -327,11 +337,16 @@ function HtmlBody(props: {
   // when the rendered srcdoc string actually changed (not on metadata refreshes like markRead).
   createEffect(() => {
     const next = srcdoc();
+    const id = props.messageId;
     if (!frame) return;
     const gen = ++loadGen;
     clearPolls();
     const prevDoc = docOf(frame);
     delete frame.dataset.room;
+    if (lastMsgId !== id) {
+      lastMsgId = id;
+      frame.style.height = "";
+    }
     setReady(false);
     frame.srcdoc = next;
     // A newsletter with slow or unreachable remote images can delay the iframe's load event for tens of seconds;
@@ -1241,7 +1256,11 @@ export function ConversationView(props: {
   };
   onMount(() => {
     const pane = title.closest(".conversation-pane");
-    const watch = new IntersectionObserver(([e]) => setCompact(!e.isIntersecting), { root: pane });
+    const headH = pane?.querySelector<HTMLElement>(".conv-head")?.offsetHeight ?? 48;
+    const watch = new IntersectionObserver(([e]) => setCompact(!e.isIntersecting), {
+      root: pane,
+      rootMargin: `-${headH}px 0px 0px 0px`,
+    });
     watch.observe(title);
     // Which message the top of the pane is in, for the head: the last one whose top has passed under it.
     let frame = 0;
