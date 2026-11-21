@@ -483,7 +483,8 @@ export interface Api {
   /** The files exchanged with a person, every conversation, newest first. */
   personFiles(email: string): Promise<PersonFile[]>;
   /** Every file received or sent, newest first (All files). */
-  allFiles(): Promise<PersonFile[]>;
+  /** Files from mail dated in `since..until` (seconds), newest first, up to 3,000. */
+  allFiles(since: number, until: number): Promise<PersonFile[]>;
   /** Mail that may be a receipt, an invoice or an order since `since`, with its text (Paper trail). */
   paperCandidates(since: number): Promise<[MessageRow, string][]>;
   /** Saves text where the person picks; false when they cancel. */
@@ -820,7 +821,7 @@ const tauri: Api = {
   person: (accountId, email) => invoke("person", { accountId, email }),
   setPersonNote: (email, body) => invoke("set_person_note", { email, body }),
   personFiles: (email) => invoke("person_files", { email }),
-  allFiles: () => invoke("all_files"),
+  allFiles: (since, until) => invoke("all_files", { since, until }),
   paperCandidates: (since) => invoke("paper_candidates", { since }),
   saveText: (title, name, text) => invoke("save_text", { title, name, text }),
   todoistConnected: () => invoke("todoist_connected"),
@@ -1619,9 +1620,9 @@ function fake(): Api {
       console.log(name, text);
       return true;
     },
-    allFiles: async () =>
+    allFiles: async (since, until) =>
       messages
-        .filter((m) => m.attachments.length && m.folderId !== 4)
+        .filter((m) => m.attachments.length && m.folderId !== 4 && m.date >= since && m.date < until)
         .sort((a, b) => b.date - a.date)
         .flatMap((m) =>
           m.attachments.map((a, index) => ({ messageId: m.id, accountId: m.accountId, threadId: m.threadId, subject: m.subject, date: m.date, mine: false, index, from: m.fromName, ...a })),

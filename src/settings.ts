@@ -14,6 +14,10 @@ export type Settings = {
   sidebar: boolean;
   /** "auto": beside the list in a wide window, over it in a narrow one. */
   openMode: "auto" | "split" | "full";
+  /** The Files screen as a list with a preview beside it, or as a grid of cards. */
+  filesView: "list" | "grid";
+  /** The Paper trail grouped by month or by who sent it. */
+  paperBy: "month" | "sender";
   /** How long a conversation stays open before it counts as read; -1 = only when marked by hand. */
   readAfterMs: number;
   /** Remote images in mail: blocked until asked for, or always loaded. */
@@ -137,6 +141,8 @@ export const DEFAULTS: Settings = {
   density: "dense",
   sidebar: true,
   openMode: "auto",
+  filesView: "list",
+  paperBy: "month",
   readAfterMs: 1000,
   loadImages: "ask",
   imagesFrom: [],

@@ -151,9 +151,13 @@ export const dialog = () =>
   screen() || deck() !== null || reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin() && (!compose()!.inline || replyFocused())) || setup() || rail() || snoozing() !== null || labeling() !== null ||
   viewing() !== null || askingMail() || filesOpen() || paperOpen() || eml() !== null;
 export const searching = () => query().trim() !== "";
-/** All files (`g f`, idea 108) and Paper trail (`g $`, idea 115), each over the list. */
-export const [filesOpen, setFilesOpen] = createSignal(false);
-export const [paperOpen, setPaperOpen] = createSignal(false);
+/** All files (`g f`, idea 108) or Paper trail (`g $`, idea 115): a screen in the place of the list and the open
+ * mail, which stay as they were behind it. One at a time. */
+export const [toolScreen, setToolScreen] = createSignal<"files" | "paper" | null>(null);
+export const filesOpen = () => toolScreen() === "files";
+export const paperOpen = () => toolScreen() === "paper";
+export const setFilesOpen = (on: boolean) => setToolScreen(on ? "files" : null);
+export const setPaperOpen = (on: boolean) => setToolScreen(on ? "paper" : null);
 /** A `.eml` file being shown (idea 132), by path. */
 export const [eml, setEml] = createSignal<string | null>(null);
 /** Ask your mail is open (`A`, package 17 F). */

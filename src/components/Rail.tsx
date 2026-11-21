@@ -2,7 +2,7 @@ import { createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js"
 import type { Account, Folder, SyncState, Target } from "../api";
 import { labelColour } from "../colours";
 import { folderTree, holds, type TreeNode, unreadUnder } from "../folderTree";
-import { newPeople, setFilesOpen, setPaperOpen, toggleSidebar } from "../app/state";
+import { filesOpen, newPeople, paperOpen, setFilesOpen, setPaperOpen, toggleSidebar } from "../app/state";
 import { settings } from "../settings";
 import { AccountAvatar } from "./AccountAvatar";
 import { Icon } from "./Icon";
@@ -161,10 +161,10 @@ export function Rail(props: {
         <Item active={props.isTarget({ role: "marked" })} onClick={() => go({ role: "marked" })} icon="highlighter">
           <span class="name">Marks</span>
         </Item>
-        <Item active={false} onClick={() => (setFilesOpen(true), close())} icon="paperclip">
+        <Item active={filesOpen()} onClick={() => (setFilesOpen(true), close())} icon="paperclip">
           <span class="name">Files</span>
         </Item>
-        <Item active={false} onClick={() => (setPaperOpen(true), close())} icon="file-text">
+        <Item active={paperOpen()} onClick={() => (setPaperOpen(true), close())} icon="file-text">
           <span class="name">Paper trail</span>
         </Item>
       </div>

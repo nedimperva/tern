@@ -243,18 +243,19 @@ impl Store {
             .collect())
     }
 
-    /// Every file received or sent, newest first (All files, idea 108), up to `limit`. Mail in Trash, Spam and
-    /// Drafts is left out; a message kept in two folders gives its files once.
-    pub fn all_files(&self, limit: usize) -> Result<Vec<PersonFile>> {
+    /// Every file received or sent, newest first (All files, idea 108), up to `limit`, from mail dated in
+    /// `since..until` (seconds; the Files screen's date filter, so an old month is reached past the newest
+    /// `limit`). Mail in Trash, Spam and Drafts is left out; a message kept in two folders gives its files once.
+    pub fn all_files(&self, limit: usize, since: i64, until: i64) -> Result<Vec<PersonFile>> {
         let conn = self.reader();
         let mut stmt = conn.prepare_cached(&format!(
             "SELECT {ROW}, m.parts, {MINE_M}, m.message_id FROM messages m INDEXED BY messages_date
                JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id
-             WHERE m.has_attachments = 1 AND f.role NOT IN ('trash', 'junk', 'drafts')
+             WHERE m.has_attachments = 1 AND m.date >= ?2 AND m.date < ?3 AND f.role NOT IN ('trash', 'junk', 'drafts')
              ORDER BY m.date DESC, (m.parts IS NOT NULL) DESC, m.id DESC LIMIT ?1"
         ))?;
         let found = stmt
-            .query_map([limit as i64 * 2], |r| {
+            .query_map(rusqlite::params![limit as i64 * 2, since, until], |r| {
                 Ok((
                     row(r)?,
                     r.get::<_, Option<String>>(12)?,

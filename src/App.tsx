@@ -4,9 +4,7 @@ import { AccountSetup } from "./components/AccountSetup";
 import { CommandBar } from "./components/CommandBar";
 import { Compose } from "./components/Compose";
 import { ConversationView } from "./components/ConversationView";
-import { AllFiles } from "./components/AllFiles";
 import { EmlViewer } from "./components/EmlViewer";
-import { PaperTrail } from "./components/PaperTrail";
 import { ListPane } from "./components/ListPane";
 import { Toast } from "./components/Toast";
 import { ProblemsDialog } from "./components/Problems";
@@ -117,6 +115,8 @@ import { showToast } from "./app/toast";
 const SettingsPage = lazy(() => import("./components/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 // The companion loads the first time it opens: most windows never show it.
 const Companion = lazy(() => import("./components/Companion").then((m) => ({ default: m.Companion })));
+const FilesScreen = lazy(() => import("./components/FilesScreen").then((m) => ({ default: m.FilesScreen })));
+const PaperScreen = lazy(() => import("./components/PaperScreen").then((m) => ({ default: m.PaperScreen })));
 
 /** With the "auto" open mode, from this width an open conversation sits beside the list; narrower, it covers it. */
 const SPLIT_WIDTH = 1200;
@@ -266,8 +266,24 @@ function Main() {
   return (
     <div
       class="app"
-      classList={{ split: split(), full: openRow() !== null && !roomForSplit(), "with-companion": openRow() !== null && (settings.companion || aiSide()) }}
+      classList={{
+        split: split(),
+        full: openRow() !== null && !roomForSplit(),
+        "with-companion": openRow() !== null && (settings.companion || aiSide()),
+        // Files or Paper trail: the list and the open mail stay behind it as they were, scrolled where they were.
+        "on-screen": filesOpen() || paperOpen(),
+      }}
     >
+      <Show when={filesOpen()}>
+        <Suspense>
+          <FilesScreen />
+        </Suspense>
+      </Show>
+      <Show when={paperOpen()}>
+        <Suspense>
+          <PaperScreen />
+        </Suspense>
+      </Show>
       <ListPane split={split()} hits={hits()} needsYou={needsYou()} />
 
       <Show when={openRow()}>
@@ -402,12 +418,6 @@ function Main() {
       </Show>
       <Show when={eml()}>
         {(path) => <EmlViewer path={path()} onClose={() => setEml(null)} />}
-      </Show>
-      <Show when={filesOpen()}>
-        <AllFiles />
-      </Show>
-      <Show when={paperOpen()}>
-        <PaperTrail />
       </Show>
       <Show when={askingMail()}>
         <AskMail
