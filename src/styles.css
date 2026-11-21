@@ -408,7 +408,6 @@ button.primary kbd {
   border-radius: var(--r-md);
   background: var(--bg-0);
   color: var(--fg-2);
-  transition: width var(--d-base) var(--ease);
 }
 .search-box:focus-within {
   border-color: var(--accent);
@@ -594,9 +593,12 @@ button.primary kbd {
   left: 0;
   right: 0;
   top: 0;
-  will-change: transform;
   /* When a row leaves, the ones below close up instead of jumping; new mail pushes the list down the same way. */
   transition: transform var(--d-base) var(--ease);
+}
+.vlist.no-slide .vrow,
+.vlist.no-slide .vhead {
+  transition: none;
 }
 /* A day's heading in the list, like the thread's: small capitals, then a rule to the edge. */
 .vhead {

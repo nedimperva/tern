@@ -108,20 +108,30 @@ function HtmlBody(props: {
 }) {
   const remote = () => props.remote;
   // Pictures pasted into the mail come with it as parts; fetched (once, then cached) and drawn in place.
+  const rawHtml = createMemo(() => props.web.html);
   const [inline, setInline] = createSignal<Record<string, string>>({});
-  createEffect(() => {
-    const id = props.messageId;
-    setInline({});
-    if (/["']cid:/i.test(props.web.html)) {
-      void api.inlineImages(id).then((found) => props.messageId === id && setInline(found), () => {});
-    }
-  });
-  const html = () => {
+  createEffect(
+    on(
+      () => [props.messageId, rawHtml()] as const,
+      ([id, raw]) => {
+        if (Object.keys(inline()).length) setInline({});
+        if (/["']cid:/i.test(raw)) {
+          void api.inlineImages(id).then(
+            (found) => props.messageId === id && Object.keys(found).length && setInline(found),
+            () => {},
+          );
+        }
+      },
+    ),
+  );
+  const html = createMemo(() => {
     const found = inline();
-    return props.web.html.replace(CID, (whole, quote: string, cid: string) =>
+    const raw = rawHtml();
+    if (!Object.keys(found).length) return raw;
+    return raw.replace(CID, (whole, quote: string, cid: string) =>
       found[cid] ? `${quote}${found[cid]}${quote}` : whole,
     );
-  };
+  });
   // Text mail takes Tern's look; mail its sender designed keeps its own, framed (see mailview.ts). Whether to show
   // a designed mail's words only (reading view) is the header's switch.
   const designed = () => props.designed;
@@ -130,12 +140,13 @@ function HtmlBody(props: {
   const [theme, setTheme] = createSignal(frameTheme(isDark()));
   createEffect(on(isDark, (dark) => setTheme(frameTheme(dark)), { defer: true }));
   const darkened = () => designed() && !reading() && isDark() && settings.darkMail === "darken";
-  const srcdoc = () =>
+  const srcdoc = createMemo(() =>
     reading()
       ? readingFrame(readingView(html(), props.title), remote(), theme())
       : designed()
         ? designedFrame(html(), remote()) + (darkened() ? "<!-- dark -->" : "")
-        : textFrame(html(), remote(), theme(), props.large ? 16 : 15);
+        : textFrame(html(), remote(), theme(), props.large ? 16 : 15),
+  );
   // Darkened mail stays hidden until it is dark, so it never flashes white.
   const [ready, setReady] = createSignal(false);
   // A right-click on a link: Tern's own Open / Copy link, as the web view's menu is taken away (browserKeys.ts).
@@ -151,7 +162,6 @@ function HtmlBody(props: {
     window.removeEventListener("blur", closeLinkMenu);
     window.removeEventListener("keydown", closeLinkMenu);
   });
-  createEffect(on(srcdoc, () => setReady(false)));
   // Quoted replies and signatures start folded; the pill below the frame opens them.
   const [foldable, setFoldable] = createSignal(false);
   const [unfolded, setUnfolded] = createSignal(false);
@@ -162,23 +172,39 @@ function HtmlBody(props: {
   const [quoted, setQuoted] = createSignal<Quoted | null>(null);
   let frame: HTMLIFrameElement | undefined;
   let sizer: ResizeObserver | undefined;
-  onCleanup(() => sizer?.disconnect());
+  const dressed = new WeakSet<Document>();
+  let loadGen = 0;
+  let pollTimers: number[] = [];
+  let sizeTimers: number[] = [];
+  const clearPolls = () => {
+    for (const t of pollTimers) clearTimeout(t);
+    pollTimers = [];
+  };
+  const clearSizeTimers = () => {
+    for (const t of sizeTimers) clearTimeout(t);
+    sizeTimers = [];
+  };
+  onCleanup(() => {
+    loadGen++;
+    clearPolls();
+    clearSizeTimers();
+    sizer?.disconnect();
+  });
 
   // Same-origin without scripts: the frame cannot run anything, but we can measure it and catch link clicks.
-  const onLoad = (e: Event) => {
-    frame = e.currentTarget as HTMLIFrameElement;
-    const doc = docOf(frame);
-    // The frame left the message for a web page (a link no handler caught), which shuts us out of it: the message
-    // comes back rather than a dark, empty frame.
-    if (!doc) {
-      const html = srcdoc();
-      frame.srcdoc = "";
-      frame.srcdoc = html;
+  // Called as soon as the parsed DOM is ready (interactive) or on load; idempotent per document so load after an
+  // early interactive pass only refreshes sizing and marks.
+  const dress = (el: HTMLIFrameElement, doc: Document) => {
+    if (dressed.has(doc)) {
+      fitFrame(el, doc);
+      setReady(true);
+      window.dispatchEvent(new Event(FRAME_LOADED));
       return;
     }
+    dressed.add(doc);
     // Links first: whatever the steps after them run into, a click on a link goes to the browser, never the frame.
     const menuAt = (ev: MouseEvent, a: HTMLAnchorElement) => {
-      const box = frame!.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
       // Kept inside the window near its right and bottom edges.
       const x = Math.min(box.left + ev.clientX, window.innerWidth - 370);
       const y = Math.min(box.top + ev.clientY, window.innerHeight - 150);
@@ -200,13 +226,9 @@ function HtmlBody(props: {
       ev.preventDefault();
       menuAt(ev, a);
     });
-    doc.addEventListener("mouseover", (ev) => hover((ev.target as Element).closest?.("a") ?? null, frame));
+    doc.addEventListener("mouseover", (ev) => hover((ev.target as Element).closest?.("a") ?? null, el));
     doc.addEventListener("mouseleave", () => setHovered(null));
     doc.addEventListener("mousedown", (ev) => ev.button === 0 && setLinkMenu(null));
-    setReady(true);
-    // Sizing comes before the steps that dress the message, so one of them failing can't leave the frame at the
-    // browser's default 150 px with the rest of the mail cut off.
-    const el = frame;
     // On the next frame, not in the callback: sizing the frame there could resize the body in the same frame (mail
     // laid out in vh, a scroll bar coming and going), and the observer reported a loop thousands of times.
     let queued = false;
@@ -216,19 +238,25 @@ function HtmlBody(props: {
       requestAnimationFrame(() => {
         queued = false;
         // A newer load owns the frame now.
-        if (docOf(el) === doc) fitFrame(el, doc);
+        if (el.isConnected && docOf(el) === doc) fitFrame(el, doc);
       });
     };
-    fitFrame(el, doc);
     sizer?.disconnect();
     sizer = new ResizeObserver(size);
     if (doc.body) sizer.observe(doc.body);
     // WebKitGTK does not always report a change inside a script-less frame (its own listeners never run there), and
     // newsletters grow after load as their pictures and fonts come in: measured then, the frame stayed short. So the
-    // frame's own width is watched from out here, and it is measured again a few times while the mail settles.
+    // frame's own width is watched from out here, and it is measured again as pictures arrive and while the mail settles.
     sizer.observe(el);
+    for (const img of doc.images) {
+      if (!img.complete) {
+        img.addEventListener("load", size, { once: true });
+        img.addEventListener("error", size, { once: true });
+      }
+    }
     void doc.fonts?.ready.then(size, () => {});
-    for (const ms of [100, 400, 1200, 3000]) setTimeout(size, ms);
+    clearSizeTimers();
+    for (const ms of [100, 400, 1200, 3000]) sizeTimers.push(window.setTimeout(size, ms));
     // The rest only dresses the message: a step that fails (a mail no rule expected) is skipped, not fatal.
     try {
       if (darkened()) darken(doc);
@@ -237,17 +265,15 @@ function HtmlBody(props: {
       setSigLine(htmlSignature(doc));
       setQuoted(htmlQuote(doc));
       doc.documentElement.classList.toggle("tern-fold", !unfolded());
-      size();
       quietMenu(doc);
       const marks = doc.createElement("style");
       marks.textContent = FRAME_MARK_STYLE;
       doc.head?.append(marks);
-      window.dispatchEvent(new Event(FRAME_LOADED));
       // A selection in the message offers Quote, Mark, Note and Copy; the frame's own coordinates are moved into the
       // window's, where the bar is drawn.
       doc.addEventListener("mouseup", () =>
         setTimeout(() => {
-          const box = frame!.getBoundingClientRect();
+          const box = el.getBoundingClientRect();
           props.onPick?.(picked(doc, props.messageId, box));
         }),
       );
@@ -272,14 +298,67 @@ function HtmlBody(props: {
     } catch (err) {
       console.warn("message frame:", err);
     }
+    // Sizing and revealing always run after darkening so a newsletter never flashes white or stays hidden.
+    fitFrame(el, doc);
+    size();
+    setReady(true);
+    window.dispatchEvent(new Event(FRAME_LOADED));
   };
+
+  const onLoad = (e: Event) => {
+    frame = e.currentTarget as HTMLIFrameElement;
+    const doc = docOf(frame);
+    // The frame left the message for a web page (a link no handler caught), which shuts us out of it: the message
+    // comes back rather than a dark, empty frame.
+    if (!doc) {
+      clearPolls();
+      const next = srcdoc();
+      frame.srcdoc = "";
+      frame.srcdoc = next;
+      return;
+    }
+    // Ignore the initial about:blank load before our srcdoc commits, so early-ready polls stay armed.
+    if (!doc.head?.querySelector('meta[http-equiv="Content-Security-Policy"]')) return;
+    clearPolls();
+    dress(frame, doc);
+  };
+
+  // Drive srcdoc from one effect so setReady(false) always happens strictly before the iframe reloads, and only
+  // when the rendered srcdoc string actually changed (not on metadata refreshes like markRead).
+  createEffect(() => {
+    const next = srcdoc();
+    if (!frame) return;
+    const gen = ++loadGen;
+    clearPolls();
+    const prevDoc = docOf(frame);
+    delete frame.dataset.room;
+    setReady(false);
+    frame.srcdoc = next;
+    // A newsletter with slow or unreachable remote images can delay the iframe's load event for tens of seconds;
+    // once the HTML itself is parsed (`interactive`), darken, size and reveal it right away while images finish.
+    const checkEarly = () => {
+      if (gen !== loadGen || !frame) return;
+      const doc = docOf(frame);
+      if (
+        doc &&
+        doc !== prevDoc &&
+        doc.body &&
+        (doc.readyState === "interactive" || doc.readyState === "complete") &&
+        doc.head?.querySelector('meta[http-equiv="Content-Security-Policy"]')
+      ) {
+        clearPolls();
+        dress(frame, doc);
+      }
+    };
+    for (const ms of [30, 100, 250, 600, 1500]) pollTimers.push(window.setTimeout(checkEarly, ms));
+  });
 
   const body = (
     <iframe
+      ref={frame}
       class="html-body"
       classList={{ waiting: darkened() && !ready(), own: !designed() || reading() }}
       sandbox="allow-same-origin"
-      srcdoc={srcdoc()}
       onLoad={onLoad}
       title="Message"
     />
