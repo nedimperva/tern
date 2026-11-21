@@ -41,22 +41,28 @@ const CURRENCIES: [RegExp, string][] = [
   [/^(rsd|din\.?|дин)$/i, "RSD"],
   [/^(chf|fr\.)$/i, "CHF"],
 ];
-const CUR = "€|\\$|£|eur|usd|gbp|km|bam|kn|hrk|rsd|din\\.?|chf";
+// Prefix currencies can appear before the figure (€12, USD 40, BAM 24); suffix-only tokens like "din." and "kn"
+// never precede a price (otherwise "DIN 933" hex bolts or "kN 200" kilonewtons read as RSD/HRK).
+const PREFIX_CUR = "€|\\$|£|eur|usd|gbp|bam|hrk|rsd|chf";
+const SUFFIX_CUR = "€|\\$|£|eur|usd|gbp|km|bam|kn|hrk|rsd|din\\.?(?!\\s*(?:\\d|en\\b|iso\\b))|chf";
 const NUM = "(?:\\d{1,3}(?:[.,' ]\\d{3})*(?:[.,]\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)";
-const AMOUNT = new RegExp(`(?<![\\p{L}\\d])(?:(${CUR})\\s?(${NUM})|(${NUM})\\s?(${CUR}))(?![\\p{L}\\d])`, "giu");
-const HAS_AMOUNT = new RegExp(`(?<![\\p{L}\\d])(?:(${CUR})\\s?(${NUM})|(${NUM})\\s?(${CUR}))(?![\\p{L}\\d])`, "iu");
+const AMOUNT = new RegExp(`(?<![\\p{L}\\d])(?:(${PREFIX_CUR})\\s?(${NUM})|(${NUM})\\s?(${SUFFIX_CUR}))(?![\\p{L}\\d])`, "giu");
+const HAS_AMOUNT = new RegExp(`(?<![\\p{L}\\d])(?:(${PREFIX_CUR})\\s?(${NUM})|(${NUM})\\s?(${SUFFIX_CUR}))(?![\\p{L}\\d])`, "iu");
 // The line that holds what was paid or is owed, before any other amount in the mail.
 const TOTAL =
   /total|amount(\s+(due|paid|charged))?|sum\b|ukupn|iznos|za\s+(platiti|uplatu)|gesamt|betrag|to\s+pay|paid|due|charged|naplać|plaćeno/i;
 const SUBTOTAL = /\b(sub-?total|međuzbir|neto|osnovica|tax|vat|pdv|shipping|delivery|dostav|discount|popust)\b/i;
 // Amounts on lines describing credit limits, loan offers, balances, thresholds or overdue reminders are not spend.
 const IGNORE_AMOUNT_LINE = new RegExp(
-  `(?<![\\p{L}\\d])((?:do|od|iznad|preko|up\\s+to|over|above)\\s+(?:(?:${CUR})\\s?${NUM}|${NUM}\\s?(?:${CUR}))|min(?:imum|\\.)?\\s|max(?:imum|imaln|\\.)?\\s|maksimaln|kredit(?!n\\p{L}*\\s+kartic)|\\bloan\\b|\\blimit\\b|pozajmic|kamat|odobren|raspoloživ|available\\s+balance|current\\s+balance|ending\\s+balance|opening\\s+balance|stanje\\s+račun|\\bsaldo\\b|dugovanj|istekl|dospjel|ušted|\\bsave\\s+up\\s+to|cashback|reward|bonus|free\\s+shipping|besplatn\\p{L}*\\s+dostav|u\\s+vrijednosti|\\bwin\\b|osvoj)`,
+  `(?<![\\p{L}\\d])((?:do|od|iznad|preko|up\\s+to|over|above)\\s+(?:(?:${PREFIX_CUR})\\s?${NUM}|${NUM}\\s?(?:${SUFFIX_CUR}))|min(?:imum|\\.)?\\s|max(?:imum|imaln|\\.)?\\s|maksimaln|kredit(?!n\\p{L}*\\s+kartic)|\\bloan\\b|\\blimit\\b|pozajmic|kamat|odobren|raspoloživ|available\\s+balance|current\\s+balance|ending\\s+balance|opening\\s+balance|stanje\\s+račun|\\bsaldo\\b|dugovanj|istekl|dospjel|ušted|\\bsave\\s+up\\s+to|cashback|reward|bonus|free\\s+shipping|besplatn\\p{L}*\\s+dostav|u\\s+vrijednosti|\\bwin\\b|osvoj)`,
   "iu",
 );
 
 function currencyOf(word: string): string | null {
-  return CURRENCIES.find(([re]) => re.test(word.trim()))?.[1] ?? null;
+  const w = word.trim();
+  // Exact-case SI unit "kN" (kilonewton) is a force measurement, not Croatian kuna.
+  if (w === "kN") return null;
+  return CURRENCIES.find(([re]) => re.test(w))?.[1] ?? null;
 }
 
 /** Strips quoted replies and signatures so old threads never contribute amounts. */
@@ -94,8 +100,12 @@ export function findAmount(text: string): { amount: number; currency: string } |
       const prevTotal = prev.length <= 40 && TOTAL.test(prev) && !SUBTOTAL.test(prev) && !HAS_AMOUNT.test(prev);
       const isTotal = (TOTAL.test(trimmed) && !SUBTOTAL.test(trimmed)) || prevTotal;
       for (const m of trimmed.matchAll(AMOUNT)) {
-        const currency = currencyOf(m[1] ?? m[4] ?? "");
-        const amount = numberOf(m[2] ?? m[3] ?? "");
+        const rawCur = (m[1] ?? m[4] ?? "").trim();
+        const rawNum = m[2] ?? m[3] ?? "";
+        // Bare lowercase "150 km" outside a total line is distance, not Konvertibilna Marka ("150 KM" / "150,00 km").
+        if (rawCur === "km" && !isTotal && !/[.,]\d{1,2}$/.test(rawNum)) continue;
+        const currency = currencyOf(rawCur);
+        const amount = numberOf(rawNum);
         if (!currency || !Number.isFinite(amount) || amount <= 0 || amount > 1_000_000) continue;
         found.push({ amount, currency, total: isTotal, opening: start < 900 });
       }

@@ -19,12 +19,15 @@ describe("paper trail", () => {
     expect(findAmount("Meet at 10:00 in room 4")).toBeNull();
   });
 
-  it("ignores credit offers, limits, balances and promo caps inside real receipts", () => {
+  it("ignores credit offers, limits, balances, promo caps and engineering standards/units", () => {
     expect(
       findAmount("Hvala na narudžbi.\nUkupno za platiti: 45,20 KM\n\nIskoristite gotovinski kredit do 100.000 KM!"),
     ).toEqual({ amount: 45.2, currency: "BAM" });
     expect(findAmount("Ostvarite gotovinski kredit do 100.000,00 KM uz najnižu kamatu.")).toBeNull();
     expect(findAmount("Raspoloživo stanje računa: 14.200,00 KM\nOdobreni limit: 50.000 KM")).toBeNull();
+    expect(findAmount("naruči gore M16x50 DIN 933 8.8. kom 200 matica 200 i podloško 400")).toBeNull();
+    expect(findAmount("M16 x 50 DIN 933 8.8, nosivost 200 kN, udaljenost 150 km")).toBeNull();
+    expect(findAmount("Ukupno: 1.500,00 din.")).toEqual({ amount: 1500, currency: "RSD" });
   });
 
   it("knows a receipt, an invoice and a booking, and leaves other mail", () => {
