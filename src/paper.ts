@@ -13,7 +13,7 @@ const REPLY_OR_FWD = /^\s*(re|fwd?|aw|wg|odg|sv|tr)\s*(\[\d+\])?\s*:/i;
 // Subjects that mention billing words ("račun", "faktura", "order") without being a real billed/paid transaction:
 // bank account statements, credit/loan/promo offers, overdue payment reminders, quotes, and account security mail.
 const NOISE_SUBJECT =
-  /izvod(\s+(po|sa))?\s+račun|mjesečni\s+izvod|dnevni\s+izvod|izvod\s+prometa|stanje\s+račun|promet\s+po\s+račun|bank\s+statement|account\s+statement|monthly\s+statement|e-?statement|kontoauszug|umsatzanzeige|izvod\s+otvorenih\s+stavki|\bios\b|opomen|podsjetnik|payment\s+reminder|overdue|past\s+due|istekl\p{L}*\s+(faktur|račun)|dospjel\p{L}*\s+(faktur|račun|obavez|dug)|neplaćen\p{L}*\s+(faktur|račun)|mahnung|zahlungserinnerung|otvorene\s+stavke|kartica\s+kupca|\bkredit|loan\s+offer|pre-?approved|credit\s+(offer|limit|line)|specijalna\s+ponuda|popust\s+do|uštedite\s+do|save\s+up\s+to|nagradna\s+igra|cashback|\bponuda\b|predračun|profaktur|proforma|\bestimate\b|quotation|\bangebot\b|korisničk\p{L}*\s+račun|(google|apple|microsoft)\s+račun|sigurnost\s+račun|zaštit\p{L}*\s+račun|prijav\p{L}*\s+na\s+račun|verifikacij\p{L}*\s+račun|aktivacij\p{L}*\s+račun|otvorite\s+račun|pristup\s+račun|lozink|verification\s+code/iu;
+  /izvod(\s+(po|sa))?\s+račun|mjesečni\s+izvod|dnevni\s+izvod|izvod\s+prometa|stanje\s+račun|promet\s+po\s+račun|bank\s+statement|account\s+statement|monthly\s+statement|e-?statement|kontoauszug|umsatzanzeige|izvod\s+otvorenih\s+stavki|opomen|podsjetnik|payment\s+reminder|overdue|past\s+due|istekl\p{L}*\s+(faktur|račun)|dospjel\p{L}*\s+(faktur|račun|obavez|dug)|neplaćen\p{L}*\s+(faktur|račun)|mahnung|zahlungserinnerung|otvorene\s+stavke|kartica\s+kupca|\bkredit(?!n\p{L}*\s+kartic)|loan\s+offer|pre-?approved|credit\s+(offer|limit|line)|specijalna\s+ponuda|popust\s+do|uštedite\s+do|save\s+up\s+to|nagradna\s+igra|cashback|\bponuda\b|predračun|profaktur|proforma|\bestimate\b|quotation|\bangebot\b|korisničk\p{L}*\s+račun|(google|apple|microsoft)\s+račun|sigurnost\s+račun|zaštit\p{L}*\s+račun|prijav\p{L}*\s+na\s+račun|verifikacij\p{L}*\s+račun|aktivacij\p{L}*\s+račun|otvorite\s+račun|pristup\s+račun|lozink|verification\s+code/iu;
 
 // Opening prose that marks a payment-chasing email, bank statement, or credit ad rather than a real invoice/receipt.
 const NOISE_BODY =
@@ -42,7 +42,7 @@ const CURRENCIES: [RegExp, string][] = [
   [/^(chf|fr\.)$/i, "CHF"],
 ];
 const CUR = "€|\\$|£|eur|usd|gbp|km|bam|kn|hrk|rsd|din\\.?|chf";
-const NUM = "\\d{1,3}(?:[.,' ]\\d{3})*(?:[.,]\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?";
+const NUM = "(?:\\d{1,3}(?:[.,' ]\\d{3})*(?:[.,]\\d{1,2})?|\\d+(?:[.,]\\d{1,2})?)";
 const AMOUNT = new RegExp(`(?<![\\p{L}\\d])(?:(${CUR})\\s?(${NUM})|(${NUM})\\s?(${CUR}))(?![\\p{L}\\d])`, "giu");
 const HAS_AMOUNT = new RegExp(`(?<![\\p{L}\\d])(?:(${CUR})\\s?(${NUM})|(${NUM})\\s?(${CUR}))(?![\\p{L}\\d])`, "iu");
 // The line that holds what was paid or is owed, before any other amount in the mail.
@@ -50,8 +50,10 @@ const TOTAL =
   /total|amount(\s+(due|paid|charged))?|sum\b|ukupn|iznos|za\s+(platiti|uplatu)|gesamt|betrag|to\s+pay|paid|due|charged|naplać|plaćeno/i;
 const SUBTOTAL = /\b(sub-?total|međuzbir|neto|osnovica|tax|vat|pdv|shipping|delivery|dostav|discount|popust)\b/i;
 // Amounts on lines describing credit limits, loan offers, balances, thresholds or overdue reminders are not spend.
-const IGNORE_AMOUNT_LINE =
-  /(?<![\p{L}\d])(do\s+\d|up\s+to\b|od\s+\d|iznad\s+\d|preko\s+\d|over\s+[$€£\d]|above\s+[$€£\d]|min(?:imum|\.)?\s|max(?:imum|imaln|\.)?\s|maksimaln|kredit|\bloan\b|\blimit\b|pozajmic|kamat|odobren|raspoloživ|available\s+balance|current\s+balance|ending\s+balance|opening\s+balance|stanje\s+račun|\bsaldo\b|dugovanj|istekl|dospjel|ušted|popust|\bsave\b|cashback|reward|bonus|free\s+shipping|besplatn\p{L}*\s+dostav|u\s+vrijednosti|\bwin\b|osvoj)/iu;
+const IGNORE_AMOUNT_LINE = new RegExp(
+  `(?<![\\p{L}\\d])((?:do|od|iznad|preko|up\\s+to|over|above)\\s+(?:(?:${CUR})\\s?${NUM}|${NUM}\\s?(?:${CUR}))|min(?:imum|\\.)?\\s|max(?:imum|imaln|\\.)?\\s|maksimaln|kredit(?!n\\p{L}*\\s+kartic)|\\bloan\\b|\\blimit\\b|pozajmic|kamat|odobren|raspoloživ|available\\s+balance|current\\s+balance|ending\\s+balance|opening\\s+balance|stanje\\s+račun|\\bsaldo\\b|dugovanj|istekl|dospjel|ušted|\\bsave\\s+up\\s+to|cashback|reward|bonus|free\\s+shipping|besplatn\\p{L}*\\s+dostav|u\\s+vrijednosti|\\bwin\\b|osvoj)`,
+  "iu",
+);
 
 function currencyOf(word: string): string | null {
   return CURRENCIES.find(([re]) => re.test(word.trim()))?.[1] ?? null;

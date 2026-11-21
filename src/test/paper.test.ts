@@ -42,6 +42,23 @@ describe("paper trail", () => {
       currency: null,
       reference: null,
     });
+    expect(
+      readPaper(
+        "Mjesečni račun za oktobar",
+        "Period od 01.10.2026 do 31.10.2026 — Ukupno za platiti do 15.11.2026: 45,00 KM",
+      ),
+    ).toEqual({
+      kind: "Invoice",
+      amount: 45,
+      currency: "BAM",
+      reference: null,
+    });
+    expect(readPaper("Your receipt from Apple (iOS App)", "Plaćeno kreditnom karticom: €9.99")).toEqual({
+      kind: "Receipt",
+      amount: 9.99,
+      currency: "EUR",
+      reference: null,
+    });
     expect(readPaper("In order to plan the offsite", "See you Thursday")).toBeNull();
   });
 

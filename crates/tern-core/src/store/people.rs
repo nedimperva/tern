@@ -208,7 +208,6 @@ impl Store {
                LEFT JOIN bodies b ON b.message_id = m.id
              WHERE m.date >= ?1
                AND f.role NOT IN ('trash', 'junk', 'drafts', 'sent')
-               AND (m.in_reply_to IS NULL OR m.in_reply_to = '')
                AND ({})
              ORDER BY m.date DESC, (b.message_id IS NOT NULL) DESC, m.id DESC LIMIT 1500",
             like.join(" OR ")

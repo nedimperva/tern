@@ -2872,3 +2872,24 @@ fn migration_38_keeps_split_and_joined_conversations() {
     assert_eq!(thread(2), thread(1));
     assert_eq!(thread(4), thread(1), "the reply that came after the split goes back too");
 }
+
+#[test]
+fn paper_candidates_find_invoices_and_skip_replies() {
+    let (store, account, inbox, _) = setup();
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[
+                message(1, "Faktura 2026-041", 1_000),
+                message(2, "Re: Faktura 2026-041", 2_000),
+                message(3, "Fwd: Your receipt", 3_000),
+                message(4, "Your receipt from Coffee", 4_000),
+                message(5, "Lunch tomorrow?", 5_000),
+            ],
+        )
+        .unwrap();
+    let got = store.paper_candidates(0).unwrap();
+    let subjects: Vec<&str> = got.iter().map(|(m, _)| m.subject.as_str()).collect();
+    assert_eq!(subjects, ["Your receipt from Coffee", "Faktura 2026-041"]);
+}

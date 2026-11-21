@@ -64,7 +64,10 @@ export function PaperScreen() {
           return paper ? [{ row, paper, from: row.fromName || row.fromAddr }] : [];
         }),
       ),
-    () => setRawItems([]),
+    (e) => {
+      setRawItems([]);
+      showToast(String(e), []);
+    },
   );
   // Apply dismissed rows, excluded senders, and any AI-verified kind/amount corrections.
   const items = createMemo<Item[] | null>(() => {
