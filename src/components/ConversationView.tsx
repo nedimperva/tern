@@ -92,6 +92,28 @@ const hover = (a: HTMLAnchorElement | null, frame?: HTMLIFrameElement | null) =>
 /** Frames tell the conversation they have (re)loaded, so marks are drawn in them again. */
 const FRAME_LOADED = "tern-frame-loaded";
 
+/** Replaces cid: references in a loaded frame without reloading srcdoc (which would blink the message). */
+function applyInline(doc: Document, found: Record<string, string>) {
+  if (!Object.keys(found).length) return;
+  for (const img of doc.querySelectorAll<HTMLImageElement>('img[src^="cid:" i]')) {
+    const cid = img.getAttribute("src")?.slice(4);
+    if (cid && found[cid]) img.setAttribute("src", found[cid]);
+  }
+  for (const el of doc.querySelectorAll<HTMLElement>('[background^="cid:" i]')) {
+    const cid = el.getAttribute("background")?.slice(4);
+    if (cid && found[cid]) el.setAttribute("background", found[cid]);
+  }
+  for (const el of doc.querySelectorAll<HTMLElement>('[style*="cid:" i]')) {
+    const style = el.getAttribute("style");
+    if (style) {
+      const next = style.replace(CID, (whole, quote: string, cid: string) =>
+        found[cid] ? `${quote}${found[cid]}${quote}` : whole,
+      );
+      if (next !== style) el.setAttribute("style", next);
+    }
+  }
+}
+
 // Mail is untrusted: it renders in a frame with no scripts, and no remote content until asked for. What it would
 // fetch (`web`, tracking pixels already taken out) is worked out by the conversation, whose header says what was
 // blocked and loads images when asked.
@@ -107,31 +129,28 @@ function HtmlBody(props: {
   onPick?: (p: Picked | null) => void;
 }) {
   const remote = () => props.remote;
-  // Pictures pasted into the mail come with it as parts; fetched (once, then cached) and drawn in place.
-  const rawHtml = createMemo(() => props.web.html);
-  const [inline, setInline] = createSignal<Record<string, string>>({});
+  // Pictures pasted into the mail come with it as parts; fetched once and swapped into the live frame in place.
+  const html = createMemo(() => props.web.html);
+  let inlineMap: Record<string, string> = {};
   createEffect(
     on(
-      () => [props.messageId, rawHtml()] as const,
+      () => [props.messageId, html()] as const,
       ([id, raw]) => {
-        if (Object.keys(inline()).length) setInline({});
+        inlineMap = {};
         if (/["']cid:/i.test(raw)) {
           void api.inlineImages(id).then(
-            (found) => props.messageId === id && Object.keys(found).length && setInline(found),
+            (found) => {
+              if (props.messageId !== id || !Object.keys(found).length) return;
+              inlineMap = found;
+              const doc = docOf(frame);
+              if (doc && dressed.has(doc)) applyInline(doc, found);
+            },
             () => {},
           );
         }
       },
     ),
   );
-  const html = createMemo(() => {
-    const found = inline();
-    const raw = rawHtml();
-    if (!Object.keys(found).length) return raw;
-    return raw.replace(CID, (whole, quote: string, cid: string) =>
-      found[cid] ? `${quote}${found[cid]}${quote}` : whole,
-    );
-  });
   // Text mail takes Tern's look; mail its sender designed keeps its own, framed (see mailview.ts). Whether to show
   // a designed mail's words only (reading view) is the header's switch.
   const designed = () => props.designed;
@@ -193,13 +212,10 @@ function HtmlBody(props: {
 
   let lastMsgId: number | undefined;
   const reveal = (gen: number) => {
-    // Wait for the darkened & sized iframe to paint before revealing it, so WebKitGTK never flashes the
-    // un-darkened white background or un-sized initial 150px box for one frame.
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        if (gen === loadGen) setReady(true);
-      }),
-    );
+    // Wait one animation frame after darken() + fitFrame() commit so darkened newsletters never flash white.
+    requestAnimationFrame(() => {
+      if (gen === loadGen) setReady(true);
+    });
   };
 
   // Same-origin without scripts: the frame cannot run anything, but we can measure it and catch link clicks.
@@ -211,6 +227,7 @@ function HtmlBody(props: {
         if (el.isConnected && docOf(el) === doc) fitFrame(el, doc);
       });
     if (dressed.has(doc)) {
+      applyInline(doc, inlineMap);
       fitFrame(el, doc);
       scheduleFit();
       sizeTimers.push(window.setTimeout(scheduleFit, 250));
@@ -219,6 +236,7 @@ function HtmlBody(props: {
       return;
     }
     dressed.add(doc);
+    applyInline(doc, inlineMap);
     // Links first: whatever the steps after them run into, a click on a link goes to the browser, never the frame.
     const menuAt = (ev: MouseEvent, a: HTMLAnchorElement) => {
       const box = el.getBoundingClientRect();
@@ -381,7 +399,7 @@ function HtmlBody(props: {
     <iframe
       ref={frame}
       class="html-body"
-      classList={{ waiting: !ready(), own: !designed() || reading() }}
+      classList={{ waiting: darkened() && !ready(), own: !designed() || reading() }}
       sandbox="allow-same-origin"
       onLoad={onLoad}
       title="Message"

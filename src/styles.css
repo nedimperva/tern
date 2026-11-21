@@ -3283,7 +3283,8 @@ span.tool {
   color-scheme: inherit;
 }
 .html-body.waiting {
-  visibility: hidden;
+  opacity: 0;
+  transition: none;
 }
 /* Designed mail sits straight on the page, rounded, with no well or shadow around it. */
 .html-stage.framed {
@@ -3295,6 +3296,11 @@ span.tool {
   border-radius: var(--r-lg);
   /* Designed mail draws its own background; this only shows while it loads. */
   background: var(--bg-0);
+  transition: opacity 80ms var(--ease);
+}
+.html-stage.framed .html-body.waiting {
+  opacity: 0;
+  transition: none;
 }
 /* The "···" pill that unfolds a quoted reply, or, for a signature, whose it is in one line. */
 button.fold.sig {
