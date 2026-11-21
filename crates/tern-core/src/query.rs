@@ -197,7 +197,13 @@ fn filter(key: &str, value: &str, now: i64, midnight: fn(i64) -> i64, q: &mut Ve
             if let Some(role) = role(&lower) {
                 push(Value::Text(role.into()));
                 if role == "archive" {
-                    "m.folder_id IN (SELECT id FROM folders WHERE role IN (?, 'all'))".into()
+                    // Gmail has no Archive folder: archived mail is what All Mail holds outside the inbox.
+                    "(m.folder_id IN (SELECT id FROM folders WHERE role = ?)
+                      OR (m.folder_id IN (SELECT id FROM folders WHERE role = 'all')
+                          AND NOT EXISTS (SELECT 1 FROM messages i JOIN folders fi ON fi.id = i.folder_id
+                                          WHERE fi.role = 'inbox' AND i.account_id = m.account_id
+                                            AND i.message_id = m.message_id)))"
+                        .into()
                 } else {
                     "m.folder_id IN (SELECT id FROM folders WHERE role = ?)".into()
                 }

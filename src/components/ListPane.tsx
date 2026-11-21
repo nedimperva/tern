@@ -1,5 +1,4 @@
 import { createEffect, createMemo, createSignal, For, type JSX, Show } from "solid-js";
-import { Portal } from "solid-js/web";
 import { go, isSaved, loadMore, searchServer, searchTotal, serverFound, splitIndex, SPLITS, tabUnread, title, toggleSaved, toggleSelected } from "../app/list";
 import { open } from "../app/conversation";
 import { act } from "../app/actions";
@@ -20,13 +19,12 @@ import {
   setFocus,
   setQuery,
   setSnoozing,
-  ownTitleBar,
-  titleSlot,
   toggleSidebar,
 } from "../app/state";
 import { coverage, coverageShort, inboxZero, listedHere } from "../app/status";
 import { ROW_HEIGHTS, settings, SPLIT_ROW_EXTRA } from "../settings";
 import { colourOf } from "../colours";
+import { newMessage } from "../app/composing";
 import { api, type Target, type ThreadRow } from "../api";
 import { ConversationRow, participants } from "./ConversationRow";
 import { Icon, type IconName } from "./Icon";
@@ -291,40 +289,28 @@ export function ListPane(props: {
   return (
     // In Starred every row is starred, so the stars say nothing there (idea 42).
     <main class="list-pane" classList={{ starred: role() === "starred" }}>
-      <Show
-        when={ownTitleBar && titleSlot()}
-        fallback={
-          <header class="list-header">
-            <Show when={!ownTitleBar}>
-              <button
-                type="button"
-                class="icon-button"
-                onClick={toggleSidebar}
-                title={`${docked() ? "Hide" : "Show"} the sidebar (Ctrl+\\)`}
-                aria-label={docked() ? "Hide the sidebar" : "Show the sidebar"}
-              >
-                <Icon name="panel-left" size={17} />
-              </button>
-            </Show>
-            <Head />
-            {/* Without Tern's own title bar (Linux), sync sits at the end of the list's header. */}
-            <Show when={!ownTitleBar}>
-              <SyncButton />
-            </Show>
-          </header>
-        }
-      >
-        {(slot) => (
-          <Portal mount={slot()}>
-            {/* Over the narrow list beside a conversation, the row is the list's width: the rest drags the window. */}
-            <div class="list-header in-titlebar" classList={{ split: props.split }}>
-              <Head />
-            </div>
-          </Portal>
-        )}
-      </Show>
-      {/* Without Tern's own title bar the selection's actions take a row over the list. */}
-      <Show when={!ownTitleBar && selection().size > 0}>
+      {/* The list's head: tabs, search and sync. With the sidebar docked its toggle and New mail are in the
+          sidebar's own head; without it they lead here. */}
+      <header class="list-header" data-tauri-drag-region="deep">
+        <Show when={!docked()}>
+          <button
+            type="button"
+            class="icon-button"
+            onClick={toggleSidebar}
+            title="Show the sidebar (Ctrl+\)"
+            aria-label="Show the sidebar"
+          >
+            <Icon name="panel-left" size={17} />
+          </button>
+          <button type="button" class="icon-button new-mail" onClick={newMessage} title="New mail (C)" aria-label="New mail">
+            <Icon name="plus" size={17} />
+          </button>
+        </Show>
+        <Head />
+        <SyncButton />
+      </header>
+      {/* Conversations selected: their actions take a row over the list. */}
+      <Show when={selection().size > 0}>
         <SelectionBar />
       </Show>
       {/* How many were found leads; what was searched how, and the server's search, follow (idea 15). */}

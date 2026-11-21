@@ -38,7 +38,7 @@ import { taskRows } from "../app/tasks";
 import { Icon } from "./Icon";
 import { Original } from "./Original";
 import { PersonCard, type PersonActions } from "./PersonCard";
-import { convSlot, detailsSlot, ownTitleBar, setUnsubscribed, showCompanion, toggleCompanion, unsubscribed } from "../app/state";
+import { detailsSlot, setUnsubscribed, showCompanion, toggleCompanion, unsubscribed } from "../app/state";
 import { unsubscribe } from "../app/actions";
 import { Details } from "./Details";
 import { logoFor } from "../logos";
@@ -833,6 +833,12 @@ export function ConversationView(props: {
   const [asked, setAsked] = createSignal(false);
   const remoteFor = (m: ThreadMessage) =>
     asked() || settings.loadImages === "always" || settings.imagesFrom.includes(m.fromAddr.toLowerCase());
+  /** Remembers the senders whose pictures were just asked for, so their mail stops asking. */
+  const trustSenders = () => {
+    const blocked = props.messages.filter((m) => webs().get(m.id)?.images && !remoteFor(m)).map((m) => m.fromAddr.toLowerCase());
+    const add = [...new Set(blocked)].filter((a) => a && !settings.imagesFrom.includes(a));
+    if (add.length) setSetting("imagesFrom", [...settings.imagesFrom, ...add]);
+  };
   const privacy = createMemo(() => {
     let trackers = 0;
     let blocked = 0;
@@ -849,7 +855,7 @@ export function ConversationView(props: {
   });
   const shieldTip = () => {
     const { trackers, blocked, shown } = privacy();
-    if (blocked) return `Blocked ${[trackers && plural(trackers, "tracker"), plural(blocked, "image")].filter(Boolean).join(" and ")}. Click to load the images.`;
+    if (blocked) return `Blocked ${[trackers && plural(trackers, "tracker"), plural(blocked, "image")].filter(Boolean).join(" and ")}. Click to load the images, now and from this sender from then on.`;
     return shown ? `Images shown. ${plural(trackers, "tracker")} still blocked.` : `Blocked ${plural(trackers, "tracker")}.`;
   };
   const minutes = () => (last() ? minutesOf(last()) : 0);
@@ -894,6 +900,17 @@ export function ConversationView(props: {
         ? [{ name: `Translate to ${settings.translateTo || ownLanguage()}`, group: "view", run: () => setTranslating(last().id) }]
         : []),
     ];
+    const trusted = last() && settings.imagesFrom.includes(last().fromAddr.toLowerCase()) ? last().fromAddr.toLowerCase() : null;
+    if (trusted) {
+      return [
+        ...items,
+        {
+          name: "Ask before loading this sender's images",
+          group: "view",
+          run: () => setSetting("imagesFrom", settings.imagesFrom.filter((a) => a !== trusted)),
+        },
+      ];
+    }
     if (!sender) return items;
     return [
       ...items,
@@ -920,8 +937,9 @@ export function ConversationView(props: {
 
   // MARK: The column beside the messages (docs/design/ui.md §4.2a–c)
 
-  /** A newsletter: mail its sender designed, sent to a list. It opens in reading view unless Settings → Reading
-   * says otherwise; the book icon still switches. Decided once per conversation, when its body is here. */
+  /** A newsletter: mail its sender designed, sent to a list. It opens as sent unless Settings → Reading asks for
+   * reading view (owner, 2026-11-21); the book icon still switches. Decided once per conversation, when its body is
+   * here. */
   const newsletter = () => !!last() && designed().has(last().id) && !!last().listUnsubscribe;
   let readingChosen = false;
   createEffect(() => {
@@ -1131,13 +1149,13 @@ export function ConversationView(props: {
   const dayOf = (i: number) =>
     i === 0 || startOfDay(props.messages[i - 1].date) !== startOfDay(props.messages[i].date) ? dayHeading(props.messages[i].date) : null;
 
-  // The full header scrolls away with the messages; once the subject is out of view a compact bar fades in over
-  // the pane. The bar takes no space, so nothing moves as it comes and goes, and nothing can flicker.
+  // The full header scrolls away with the messages; once the subject is out of view it fades into the pane's head,
+  // which is there all along, so nothing moves as it comes and goes.
   let title!: HTMLHeadingElement;
   const [compact, setCompact] = createSignal(false);
   const [at, setAt] = createSignal(-1);
   createEffect(on(() => props.messages[0]?.id, () => setAt(-1), { defer: true }));
-  /** In a thread, whose message the compact bar is over: "Alan Turing · 12:56 PM · 2 of 3" (idea 91). */
+  /** In a thread, whose message the head is over: "Alan Turing · 12:56 PM · 2 of 3" (idea 91). */
   const whereAt = () => {
     const m = props.messages[at()];
     return m ? `${name(m)} · ${clock.format(new Date(m.date * 1000))} · ${at() + 1} of ${props.messages.length}` : "";
@@ -1146,7 +1164,7 @@ export function ConversationView(props: {
     const pane = title.closest(".conversation-pane");
     const watch = new IntersectionObserver(([e]) => setCompact(!e.isIntersecting), { root: pane });
     watch.observe(title);
-    // Which message the top of the pane is in, for the compact bar: the last one whose top has passed under it.
+    // Which message the top of the pane is in, for the head: the last one whose top has passed under it.
     let frame = 0;
     const findAt = () => {
       frame = 0;
@@ -1207,16 +1225,17 @@ export function ConversationView(props: {
     </Show>
   );
 
-  // The conversation's tools: in the header, or in the reader bar, where reading time is said in words and the book
-  // is "Original look".
-  // In Tern's own title bar the conversation closes from a back arrow before the subject, so its ✕ is not a
-  // slip away from the window's ✕ (canvas "Tern polish, now and after", 1).
-  const tools = (inTitleBar = false) => (
+  // The conversation's tools, in the pane's head. The conversation closes from the back arrow at the head's start,
+  // so no ✕ sits beside the window's own ✕ (canvas "Tern polish, now and after", 1).
+  const tools = () => (
     <div class="tools">
       <Show when={privacy().trackers || privacy().blocked}>
         <button class="tool safe extra" data-tip={shieldTip()} aria-label={shieldTip()} onClick={() => {
           if (!privacy().blocked) return;
           setAsked(true);
+          // Asked once, the sender is trusted from then on: their mail loads its pictures without asking again
+          // (owner, 2026-11-21). The ⋯ menu takes it back.
+          trustSenders();
           // Reading view keeps only the largest pictures, so asking for the images shows the mail as its sender made it.
           setReading(false);
         }}>
@@ -1261,56 +1280,31 @@ export function ConversationView(props: {
         Done <kbd>E</kbd>
       </button>
       <ActionMenu items={menu} />
-      <Show when={!inTitleBar}>
-        <button class="tool" data-tip="Close (Esc)" aria-label="Close" onClick={props.onClose}>
-          <Icon name="x" size={15} />
-        </button>
-      </Show>
     </div>
   );
 
-  // With Tern's own title bar the subject and the tools sit up there, and the header here keeps the people and
-  // labels: the mail starts a row higher. The heading stays for screen readers and the compact bar's watch.
-  const inBar = () => (ownTitleBar ? convSlot() : null);
-
   return (
-    <div class="reading" classList={{ "head-in-bar": !!inBar() }}>
-      <Show when={inBar()}>
-        {(slot) => (
-          <Portal mount={slot()}>
-            <div class="conv-bar">
-              <button class="tool back" title="Back to the list (Esc)" aria-label="Back to the list" onClick={props.onClose}>
-                <Icon name="arrow-left" size={16} />
-              </button>
-              <strong class="conv-subject" title={subject()}>
-                {subject()}
-              </strong>
-              <span class="conv-meta">
-                {people()} · {props.messages.length === 1 ? "1 message" : `${props.messages.length} messages`}
-              </span>
-              <span class="spacer" />
-              {tools(true)}
-            </div>
-          </Portal>
-        )}
-      </Show>
+    <div class="reading">
+      {/* The pane's head, as high as the list's and the sidebar's (canvas "Tern toolbar directions", B): back, then
+          the subject once its heading has scrolled away, then the tools. It stays at the top while the mail scrolls,
+          and its empty part drags the window (Windows). */}
+      <div class="conv-head" data-tauri-drag-region="deep">
+        <button class="tool back" title="Back to the list (Esc)" aria-label="Back to the list" onClick={props.onClose}>
+          <Icon name="arrow-left" size={16} />
+        </button>
+        <span class="conv-head-subject" classList={{ shown: compact() }} aria-hidden={!compact()}>
+          <strong>{subject()}</strong>
+          <Show when={whereAt()}>{(w) => <span class="at">{w()}</span>}</Show>
+        </span>
+        <span class="spacer" />
+        {tools()}
+      </div>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: offers the mark bar after a selection made with the mouse */}
       <div
         class="conversation"
         classList={{ replying: props.replying }}
         onMouseUp={() => setTimeout(() => setPick(picked(document, null, { left: 0, top: 0 })))}
       >
-        <div class="compact" classList={{ shown: compact() && !inBar() }} aria-hidden={!compact() || !!inBar()}>
-          <div class="bar">
-            <span class="subject">
-              {subject()}
-              <Show when={whereAt()}>{(w) => <span class="at">{w()}</span>}</Show>
-            </span>
-            <button class="primary" tabIndex={compact() ? 0 : -1} onClick={props.onDone}>
-              Done <kbd>E</kbd>
-            </button>
-          </div>
-        </div>
         <Show when={reader()}>
           <div class="reader-bar">
             <strong>{last().fromName || last().fromAddr}</strong>
@@ -1322,7 +1316,6 @@ export function ConversationView(props: {
             <button class="soft" onClick={props.shelf.toggle} title={props.shelf.on ? "Off the shelf, back to the inbox (Shift+L)" : "Keep it on the Read later shelf (Shift+L); a reply brings it back"}>
               {props.shelf.on ? "Back to the inbox" : "Read later"} <kbd>Shift L</kbd>
             </button>
-            <Show when={!inBar()}>{tools()}</Show>
           </div>
         </Show>
         <header class="conversation-head" classList={{ reader: reader() }}>
@@ -1352,7 +1345,6 @@ export function ConversationView(props: {
               )}
             </Show>
           </div>
-          <Show when={!reader() && !inBar()}>{tools()}</Show>
         </header>
         <Show when={last()}>
           <Brief

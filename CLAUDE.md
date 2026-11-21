@@ -30,10 +30,12 @@ decisions that aren't visible from the code.
   `store_bench` exits non-zero on a missed target and runs in CI with `TERN_BENCH_SLACK=3`.
   Reading (2026-10-27, branch `sprint/05-morning`, ui.md §4.2a–c): what the newest message holds (`src/facts.ts`,
   local only; since 2026-10-30 the top of the companion, `i`, which has no tabs), marks and notes (schema v27, CSS Custom Highlight API in
-  `src/marks.ts`), newsletters in reading view by default. The fake's newest conversation and its newsletter carry
+  `src/marks.ts`), newsletters as sent by default (reading view on request since 2026-11-21). The fake's newest conversation and its newsletter carry
   facts and parts to try them on.
-  Look (2026-10-28, canvas "Tern warm directions", A): warm tokens, Tern's own title bar (`decorations: false`,
-  `src/components/TitleBar.tsx`) and the sidebar docked beside the list (`settings.sidebar`, `docked()` in state.ts).
+  Look (2026-10-28, canvas "Tern warm directions", A): warm tokens, no OS frame on Windows (`decorations: false`) and
+  the sidebar docked beside the list (`settings.sidebar`, `docked()` in state.ts). Since 2026-11-21 (canvas "Tern toolbar directions", B) there is no title bar on
+  any system: each column has a 48 px head, the subject is a heading in the mail, and Windows draws its window
+  buttons in the top right corner (`src/components/WindowButtons.tsx`, `--window-buttons-w`).
   1.6.0 (2026-10-29, package 16): moods incl. Follow Omarchy, motion, the tide, the companion (`Ctrl+.`), and
   folding of quotes, Outlook headers and legal notices. Schema 29 re-sorted subject-joined threads. Links in mail
   open through a navigation plugin (`src-tauri/src/links.rs`): WebKitGTK runs no listeners in script-less frames.

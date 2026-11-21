@@ -32,12 +32,13 @@ export async function open(row: ThreadRow | undefined, matched = searching(), ho
   clearTimeout(readTimer);
   if (!row) return close();
   if (openRow() && keyOf(openRow()!) === keyOf(row)) return show(row, matched);
-  let loading: Promise<void> | undefined;
-  shift(how ?? (openRow() ? "switch" : "open"), () => {
-    loading = show(row, matched);
-    return settle(loading);
-  });
-  await loading;
+  // With view transitions (Windows) the change runs later, once the old screen is captured: wait for it there too.
+  await new Promise<void>((done) =>
+    shift(how ?? (openRow() ? "switch" : "open"), () => {
+      const loading = show(row, matched).finally(done);
+      return settle(loading);
+    }),
+  );
 }
 
 async function show(row: ThreadRow, matched: boolean) {

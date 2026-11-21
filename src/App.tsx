@@ -11,7 +11,7 @@ import { ListPane } from "./components/ListPane";
 import { Toast } from "./components/Toast";
 import { ProblemsDialog } from "./components/Problems";
 import { Rail } from "./components/Rail";
-import { TitleBar } from "./components/TitleBar";
+import { WindowButtons } from "./components/WindowButtons";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { LabelPicker } from "./components/LabelPicker";
 import { SnoozePicker } from "./components/SnoozePicker";
@@ -99,9 +99,8 @@ import {
   signatures,
   snoozing,
   syncStates,
-  ownTitleBar,
+  ownWindowButtons,
   toggleCompanion,
-  toggleSidebar,
   viewing,
   askingMail,
   filesOpen,
@@ -124,27 +123,21 @@ const SPLIT_WIDTH = 1200;
 /** Below this width there is no room for the list beside a conversation, whatever the setting (§3). */
 const MIN_SPLIT_WIDTH = 960;
 
-/** The main window: Tern's own title bar (Windows), the sidebar when it is docked, and the rest under them. */
+/** The main window: the sidebar when it is docked and the rest beside it. No title bar on any system: each column
+ * has its own head, and on Windows the window's buttons end the rightmost one. */
 export default function App() {
-  // Overlays start under the title bar; without one they start at the top.
-  if (!ownTitleBar) document.documentElement.dataset.frame = "system";
+  if (ownWindowButtons) document.documentElement.dataset.windowButtons = "";
   return (
     <div class="window" classList={{ docked: docked() }}>
-      <Show when={ownTitleBar}>
-        <TitleBar
-          docked={docked()}
-          sideTone={docked() || settingsOpen() !== null}
-          onSidebar={toggleSidebar}
-          onCompose={newMessage}
-          list={settingsOpen() === null && !screen() && deck() === null}
-        />
-      </Show>
       <div class="window-body">
         <Show when={docked()}>
           <Sidebar docked />
         </Show>
         <Main />
       </div>
+      <Show when={ownWindowButtons}>
+        <WindowButtons />
+      </Show>
       <Toast />
     </div>
   );
