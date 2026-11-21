@@ -157,7 +157,7 @@ export const DEFAULTS: Settings = {
   knownDomains: [],
   darkMail: "darken",
   readingFacts: true,
-  newsletterReading: true,
+  newsletterReading: false,
   senderLogos: false,
   attachmentCheck: true,
   attachmentWords: [],

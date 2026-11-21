@@ -212,9 +212,9 @@ export function ReadingSettings() {
         <Segments
           name="loadImages"
           title="Pictures from the web"
-          help="They can tell the sender when you read their mail."
+          help="They can tell the sender when you read their mail. Load them once from a sender and that sender's mail loads them from then on."
           choices={[
-            { label: "Ask each time", value: "ask" },
+            { label: "Ask once per sender", value: "ask" },
             { label: "Always load", value: "always" },
           ]}
         />
@@ -228,10 +228,10 @@ export function ReadingSettings() {
         <Segments
           name="newsletterReading"
           title="Newsletters"
-          help="Reading view shows their words and pictures in Tern's type. The book icon switches."
+          help="As sent shows them as their sender made them. Reading view shows their words and pictures in Tern's type. The book icon switches."
           choices={[
-            { label: "Reading view", value: true },
             { label: "As sent", value: false },
+            { label: "Reading view", value: true },
           ]}
         />
         <Segments

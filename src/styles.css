@@ -118,8 +118,8 @@ button.danger {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
-/* The title bar's buttons fill its height, so a ring outside them would be cut off. */
-.titlebar button:focus-visible {
+/* The window's buttons fill the head's height, so a ring outside them would be cut off. */
+.window-buttons button:focus-visible {
   outline-offset: -2px;
 }
 .vlist:focus-visible,
@@ -169,193 +169,16 @@ button.primary kbd {
 
 /* MARK: Window (§3) */
 
-/* The system draws no frame: Tern's title bar on top, the docked sidebar and the app under it. */
+/* No title bar on any system: the docked sidebar and the app side by side, each column with its own head. */
 .window {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
-/* No title bar on Linux: overlays start at the top of the window. */
-:root[data-frame="system"] {
-  --titlebar-h: 0px;
-}
 .window-body {
   flex: 1;
   min-height: 0;
   display: flex;
-}
-.titlebar {
-  flex: none;
-  display: flex;
-  align-items: stretch;
-  height: var(--titlebar-h);
-  background: var(--bg-0);
-}
-.titlebar-side {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 var(--s-2);
-}
-/* Over the docked sidebar the bar takes its tone, so the two read as one column. */
-.titlebar.side-tone .titlebar-side {
-  width: var(--side-w);
-  background: var(--bg-1);
-}
-.titlebar-fill {
-  flex: 1;
-}
-/* The list's tabs and search, moved up from a row of their own (owner, 2026-11-04). With the list alone they take
-   the bar's width and their empty stretch still drags the window (the bar's drag region is deep); beside a
-   conversation they are the list column's width, and the fill after them drags. */
-.titlebar-slot,
-/* Solid's Portal puts its own div around what it moves. */
-.titlebar-slot > div {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-}
-.titlebar-slot {
-  flex: none;
-}
-.titlebar-slot:has(.in-titlebar:not(.split)) {
-  flex: 1;
-}
-/* Only while the tabs show: in settings, the morning screen or a full-window conversation they are hidden, and the
-   fill takes the width again so the sync and window buttons stay at the right. */
-.window:not(:has(.app.full)) .titlebar-slot:not(.hidden):has(.in-titlebar:not(.split)) ~ .titlebar-fill {
-  flex: 0 0 var(--s-2);
-}
-.titlebar-slot.hidden,
-.window:has(.app.full) .titlebar-slot {
-  display: none;
-}
-/* An open conversation's subject and tools, after the list's column (canvas "Tern title bar ideas", 1). With
-   both sidebars open in a smaller window it is narrow, and things give way in order so the subject keeps its room:
-   the people and count, then the keys on Done, then the quieter tools (their keys and the ⋯ menu still reach them),
-   then the sync button's words. */
-.titlebar-conv {
-  display: flex;
-  min-width: 0;
-  container: conv-bar / inline-size;
-}
-@container conv-bar (max-width: 720px) {
-  .conv-meta,
-  .conv-bar .tools .primary kbd {
-    display: none;
-  }
-}
-@container conv-bar (max-width: 560px) {
-  .conv-bar .tools .extra,
-  .conv-bar .tools .vsep {
-    display: none;
-  }
-}
-@media (max-width: 1440px) {
-  .titlebar:has(.conv-bar) .sync-label {
-    display: none;
-  }
-}
-.titlebar-conv:has(.conv-bar) {
-  flex: 1;
-}
-.titlebar-conv > div {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-}
-.titlebar-conv:has(.conv-bar) + .titlebar-fill {
-  flex: 0 0 0;
-}
-.conv-bar {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  padding: 0 var(--s-2) 0 var(--s-4);
-}
-.conv-subject {
-  flex: 0 1 auto;
-  min-width: 48px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--t-md);
-  font-weight: 600;
-  color: var(--fg-0);
-}
-/* Gives way to the subject first when the bar is narrow. */
-.conv-meta {
-  flex: 0 100 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--t-sm);
-  color: var(--fg-2);
-}
-.conv-bar .spacer {
-  flex: 1;
-}
-.conv-bar .back {
-  flex: none;
-  margin-left: calc(-1 * var(--s-2));
-}
-/* A short rule keeps the window's own buttons apart from the conversation's tools. */
-.titlebar:has(.conv-bar) .window-buttons::before {
-  content: "";
-  align-self: center;
-  width: 1px;
-  height: 18px;
-  margin-right: var(--s-1);
-  background: var(--line-strong);
-}
-.conv-bar .tools {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-/* The subject is up in the bar: the heading here stays for screen readers, out of sight. */
-.head-in-bar .conversation-head h1 {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.head-in-bar .conversation-head {
-  padding-top: var(--s-4);
-}
-/* Conversations selected: the bar is their actions (canvas "Tern title bar ideas", 2). */
-.titlebar.writing .titlebar-slot,
-.titlebar.writing .titlebar-conv,
-.titlebar.writing > .sync-box,
-.titlebar.writing .titlebar-side {
-  visibility: hidden;
-}
-.titlebar.writing {
-  position: relative;
-}
-.titlebar-writing {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  max-width: 50%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--t-xs);
-  color: var(--fg-2);
-  pointer-events: none;
-}
-.titlebar.selecting .titlebar-slot,
-.titlebar.selecting .titlebar-conv,
-.titlebar.selecting .titlebar-fill,
-.titlebar.selecting > .sync-box {
-  display: none;
 }
 .select-bar {
   flex: 1;
@@ -426,33 +249,6 @@ button.primary kbd {
   color: inherit;
   opacity: 0.7;
 }
-.list-header.in-titlebar {
-  flex: 1;
-  height: 100%;
-}
-.list-header.in-titlebar.split {
-  flex: none;
-  width: 340px;
-  border-right: 1px solid var(--line);
-}
-/* Without the docked sidebar the bar's own buttons sit over the start of the list column. */
-.window:not(.docked) .list-header.in-titlebar.split {
-  width: calc(340px - 78px);
-}
-.list-header.in-titlebar .splits button {
-  height: 100%;
-}
-.list-header.in-titlebar h2 {
-  font-size: var(--t-md);
-}
-/* A line under the bar, except over the docked sidebar. */
-.titlebar-slot,
-.titlebar-fill,
-.titlebar > .sync-box,
-.window-buttons,
-.titlebar:not(.side-tone) .titlebar-side {
-  border-bottom: 1px solid var(--line);
-}
 .icon-button {
   display: grid;
   place-items: center;
@@ -468,8 +264,18 @@ button.primary kbd {
   background: var(--bg-2);
   color: var(--fg-0);
 }
+/* Windows: the window's own buttons in the top right corner, at the end of whichever head is rightmost. That head
+   keeps room for them; the ones that can be rightmost say so below. */
 .window-buttons {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 60;
   display: flex;
+  height: var(--head-h);
+}
+:root[data-window-buttons] {
+  --window-buttons-w: 138px;
 }
 .window-buttons button {
   display: grid;
@@ -529,7 +335,7 @@ button.primary kbd {
   }
   .companion {
     position: fixed;
-    top: var(--titlebar-h);
+    top: 0;
     right: 0;
     bottom: 0;
     width: min(var(--companion-w), 90vw);
@@ -554,11 +360,17 @@ button.primary kbd {
   border-right: 1px solid var(--line);
 }
 .list-header {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  height: 48px;
+  height: var(--head-h);
   padding: 0 var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+/* With no conversation beside it the list's head is the rightmost: room for the window's buttons (Windows). */
+.app:not(.split, .full) .list-header {
+  padding-right: calc(var(--s-3) + var(--window-buttons-w));
 }
 /* The header's parts in one element for the DOM's sake; for layout they are the row's own children. */
 .list-head {
@@ -611,8 +423,7 @@ button.primary kbd {
   margin: 0;
   pointer-events: none;
 }
-.app.split .search-box .search-key,
-.in-titlebar.split .search-box .search-key {
+.app.split .search-box .search-key{
   display: none;
 }
 .search-box .search {
@@ -733,25 +544,21 @@ button.primary kbd {
   height: 24px;
   padding: 0 10px;
 }
-.app.split .list-header,
-.list-header.in-titlebar.split {
+.app.split .list-header{
   position: relative;
 }
-.app.split .search-box:not(.open),
-.in-titlebar.split .search-box:not(.open) {
+.app.split .search-box:not(.open){
   flex: none;
   width: 30px;
   padding: 0;
   justify-content: center;
 }
-.app.split .search-box:not(.open) .search,
-.in-titlebar.split .search-box:not(.open) .search {
+.app.split .search-box:not(.open) .search{
   position: absolute;
   inset: 0;
   opacity: 0;
 }
-.app.split .list-head > .link,
-.in-titlebar.split .list-head > .link {
+.app.split .list-head > .link{
   display: none;
 }
 /* A narrow window: search folds to its icon (until focused) before it can lie over the tabs, and the tabs slide
@@ -1327,10 +1134,9 @@ button.primary kbd {
   overflow-x: auto;
   scrollbar-width: none;
 }
-/* There the sync button says its words on hover only, as it does in the title bar beside a mail, so every tab's
+/* There the sync button says its words on hover only, so every tab's
    icon is whole: Other was cut through its middle (idea 97). Its dot keeps the colour. */
-.app.split .list-header .sync-label,
-.in-titlebar.split .sync-label {
+.app.split .list-header .sync-label{
   display: none;
 }
 .splits button {
@@ -1368,8 +1174,7 @@ button.primary kbd {
 }
 /* Beside a conversation the list's column is 340 px: the unread counts go, so every tab's name fits (Starred was cut
    to "Starre"). New people keeps its count, which is all it shows. */
-.app.split .splits button:not(.people) .count,
-.in-titlebar.split .splits button:not(.people) .count {
+.app.split .splits button:not(.people) .count{
   display: none;
 }
 /* New people: no name, just the icon and how many wait, in the tabs' own quiet grey with a small dot. It is a tab
@@ -2186,7 +1991,7 @@ button.primary kbd {
 .scrim {
   position: fixed;
   /* Under the title bar, which stays usable. */
-  inset: var(--titlebar-h) 0 0;
+  inset: 0;
   background: var(--scrim);
   z-index: 15;
 }
@@ -2196,7 +2001,7 @@ button.primary kbd {
   width: var(--side-w);
   background: var(--bg-1);
   box-shadow: var(--shadow);
-  padding: var(--s-3) var(--s-2) var(--s-2);
+  padding: 0 var(--s-2) var(--s-2);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -2208,7 +2013,6 @@ button.primary kbd {
   flex: none;
   box-shadow: none;
   animation: none;
-  padding-top: var(--s-1);
 }
 @keyframes slide-in {
   from {
@@ -2216,6 +2020,22 @@ button.primary kbd {
   }
 }
 /* New mail: the one raised control in the rail, a card on the rail's tone. */
+/* The sidebar's head: its toggle and New mail, as high as the list's head, with the same line under it. */
+.side-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  height: var(--head-h);
+  margin: 0 calc(-1 * var(--s-2)) var(--s-3);
+  padding: 0 var(--s-2);
+  border-bottom: 1px solid var(--line);
+}
+.side-head .rail-compose {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
 .rail-compose {
   display: flex;
   align-items: center;
@@ -2592,7 +2412,7 @@ button.primary kbd {
   display: flex;
   align-items: flex-start;
   gap: var(--s-4);
-  padding: var(--s-6) 0 var(--s-5);
+  padding: var(--s-5) 0 var(--s-5);
 }
 .conversation-head .title {
   flex: 1;
@@ -2650,8 +2470,71 @@ button.primary kbd {
 }
 /* What Tern blocked, how long the mail is and how to leave its list: icons that each show only when they apply
    and say more on hover. Then Done, the menu and close. */
-.conversation-head .tools,
-.reader-bar .tools {
+/* The mail's head: back, the subject once it has scrolled away, the tools. It stays at the top of the pane. */
+.conv-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: var(--head-h);
+  padding: 0 var(--s-3) 0 var(--s-4);
+  background: var(--bg-0);
+  border-bottom: 1px solid var(--line);
+}
+/* Rightmost unless the companion has its own column beside it: room for the window's buttons (Windows). */
+.app:not(.with-companion) .conv-head {
+  padding-right: calc(var(--s-3) + var(--window-buttons-w));
+}
+@media (max-width: 1180px) {
+  .app.with-companion .conv-head {
+    padding-right: calc(var(--s-3) + var(--window-buttons-w));
+  }
+}
+.conv-head .back {
+  flex: none;
+  margin-left: calc(-1 * var(--s-2));
+}
+.conv-head .spacer {
+  flex: 1;
+}
+.conv-head-subject {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition:
+    opacity var(--d-base) var(--ease),
+    transform var(--d-base) var(--ease);
+}
+.conv-head-subject.shown {
+  opacity: 1;
+  transform: none;
+}
+.conv-head-subject strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--t-md);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+/* Whose message is under the head, in a thread (idea 91). */
+.conv-head-subject .at {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-2);
+  font-size: var(--t-sm);
+}
+.conv-head .tools {
   flex: none;
   display: flex;
   align-items: center;
@@ -2744,55 +2627,6 @@ span.tool {
 .tools [data-tip]:focus-visible::after {
   opacity: 1;
   transform: none;
-}
-/* The compact bar that fades in once the subject has scrolled away. Zero height in the flow, so it never moves
-   anything (a header that resized itself made scroll anchoring bounce it at the top). */
-.compact {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  height: 0;
-}
-.compact .bar {
-  position: absolute;
-  top: 0;
-  left: calc(-1 * var(--s-6));
-  right: calc(-1 * var(--s-6));
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  height: 48px;
-  padding: 0 var(--s-6);
-  background: var(--bg-0);
-  /* A soft fall-off rather than a rule: the pane draws no lines. */
-  box-shadow: 0 10px 18px -16px rgba(0, 0, 0, 0.45);
-  opacity: 0;
-  transform: translateY(-4px);
-  pointer-events: none;
-  transition:
-    opacity var(--d-base) var(--ease),
-    transform var(--d-base) var(--ease);
-}
-.compact.shown .bar {
-  opacity: 1;
-  transform: none;
-  pointer-events: auto;
-}
-.compact .subject {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--t-lg);
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* Whose message is under the bar, in a thread (idea 91). */
-.compact .subject .at {
-  margin-left: var(--s-3);
-  color: var(--fg-2);
-  font-size: var(--t-md);
-  font-weight: 400;
 }
 /* Avatars: initials on the sender's colour, or a logo on white (most are drawn for a light page). */
 .conversation .avatar {
@@ -3663,7 +3497,7 @@ button.fold {
 
 .overlay {
   position: fixed;
-  inset: var(--titlebar-h) 0 0;
+  inset: 0;
   background: var(--scrim);
   display: grid;
   place-items: start center;
@@ -3960,7 +3794,7 @@ button.fold {
 .compose.inline {
   width: 100%;
   max-height: none;
-  /* Scrolled to on opening: room for the compact header bar over the pane and the end of the message above. */
+  /* Scrolled to on opening: room for the pane's head and the end of the message above. */
   scroll-margin-top: 112px;
   box-shadow: none;
   background: var(--soft);
@@ -4632,7 +4466,7 @@ button.fold {
 
 .settings-page {
   position: fixed;
-  inset: var(--titlebar-h) 0 0;
+  inset: 0;
   z-index: 12;
   display: grid;
   grid-template-columns: var(--side-w) 1fr;
@@ -5948,25 +5782,13 @@ button.place.muted {
   white-space: pre-line;
 }
 /* MARK: Attachment viewer (docs/design/ui.md §4.11): the file over everything, on a dark scrim in either theme. */
-/* The viewer owns the window (idea 26): the title bar dims with it, its window buttons still at hand. */
-body:has(.viewer) .titlebar {
-  box-shadow: inset 0 0 0 100vmax var(--viewer-scrim);
-  color: var(--viewer-fg);
-}
-body:has(.viewer) .titlebar .titlebar-side,
-body:has(.viewer) .titlebar .list-header {
-  background: none;
-}
+/* The viewer owns the window (idea 26), the window's own buttons still at hand over its scrim. */
 body:has(.viewer) .window-buttons button {
   color: var(--viewer-fg);
 }
-body:has(.viewer) .titlebar > :not(.window-buttons) {
-  opacity: 0.25;
-  pointer-events: none;
-}
 .viewer {
   position: fixed;
-  inset: var(--titlebar-h) 0 0;
+  inset: 0;
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -6280,7 +6102,7 @@ body:has(.viewer) .titlebar > :not(.window-buttons) {
   gap: var(--s-2);
   margin-top: var(--s-3);
 }
-/* A message brought into view (a search hit) clears the compact bar that floats over the top. */
+/* A message brought into view (a search hit) clears the pane's head. */
 .conversation [data-message] {
   scroll-margin-top: 60px;
 }
@@ -6657,7 +6479,7 @@ button.link.danger {
 .tide,
 .day-deck {
   position: fixed;
-  inset: var(--titlebar-h) 0 0;
+  inset: 0;
   /* Over the inbox, under what they open: compose (10, docked 30), the snooze picker and the palette. */
   z-index: 9;
   display: flex;
@@ -7120,6 +6942,8 @@ button.link.danger {
   flex: 1;
 }
 .reader-bar .soft {
+  flex: none;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
@@ -8634,7 +8458,7 @@ button.link.danger {
   padding-top: 6vh;
 }
 .compose:not(.inline):not(.focus) {
-  max-height: calc(100vh - var(--titlebar-h) - 12vh);
+  max-height: 88vh;
 }
 .compose:not(.inline) {
   width: min(740px, 92vw);
@@ -9315,7 +9139,7 @@ button.link.danger {
 }
 .compose.focus:not(.inline) {
   width: 100vw;
-  height: calc(100vh - var(--titlebar-h));
+  height: 100vh;
   max-height: none;
   border: 0;
   border-radius: 0;
@@ -9772,7 +9596,7 @@ button.link.danger {
 /* Ask your mail (`A`, package 17 F): a panel over the window, the chat in it and the box at its foot. */
 .ask-mail-scrim {
   position: fixed;
-  inset: var(--titlebar-h) 0 0;
+  inset: 0;
   z-index: 20;
   display: grid;
   place-items: start center;
@@ -10366,8 +10190,8 @@ button.fold.said {
   container: reading / inline-size;
 }
 @container reading (max-width: 760px) {
-  .conversation-head .tools .extra,
-  .conversation-head .tools .vsep {
+  .conv-head .tools .extra,
+  .conv-head .tools .vsep {
     display: none;
   }
 }
@@ -10907,4 +10731,24 @@ fieldset.list-filters {
   .ai-preview.waiting span {
     animation: none;
   }
+}
+
+/* MARK: Room for the window's own buttons (Windows). They sit over the top right corner of whatever fills it, so
+   what has its own controls up there keeps --window-buttons-w clear (0 on Linux). */
+.viewer header,
+.day-deck header,
+.tide-sky header {
+  padding-right: calc(var(--s-4) + var(--window-buttons-w));
+}
+/* The companion's column is the rightmost beside a mail: its first card starts under the buttons. */
+:root[data-window-buttons] .companion {
+  padding-top: var(--head-h);
+  /* The heads' line carries on across it. */
+  background:
+    linear-gradient(var(--line), var(--line)) 0 calc(var(--head-h) - 1px) / 100% 1px no-repeat,
+    var(--bg-1);
+}
+/* Without the sidebar, beside a mail, the list's head is narrow: New mail stays on C and in the palette. */
+.app.split .list-header .new-mail {
+  display: none;
 }
