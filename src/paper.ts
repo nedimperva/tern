@@ -90,7 +90,10 @@ export function toCsv(rows: { date: number; from: string; subject: string; paper
     const s = v == null ? "" : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const day = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
+  const day = (t: number) => {
+    const d = new Date(t * 1000);
+    return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  };
   return [
     "Date,From,Subject,Kind,Amount,Currency,Reference",
     ...rows.map((r) =>

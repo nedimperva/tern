@@ -51,8 +51,8 @@ pub struct Desktop {
 struct News {
     /// The newest message id already looked at; None until the first look, which only sets it.
     after: Option<i64>,
-    /// Accounts with mail, and since when (accounts that had mail at start count as long ago).
-    since: HashMap<i64, Instant>,
+    /// Accounts with mail, and since when (None means already past the quiet window at start).
+    since: HashMap<i64, Option<Instant>>,
 }
 
 impl Desktop {
@@ -102,7 +102,11 @@ pub fn tray(app: &AppHandle) -> tauri::Result<()> {
                 show(app);
                 let _ = app.emit("compose", ());
             }
-            "check" => app.state::<AppState>().wake_all(),
+            "check" => {
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.wake_all();
+                }
+            }
             "pause" => set_paused(app, !paused(app)),
             "quit" => quit(app),
             _ => {}
@@ -121,8 +125,8 @@ pub fn tray(app: &AppHandle) -> tauri::Result<()> {
     builder = builder.icon(Image::from_bytes(TRAY)?);
     let tray = builder.build(app)?;
     let desktop = app.state::<Desktop>();
-    *desktop.tray.lock().unwrap() = Some(tray);
-    *desktop.pause_item.lock().unwrap() = Some(pause);
+    *desktop.tray.lock().unwrap_or_else(|e| e.into_inner()) = Some(tray);
+    *desktop.pause_item.lock().unwrap_or_else(|e| e.into_inner()) = Some(pause);
     Ok(())
 }
 
@@ -134,7 +138,7 @@ fn paused(app: &AppHandle) -> bool {
 pub fn set_paused(app: &AppHandle, on: bool) {
     let Some(state) = app.try_state::<AppState>() else { return };
     state.pause.send_replace(on);
-    if let Some(item) = app.state::<Desktop>().pause_item.lock().unwrap().as_ref() {
+    if let Some(item) = app.state::<Desktop>().pause_item.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
         let _ = item.set_text(if on { "Resume sync" } else { "Pause sync" });
     }
 }
@@ -158,7 +162,8 @@ pub fn open_links(app: &AppHandle, urls: &[String]) {
         let _ = app.emit("mailto", m);
     } else if let Some(id) = urls.iter().find_map(|u| tern_core::store::parse_open_link(u)) {
         show(app);
-        match app.state::<crate::AppState>().store.message_by_message_id(&id) {
+        let Some(state) = app.try_state::<crate::AppState>() else { return };
+        match state.store.message_by_message_id(&id) {
             Ok(Some(mail)) => {
                 let _ = app.emit("open-mail", mail);
             }
@@ -170,7 +175,8 @@ pub fn open_links(app: &AppHandle, urls: &[String]) {
 
 /// The link Tern was started with, for the window to open once it is ready.
 pub fn started_with(app: &AppHandle, urls: &[String]) {
-    *app.state::<Desktop>().pending.lock().unwrap() = urls.iter().find_map(|u| mailto::parse(u));
+    *app.state::<Desktop>().pending.lock().unwrap_or_else(|e| e.into_inner()) =
+        urls.iter().find_map(|u| mailto::parse(u));
     // A conversation link at start: the window has to be up to open it, and it asks for nothing else.
     if urls.iter().any(|u| tern_core::store::parse_open_link(u).is_some()) {
         let (app, urls) = (app.clone(), urls.to_vec());
@@ -234,7 +240,7 @@ pub fn open_emls(app: &AppHandle, paths: Vec<String>, at_start: bool) {
 }
 
 pub fn take_pending(app: &AppHandle) -> Option<Mailto> {
-    app.state::<Desktop>().pending.lock().unwrap().take()
+    app.state::<Desktop>().pending.lock().unwrap_or_else(|e| e.into_inner()).take()
 }
 
 pub fn now() -> i64 {
@@ -411,41 +417,44 @@ fn look(app: &AppHandle) -> anyhow::Result<()> {
     let desktop = app.state::<Desktop>();
     let store = &state.store;
     let unread = store.inbox_unread()?;
-    let mut last = desktop.unread.lock().unwrap();
+    let mut last = desktop.unread.lock().unwrap_or_else(|e| e.into_inner());
     if *last != Some(unread) {
         *last = Some(unread);
         crate::status::write(unread);
         badge(app, unread > 0);
     }
     drop(last);
-    if let Some(tray) = desktop.tray.lock().unwrap().as_ref() {
+    let tray = desktop.tray.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    if let Some(tray) = tray {
         let _ =
             tray.set_tooltip(Some(if unread > 0 { format!("Tern: {unread} unread") } else { "Tern".into() }));
-        let mut dot = desktop.dot.lock().unwrap();
-        if *dot != Some(unread > 0) {
-            *dot = Some(unread > 0);
-            let _ = tray.set_icon(Some(Image::from_bytes(if unread > 0 { TRAY_UNREAD } else { TRAY })?));
+        let mut dot = desktop.dot.lock().unwrap_or_else(|e| e.into_inner());
+        let want = unread > 0;
+        if *dot != Some(want) {
+            *dot = Some(want);
+            drop(dot);
+            let _ = tray.set_icon(Some(Image::from_bytes(if want { TRAY_UNREAD } else { TRAY })?));
         }
     }
     let notices = Notices::read(store)?;
-    let mut news = desktop.news.lock().unwrap();
+    let mut news = desktop.news.lock().unwrap_or_else(|e| e.into_inner());
     let first = news.after.is_none();
     let (newest, mail) =
         store.new_mail(news.after.unwrap_or(i64::MAX), now() - NEWS_WINDOW, notices.any_other())?;
     news.after = Some(newest);
     if first {
         // What is here at start is not news, and accounts that already have mail are past their first sync.
-        let long_ago = Instant::now() - QUIET_AFTER_FIRST_MAIL;
+        // Stored as None rather than `Instant::now() - QUIET_AFTER_FIRST_MAIL`, which panics on Linux within 60 s of boot.
         for account in store.accounts_with_mail()? {
-            news.since.insert(account, long_ago);
+            news.since.insert(account, None);
         }
         return Ok(());
     }
     let mail: Vec<NewMail> = mail
         .into_iter()
         .filter(|m| {
-            let since = *news.since.entry(m.account_id).or_insert_with(Instant::now);
-            since.elapsed() >= QUIET_AFTER_FIRST_MAIL
+            let since = *news.since.entry(m.account_id).or_insert_with(|| Some(Instant::now()));
+            since.is_none_or(|t| t.elapsed() >= QUIET_AFTER_FIRST_MAIL)
         })
         .collect();
     drop(news);
@@ -470,7 +479,7 @@ fn badge(app: &AppHandle, on: bool) {
 /// Archives a notification's conversation through the outbox, as `e` in the inbox would.
 fn archive(app: &AppHandle, m: &NewMail) -> anyhow::Result<()> {
     use tern_core::{Action, ListTarget};
-    let state = app.state::<AppState>();
+    let Some(state) = app.try_state::<AppState>() else { return Ok(()) };
     // A follow-up's conversation is in Sent: archiving it means done with the reminder.
     state.store.dismiss_follow_ups(&[m.id])?;
     let ids = state.store.conversation_ids(&[m.id], Action::Archive, &ListTarget::Role("inbox".into()))?;
@@ -717,17 +726,42 @@ fn code_in(m: &NewMail) -> Option<String> {
     tern_core::otp::one_time_code(&format!("{}\n{}", m.subject, m.snippet))
 }
 
-/// Puts text on the clipboard from the engine side: the button is pressed with no Tern window in front. GTK holds
-/// the text for as long as Tern runs (it runs on in the tray), and wants to be asked from its own thread.
+/// Puts text on the clipboard from the engine side: the button is pressed with no Tern window in front. On Wayland
+/// GTK cannot claim the selection without a focused window, so try `wl-copy` (which uses wlr-data-control) first,
+/// then fall back to GTK on the main thread.
 #[cfg(target_os = "linux")]
 fn copy(app: &AppHandle, text: &str) {
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() && wl_copy(text) {
+        return;
+    }
     let text = text.to_string();
     let put = app.run_on_main_thread(move || {
-        gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD).set_text(&text);
+        if let Some(display) = gtk::gdk::Display::default() {
+            gtk::Clipboard::for_display(&display, &gtk::gdk::SELECTION_CLIPBOARD).set_text(&text);
+        }
     });
     if let Err(e) = put {
         log::warn!("clipboard: {e}");
     }
+}
+
+#[cfg(target_os = "linux")]
+fn wl_copy(text: &str) -> bool {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let Ok(mut child) =
+        Command::new("wl-copy").stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()
+    else {
+        return false;
+    };
+    if let Some(mut stdin) = child.stdin.take() {
+        if stdin.write_all(text.as_bytes()).is_err() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return false;
+        }
+    }
+    child.wait().is_ok_and(|s| s.success())
 }
 
 /// Puts text on the clipboard from the engine side. Windows keeps the copy itself, so nothing has to stay alive.

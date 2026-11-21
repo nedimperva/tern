@@ -109,9 +109,13 @@ function HtmlBody(props: {
   const remote = () => props.remote;
   // Pictures pasted into the mail come with it as parts; fetched (once, then cached) and drawn in place.
   const [inline, setInline] = createSignal<Record<string, string>>({});
-  if (/["']cid:/i.test(props.web.html)) {
-    void api.inlineImages(props.messageId).then(setInline, () => {});
-  }
+  createEffect(() => {
+    const id = props.messageId;
+    setInline({});
+    if (/["']cid:/i.test(props.web.html)) {
+      void api.inlineImages(id).then((found) => props.messageId === id && setInline(found), () => {});
+    }
+  });
   const html = () => {
     const found = inline();
     return props.web.html.replace(CID, (whole, quote: string, cid: string) =>
@@ -151,6 +155,7 @@ function HtmlBody(props: {
   // Quoted replies and signatures start folded; the pill below the frame opens them.
   const [foldable, setFoldable] = createSignal(false);
   const [unfolded, setUnfolded] = createSignal(false);
+  createEffect(on(() => props.messageId, () => setUnfolded(false), { defer: true }));
   // When the fold starts with a signature, the pill says whose it is.
   const [sigLine, setSigLine] = createSignal<string | null>(null);
   // And whose mail the quote under it is, so "···" says what it holds.
@@ -388,6 +393,7 @@ export function FoldPill(props: { signature: string | null; quote?: Quoted | nul
  * sits behind a bar so it reads apart from the new text. */
 function PlainBody(props: { text: string }) {
   const [unfolded, setUnfolded] = createSignal(false);
+  createEffect(on(() => props.text, () => setUnfolded(false), { defer: true }));
   const at = () => foldAt(props.text);
   return (
     <>
@@ -908,6 +914,8 @@ export function ConversationView(props: {
     setCurrentMark(null);
     setPick(null);
     setTranslating(null);
+    setOriginal(null);
+    setGrouping(false);
   });
 
   // MARK: The column beside the messages (docs/design/ui.md §4.2a–c)
@@ -969,22 +977,26 @@ export function ConversationView(props: {
     if (m.listUnsubscribe || props.mine(m.fromAddr)) found.asks = [];
     return found;
   });
+  // Not the mail's name over and over: one-word lines are its brand ("Readwise"), and the subject is in the header.
+  const partHeadings = (doc: ParentNode) => {
+    const subjectWords = subject().replace(/\s+/g, " ").trim().toLowerCase();
+    return [...doc.querySelectorAll("h2")]
+      .map((el) => ({ el, text: el.textContent?.replace(/\s+/g, " ").trim() ?? "" }))
+      .filter(({ text }) => text.includes(" ") && text.toLowerCase() !== subjectWords)
+      .slice(0, 12);
+  };
   /** A newsletter's parts, by its headings, while it shows in reading view. */
   const contents = createMemo(() => {
     const m = last();
     const web = m && reading() ? webs().get(m.id) : undefined;
     if (!web || !designed().has(m!.id)) return [];
     const doc = new DOMParser().parseFromString(readingView(web.html), "text/html");
-    // Not the mail's name over and over: one-word lines are its brand ("Readwise"), and the subject is in the header.
-    const subjectWords = subject().replace(/\s+/g, " ").trim().toLowerCase();
-    return [...doc.querySelectorAll("h2")]
-      .map((h) => h.textContent?.replace(/\s+/g, " ").trim() ?? "")
-      .filter((h) => h.includes(" ") && h.toLowerCase() !== subjectWords)
-      .slice(0, 12);
+    return partHeadings(doc).map((h) => h.text);
   });
   const toPart = (i: number) => {
     const frame = document.querySelector<HTMLIFrameElement>(`.card[data-message="${last().id}"] iframe`);
-    const heading = docOf(frame)?.querySelectorAll("h2")[i];
+    const doc = docOf(frame);
+    const heading = doc ? partHeadings(doc)[i]?.el : undefined;
     if (!heading) return;
     const range = heading.ownerDocument.createRange();
     range.selectNode(heading);

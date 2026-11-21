@@ -724,16 +724,22 @@ const flush = () => Promise.all([...flushers].map((f) => f().catch(() => {})));
 function installClose() {
   if (closeInstalled) return;
   closeInstalled = true;
-  void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-    getCurrentWindow().onCloseRequested(async (event) => {
-      // A failed save must not keep the window open.
-      await flush();
-      if (keepRunning()) {
-        event.preventDefault();
-        await getCurrentWindow().hide();
-      }
-    }),
-  );
+  void import("@tauri-apps/api/window")
+    .then(({ getCurrentWindow }) => {
+      const win = getCurrentWindow();
+      return win.onCloseRequested(async (event) => {
+        // A failed save must not keep the window open.
+        await flush();
+        if (keepRunning()) {
+          event.preventDefault();
+          await win.hide().catch(() => {});
+        } else if (win.label === "main") {
+          event.preventDefault();
+          await invoke("quit").catch(() => {});
+        }
+      });
+    })
+    .catch(() => {});
 }
 
 const tauri: Api = {

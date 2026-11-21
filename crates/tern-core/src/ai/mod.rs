@@ -390,7 +390,10 @@ pub fn html_text(html: &str) -> String {
     let mut i = 0;
     while let Some(start) = html[i..].find('<').map(|p| p + i) {
         out.push_str(&html[i..start]);
-        let Some(end) = html[start..].find('>').map(|p| p + start) else { break };
+        let Some(end) = html[start..].find('>').map(|p| p + start) else {
+            i = start;
+            break;
+        };
         let tag = &lower[start + 1..end];
         let name: String =
             tag.trim_start_matches('/').chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
@@ -894,21 +897,28 @@ pub fn overnight(
     newest.truncate(OVERNIGHT_MAX);
     let mut user = String::from("<mail>\n");
     let mut ids = Vec::new();
-    for (i, n) in newest.iter().enumerate() {
+    for n in &newest {
         let Some(m) = store.thread(n.id)?.into_iter().find(|x| x.row.id == n.id) else { continue };
-        let from = if s.redact || m.row.from_name.trim().is_empty() {
-            m.row.from_name.trim().to_string()
+        let name = m.row.from_name.trim();
+        let from = if name.is_empty() {
+            if s.redact {
+                "[email]".to_string()
+            } else {
+                m.row.from_addr.clone()
+            }
+        } else if s.redact {
+            name.to_string()
         } else {
-            format!("{} <{}>", m.row.from_name.trim(), m.row.from_addr)
+            format!("{name} <{}>", m.row.from_addr)
         };
+        ids.push(m.row.id);
         user.push_str(&format!(
             "<conversation n=\"{}\" from=\"{}\" subject=\"{}\">\n{}\n</conversation>\n",
-            i + 1,
+            ids.len(),
             fence(&from).replace('"', "'"),
             fence(&m.row.subject).replace('"', "'"),
             words_of(&m, s.redact)
         ));
-        ids.push(m.row.id);
     }
     user.push_str("</mail>");
     let req = Request { provider: r.provider, model: r.model.clone(), system: OVERNIGHT_PROMPT, user };
@@ -959,26 +969,33 @@ pub fn ask_mail(
         .collect();
     let mut user = String::from("<mail>\n");
     let mut ids = Vec::new();
-    for (i, row) in rows.iter().enumerate() {
+    for row in &rows {
         let Some(m) = store.thread(row.id)?.into_iter().find(|x| x.row.id == row.id) else { continue };
         let mine =
             own_address(store, m.row.account_id)?.iter().any(|a| m.row.from_addr.eq_ignore_ascii_case(a));
+        let name = m.row.from_name.trim();
         let from = if mine {
             "you".to_string()
-        } else if s.redact || m.row.from_name.trim().is_empty() {
-            m.row.from_name.trim().to_string()
+        } else if name.is_empty() {
+            if s.redact {
+                "[email]".to_string()
+            } else {
+                m.row.from_addr.clone()
+            }
+        } else if s.redact {
+            name.to_string()
         } else {
-            format!("{} <{}>", m.row.from_name.trim(), m.row.from_addr)
+            format!("{name} <{}>", m.row.from_addr)
         };
+        ids.push(m.row.id);
         user.push_str(&format!(
             "<message n=\"{}\" from=\"{}\" date=\"{}\" subject=\"{}\">\n{}\n</message>\n",
-            i + 1,
+            ids.len(),
             fence(&from).replace('"', "'"),
             date(m.row.date),
             fence(&m.row.subject).replace('"', "'"),
             words_of(&m, s.redact)
         ));
-        ids.push(m.row.id);
     }
     user.push_str("</mail>");
     if !earlier.is_empty() {
@@ -1229,7 +1246,8 @@ pub fn learn_style(store: &Store, model: &dyn Model, account: i64) -> Result<Lea
         bail!("The AI sent back nothing. Try again.");
     }
     store.set_ai_style(account, &note, samples.len() as i64)?;
-    Ok(Learned { style: store.ai_style(account)?.expect("just saved"), preview })
+    let style = store.ai_style(account)?.ok_or_else(|| anyhow::anyhow!("That account is gone."))?;
+    Ok(Learned { style, preview })
 }
 
 /// A style just learned, and the sample that shows it: made-up notes written plainly and in the person's style.

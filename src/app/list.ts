@@ -232,6 +232,7 @@ async function reloadConversation() {
   const ids = [open.id, ...messages.map((m) => m.id)];
   for (const id of ids) {
     const found = await api.thread(id);
+    if (openRow() !== open) return;
     if (found.length) return void setMessages(found);
   }
 }

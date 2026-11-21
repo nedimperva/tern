@@ -448,12 +448,12 @@ function Main() {
           onClose={() => batch(() => (setPalette(false), setPaletteStart(undefined)))}
         />
       </Show>
-      <Show when={compose() && !compose()!.inline ? compose() : null}>
+      <Show when={compose() && !compose()!.inline ? compose() : null} keyed>
         {(init) => (
           <Compose
             accounts={accounts()}
             signatures={signatures()}
-            init={init()}
+            init={init}
             onSend={send}
             onClose={composeClosed}
             onDiscard={composeDiscarded}

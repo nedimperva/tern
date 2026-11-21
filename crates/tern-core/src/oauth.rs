@@ -165,7 +165,13 @@ impl Callback {
             loop {
                 let (mut socket, _) = self.listener.accept().await?;
                 let mut buf = vec![0u8; 8192];
-                let n = socket.read(&mut buf).await?;
+                let Ok(Ok(n)) = tokio::time::timeout(Duration::from_secs(5), socket.read(&mut buf)).await
+                else {
+                    continue;
+                };
+                if n == 0 {
+                    continue;
+                }
                 let request = String::from_utf8_lossy(&buf[..n]);
                 let target = request.lines().next().and_then(|l| l.split(' ').nth(1)).unwrap_or("");
                 let Ok(url) = url::Url::parse(&format!("http://127.0.0.1{target}")) else { continue };

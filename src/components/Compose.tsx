@@ -208,6 +208,7 @@ export function Compose(props: {
     if (!sigBtn?.contains(t) && !sigDrawerEl?.contains(t)) closeSigDrawer(false);
   };
   const onSigResize = () => closeSigDrawer(false);
+  createEffect(() => props.minimized && closeSigDrawer(false));
   onCleanup(() => closeSigDrawer(false));
   const startSigEdit = (mode: "draft" | "saved" | "new") => {
     const s = activeSig();
@@ -425,7 +426,7 @@ export function Compose(props: {
     try {
       const placed = asPictures(await api.addAttachments(shown));
       const { insertPictures } = await import("../editor/schema");
-      if (view) insertPictures(view, placed, at!);
+      if (view && !view.isDestroyed) insertPictures(view, placed, at!);
     } catch (e) {
       setProblem(`Could not attach: ${e}`);
     }
@@ -446,11 +447,12 @@ export function Compose(props: {
   };
   // Pictures being attached, shown on their cards.
   const [previews, setPreviews] = createSignal<Record<string, string>>({});
+  const seenPreviews = new Set<string>();
   createEffect(() => {
     for (const f of files()) {
-      if (!f.mime.startsWith("image/") || f.path in previews()) continue;
-      setPreviews({ ...previews(), [f.path]: "" });
-      void api.outgoingPreview(f.path).then((uri) => uri && setPreviews({ ...previews(), [f.path]: uri }));
+      if (!f.mime.startsWith("image/") || seenPreviews.has(f.path)) continue;
+      seenPreviews.add(f.path);
+      void api.outgoingPreview(f.path).then((uri) => uri && setPreviews((p) => ({ ...p, [f.path]: uri })), () => {});
     }
   });
   const [saveState, setSaveState] = createSignal<"saving" | "saved" | null>(null);
@@ -479,6 +481,8 @@ export function Compose(props: {
   // Reopened after undo-send, what is here may never have been saved.
   let dirty = props.init.unsaved ?? false;
   let saveTimer: number | undefined;
+  let saving: Promise<void> | null = null;
+  let stopped = false;
   const draft = (): Draft => {
     const sig = htmlSig();
     const out = sig && view && tools ? tools.withHtmlSignature(view.state.doc, sig, sigBelow()) : null;
@@ -503,16 +507,32 @@ export function Compose(props: {
   /** Saves the draft, if there is anything to keep. */
   const save = async (uploadNow: boolean) => {
     clearTimeout(saveTimer);
-    if (!dirty || from() == null) return;
+    saveTimer = undefined;
+    if (saving) await saving;
+    if (stopped || !dirty || from() == null) return;
+    if (!tools) tools = await signatureTools();
+    if (stopped || !dirty || from() == null) return;
+    dirty = false;
     setSaveState("saving");
-    try {
-      draftId = await api.saveDraft(draftId, from()!, draft(), uploadNow);
-      // A save still on its way when compose closed must not hide the draft again.
-      if (inline && !gone) setReplyDraft(draftId);
-      setSaveState("saved");
-    } catch {
-      setSaveState(null);
-    }
+    const work = (async () => {
+      try {
+        const id = await api.saveDraft(draftId, from()!, draft(), uploadNow);
+        if (stopped) {
+          if (draftId == null) void api.discardDraft(id);
+          return;
+        }
+        draftId = id;
+        // A save still on its way when compose closed must not hide the draft again.
+        if (inline && !gone) setReplyDraft(draftId);
+        setSaveState("saved");
+      } catch {
+        dirty = true;
+        setSaveState(null);
+      }
+    })();
+    saving = work;
+    await work;
+    if (saving === work) saving = null;
   };
   /** Something changed: save once typing pauses. */
   const changed = () => {
@@ -523,17 +543,20 @@ export function Compose(props: {
   };
   // A pending save is not lost if compose goes away some other way.
   onCleanup(() => {
-    if (saveTimer !== undefined && dirty) void save(true);
+    if (dirty && !stopped) void save(true);
   });
   // Nor when the window closes while typing: the save finishes before the window goes.
-  onMount(() => onCleanup(api.onCloseRequested(() => (dirty ? save(true) : Promise.resolve()))));
+  onMount(() => onCleanup(api.onCloseRequested(() => (dirty && !stopped ? save(true) : Promise.resolve()))));
   const close = async () => {
     await save(true);
+    stopped = true;
     dirty = false;
     props.onClose(draftId);
   };
   const discard = () => {
     clearTimeout(saveTimer);
+    saveTimer = undefined;
+    stopped = true;
     dirty = false;
     if (draftId != null) void api.discardDraft(draftId);
     props.onDiscard(draftId);
@@ -618,6 +641,8 @@ export function Compose(props: {
       if (said || noSubject) return setChecks({ attachment: said, subject: noSubject });
     }
     clearTimeout(saveTimer);
+    saveTimer = undefined;
+    stopped = true;
     dirty = false;
     props.onSend(from()!, { ...draft(), ...recipients }, done, draftId, { at, followUp: followUp() });
   };
@@ -1513,14 +1538,14 @@ export function Compose(props: {
         </Show>
       </Suspense>
       </div>
-      <Show when={tryShown()} keyed>
+      <Show when={tryShown()}>
         {(v) => (
           <div class="ai-try" aria-live="polite">
             <Show when={newMail()}>
               <For each={["to", "cc"] as const}>
                 {(field) => {
-                  const people = () => (v.written ? (found()?.[field] ?? []) : []);
-                  const raw = () => (v.written ? "" : headOf(v.streamed)[field]);
+                  const people = () => (v().written ? (found()?.[field] ?? []) : []);
+                  const raw = () => (v().written ? "" : headOf(v().streamed)[field]);
                   return (
                     <Show when={people().length || raw()}>
                       <div class="ai-try-subject">
@@ -1558,7 +1583,7 @@ export function Compose(props: {
                 }}
               </For>
             </Show>
-            <Show when={newMail() && !subject().trim() ? (v.written?.subject ?? headOf(v.streamed).subject) : null}>
+            <Show when={newMail() && !subject().trim() ? (v().written?.subject ?? headOf(v().streamed).subject) : null}>
               {(line) => (
                 <div class="ai-try-subject">
                   <span class="label">Subject</span>
@@ -1567,10 +1592,10 @@ export function Compose(props: {
               )}
             </Show>
             <Show
-              when={v.written && v.base ? wordDiff(v.base!, v.written!.body) : null}
+              when={v().written && v().base ? wordDiff(v().base!, v().written!.body) : null}
               fallback={
                 <Show
-                  when={v.written?.body ?? bodyOf(v.streamed)}
+                  when={v().written?.body ?? bodyOf(v().streamed)}
                   fallback={
                     <div class="ai-preview waiting" aria-hidden="true">
                       <span />
@@ -1594,13 +1619,13 @@ export function Compose(props: {
             <div class="ai-try-bar">
               <span class="ai-mark" aria-hidden="true"><Icon name="sparkles" size={14} /></span>
               <span class="text">
-                {v.written
+                {v().written
                   ? `Try ${shown() + 1} of ${versions().length}. It isn't in the email until you keep it.`
                   : props.init.inReplyTo
                     ? "Writing your answer…"
                     : "Writing from your brief…"}
               </span>
-              <Show when={v.written}>
+              <Show when={v().written}>
                 <button type="button" class="link" onClick={() => void keepAi()}>
                   <kbd>Tab</kbd> keep
                 </button>
@@ -1939,13 +1964,13 @@ export function Compose(props: {
               <fieldset class="sig-choices" aria-label="Choose signature">
                 <For each={[...accountSignatures(), null]}>
                   {(s) => {
-                    const on = (sigId() ?? null) === (s?.id ?? null) && (s !== null || sigOverride() === null);
+                    const on = () => (sigId() ?? null) === (s?.id ?? null) && (s !== null || sigOverride() === null);
                     return (
                       <button
                         type="button"
-                        aria-pressed={on}
-                        classList={{ on }}
-                        onClick={() => !on && void switchSignature(s)}
+                        aria-pressed={on()}
+                        classList={{ on: on() }}
+                        onClick={() => !on() && void switchSignature(s)}
                       >
                         {s ? s.name || "Untitled" : "None"}
                       </button>

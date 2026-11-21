@@ -45,6 +45,20 @@ describe("signature range", () => {
   it("is null without a -- line", () => {
     expect(signatureRange(fromText("Just text.\n\nAda"))).toBeNull();
   });
+
+  it("stops before a forwarded message header and ignores signatures inside the forwarded message", () => {
+    const doc = fromText(
+      "FYI\n\n-- \nAda Lovelace\n\n---------- Forwarded message ----------\nFrom: Grace\n\nHello\n\n-- \nGrace Hopper",
+    );
+    const r = signatureRange(doc);
+    expect(r?.name).toBe("Ada Lovelace");
+    expect(doc.textBetween(r!.from, r!.to, "\n", "\n")).not.toContain("Forwarded message");
+    expect(doc.textBetween(r!.from, r!.to, "\n", "\n")).not.toContain("Grace Hopper");
+    expect(labels("FYI\n\n---------- Forwarded message ----------\nFrom: Grace\n\nHello")).toEqual(["FYI"]);
+    expect(
+      signatureRange(fromText("FYI\n\n---------- Forwarded message ----------\nFrom: Grace\n\n-- \nGrace Hopper")),
+    ).toBeNull();
+  });
 });
 
 describe("signature range from HTML", () => {

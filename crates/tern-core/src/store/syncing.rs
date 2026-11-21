@@ -68,7 +68,9 @@ impl Store {
             if let Some(mid) = &m.message_id {
                 let claimed = tx.execute(
                     "UPDATE messages SET uid = ?1, seen = ?2, flagged = ?3
-                     WHERE account_id = ?4 AND folder_id = ?5 AND uid IS NULL AND message_id = ?6",
+                     WHERE id = (SELECT id FROM messages
+                                 WHERE account_id = ?4 AND folder_id = ?5 AND uid IS NULL AND message_id = ?6
+                                 LIMIT 1)",
                     params![m.uid, m.seen, m.flagged, account_id, folder_id, mid],
                 )?;
                 if claimed > 0 {

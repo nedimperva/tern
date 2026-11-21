@@ -204,6 +204,7 @@ pub async fn run_account(
             report(SyncState::Paused);
             // Paused means paused: neither a wake nor the network coming back starts a pass, only resuming.
             if paused.wait_for(|p| !*p).await.is_err() {
+                watcher.abort();
                 return;
             }
             failures = 0;
@@ -337,7 +338,6 @@ async fn watch_inbox(
                 continue;
             }
         };
-        failures = 0;
         if !s.has("IDLE") {
             log::info!(
                 "account {id}: the server has no IDLE; new mail is found by polling every {}s",
@@ -346,16 +346,21 @@ async fn watch_inbox(
             let _ = s.logout().await;
             return;
         }
+        let started = Instant::now();
         let pause = tokio::select! {
             stopped = keep_idling(&mut s, &wake) => {
                 if let Err(e) = stopped {
+                    failures = if started.elapsed() >= Duration::from_secs(30) { 1 } else { failures + 1 };
                     log::warn!("account {id}: inbox watch stopped: {e:#}");
-                    tokio::time::sleep(backoff(1)).await;
+                    tokio::time::sleep(backoff(failures)).await;
                 }
                 false
             }
             // After sleep the connection is most likely dead without either side knowing; start a new one.
-            _ = resumed.changed() => false,
+            _ = resumed.changed() => {
+                failures = 0;
+                false
+            }
             // The guard `wait_for` returns is not Send; drop it inside.
             _ = async { paused.wait_for(|p| *p).await.map(|_| ()) } => true,
         };
@@ -972,46 +977,53 @@ async fn drain_outbox<S: Stream>(
 ) -> Result<bool> {
     let due = store.claim_due(account.id)?;
     let any = !due.is_empty();
-    for (id, _) in due {
-        let Some(op) = store.outbox_op(id)? else { continue };
-        if matches!(op, OutboxOp::Send(_)) {
-            store.outbox_sending(id)?;
-        }
-        let sent = match run_op(s, store, account, login, &op).await {
-            Ok(sent) => sent,
-            Err(e) => {
-                let failure = failure(&e);
-                store.outbox_failed(id, &format!("{e:#}"), failure)?;
-                log::warn!("account {}: queued work {id} failed ({failure:?}): {e:#}", account.id);
-                // A Send uses its own SMTP connection; only an IMAP failure (a forward fetching its original) can leave
-                // this session broken.
-                if connection_broke(&e) && (!matches!(op, OutboxOp::Send(_)) || imap::connection_lost(&e)) {
-                    store.release_claims(account.id)?;
-                    return Err(e);
-                }
-                continue;
+    let result = async {
+        for (id, _) in due {
+            let Some(op) = store.outbox_op(id)? else { continue };
+            if matches!(op, OutboxOp::Send(_)) {
+                store.outbox_sending(id)?;
             }
-        };
-        let OutboxOp::Send(draft) = &op else {
-            store.outbox_done(id)?;
-            continue;
-        };
-        let sent_folders = sent_folders(store, account.id)?;
-        let copy = match (sent_folders.first(), presets::server_files_sent(&account.config.imap_host)) {
-            (Some(folder), false) => Some(OutboxOp::Append {
-                folder: folder.name.clone(),
-                subject: draft.subject.clone(),
-                message: String::from_utf8_lossy(&sent).into_owned(),
-            }),
-            _ => None,
-        };
-        store.outbox_sent(id, copy)?;
-        // The copy shows in Sent on the next check of it: make that the next pass, not five minutes away.
-        for f in &sent_folders {
-            want_folder(f.id);
+            let sent = match run_op(s, store, account, login, &op).await {
+                Ok(sent) => sent,
+                Err(e) => {
+                    let failure = failure(&e);
+                    store.outbox_failed(id, &format!("{e:#}"), failure)?;
+                    log::warn!("account {}: queued work {id} failed ({failure:?}): {e:#}", account.id);
+                    // A Send uses its own SMTP connection; only an IMAP failure (a forward fetching its original) can leave
+                    // this session broken.
+                    let uses_imap = !matches!(&op, OutboxOp::Send(d) if d.forward_of.is_none());
+                    if connection_broke(&e) && (uses_imap || imap::connection_lost(&e)) {
+                        return Err(e);
+                    }
+                    continue;
+                }
+            };
+            let OutboxOp::Send(draft) = &op else {
+                store.outbox_done(id)?;
+                continue;
+            };
+            let sent_folders = sent_folders(store, account.id)?;
+            let copy = match (sent_folders.first(), presets::server_files_sent(&account.config.imap_host)) {
+                (Some(folder), false) => Some(OutboxOp::Append {
+                    folder: folder.name.clone(),
+                    subject: draft.subject.clone(),
+                    message: String::from_utf8_lossy(&sent).into_owned(),
+                }),
+                _ => None,
+            };
+            store.outbox_sent(id, copy)?;
+            // The copy shows in Sent on the next check of it: make that the next pass, not five minutes away.
+            for f in &sent_folders {
+                want_folder(f.id);
+            }
         }
+        Ok(any)
     }
-    Ok(any)
+    .await;
+    if result.is_err() {
+        let _ = store.release_claims(account.id);
+    }
+    result
 }
 
 /// Gmail's Trash, where a draft copy goes to be deleted for good; None for other servers.
@@ -1225,7 +1237,15 @@ async fn run_op<S: Stream>(
                 Some(original) => forwarded_files(s, original).await?,
                 None => Vec::new(),
             };
-            return smtp::send(&account.config, &login.credential().await?, draft, &extra).await;
+            let cred = login.credential().await?;
+            let sent = smtp::send(&account.config, &cred, draft, &extra).await;
+            return match sent {
+                Err(e) if smtp::sign_in_refused(&e) && matches!(cred, Credential::Token(_)) => {
+                    login.token_refused();
+                    smtp::send(&account.config, &login.credential().await?, draft, &extra).await
+                }
+                other => other,
+            };
         }
         OutboxOp::Unsubscribe { url, .. } => {
             let url = url.clone();
@@ -1317,8 +1337,7 @@ async fn message_source<S: Stream>(s: &mut Imap<S>, at: &crate::models::ForwardO
     let raw = within_for(DOWNLOAD_TIMEOUT, s.bodies(&uid.to_string()))
         .await?
         .into_iter()
-        .next()
-        .and_then(|f| f.body);
+        .find_map(|f| (f.uid == uid).then_some(f.body).flatten());
     Ok(raw.ok_or(Gone)?)
 }
 
@@ -1401,7 +1420,10 @@ async fn search_folders<S: Stream>(
 ) -> Result<Vec<i64>> {
     let mut ids = Vec::new();
     for (folder_id, name) in folders {
-        if within(s.select(name)).await.is_err() {
+        if let Err(e) = within(s.select(name)).await {
+            if connection_broke(&e) {
+                return Err(e);
+            }
             continue;
         }
         let uids = within_for(SEARCH_TIMEOUT, s.search_text(words)).await?;

@@ -112,6 +112,9 @@ fn build_as(config: &AccountConfig, draft: &Draft, extra: &[FileBytes], for_draf
     // A draft may have no recipients yet. lettre wants someone in the envelope to build a message at all; the
     // envelope is never used for a draft (it is only stored), and no header changes.
     if to.is_empty() && cc.is_empty() && bcc.is_empty() {
+        if !for_draft {
+            bail!("Add at least one recipient");
+        }
         let me = from.clone();
         builder = builder.envelope(Envelope::new(Some(me.clone()), vec![me])?);
     }
@@ -264,6 +267,15 @@ async fn within<T>(
     command: impl std::future::Future<Output = Result<T, lettre::transport::smtp::Error>>,
 ) -> Result<T> {
     Ok(tokio::time::timeout(COMMAND_TIMEOUT, command).await.context("The server stopped answering")??)
+}
+
+/// Whether the SMTP server refused the sign-in (535): an OAuth access token may have expired early.
+pub fn sign_in_refused(e: &anyhow::Error) -> bool {
+    e.chain().any(|c| {
+        c.downcast_ref::<lettre::transport::smtp::Error>()
+            .and_then(|e| e.status())
+            .is_some_and(|code| code.to_string() == "535")
+    })
 }
 
 /// Whether a failed send was refused for good (an SMTP 5xx answer, such as an unknown recipient). Sending it again

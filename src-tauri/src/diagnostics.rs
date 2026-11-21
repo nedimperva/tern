@@ -36,6 +36,12 @@ pub fn start_logging(dir: &Path) {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,imap_codec=error"))
         .target(env_logger::Target::Pipe(Box::new(Tee(file))))
         .init();
+    // Launched from a desktop menu, stderr goes nowhere: put panics in the log file too.
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::error!("panic: {info}");
+        prev(info);
+    }));
 }
 
 /// Each log line to stderr and to the file.

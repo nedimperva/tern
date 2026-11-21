@@ -16,7 +16,7 @@ impl Store {
         let mut stmt = conn.prepare_cached(
             "SELECT email, name FROM contacts
              WHERE email LIKE ?1 || '%' OR name LIKE ?1 || '%' OR name LIKE '% ' || ?1 || '%'
-             ORDER BY (3 * sent_count + received_count) / (1.0 + (?2 - last_seen) / 2592000.0) DESC, email
+             ORDER BY (3 * sent_count + received_count) / (1.0 + MAX(0, ?2 - last_seen) / 2592000.0) DESC, email
              LIMIT ?3",
         )?;
         let found = stmt
@@ -29,6 +29,16 @@ impl Store {
     /// or were written to in. Walks the date index newest first, so someone you hear from often costs little.
     pub fn contact_card(&self, email: &str, limit: usize) -> Result<ContactCard> {
         let email = email.trim();
+        let clean = email.replace(['%', '_'], "");
+        if clean.is_empty() {
+            return Ok(ContactCard {
+                email: String::new(),
+                name: String::new(),
+                sent: 0,
+                received: 0,
+                recent: Vec::new(),
+            });
+        }
         let conn = self.reader();
         let (name, sent, received) = conn
             .query_row(
@@ -38,7 +48,7 @@ impl Store {
             )
             .optional()?
             .unwrap_or_default();
-        let like = format!("%{}%", email.replace(['%', '_'], ""));
+        let like = format!("%{clean}%");
         let mut stmt = conn.prepare_cached(&format!(
             "SELECT {ROW} FROM messages m INDEXED BY messages_date
              WHERE m.from_addr = ?1 COLLATE NOCASE OR m.to_addrs LIKE ?2

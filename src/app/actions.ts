@@ -99,6 +99,8 @@ export async function snoozeUntil(due: number) {
     await api.snooze(ids, due);
   } catch (e) {
     showToast(String(e), []);
+    void load();
+    return;
   }
   if (snoozedView) void load();
   const what = hit.length === 1 ? "Snoozed" : `Snoozed ${hit.length} conversations`;
@@ -285,7 +287,13 @@ export async function mute() {
   const ids = hit.map((r) => r.id);
   await api.mute(ids, true);
   const token = await act("archive", hit, false);
-  showToast(hit.length === 1 ? "Muted" : `Muted ${hit.length} conversations`, token, () => api.mute(ids, false));
+  const back = () => api.mute(ids, false);
+  showToast(
+    hit.length === 1 ? "Muted" : `Muted ${hit.length} conversations`,
+    token,
+    back,
+    token.length ? undefined : async () => (await back(), void load()),
+  );
 }
 
 /** Who "the sender" is: in an open conversation, the newest one who wrote in it and isn't you (the companion's

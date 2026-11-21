@@ -32,7 +32,12 @@ export async function open(row: ThreadRow | undefined, matched = searching(), ho
   clearTimeout(readTimer);
   if (!row) return close();
   if (openRow() && keyOf(openRow()!) === keyOf(row)) return show(row, matched);
-  shift(how ?? (openRow() ? "switch" : "open"), () => settle(show(row, matched)));
+  let loading: Promise<void> | undefined;
+  shift(how ?? (openRow() ? "switch" : "open"), () => {
+    loading = show(row, matched);
+    return settle(loading);
+  });
+  await loading;
 }
 
 async function show(row: ThreadRow, matched: boolean) {
@@ -96,7 +101,12 @@ export function viewFiles() {
 
 /** The conversation's own effects; App runs this once. */
 export function watchConversation() {
-  createEffect(on(openRow, (row) => (row ? void api.muted(row.id).then(setOpenMuted) : setOpenMuted(false))));
+  createEffect(
+    on(openRow, (row) => {
+      if (!row) return void setOpenMuted(false);
+      void api.muted(row.id).then((m) => openRow()?.id === row.id && setOpenMuted(m), () => {});
+    }),
+  );
 }
 
 export async function unmute() {

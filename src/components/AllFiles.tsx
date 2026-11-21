@@ -33,15 +33,24 @@ export function AllFiles() {
   const close = () => setFilesOpen(false);
   const show = async (f: PersonFile | undefined) => {
     if (!f) return;
-    const m = (await api.thread(f.messageId)).find((x) => x.id === f.messageId);
-    if (m) setViewing({ message: m, index: f.index });
+    try {
+      const m = (await api.thread(f.messageId)).find((x) => x.id === f.messageId);
+      if (m) setViewing({ message: m, index: f.index });
+    } catch {
+      // A message that left since the list opened is skipped.
+    }
   };
   const openMail = async (f: PersonFile | undefined) => {
     if (!f) return;
-    const m = (await api.messageRows([f.messageId]))[0];
-    if (!m) return;
-    close();
-    open(asRow(m), false);
+    try {
+      const m = (await api.messageRows([f.messageId]))[0];
+      if (!m) return;
+      setViewing(null);
+      close();
+      void open(asRow(m), false);
+    } catch {
+      // A message that left since the list opened is skipped.
+    }
   };
   let list!: HTMLDivElement;
   const point = (i: number) => {
