@@ -19,6 +19,14 @@ every release needs one here before it is tagged.
 - Newsletters open as their sender made them. Reading view is still a click on the book icon, or the default again
   in Settings → Reading.
 - The reading view's "Original look" and "Read later" buttons no longer wrap onto two lines in a narrow pane.
+- Files and Paper trail are screens now, not dialogs over the mail. They take the place of the list and the open
+  mail, which wait behind them as they were; ← or Esc goes back.
+- Files: filter by mail date (named spans, days picked on a calendar, or the weeks around the open mail), by
+  sender (several at once, with counts), kind, received or sent, size and account. The picked file shows beside
+  the list with Show, Open, Save and the mail it came in; or switch to a grid of cards.
+- Paper trail: the span's total and a bar for each of the last twelve months (pick one to see that month), filters
+  for date, kind, sender, currency and amount, a ⟳ mark and a Repeats filter for papers that come every month, and
+  rows grouped by month or by sender. Export CSV takes what is shown.
 
 ## [2.5.0] - 2026-11-20
 

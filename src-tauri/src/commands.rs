@@ -1039,11 +1039,11 @@ pub async fn import_eml(
     Ok(Imported { token, folder, total: 1 })
 }
 
-/// Every file received or sent, newest first (All files, idea 108).
+/// Every file received or sent, newest first (All files, idea 108), from mail dated in `since..until` (seconds).
 #[tauri::command]
-pub async fn all_files(state: State<'_, AppState>) -> Reply<Vec<tern_core::PersonFile>> {
+pub async fn all_files(state: State<'_, AppState>, since: i64, until: i64) -> Reply<Vec<tern_core::PersonFile>> {
     let store = state.store.clone();
-    blocking(move || store.all_files(2000)).await
+    blocking(move || store.all_files(3000, since, until)).await
 }
 
 /// The account a message belongs to, to fetch from its server.

@@ -101,3 +101,28 @@ export function toCsv(rows: { date: number; from: string; subject: string; paper
     ),
   ].join("\n");
 }
+
+/** Each currency's sum, largest first. */
+export function sums(items: { paper: Paper }[]): [string, number][] {
+  const sum = new Map<string, number>();
+  for (const { paper } of items) if (paper.amount != null && paper.currency) sum.set(paper.currency, (sum.get(paper.currency) ?? 0) + paper.amount);
+  return [...sum].sort((a, b) => b[1] - a[1]);
+}
+
+/** Sums as people read them: "€42.50 · 24,00 KM". */
+export const sumsText = (items: { paper: Paper }[]) =>
+  sums(items)
+    .map(([c, n]) => moneyText(n, c))
+    .join(" · ");
+
+/** Senders who sent paper in at least three different months: a subscription, a rent, a monthly bill. */
+export function repeating(items: { from: string; date: number }[]): Set<string> {
+  const months = new Map<string, Set<string>>();
+  for (const i of items) {
+    const d = new Date(i.date * 1000);
+    const seen = months.get(i.from) ?? new Set<string>();
+    seen.add(`${d.getFullYear()}-${d.getMonth()}`);
+    months.set(i.from, seen);
+  }
+  return new Set([...months].filter(([, m]) => m.size >= 3).map(([from]) => from));
+}
