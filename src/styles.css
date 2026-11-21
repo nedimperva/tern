@@ -3269,6 +3269,9 @@ span.tool {
   border-left: 0;
   color: var(--fg-2);
 }
+.html-stage {
+  position: relative;
+}
 .html-body {
   width: 100%;
   border: 0;
@@ -3282,25 +3285,29 @@ span.tool {
 .html-body.own {
   color-scheme: inherit;
 }
-.html-body.waiting {
-  opacity: 0;
-  transition: none;
-}
 /* Designed mail sits straight on the page, rounded, with no well or shadow around it. */
-.html-stage.framed {
-  display: grid;
-  justify-items: center;
-}
-.html-stage.framed .html-body {
+.html-body.framed {
   max-width: 680px;
+  margin: 0 auto;
   border-radius: var(--r-lg);
   /* Designed mail draws its own background; this only shows while it loads. */
   background: var(--bg-0);
-  transition: opacity 80ms var(--ease);
 }
-.html-stage.framed .html-body.waiting {
+.html-body.waiting {
   opacity: 0;
-  transition: none;
+  pointer-events: none;
+}
+/* The off-screen staging slot parses, darkens and measures the next mail at its exact target width before swap. */
+.html-body.staging {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  min-height: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
 }
 /* The "···" pill that unfolds a quoted reply, or, for a signature, whose it is in one line. */
 button.fold.sig {

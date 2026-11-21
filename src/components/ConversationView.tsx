@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js";
 import { Portal } from "solid-js/web";
 import { api, type Mark, type ThreadMessage } from "../api";
 import { quietMenu } from "../browserKeys";
@@ -142,8 +142,10 @@ function HtmlBody(props: {
             (found) => {
               if (props.messageId !== id || !Object.keys(found).length) return;
               inlineMap = found;
-              const doc = docOf(frame);
-              if (doc && dressed.has(doc)) applyInline(doc, found);
+              for (const el of frames) {
+                const doc = docOf(el);
+                if (doc && dressed.has(doc)) applyInline(doc, found);
+              }
             },
             () => {},
           );
@@ -166,8 +168,15 @@ function HtmlBody(props: {
         ? designedFrame(html(), remote()) + (darkened() ? "<!-- dark -->" : "")
         : textFrame(html(), remote(), theme(), props.large ? 16 : 15),
   );
-  // Darkened mail stays hidden until it is dark, so it never flashes white.
-  const [ready, setReady] = createSignal(false);
+  // Two iframe slots: `active` shows the current mail while the other slot parses, darkens and sizes the next one
+  // off-screen, then they swap atomically — eliminating the white/blank blink when switching mail in split view.
+  const [active, setActive] = createSignal<0 | 1>(0);
+  const [hasShown, setHasShown] = createSignal(false);
+  const initialFramed = designed() && !reading();
+  const [slotStyle, setSlotStyle] = createSignal<[{ own: boolean; framed: boolean }, { own: boolean; framed: boolean }]>([
+    { own: !initialFramed, framed: initialFramed },
+    { own: !initialFramed, framed: initialFramed },
+  ]);
   // A right-click on a link: Tern's own Open / Copy link, as the web view's menu is taken away (browserKeys.ts).
   const [linkMenu, setLinkMenu] = createSignal<{ x: number; y: number; href: string; claimed: string | null } | null>(null);
   const closeLinkMenu = () => setLinkMenu(null);
@@ -189,9 +198,12 @@ function HtmlBody(props: {
   const [sigLine, setSigLine] = createSignal<string | null>(null);
   // And whose mail the quote under it is, so "···" says what it holds.
   const [quoted, setQuoted] = createSignal<Quoted | null>(null);
-  let frame: HTMLIFrameElement | undefined;
+  const frames: [HTMLIFrameElement | undefined, HTMLIFrameElement | undefined] = [undefined, undefined];
   let sizer: ResizeObserver | undefined;
   const dressed = new WeakSet<Document>();
+  let activeSlot: 0 | 1 = 0;
+  let targetSlot: 0 | 1 = 0;
+  let shownOnce = false;
   let loadGen = 0;
   let pollTimers: number[] = [];
   let sizeTimers: number[] = [];
@@ -210,18 +222,30 @@ function HtmlBody(props: {
     sizer?.disconnect();
   });
 
-  let lastMsgId: number | undefined;
-  const reveal = (gen: number) => {
-    // Wait one animation frame after darken() + fitFrame() commit so darkened newsletters never flash white.
+  const commit = (slot: 0 | 1, gen: number) => {
+    // Wait one animation frame after darken() + fitFrame() commit so WebKitGTK paints the staged frame before swap.
     requestAnimationFrame(() => {
-      if (gen === loadGen) setReady(true);
+      if (gen !== loadGen) return;
+      const prev = activeSlot;
+      activeSlot = slot;
+      shownOnce = true;
+      setActive(slot);
+      setHasShown(true);
+      if (prev !== slot) {
+        const old = frames[prev];
+        if (old) {
+          old.srcdoc = "";
+          old.style.height = "0px";
+        }
+      }
+      window.dispatchEvent(new Event(FRAME_LOADED));
     });
   };
 
   // Same-origin without scripts: the frame cannot run anything, but we can measure it and catch link clicks.
   // Called as soon as the parsed DOM is ready (interactive) or on load; idempotent per document so load after an
   // early interactive pass only refreshes sizing and marks.
-  const dress = (el: HTMLIFrameElement, doc: Document, gen: number) => {
+  const dress = (slot: 0 | 1, el: HTMLIFrameElement, doc: Document, gen: number) => {
     const scheduleFit = () =>
       requestAnimationFrame(() => {
         if (el.isConnected && docOf(el) === doc) fitFrame(el, doc);
@@ -231,8 +255,8 @@ function HtmlBody(props: {
       fitFrame(el, doc);
       scheduleFit();
       sizeTimers.push(window.setTimeout(scheduleFit, 250));
-      if (!ready()) reveal(gen);
-      window.dispatchEvent(new Event(FRAME_LOADED));
+      if (slot !== activeSlot || !shownOnce) commit(slot, gen);
+      else window.dispatchEvent(new Event(FRAME_LOADED));
       return;
     }
     dressed.add(doc);
@@ -337,49 +361,54 @@ function HtmlBody(props: {
     // Sizing and revealing always run after darkening so a newsletter never flashes white or stays hidden.
     fitFrame(el, doc);
     size();
-    reveal(gen);
-    window.dispatchEvent(new Event(FRAME_LOADED));
+    commit(slot, gen);
   };
 
-  const onLoad = (e: Event) => {
-    frame = e.currentTarget as HTMLIFrameElement;
-    const doc = docOf(frame);
+  const onLoad = (slot: 0 | 1, e: Event) => {
+    const el = e.currentTarget as HTMLIFrameElement;
+    frames[slot] = el;
+    // Ignore retired slots cleared to srcdoc = "" after a swap.
+    if (slot !== targetSlot && slot !== activeSlot) return;
+    const doc = docOf(el);
     // The frame left the message for a web page (a link no handler caught), which shuts us out of it: the message
     // comes back rather than a dark, empty frame.
     if (!doc) {
+      if (slot !== activeSlot) return;
       clearPolls();
       const next = srcdoc();
-      frame.srcdoc = "";
-      frame.srcdoc = next;
+      el.srcdoc = "";
+      el.srcdoc = next;
       return;
     }
     // Ignore the initial about:blank load before our srcdoc commits, so early-ready polls stay armed.
     if (!doc.head?.querySelector('meta[http-equiv="Content-Security-Policy"]')) return;
     clearPolls();
-    dress(frame, doc, loadGen);
+    dress(slot, el, doc, loadGen);
   };
 
-  // Drive srcdoc from one effect so setReady(false) always happens strictly before the iframe reloads, and only
-  // when the rendered srcdoc string actually changed (not on metadata refreshes like markRead).
+  // Drive srcdoc into the off-screen staging slot so the current mail stays visible until the next one is parsed,
+  // darkened and sized — zero white flash or blank blink when switching mails in split view.
   createEffect(() => {
     const next = srcdoc();
-    const id = props.messageId;
-    if (!frame) return;
+    const isFramed = untrack(() => designed() && !reading());
+    const slot: 0 | 1 = shownOnce ? (activeSlot === 0 ? 1 : 0) : 0;
+    const el = frames[slot];
+    if (!el) return;
+    targetSlot = slot;
     const gen = ++loadGen;
     clearPolls();
-    const prevDoc = docOf(frame);
-    delete frame.dataset.room;
-    if (lastMsgId !== id) {
-      lastMsgId = id;
-      frame.style.height = "";
-    }
-    setReady(false);
-    frame.srcdoc = next;
+    const prevDoc = docOf(el);
+    setSlotStyle((s) =>
+      slot === 0 ? [{ own: !isFramed, framed: isFramed }, s[1]] : [s[0], { own: !isFramed, framed: isFramed }],
+    );
+    delete el.dataset.room;
+    el.style.height = "";
+    el.srcdoc = next;
     // A newsletter with slow or unreachable remote images can delay the iframe's load event for tens of seconds;
-    // once the HTML itself is parsed (`interactive`), darken, size and reveal it right away while images finish.
+    // once the HTML itself is parsed (`interactive`), darken, size and swap it in right away while images finish.
     const checkEarly = () => {
-      if (gen !== loadGen || !frame) return;
-      const doc = docOf(frame);
+      if (gen !== loadGen) return;
+      const doc = docOf(el);
       if (
         doc &&
         doc !== prevDoc &&
@@ -388,29 +417,36 @@ function HtmlBody(props: {
         doc.head?.querySelector('meta[http-equiv="Content-Security-Policy"]')
       ) {
         clearPolls();
-        dress(frame, doc, gen);
+        dress(slot, el, doc, gen);
       }
     };
-    for (const ms of [30, 100, 250, 600, 1500]) pollTimers.push(window.setTimeout(checkEarly, ms));
-    pollTimers.push(window.setTimeout(() => gen === loadGen && setReady(true), 2000));
+    for (const ms of [16, 50, 120, 300, 700, 1500]) pollTimers.push(window.setTimeout(checkEarly, ms));
+    pollTimers.push(window.setTimeout(() => gen === loadGen && commit(slot, gen), 2000));
   });
 
-  const body = (
+  const renderSlot = (slot: 0 | 1) => (
     <iframe
-      ref={frame}
+      ref={(el) => {
+        frames[slot] = el;
+      }}
       class="html-body"
-      classList={{ waiting: darkened() && !ready(), own: !designed() || reading() }}
+      classList={{
+        active: active() === slot,
+        staging: active() !== slot,
+        waiting: active() === slot && !hasShown(),
+        own: slotStyle()[slot].own,
+        framed: slotStyle()[slot].framed,
+      }}
       sandbox="allow-same-origin"
-      onLoad={onLoad}
+      onLoad={(e) => onLoad(slot, e)}
       title="Message"
     />
   );
   return (
     <>
-      {/* One wrapper whose framing toggles: moving the frame between two branches let the old branch's cleanup
-          remove it, and "Show original" came back empty. */}
-      <div class="html-stage" classList={{ framed: designed() && !reading() }}>
-        {body}
+      <div class="html-stage">
+        {renderSlot(0)}
+        {renderSlot(1)}
       </div>
       <Show when={linkMenu()}>
         {(m) => (
@@ -450,7 +486,12 @@ function HtmlBody(props: {
           open={unfolded()}
           onClick={() => {
             setUnfolded(!unfolded());
-            docOf(frame)?.documentElement.classList.toggle("tern-fold", !unfolded());
+            const el = frames[activeSlot];
+            const doc = docOf(el);
+            if (el && doc) {
+              doc.documentElement.classList.toggle("tern-fold", !unfolded());
+              fitFrame(el, doc);
+            }
           }}
         />
       </Show>
@@ -1135,7 +1176,9 @@ export function ConversationView(props: {
     return partHeadings(doc).map((h) => h.text);
   });
   const toPart = (i: number) => {
-    const frame = document.querySelector<HTMLIFrameElement>(`.card[data-message="${last().id}"] iframe`);
+    const frame =
+      document.querySelector<HTMLIFrameElement>(`.card[data-message="${last().id}"] iframe.active`) ??
+      document.querySelector<HTMLIFrameElement>(`.card[data-message="${last().id}"] iframe`);
     const doc = docOf(frame);
     const heading = doc ? partHeadings(doc)[i]?.el : undefined;
     if (!heading) return;
