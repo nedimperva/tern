@@ -988,7 +988,8 @@ async fn drain_outbox<S: Stream>(
                 Err(e) => {
                     let failure = failure(&e);
                     store.outbox_failed(id, &format!("{e:#}"), failure)?;
-                    log::warn!("account {}: queued work {id} failed ({failure:?}): {e:#}", account.id);
+                    // The outbox id is enough to find it; CodeQL counts an account value in a log line as sensitive.
+                    log::warn!("queued work {id} failed ({failure:?}): {e:#}");
                     // A Send uses its own SMTP connection; only an IMAP failure (a forward fetching its original) can leave
                     // this session broken.
                     let uses_imap = !matches!(&op, OutboxOp::Send(d) if d.forward_of.is_none());
