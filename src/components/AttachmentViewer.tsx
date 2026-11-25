@@ -63,17 +63,22 @@ export function AttachmentViewer(props: { message: ThreadMessage; index: number;
   const [index, setIndex] = createSignal(props.index);
   const [zoomed, setZoomed] = createSignal(false);
   const [problem, setProblem] = createSignal("");
-  const file = () => props.message.attachments[index()];
+  const file = () => props.message.attachments[index()] ?? { name: "", size: 0, mime: "" };
   const count = () => props.message.attachments.length;
   let url: string | null = null;
+  let closed = false;
   const release = () => {
     if (url) URL.revokeObjectURL(url);
     url = null;
   };
-  onCleanup(release);
+  onCleanup(() => {
+    closed = true;
+    release();
+  });
 
   const [shown] = createResource(index, async (i): Promise<Shown> => {
     const f = props.message.attachments[i];
+    if (!f) return { kind: "none", reason: "That attachment is no longer here." };
     const kind = viewable(f.name, f.mime);
     if (kind === "none") return { kind, reason: "Tern cannot show this kind of file." };
     let bytes: ArrayBuffer;
@@ -82,6 +87,7 @@ export function AttachmentViewer(props: { message: ThreadMessage; index: number;
     } catch (e) {
       return { kind: "none", reason: String(e) };
     }
+    if (closed) return { kind: "none", reason: "" };
     if (kind === "text") {
       const text = new TextDecoder().decode(bytes.slice(0, TEXT_LIMIT));
       return { kind, text, table: table(text, f.name) };

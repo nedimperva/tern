@@ -49,6 +49,11 @@ export type Imported = { token: number; folder: string; total: number };
 export type Exported = { written: number; missing: number; stopped: boolean; path: string };
 /** What came in overnight, in a few lines, and what was sent to get it. */
 export type AiOvernight = { points: AiPoint[]; conversations: number; sentChars: number; route: { provider: AiProvider; model: string } };
+/** A local Paper trail candidate handed to the AI to verify. */
+export type AiPaperCandidate = { id: number; kind: string; amount: number | null; currency: string | null };
+/** The AI's verdict on one Paper trail candidate: drop it, or keep it with verified kind and amount. */
+export type AiPaperVerdict = { id: number; keep: boolean; kind: string | null; amount: number | null; currency: string | null; reason: string };
+export type AiPaperCheck = { verdicts: AiPaperVerdict[]; checked: number; skipped: number; sentChars: number; route: { provider: AiProvider; model: string } };
 /** One suggested reply: a few words on what it does, and the reply. */
 export type AiSuggestion = { label: string; text: string };
 /** A style just learned, with made-up notes written plainly and in that style, shown once. */
@@ -483,7 +488,8 @@ export interface Api {
   /** The files exchanged with a person, every conversation, newest first. */
   personFiles(email: string): Promise<PersonFile[]>;
   /** Every file received or sent, newest first (All files). */
-  allFiles(): Promise<PersonFile[]>;
+  /** Files from mail dated in `since..until` (seconds), newest first, up to 3,000. */
+  allFiles(since: number, until: number): Promise<PersonFile[]>;
   /** Mail that may be a receipt, an invoice or an order since `since`, with its text (Paper trail). */
   paperCandidates(since: number): Promise<[MessageRow, string][]>;
   /** Saves text where the person picks; false when they cancel. */
@@ -701,6 +707,8 @@ export interface Api {
   aiOvernight(since: number, onText: (text: string) => void): Promise<AiOvernight>;
   /** Ask your mail: a question over all the mail the AI may read; `messages` are the ids its [n] count by. */
   aiAskMail(question: string, earlier: [string, string][], onText: (text: string) => void): Promise<AiAnswer>;
+  /** Paper trail check: asks AI which candidates are real invoices/receipts/orders and verifies their amounts. */
+  aiCheckPapers(candidates: AiPaperCandidate[]): Promise<AiPaperCheck>;
   aiWrite(input: AiWriteInput, onText: (text: string) => void): Promise<AiWritten>;
   aiClearCache(): Promise<number>;
   aiStats(): Promise<AiStats>;
@@ -724,16 +732,22 @@ const flush = () => Promise.all([...flushers].map((f) => f().catch(() => {})));
 function installClose() {
   if (closeInstalled) return;
   closeInstalled = true;
-  void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-    getCurrentWindow().onCloseRequested(async (event) => {
-      // A failed save must not keep the window open.
-      await flush();
-      if (keepRunning()) {
-        event.preventDefault();
-        await getCurrentWindow().hide();
-      }
-    }),
-  );
+  void import("@tauri-apps/api/window")
+    .then(({ getCurrentWindow }) => {
+      const win = getCurrentWindow();
+      return win.onCloseRequested(async (event) => {
+        // A failed save must not keep the window open.
+        await flush();
+        if (keepRunning()) {
+          event.preventDefault();
+          await win.hide().catch(() => {});
+        } else if (win.label === "main") {
+          event.preventDefault();
+          await invoke("quit").catch(() => {});
+        }
+      });
+    })
+    .catch(() => {});
 }
 
 const tauri: Api = {
@@ -814,7 +828,7 @@ const tauri: Api = {
   person: (accountId, email) => invoke("person", { accountId, email }),
   setPersonNote: (email, body) => invoke("set_person_note", { email, body }),
   personFiles: (email) => invoke("person_files", { email }),
-  allFiles: () => invoke("all_files"),
+  allFiles: (since, until) => invoke("all_files", { since, until }),
   paperCandidates: (since) => invoke("paper_candidates", { since }),
   saveText: (title, name, text) => invoke("save_text", { title, name, text }),
   todoistConnected: () => invoke("todoist_connected"),
@@ -960,6 +974,7 @@ const tauri: Api = {
   aiAsk: (id, question, earlier, onText) => invoke("ai_ask", { id, question, earlier, onText: channel(onText) }),
   aiOvernight: (since, onText) => invoke("ai_overnight", { since, onText: channel(onText) }),
   aiAskMail: (question, earlier, onText) => invoke("ai_ask_mail", { question, earlier, onText: channel(onText) }),
+  aiCheckPapers: (candidates) => invoke("ai_check_papers", { candidates }),
   aiWrite: (input, onText) => invoke("ai_write", { input, onText: channel(onText) }),
   aiClearCache: () => invoke("ai_clear_cache"),
   aiStats: () => invoke("ai_stats"),
@@ -1613,9 +1628,9 @@ function fake(): Api {
       console.log(name, text);
       return true;
     },
-    allFiles: async () =>
+    allFiles: async (since, until) =>
       messages
-        .filter((m) => m.attachments.length && m.folderId !== 4)
+        .filter((m) => m.attachments.length && m.folderId !== 4 && m.date >= since && m.date < until)
         .sort((a, b) => b.date - a.date)
         .flatMap((m) =>
           m.attachments.map((a, index) => ({ messageId: m.id, accountId: m.accountId, threadId: m.threadId, subject: m.subject, date: m.date, mine: false, index, from: m.fromName, ...a })),
@@ -2008,6 +2023,13 @@ function fake(): Api {
       await stream(text, onText);
       return { text, messages: ids, sentChars: 6_120, route: { provider: "anthropic", model: "claude-haiku-5-5" } };
     },
+    aiCheckPapers: async (candidates) => ({
+      verdicts: candidates.map((c) => ({ id: c.id, keep: true, kind: c.kind, amount: c.amount, currency: c.currency, reason: "" })),
+      checked: candidates.length,
+      skipped: 0,
+      sentChars: candidates.length * 120,
+      route: { provider: "anthropic", model: "claude-haiku-5-5" },
+    }),
     aiSummarize: async (id, fresh, onText) => {
       if (!fresh && fakeSummaries.has(id)) return fakeSummaries.get(id)!;
       const subject = messages.find((m) => m.id === id)?.subject ?? "this";

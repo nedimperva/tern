@@ -542,7 +542,7 @@ impl Store {
                 // Done from an inbox split (or the inbox) takes the whole conversation out of the inbox, whichever
                 // split each of its messages is in, starred, snoozed or not.
                 let in_inbox = matches!(target, ListTarget::Role(r)
-                    if ["inbox", STARRED, IMPORTANT, OTHER, SNOOZED].contains(&r.as_str()));
+                    if ["inbox", STARRED, IMPORTANT, OTHER, NEW_PEOPLE, SNOOZED].contains(&r.as_str()));
                 let (filter, key) = if in_inbox {
                     (
                         "m.folder_id IN (SELECT id FROM folders WHERE role = ?2)".to_string(),

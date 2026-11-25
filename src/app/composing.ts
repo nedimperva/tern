@@ -205,12 +205,20 @@ export function fromLink(m: Mailto) {
 export async function openMail(m: NewMail) {
   // Whatever was over the list goes, or the conversation opens out of sight behind it.
   if (settingsOpen() != null) (setSettingsOpen(null), loadSignatures());
-  batch(() => (close(), setQuery(""), setTarget(home()), setPalette(false), setReviewing(false), setSheet(false)));
+  batch(() => (setQuery(""), setTarget(home()), setPalette(false), setReviewing(false), setSheet(false)));
   await load();
   const i = rows().findIndex((r) => r.accountId === m.accountId && r.threadId === m.threadId);
-  if (i < 0) return false;
-  setFocus(i);
-  await open(rows()[i]);
+  if (i >= 0) {
+    setFocus(i);
+    await open(rows()[i]);
+    return true;
+  }
+  const [found] = await api.messageRows([m.id]);
+  if (!found) {
+    close();
+    return false;
+  }
+  await open(asRow(found));
   return true;
 }
 

@@ -95,14 +95,14 @@ struct StateEvent {
 
 impl AppState {
     pub fn wake(&self, account_id: i64) {
-        if let Some(waker) = self.wakers.lock().unwrap().get(&account_id) {
+        if let Some(waker) = self.wakers.lock().unwrap_or_else(|e| e.into_inner()).get(&account_id) {
             waker.notify_one();
         }
     }
 
     /// Every account looks now: the window got focus, so the person is about to look at their mail.
     pub fn wake_all(&self) {
-        for waker in self.wakers.lock().unwrap().values() {
+        for waker in self.wakers.lock().unwrap_or_else(|e| e.into_inner()).values() {
             waker.notify_one();
         }
     }
@@ -125,17 +125,17 @@ pub fn start_account(app: &AppHandle, state: &AppState, account: Account) {
     let email = &account.config.email;
     if secrets::password(email).is_err() && secrets::tokens(email).is_err() {
         log::error!("account {}: no saved password or Google sign-in", account.id);
-        state.states.lock().unwrap().insert(account.id, SyncState::AuthFailed);
+        state.states.lock().unwrap_or_else(|e| e.into_inner()).insert(account.id, SyncState::AuthFailed);
         return;
     }
     let password = login(&account);
     let wake = Arc::new(Notify::new());
-    state.wakers.lock().unwrap().insert(account.id, wake.clone());
+    state.wakers.lock().unwrap_or_else(|e| e.into_inner()).insert(account.id, wake.clone());
     let changed = state.changed.clone();
     let on_change: Arc<dyn Fn() + Send + Sync> = Arc::new(move || changed.notify_one());
     let (handle, states, account_id) = (app.clone(), state.states.clone(), account.id);
     let on_state: Arc<dyn Fn(SyncState) + Send + Sync> = Arc::new(move |s| {
-        states.lock().unwrap().insert(account_id, s);
+        states.lock().unwrap_or_else(|e| e.into_inner()).insert(account_id, s);
         let _ = handle.emit("sync-state", StateEvent { account_id, state: s });
     });
     tauri::async_runtime::spawn(sync::run_account(
@@ -154,13 +154,17 @@ fn main() {
     if std::env::args().any(|a| a == status::ARG) {
         return status::print();
     }
-    // WebKitGTK's DMA-BUF renderer leaves the window blank or crashes on some Wayland setups (NVIDIA among them).
-    // Set before any thread starts; someone who sets the variable themselves keeps their choice.
+    // WebKitGTK's hardware DMA-BUF path leaves the window blank or crashes on some Wayland setups (NVIDIA among
+    // them). On WebKitGTK 2.52+, WEBKIT_DISABLE_DMABUF_RENDERER=1 empties the buffer transport set and leaves
+    // AcceleratedBackingStore null, causing SIGSEGV on compositing entry / view transitions (WebKit #324730);
+    // WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 avoids hardware DMA-BUF while keeping shared-memory backing valid.
+    // Set before any thread starts; someone who sets either variable themselves keeps their choice.
     #[cfg(target_os = "linux")]
     if std::env::var_os("WAYLAND_DISPLAY").is_some()
         && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
+        && std::env::var_os("WEBKIT_DMABUF_RENDERER_FORCE_SHM").is_none()
     {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        std::env::set_var("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
     }
     tauri::Builder::default()
         // First, so a second start hands over its link (or just brings the window back) and exits.
@@ -187,6 +191,40 @@ fn main() {
         .setup(|app| {
             // First, so everything after it is in the log file too.
             diagnostics::start_logging(&diagnostics::log_dir(app.handle()));
+            // Debug builds (`tauri dev`) keep their own store in `dev/`: a newer schema migrates the database
+            // forward only, and the installed Tern could not open its mail afterwards. TERN_DB opens another store,
+            // such as one from `gen_mailbox`.
+            let dir = app.path().app_data_dir()?;
+            let dir = if cfg!(debug_assertions) { dir.join("dev") } else { dir };
+            std::fs::create_dir_all(&dir)?;
+            let db = std::env::var_os("TERN_DB").map(std::path::PathBuf::from).unwrap_or(dir.join("mail.db"));
+            log::info!("mail database: {}", db.display());
+            let state = AppState {
+                store: Arc::new(Store::open(&db)?),
+                wakers: Default::default(),
+                states: Default::default(),
+                pause: tokio::sync::watch::channel(false).0,
+                changed: Default::default(),
+                attachments: db.parent().unwrap_or(&dir).join("attachments"),
+            };
+            watch_changes(app.handle(), state.store.clone(), state.changed.clone());
+            watch_optimize(state.store.clone());
+            watch_attachments(state.store.clone(), state.attachments.clone());
+            // Sends scheduled for a time that passed while Tern was closed wait to be confirmed.
+            let held = state.store.hold_overdue(desktop::now())?;
+            if held > 0 {
+                log::info!("{held} scheduled send(s) came due while Tern was closed; holding them");
+            }
+            let accounts = state.store.accounts()?;
+            // Manage AppState before showing the window, building the tray, or starting workers so window focus
+            // events, tray clicks, and IPC calls can never race against missing state.
+            app.manage(state);
+            {
+                let state = app.state::<AppState>();
+                for account in accounts {
+                    start_account(app.handle(), &state, account);
+                }
+            }
             use tauri_plugin_deep_link::DeepLinkExt;
             let links = app.deep_link().get_current().ok().flatten().unwrap_or_default();
             let mut links: Vec<String> = links.iter().map(|u| u.to_string()).collect();
@@ -213,34 +251,6 @@ fn main() {
             if let Err(e) = desktop::tray(app.handle()) {
                 log::warn!("no tray: {e}");
             }
-            // Debug builds (`tauri dev`) keep their own store in `dev/`: a newer schema migrates the database
-            // forward only, and the installed Tern could not open its mail afterwards. TERN_DB opens another store,
-            // such as one from `gen_mailbox`.
-            let dir = app.path().app_data_dir()?;
-            let dir = if cfg!(debug_assertions) { dir.join("dev") } else { dir };
-            std::fs::create_dir_all(&dir)?;
-            let db = std::env::var_os("TERN_DB").map(std::path::PathBuf::from).unwrap_or(dir.join("mail.db"));
-            log::info!("mail database: {}", db.display());
-            let state = AppState {
-                store: Arc::new(Store::open(&db)?),
-                wakers: Default::default(),
-                states: Default::default(),
-                pause: tokio::sync::watch::channel(false).0,
-                changed: Default::default(),
-                attachments: db.parent().unwrap_or(&dir).join("attachments"),
-            };
-            watch_changes(app.handle(), state.store.clone(), state.changed.clone());
-            watch_optimize(state.store.clone());
-            watch_attachments(state.store.clone(), state.attachments.clone());
-            // Sends scheduled for a time that passed while Tern was closed wait to be confirmed.
-            let held = state.store.hold_overdue(desktop::now())?;
-            if held > 0 {
-                log::info!("{held} scheduled send(s) came due while Tern was closed; holding them");
-            }
-            for account in state.store.accounts()? {
-                start_account(app.handle(), &state, account);
-            }
-            app.manage(state);
             if held > 0 {
                 desktop::notify_held(app.handle(), held);
             }
@@ -254,9 +264,13 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| match event {
-            WindowEvent::Focused(true) => window.state::<AppState>().wake_all(),
+            WindowEvent::Focused(true) => {
+                if let Some(state) = window.try_state::<AppState>() {
+                    state.wake_all();
+                }
+            }
             WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, position }) => {
-                commands::files_dropped(window.app_handle(), paths, *position)
+                commands::files_dropped(window, paths, *position)
             }
             _ => {}
         })
@@ -369,6 +383,7 @@ fn main() {
             commands::ai_task,
             commands::ai_overnight,
             commands::ai_ask_mail,
+            commands::ai_check_papers,
             commands::tasks_of,
             commands::task_done,
             commands::check_tasks,
@@ -420,6 +435,7 @@ fn main() {
         .expect("error while building Tern")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                crate::status::clear();
                 if let Some(state) = app.try_state::<AppState>() {
                     if let Err(e) = state.store.tidy_on_exit() {
                         log::warn!("tidying the database on exit: {e:#}");

@@ -412,7 +412,9 @@ impl Store {
                 path,
                 rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
             )?;
-            reader.execute_batch("PRAGMA temp_store = MEMORY; PRAGMA mmap_size = 268435456;")?;
+            reader.execute_batch(
+                "PRAGMA busy_timeout = 5000; PRAGMA temp_store = MEMORY; PRAGMA mmap_size = 268435456;",
+            )?;
             store.readers.push(Mutex::new(reader));
         }
         Ok(store)
@@ -424,7 +426,8 @@ impl Store {
 
     fn init(mut conn: Connection) -> Result<Self> {
         conn.execute_batch(
-            "PRAGMA journal_mode = WAL;
+            "PRAGMA busy_timeout = 5000;
+             PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;
              PRAGMA foreign_keys = ON;
              PRAGMA temp_store = MEMORY;

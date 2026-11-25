@@ -4,14 +4,12 @@ import { AccountSetup } from "./components/AccountSetup";
 import { CommandBar } from "./components/CommandBar";
 import { Compose } from "./components/Compose";
 import { ConversationView } from "./components/ConversationView";
-import { AllFiles } from "./components/AllFiles";
 import { EmlViewer } from "./components/EmlViewer";
-import { PaperTrail } from "./components/PaperTrail";
 import { ListPane } from "./components/ListPane";
 import { Toast } from "./components/Toast";
 import { ProblemsDialog } from "./components/Problems";
 import { Rail } from "./components/Rail";
-import { TitleBar } from "./components/TitleBar";
+import { WindowButtons } from "./components/WindowButtons";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { LabelPicker } from "./components/LabelPicker";
 import { SnoozePicker } from "./components/SnoozePicker";
@@ -99,9 +97,8 @@ import {
   signatures,
   snoozing,
   syncStates,
-  ownTitleBar,
+  ownWindowButtons,
   toggleCompanion,
-  toggleSidebar,
   viewing,
   askingMail,
   filesOpen,
@@ -118,33 +115,29 @@ import { showToast } from "./app/toast";
 const SettingsPage = lazy(() => import("./components/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 // The companion loads the first time it opens: most windows never show it.
 const Companion = lazy(() => import("./components/Companion").then((m) => ({ default: m.Companion })));
+const FilesScreen = lazy(() => import("./components/FilesScreen").then((m) => ({ default: m.FilesScreen })));
+const PaperScreen = lazy(() => import("./components/PaperScreen").then((m) => ({ default: m.PaperScreen })));
 
 /** With the "auto" open mode, from this width an open conversation sits beside the list; narrower, it covers it. */
 const SPLIT_WIDTH = 1200;
 /** Below this width there is no room for the list beside a conversation, whatever the setting (§3). */
 const MIN_SPLIT_WIDTH = 960;
 
-/** The main window: Tern's own title bar (Windows), the sidebar when it is docked, and the rest under them. */
+/** The main window: the sidebar when it is docked and the rest beside it. No title bar on any system: each column
+ * has its own head, and on Windows the window's buttons end the rightmost one. */
 export default function App() {
-  // Overlays start under the title bar; without one they start at the top.
-  if (!ownTitleBar) document.documentElement.dataset.frame = "system";
+  if (ownWindowButtons) document.documentElement.dataset.windowButtons = "";
   return (
     <div class="window" classList={{ docked: docked() }}>
-      <Show when={ownTitleBar}>
-        <TitleBar
-          docked={docked()}
-          sideTone={docked() || settingsOpen() !== null}
-          onSidebar={toggleSidebar}
-          onCompose={newMessage}
-          list={settingsOpen() === null && !screen() && deck() === null}
-        />
-      </Show>
       <div class="window-body">
         <Show when={docked()}>
           <Sidebar docked />
         </Show>
         <Main />
       </div>
+      <Show when={ownWindowButtons}>
+        <WindowButtons />
+      </Show>
       <Toast />
     </div>
   );
@@ -273,8 +266,24 @@ function Main() {
   return (
     <div
       class="app"
-      classList={{ split: split(), full: openRow() !== null && !roomForSplit(), "with-companion": openRow() !== null && (settings.companion || aiSide()) }}
+      classList={{
+        split: split(),
+        full: openRow() !== null && !roomForSplit(),
+        "with-companion": openRow() !== null && (settings.companion || aiSide()),
+        // Files or Paper trail: the list and the open mail stay behind it as they were, scrolled where they were.
+        "on-screen": filesOpen() || paperOpen(),
+      }}
     >
+      <Show when={filesOpen()}>
+        <Suspense>
+          <FilesScreen />
+        </Suspense>
+      </Show>
+      <Show when={paperOpen()}>
+        <Suspense>
+          <PaperScreen />
+        </Suspense>
+      </Show>
       <ListPane split={split()} hits={hits()} needsYou={needsYou()} />
 
       <Show when={openRow()}>
@@ -410,12 +419,6 @@ function Main() {
       <Show when={eml()}>
         {(path) => <EmlViewer path={path()} onClose={() => setEml(null)} />}
       </Show>
-      <Show when={filesOpen()}>
-        <AllFiles />
-      </Show>
-      <Show when={paperOpen()}>
-        <PaperTrail />
-      </Show>
       <Show when={askingMail()}>
         <AskMail
           onOpen={(id) =>
@@ -448,12 +451,12 @@ function Main() {
           onClose={() => batch(() => (setPalette(false), setPaletteStart(undefined)))}
         />
       </Show>
-      <Show when={compose() && !compose()!.inline ? compose() : null}>
+      <Show when={compose() && !compose()!.inline ? compose() : null} keyed>
         {(init) => (
           <Compose
             accounts={accounts()}
             signatures={signatures()}
-            init={init()}
+            init={init}
             onSend={send}
             onClose={composeClosed}
             onDiscard={composeDiscarded}

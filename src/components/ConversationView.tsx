@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js";
 import { Portal } from "solid-js/web";
 import { api, type Mark, type ThreadMessage } from "../api";
 import { quietMenu } from "../browserKeys";
@@ -38,7 +38,7 @@ import { taskRows } from "../app/tasks";
 import { Icon } from "./Icon";
 import { Original } from "./Original";
 import { PersonCard, type PersonActions } from "./PersonCard";
-import { convSlot, detailsSlot, ownTitleBar, setUnsubscribed, showCompanion, toggleCompanion, unsubscribed } from "../app/state";
+import { detailsSlot, setUnsubscribed, showCompanion, toggleCompanion, unsubscribed } from "../app/state";
 import { unsubscribe } from "../app/actions";
 import { Details } from "./Details";
 import { logoFor } from "../logos";
@@ -92,6 +92,28 @@ const hover = (a: HTMLAnchorElement | null, frame?: HTMLIFrameElement | null) =>
 /** Frames tell the conversation they have (re)loaded, so marks are drawn in them again. */
 const FRAME_LOADED = "tern-frame-loaded";
 
+/** Replaces cid: references in a loaded frame without reloading srcdoc (which would blink the message). */
+function applyInline(doc: Document, found: Record<string, string>) {
+  if (!Object.keys(found).length) return;
+  for (const img of doc.querySelectorAll<HTMLImageElement>('img[src^="cid:" i]')) {
+    const cid = img.getAttribute("src")?.slice(4);
+    if (cid && found[cid]) img.setAttribute("src", found[cid]);
+  }
+  for (const el of doc.querySelectorAll<HTMLElement>('[background^="cid:" i]')) {
+    const cid = el.getAttribute("background")?.slice(4);
+    if (cid && found[cid]) el.setAttribute("background", found[cid]);
+  }
+  for (const el of doc.querySelectorAll<HTMLElement>('[style*="cid:" i]')) {
+    const style = el.getAttribute("style");
+    if (style) {
+      const next = style.replace(CID, (whole, quote: string, cid: string) =>
+        found[cid] ? `${quote}${found[cid]}${quote}` : whole,
+      );
+      if (next !== style) el.setAttribute("style", next);
+    }
+  }
+}
+
 // Mail is untrusted: it renders in a frame with no scripts, and no remote content until asked for. What it would
 // fetch (`web`, tracking pixels already taken out) is worked out by the conversation, whose header says what was
 // blocked and loads images when asked.
@@ -107,17 +129,30 @@ function HtmlBody(props: {
   onPick?: (p: Picked | null) => void;
 }) {
   const remote = () => props.remote;
-  // Pictures pasted into the mail come with it as parts; fetched (once, then cached) and drawn in place.
-  const [inline, setInline] = createSignal<Record<string, string>>({});
-  if (/["']cid:/i.test(props.web.html)) {
-    void api.inlineImages(props.messageId).then(setInline, () => {});
-  }
-  const html = () => {
-    const found = inline();
-    return props.web.html.replace(CID, (whole, quote: string, cid: string) =>
-      found[cid] ? `${quote}${found[cid]}${quote}` : whole,
-    );
-  };
+  // Pictures pasted into the mail come with it as parts; fetched once and swapped into the live frame in place.
+  const html = createMemo(() => props.web.html);
+  let inlineMap: Record<string, string> = {};
+  createEffect(
+    on(
+      () => [props.messageId, html()] as const,
+      ([id, raw]) => {
+        inlineMap = {};
+        if (/["']cid:/i.test(raw)) {
+          void api.inlineImages(id).then(
+            (found) => {
+              if (props.messageId !== id || !Object.keys(found).length) return;
+              inlineMap = found;
+              for (const el of frames) {
+                const doc = docOf(el);
+                if (doc && dressed.has(doc)) applyInline(doc, found);
+              }
+            },
+            () => {},
+          );
+        }
+      },
+    ),
+  );
   // Text mail takes Tern's look; mail its sender designed keeps its own, framed (see mailview.ts). Whether to show
   // a designed mail's words only (reading view) is the header's switch.
   const designed = () => props.designed;
@@ -126,14 +161,22 @@ function HtmlBody(props: {
   const [theme, setTheme] = createSignal(frameTheme(isDark()));
   createEffect(on(isDark, (dark) => setTheme(frameTheme(dark)), { defer: true }));
   const darkened = () => designed() && !reading() && isDark() && settings.darkMail === "darken";
-  const srcdoc = () =>
+  const srcdoc = createMemo(() =>
     reading()
       ? readingFrame(readingView(html(), props.title), remote(), theme())
       : designed()
         ? designedFrame(html(), remote()) + (darkened() ? "<!-- dark -->" : "")
-        : textFrame(html(), remote(), theme(), props.large ? 16 : 15);
-  // Darkened mail stays hidden until it is dark, so it never flashes white.
-  const [ready, setReady] = createSignal(false);
+        : textFrame(html(), remote(), theme(), props.large ? 16 : 15),
+  );
+  // Two iframe slots: `active` shows the current mail while the other slot parses, darkens and sizes the next one
+  // off-screen, then they swap atomically — eliminating the white/blank blink when switching mail in split view.
+  const [active, setActive] = createSignal<0 | 1>(0);
+  const [hasShown, setHasShown] = createSignal(false);
+  const initialFramed = designed() && !reading();
+  const [slotStyle, setSlotStyle] = createSignal<[{ own: boolean; framed: boolean }, { own: boolean; framed: boolean }]>([
+    { own: !initialFramed, framed: initialFramed },
+    { own: !initialFramed, framed: initialFramed },
+  ]);
   // A right-click on a link: Tern's own Open / Copy link, as the web view's menu is taken away (browserKeys.ts).
   const [linkMenu, setLinkMenu] = createSignal<{ x: number; y: number; href: string; claimed: string | null } | null>(null);
   const closeLinkMenu = () => setLinkMenu(null);
@@ -147,33 +190,80 @@ function HtmlBody(props: {
     window.removeEventListener("blur", closeLinkMenu);
     window.removeEventListener("keydown", closeLinkMenu);
   });
-  createEffect(on(srcdoc, () => setReady(false)));
   // Quoted replies and signatures start folded; the pill below the frame opens them.
   const [foldable, setFoldable] = createSignal(false);
   const [unfolded, setUnfolded] = createSignal(false);
+  createEffect(on(() => props.messageId, () => setUnfolded(false), { defer: true }));
   // When the fold starts with a signature, the pill says whose it is.
   const [sigLine, setSigLine] = createSignal<string | null>(null);
   // And whose mail the quote under it is, so "···" says what it holds.
   const [quoted, setQuoted] = createSignal<Quoted | null>(null);
-  let frame: HTMLIFrameElement | undefined;
+  const frames: [HTMLIFrameElement | undefined, HTMLIFrameElement | undefined] = [undefined, undefined];
   let sizer: ResizeObserver | undefined;
-  onCleanup(() => sizer?.disconnect());
+  const dressed = new WeakSet<Document>();
+  let activeSlot: 0 | 1 = 0;
+  let targetSlot: 0 | 1 = 0;
+  let shownOnce = false;
+  let loadGen = 0;
+  let pollTimers: number[] = [];
+  let sizeTimers: number[] = [];
+  const clearPolls = () => {
+    for (const t of pollTimers) clearTimeout(t);
+    pollTimers = [];
+  };
+  const clearSizeTimers = () => {
+    for (const t of sizeTimers) clearTimeout(t);
+    sizeTimers = [];
+  };
+  onCleanup(() => {
+    loadGen++;
+    clearPolls();
+    clearSizeTimers();
+    sizer?.disconnect();
+  });
+
+  const commit = (slot: 0 | 1, gen: number) => {
+    // Wait one animation frame after darken() + fitFrame() commit so WebKitGTK paints the staged frame before swap.
+    requestAnimationFrame(() => {
+      if (gen !== loadGen) return;
+      const prev = activeSlot;
+      activeSlot = slot;
+      shownOnce = true;
+      setActive(slot);
+      setHasShown(true);
+      if (prev !== slot) {
+        const old = frames[prev];
+        if (old) {
+          old.srcdoc = "";
+          old.style.height = "0px";
+        }
+      }
+      window.dispatchEvent(new Event(FRAME_LOADED));
+    });
+  };
 
   // Same-origin without scripts: the frame cannot run anything, but we can measure it and catch link clicks.
-  const onLoad = (e: Event) => {
-    frame = e.currentTarget as HTMLIFrameElement;
-    const doc = docOf(frame);
-    // The frame left the message for a web page (a link no handler caught), which shuts us out of it: the message
-    // comes back rather than a dark, empty frame.
-    if (!doc) {
-      const html = srcdoc();
-      frame.srcdoc = "";
-      frame.srcdoc = html;
+  // Called as soon as the parsed DOM is ready (interactive) or on load; idempotent per document so load after an
+  // early interactive pass only refreshes sizing and marks.
+  const dress = (slot: 0 | 1, el: HTMLIFrameElement, doc: Document, gen: number) => {
+    const scheduleFit = () =>
+      requestAnimationFrame(() => {
+        if (el.isConnected && docOf(el) === doc) fitFrame(el, doc);
+      });
+    if (dressed.has(doc)) {
+      applyInline(doc, inlineMap);
+      fitFrame(el, doc);
+      scheduleFit();
+      sizeTimers.push(window.setTimeout(scheduleFit, 250));
+      if (slot !== activeSlot || !shownOnce) commit(slot, gen);
+      else window.dispatchEvent(new Event(FRAME_LOADED));
       return;
     }
+    dressed.add(doc);
+    applyInline(doc, inlineMap);
     // Links first: whatever the steps after them run into, a click on a link goes to the browser, never the frame.
     const menuAt = (ev: MouseEvent, a: HTMLAnchorElement) => {
-      const box = frame!.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
       // Kept inside the window near its right and bottom edges.
       const x = Math.min(box.left + ev.clientX, window.innerWidth - 370);
       const y = Math.min(box.top + ev.clientY, window.innerHeight - 150);
@@ -195,13 +285,9 @@ function HtmlBody(props: {
       ev.preventDefault();
       menuAt(ev, a);
     });
-    doc.addEventListener("mouseover", (ev) => hover((ev.target as Element).closest?.("a") ?? null, frame));
+    doc.addEventListener("mouseover", (ev) => hover((ev.target as Element).closest?.("a") ?? null, el));
     doc.addEventListener("mouseleave", () => setHovered(null));
     doc.addEventListener("mousedown", (ev) => ev.button === 0 && setLinkMenu(null));
-    setReady(true);
-    // Sizing comes before the steps that dress the message, so one of them failing can't leave the frame at the
-    // browser's default 150 px with the rest of the mail cut off.
-    const el = frame;
     // On the next frame, not in the callback: sizing the frame there could resize the body in the same frame (mail
     // laid out in vh, a scroll bar coming and going), and the observer reported a loop thousands of times.
     let queued = false;
@@ -211,19 +297,26 @@ function HtmlBody(props: {
       requestAnimationFrame(() => {
         queued = false;
         // A newer load owns the frame now.
-        if (docOf(el) === doc) fitFrame(el, doc);
+        if (el.isConnected && docOf(el) === doc) fitFrame(el, doc);
       });
     };
-    fitFrame(el, doc);
     sizer?.disconnect();
     sizer = new ResizeObserver(size);
     if (doc.body) sizer.observe(doc.body);
     // WebKitGTK does not always report a change inside a script-less frame (its own listeners never run there), and
     // newsletters grow after load as their pictures and fonts come in: measured then, the frame stayed short. So the
-    // frame's own width is watched from out here, and it is measured again a few times while the mail settles.
+    // frame's own width is watched from out here, capture-phase load/error listeners catch every picture as it lands,
+    // and the frame is measured again while the mail settles.
     sizer.observe(el);
+    doc.addEventListener("load", size, true);
+    doc.addEventListener("error", size, true);
+    for (const img of doc.images) {
+      if (img.loading === "lazy") img.loading = "eager";
+      if (img.complete) void img.decode?.().then(size, () => {});
+    }
     void doc.fonts?.ready.then(size, () => {});
-    for (const ms of [100, 400, 1200, 3000]) setTimeout(size, ms);
+    clearSizeTimers();
+    for (const ms of [100, 400, 1200, 3000, 6000]) sizeTimers.push(window.setTimeout(size, ms));
     // The rest only dresses the message: a step that fails (a mail no rule expected) is skipped, not fatal.
     try {
       if (darkened()) darken(doc);
@@ -232,17 +325,15 @@ function HtmlBody(props: {
       setSigLine(htmlSignature(doc));
       setQuoted(htmlQuote(doc));
       doc.documentElement.classList.toggle("tern-fold", !unfolded());
-      size();
       quietMenu(doc);
       const marks = doc.createElement("style");
       marks.textContent = FRAME_MARK_STYLE;
       doc.head?.append(marks);
-      window.dispatchEvent(new Event(FRAME_LOADED));
       // A selection in the message offers Quote, Mark, Note and Copy; the frame's own coordinates are moved into the
       // window's, where the bar is drawn.
       doc.addEventListener("mouseup", () =>
         setTimeout(() => {
-          const box = frame!.getBoundingClientRect();
+          const box = el.getBoundingClientRect();
           props.onPick?.(picked(doc, props.messageId, box));
         }),
       );
@@ -267,24 +358,97 @@ function HtmlBody(props: {
     } catch (err) {
       console.warn("message frame:", err);
     }
+    // Sizing and revealing always run after darkening so a newsletter never flashes white or stays hidden.
+    fitFrame(el, doc);
+    size();
+    commit(slot, gen);
   };
 
-  const body = (
+  const onLoad = (slot: 0 | 1, e: Event) => {
+    const el = e.currentTarget as HTMLIFrameElement;
+    frames[slot] = el;
+    // Ignore retired slots cleared to srcdoc = "" after a swap.
+    if (slot !== targetSlot && slot !== activeSlot) return;
+    const doc = docOf(el);
+    // The frame left the message for a web page (a link no handler caught), which shuts us out of it: the message
+    // comes back rather than a dark, empty frame.
+    if (!doc) {
+      if (slot !== activeSlot) return;
+      clearPolls();
+      const next = srcdoc();
+      el.srcdoc = "";
+      el.srcdoc = next;
+      return;
+    }
+    // Ignore the initial about:blank load before our srcdoc commits, so early-ready polls stay armed.
+    if (!doc.head?.querySelector('meta[http-equiv="Content-Security-Policy"]')) return;
+    clearPolls();
+    dress(slot, el, doc, loadGen);
+  };
+
+  // Drive srcdoc into the off-screen staging slot so the current mail stays visible until the next one is parsed,
+  // darkened and sized — zero white flash or blank blink when switching mails in split view.
+  createEffect(() => {
+    const next = srcdoc();
+    const isFramed = untrack(() => designed() && !reading());
+    const slot: 0 | 1 = shownOnce ? (activeSlot === 0 ? 1 : 0) : 0;
+    const el = frames[slot];
+    if (!el) return;
+    targetSlot = slot;
+    const gen = ++loadGen;
+    clearPolls();
+    const prevDoc = docOf(el);
+    setSlotStyle((s) =>
+      slot === 0 ? [{ own: !isFramed, framed: isFramed }, s[1]] : [s[0], { own: !isFramed, framed: isFramed }],
+    );
+    delete el.dataset.room;
+    el.style.height = "";
+    el.srcdoc = next;
+    // A newsletter with slow or unreachable remote images can delay the iframe's load event for tens of seconds;
+    // once the HTML itself is parsed (`interactive`), darken, size and swap it in right away while images finish.
+    const checkEarly = () => {
+      if (gen !== loadGen) return;
+      const doc = docOf(el);
+      if (
+        doc &&
+        doc !== prevDoc &&
+        doc.body &&
+        (doc.readyState === "interactive" || doc.readyState === "complete") &&
+        doc.head?.querySelector('meta[http-equiv="Content-Security-Policy"]')
+      ) {
+        clearPolls();
+        dress(slot, el, doc, gen);
+      }
+    };
+    for (const ms of [16, 50, 120, 300, 700, 1500]) pollTimers.push(window.setTimeout(checkEarly, ms));
+    pollTimers.push(window.setTimeout(() => gen === loadGen && commit(slot, gen), 2000));
+  });
+
+  const renderSlot = (slot: 0 | 1) => (
     <iframe
+      ref={(el) => {
+        frames[slot] = el;
+      }}
       class="html-body"
-      classList={{ waiting: darkened() && !ready(), own: !designed() || reading() }}
+      classList={{
+        active: active() === slot,
+        staging: active() !== slot,
+        // Only darkened mail waits for its first paint (it would flash white). Every open mounts a new body, so
+        // hiding all mail until then made each one blink in; text and light mail show as they parse.
+        waiting: active() === slot && !hasShown() && darkened(),
+        own: slotStyle()[slot].own,
+        framed: slotStyle()[slot].framed,
+      }}
       sandbox="allow-same-origin"
-      srcdoc={srcdoc()}
-      onLoad={onLoad}
+      onLoad={(e) => onLoad(slot, e)}
       title="Message"
     />
   );
   return (
     <>
-      {/* One wrapper whose framing toggles: moving the frame between two branches let the old branch's cleanup
-          remove it, and "Show original" came back empty. */}
-      <div class="html-stage" classList={{ framed: designed() && !reading() }}>
-        {body}
+      <div class="html-stage">
+        {renderSlot(0)}
+        {renderSlot(1)}
       </div>
       <Show when={linkMenu()}>
         {(m) => (
@@ -324,7 +488,12 @@ function HtmlBody(props: {
           open={unfolded()}
           onClick={() => {
             setUnfolded(!unfolded());
-            docOf(frame)?.documentElement.classList.toggle("tern-fold", !unfolded());
+            const el = frames[activeSlot];
+            const doc = docOf(el);
+            if (el && doc) {
+              doc.documentElement.classList.toggle("tern-fold", !unfolded());
+              fitFrame(el, doc);
+            }
           }}
         />
       </Show>
@@ -388,6 +557,7 @@ export function FoldPill(props: { signature: string | null; quote?: Quoted | nul
  * sits behind a bar so it reads apart from the new text. */
 function PlainBody(props: { text: string }) {
   const [unfolded, setUnfolded] = createSignal(false);
+  createEffect(on(() => props.text, () => setUnfolded(false), { defer: true }));
   const at = () => foldAt(props.text);
   return (
     <>
@@ -827,6 +997,12 @@ export function ConversationView(props: {
   const [asked, setAsked] = createSignal(false);
   const remoteFor = (m: ThreadMessage) =>
     asked() || settings.loadImages === "always" || settings.imagesFrom.includes(m.fromAddr.toLowerCase());
+  /** Remembers the senders whose pictures were just asked for, so their mail stops asking. */
+  const trustSenders = () => {
+    const blocked = props.messages.filter((m) => webs().get(m.id)?.images && !remoteFor(m)).map((m) => m.fromAddr.toLowerCase());
+    const add = [...new Set(blocked)].filter((a) => a && !settings.imagesFrom.includes(a));
+    if (add.length) setSetting("imagesFrom", [...settings.imagesFrom, ...add]);
+  };
   const privacy = createMemo(() => {
     let trackers = 0;
     let blocked = 0;
@@ -843,7 +1019,7 @@ export function ConversationView(props: {
   });
   const shieldTip = () => {
     const { trackers, blocked, shown } = privacy();
-    if (blocked) return `Blocked ${[trackers && plural(trackers, "tracker"), plural(blocked, "image")].filter(Boolean).join(" and ")}. Click to load the images.`;
+    if (blocked) return `Blocked ${[trackers && plural(trackers, "tracker"), plural(blocked, "image")].filter(Boolean).join(" and ")}. Click to load the images, now and from this sender from then on.`;
     return shown ? `Images shown. ${plural(trackers, "tracker")} still blocked.` : `Blocked ${plural(trackers, "tracker")}.`;
   };
   const minutes = () => (last() ? minutesOf(last()) : 0);
@@ -888,6 +1064,17 @@ export function ConversationView(props: {
         ? [{ name: `Translate to ${settings.translateTo || ownLanguage()}`, group: "view", run: () => setTranslating(last().id) }]
         : []),
     ];
+    const trusted = last() && settings.imagesFrom.includes(last().fromAddr.toLowerCase()) ? last().fromAddr.toLowerCase() : null;
+    if (trusted) {
+      return [
+        ...items,
+        {
+          name: "Ask before loading this sender's images",
+          group: "view",
+          run: () => setSetting("imagesFrom", settings.imagesFrom.filter((a) => a !== trusted)),
+        },
+      ];
+    }
     if (!sender) return items;
     return [
       ...items,
@@ -895,27 +1082,32 @@ export function ConversationView(props: {
     ];
   };
 
-  // Another conversation starts with its images blocked, reading view off and nobody unsubscribed.
+  /** A newsletter: mail its sender designed, sent to a list. It opens as sent unless Settings → Reading asks for
+   * reading view (owner, 2026-11-21); the book icon still switches. Decided once per conversation, when its body is
+   * here. */
+  const newsletter = () => !!last() && designed().has(last().id) && !!last().listUnsubscribe;
+  let readingChosen = false;
+
+  // Another conversation starts with its images blocked, reading view at its default and nobody unsubscribed.
   let shown: number | undefined;
   createEffect(() => {
     const first = props.messages[0]?.id;
     if (first === shown) return;
     shown = first;
+    const isNews = newsletter();
     setAsked(false);
     setUnsubscribed("");
-    setReading(false);
-    readingChosen = false;
+    setReading(isNews && settings.newsletterReading);
+    readingChosen = isNews;
     setCurrentMark(null);
     setPick(null);
     setTranslating(null);
+    setOriginal(null);
+    setGrouping(false);
   });
 
   // MARK: The column beside the messages (docs/design/ui.md §4.2a–c)
 
-  /** A newsletter: mail its sender designed, sent to a list. It opens in reading view unless Settings → Reading
-   * says otherwise; the book icon still switches. Decided once per conversation, when its body is here. */
-  const newsletter = () => !!last() && designed().has(last().id) && !!last().listUnsubscribe;
-  let readingChosen = false;
   createEffect(() => {
     if (readingChosen || !newsletter()) return;
     readingChosen = true;
@@ -969,22 +1161,28 @@ export function ConversationView(props: {
     if (m.listUnsubscribe || props.mine(m.fromAddr)) found.asks = [];
     return found;
   });
+  // Not the mail's name over and over: one-word lines are its brand ("Readwise"), and the subject is in the header.
+  const partHeadings = (doc: ParentNode) => {
+    const subjectWords = subject().replace(/\s+/g, " ").trim().toLowerCase();
+    return [...doc.querySelectorAll("h2")]
+      .map((el) => ({ el, text: el.textContent?.replace(/\s+/g, " ").trim() ?? "" }))
+      .filter(({ text }) => text.includes(" ") && text.toLowerCase() !== subjectWords)
+      .slice(0, 12);
+  };
   /** A newsletter's parts, by its headings, while it shows in reading view. */
   const contents = createMemo(() => {
     const m = last();
     const web = m && reading() ? webs().get(m.id) : undefined;
     if (!web || !designed().has(m!.id)) return [];
     const doc = new DOMParser().parseFromString(readingView(web.html), "text/html");
-    // Not the mail's name over and over: one-word lines are its brand ("Readwise"), and the subject is in the header.
-    const subjectWords = subject().replace(/\s+/g, " ").trim().toLowerCase();
-    return [...doc.querySelectorAll("h2")]
-      .map((h) => h.textContent?.replace(/\s+/g, " ").trim() ?? "")
-      .filter((h) => h.includes(" ") && h.toLowerCase() !== subjectWords)
-      .slice(0, 12);
+    return partHeadings(doc).map((h) => h.text);
   });
   const toPart = (i: number) => {
-    const frame = document.querySelector<HTMLIFrameElement>(`.card[data-message="${last().id}"] iframe`);
-    const heading = docOf(frame)?.querySelectorAll("h2")[i];
+    const frame =
+      document.querySelector<HTMLIFrameElement>(`.card[data-message="${last().id}"] iframe.active`) ??
+      document.querySelector<HTMLIFrameElement>(`.card[data-message="${last().id}"] iframe`);
+    const doc = docOf(frame);
+    const heading = doc ? partHeadings(doc)[i]?.el : undefined;
     if (!heading) return;
     const range = heading.ownerDocument.createRange();
     range.selectNode(heading);
@@ -1119,22 +1317,26 @@ export function ConversationView(props: {
   const dayOf = (i: number) =>
     i === 0 || startOfDay(props.messages[i - 1].date) !== startOfDay(props.messages[i].date) ? dayHeading(props.messages[i].date) : null;
 
-  // The full header scrolls away with the messages; once the subject is out of view a compact bar fades in over
-  // the pane. The bar takes no space, so nothing moves as it comes and goes, and nothing can flicker.
+  // The full header scrolls away with the messages; once the subject is out of view it fades into the pane's head,
+  // which is there all along, so nothing moves as it comes and goes.
   let title!: HTMLHeadingElement;
   const [compact, setCompact] = createSignal(false);
   const [at, setAt] = createSignal(-1);
   createEffect(on(() => props.messages[0]?.id, () => setAt(-1), { defer: true }));
-  /** In a thread, whose message the compact bar is over: "Alan Turing · 12:56 PM · 2 of 3" (idea 91). */
+  /** In a thread, whose message the head is over: "Alan Turing · 12:56 PM · 2 of 3" (idea 91). */
   const whereAt = () => {
     const m = props.messages[at()];
     return m ? `${name(m)} · ${clock.format(new Date(m.date * 1000))} · ${at() + 1} of ${props.messages.length}` : "";
   };
   onMount(() => {
     const pane = title.closest(".conversation-pane");
-    const watch = new IntersectionObserver(([e]) => setCompact(!e.isIntersecting), { root: pane });
+    const headH = pane?.querySelector<HTMLElement>(".conv-head")?.offsetHeight ?? 48;
+    const watch = new IntersectionObserver(([e]) => setCompact(!e.isIntersecting), {
+      root: pane,
+      rootMargin: `-${headH}px 0px 0px 0px`,
+    });
     watch.observe(title);
-    // Which message the top of the pane is in, for the compact bar: the last one whose top has passed under it.
+    // Which message the top of the pane is in, for the head: the last one whose top has passed under it.
     let frame = 0;
     const findAt = () => {
       frame = 0;
@@ -1195,16 +1397,17 @@ export function ConversationView(props: {
     </Show>
   );
 
-  // The conversation's tools: in the header, or in the reader bar, where reading time is said in words and the book
-  // is "Original look".
-  // In Tern's own title bar the conversation closes from a back arrow before the subject, so its ✕ is not a
-  // slip away from the window's ✕ (canvas "Tern polish, now and after", 1).
-  const tools = (inTitleBar = false) => (
+  // The conversation's tools, in the pane's head. The conversation closes from the back arrow at the head's start,
+  // so no ✕ sits beside the window's own ✕ (canvas "Tern polish, now and after", 1).
+  const tools = () => (
     <div class="tools">
       <Show when={privacy().trackers || privacy().blocked}>
         <button class="tool safe extra" data-tip={shieldTip()} aria-label={shieldTip()} onClick={() => {
           if (!privacy().blocked) return;
           setAsked(true);
+          // Asked once, the sender is trusted from then on: their mail loads its pictures without asking again
+          // (owner, 2026-11-21). The ⋯ menu takes it back.
+          trustSenders();
           // Reading view keeps only the largest pictures, so asking for the images shows the mail as its sender made it.
           setReading(false);
         }}>
@@ -1249,56 +1452,31 @@ export function ConversationView(props: {
         Done <kbd>E</kbd>
       </button>
       <ActionMenu items={menu} />
-      <Show when={!inTitleBar}>
-        <button class="tool" data-tip="Close (Esc)" aria-label="Close" onClick={props.onClose}>
-          <Icon name="x" size={15} />
-        </button>
-      </Show>
     </div>
   );
 
-  // With Tern's own title bar the subject and the tools sit up there, and the header here keeps the people and
-  // labels: the mail starts a row higher. The heading stays for screen readers and the compact bar's watch.
-  const inBar = () => (ownTitleBar ? convSlot() : null);
-
   return (
-    <div class="reading" classList={{ "head-in-bar": !!inBar() }}>
-      <Show when={inBar()}>
-        {(slot) => (
-          <Portal mount={slot()}>
-            <div class="conv-bar">
-              <button class="tool back" title="Back to the list (Esc)" aria-label="Back to the list" onClick={props.onClose}>
-                <Icon name="arrow-left" size={16} />
-              </button>
-              <strong class="conv-subject" title={subject()}>
-                {subject()}
-              </strong>
-              <span class="conv-meta">
-                {people()} · {props.messages.length === 1 ? "1 message" : `${props.messages.length} messages`}
-              </span>
-              <span class="spacer" />
-              {tools(true)}
-            </div>
-          </Portal>
-        )}
-      </Show>
+    <div class="reading">
+      {/* The pane's head, as high as the list's and the sidebar's (canvas "Tern toolbar directions", B): back, then
+          the subject once its heading has scrolled away, then the tools. It stays at the top while the mail scrolls,
+          and its empty part drags the window (Windows). */}
+      <div class="conv-head" data-tauri-drag-region="deep">
+        <button class="tool back" title="Back to the list (Esc)" aria-label="Back to the list" onClick={props.onClose}>
+          <Icon name="arrow-left" size={16} />
+        </button>
+        <span class="conv-head-subject" classList={{ shown: compact() }} aria-hidden={!compact()}>
+          <strong>{subject()}</strong>
+          <Show when={whereAt()}>{(w) => <span class="at">{w()}</span>}</Show>
+        </span>
+        <span class="spacer" />
+        {tools()}
+      </div>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: offers the mark bar after a selection made with the mouse */}
       <div
         class="conversation"
         classList={{ replying: props.replying }}
         onMouseUp={() => setTimeout(() => setPick(picked(document, null, { left: 0, top: 0 })))}
       >
-        <div class="compact" classList={{ shown: compact() && !inBar() }} aria-hidden={!compact() || !!inBar()}>
-          <div class="bar">
-            <span class="subject">
-              {subject()}
-              <Show when={whereAt()}>{(w) => <span class="at">{w()}</span>}</Show>
-            </span>
-            <button class="primary" tabIndex={compact() ? 0 : -1} onClick={props.onDone}>
-              Done <kbd>E</kbd>
-            </button>
-          </div>
-        </div>
         <Show when={reader()}>
           <div class="reader-bar">
             <strong>{last().fromName || last().fromAddr}</strong>
@@ -1310,7 +1488,6 @@ export function ConversationView(props: {
             <button class="soft" onClick={props.shelf.toggle} title={props.shelf.on ? "Off the shelf, back to the inbox (Shift+L)" : "Keep it on the Read later shelf (Shift+L); a reply brings it back"}>
               {props.shelf.on ? "Back to the inbox" : "Read later"} <kbd>Shift L</kbd>
             </button>
-            <Show when={!inBar()}>{tools()}</Show>
           </div>
         </Show>
         <header class="conversation-head" classList={{ reader: reader() }}>
@@ -1340,7 +1517,6 @@ export function ConversationView(props: {
               )}
             </Show>
           </div>
-          <Show when={!reader() && !inBar()}>{tools()}</Show>
         </header>
         <Show when={last()}>
           <Brief

@@ -51,7 +51,7 @@ pub fn when(text: &str, now: i64, offset: i64) -> Option<i64> {
 
     // A span from now: "3h", "2 days", "45 min".
     if let Some(secs) = span(&words) {
-        return Some(now + secs).filter(|t| *t > now);
+        return now.checked_add(secs).filter(|t| *t > now);
     }
     let joined = words.join(" ");
     let fixed = match joined.as_str() {
@@ -120,13 +120,13 @@ fn span(words: &[&str]) -> Option<i64> {
     };
     let n: i64 = n.parse().ok()?;
     let unit = match unit {
-        "m" | "min" | "mins" | "minute" | "minutes" => 60,
+        "m" | "min" | "mins" | "minute" | "minutes" => 60i64,
         "h" | "hr" | "hrs" | "hour" | "hours" => 3600,
         "d" | "day" | "days" => 86_400,
         "w" | "wk" | "week" | "weeks" => 7 * 86_400,
         _ => return None,
     };
-    Some(n * unit)
+    n.checked_mul(unit)
 }
 
 /// "9am", "9 pm", "9:30", "17:00", "noon" as minutes after midnight, and how many words it took.

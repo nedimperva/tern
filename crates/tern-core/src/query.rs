@@ -75,38 +75,40 @@ fn fts_term(token: &str) -> Option<String> {
 
 /// `7d`, `2w`, `6m`, `1y` in seconds.
 fn duration(s: &str) -> Option<i64> {
-    let (n, unit) = s.split_at(s.len().checked_sub(1)?);
-    let n: i64 = n.parse().ok()?;
-    let day = 86_400;
-    Some(
-        n * match unit.to_ascii_lowercase().as_str() {
-            "d" => day,
-            "w" => 7 * day,
-            "m" => 30 * day,
-            "y" => 365 * day,
-            _ => return None,
-        },
-    )
+    let mut chars = s.chars();
+    let unit = chars.next_back()?;
+    let n: i64 = chars.as_str().parse().ok()?;
+    let day = 86_400i64;
+    let factor = match unit.to_ascii_lowercase() {
+        'd' => day,
+        'w' => 7 * day,
+        'm' => 30 * day,
+        'y' => 365 * day,
+        _ => return None,
+    };
+    n.checked_mul(factor)
 }
 
 /// `500k`, `5m`, `1g` or plain bytes.
 fn bytes(s: &str) -> Option<i64> {
     let lower = s.to_ascii_lowercase();
     let (n, scale) = match lower.chars().last()? {
-        'k' => (&lower[..lower.len() - 1], 1_000),
-        'm' => (&lower[..lower.len() - 1], 1_000_000),
-        'g' => (&lower[..lower.len() - 1], 1_000_000_000),
-        _ => (lower.as_str(), 1),
+        'k' => (&lower[..lower.len() - 1], 1_000.0),
+        'm' => (&lower[..lower.len() - 1], 1_000_000.0),
+        'g' => (&lower[..lower.len() - 1], 1_000_000_000.0),
+        _ => (lower.as_str(), 1.0),
     };
     let n: f64 = n.parse().ok()?;
-    Some((n * scale as f64) as i64)
+    let product = n * scale;
+    (product.is_finite() && product >= 0.0 && product <= i64::MAX as f64).then_some(product as i64)
 }
 
 /// `YYYY-MM-DD` (or `YYYY/MM/DD`) as Unix seconds at midnight UTC.
 fn date(s: &str) -> Option<i64> {
     let mut parts = s.split(['-', '/']).map(|p| p.parse::<i64>().ok());
     let (y, m, d) = (parts.next()??, parts.next()??, parts.next()??);
-    if parts.next().is_some() || !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+    if parts.next().is_some() || !(1..=9999).contains(&y) || !(1..=12).contains(&m) || !(1..=31).contains(&d)
+    {
         return None;
     }
     // Days from 1970-01-01 to the civil date (Howard Hinnant's algorithm).
@@ -115,7 +117,7 @@ fn date(s: &str) -> Option<i64> {
     let yoe = y - era * 400;
     let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    Some((era * 146_097 + doe - 719_468) * 86_400)
+    (era * 146_097 + doe - 719_468).checked_mul(86_400)
 }
 
 /// The folder role a word in `in:` stands for, where it is one.
@@ -194,10 +196,24 @@ fn filter(key: &str, value: &str, now: i64, midnight: fn(i64) -> i64, q: &mut Ve
         "in" | "label" => {
             if let Some(role) = role(&lower) {
                 push(Value::Text(role.into()));
-                "m.folder_id IN (SELECT id FROM folders WHERE role = ?)".into()
+                if role == "archive" {
+                    // Gmail has no Archive folder: archived mail is what All Mail holds outside the inbox.
+                    "(m.folder_id IN (SELECT id FROM folders WHERE role = ?)
+                      OR (m.folder_id IN (SELECT id FROM folders WHERE role = 'all')
+                          AND NOT EXISTS (SELECT 1 FROM messages i JOIN folders fi ON fi.id = i.folder_id
+                                          WHERE fi.role = 'inbox' AND i.account_id = m.account_id
+                                            AND i.message_id = m.message_id)))"
+                        .into()
+                } else {
+                    "m.folder_id IN (SELECT id FROM folders WHERE role = ?)".into()
+                }
             } else {
+                push(Value::Text(lower.clone()));
                 push(Value::Text(lower));
-                "m.folder_id IN (SELECT id FROM folders WHERE lower(name) = ?)".into()
+                "(m.folder_id IN (SELECT id FROM folders WHERE lower(name) = ?)
+                  OR EXISTS (SELECT 1 FROM message_labels l JOIN folders f ON f.id = l.folder_id
+                             WHERE f.account_id = m.account_id AND l.message_id = m.message_id AND lower(f.name) = ?))"
+                    .into()
             }
         }
         "before" => {
@@ -209,11 +225,11 @@ fn filter(key: &str, value: &str, now: i64, midnight: fn(i64) -> i64, q: &mut Ve
             "m.date >= ?".into()
         }
         "newer_than" | "newer" => {
-            push(Value::Integer(now - duration(value)?));
+            push(Value::Integer(now.checked_sub(duration(value)?)?));
             "m.date >= ?".into()
         }
         "older_than" | "older" => {
-            push(Value::Integer(now - duration(value)?));
+            push(Value::Integer(now.checked_sub(duration(value)?)?));
             "m.date < ?".into()
         }
         "larger" => {

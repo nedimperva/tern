@@ -76,8 +76,14 @@ export function pop(hit: ThreadRow[]) {
  * companion slides in at the edge. */
 export type Shift = "open" | "close" | "switch" | "gone-right" | "gone-left" | "gone-up" | "side";
 
-type Transition = { finished: Promise<void> };
+type Transition = { finished: Promise<void>; ready?: Promise<void>; updateCallbackDone?: Promise<void> };
 type WithTransitions = Document & { startViewTransition?: (update: () => unknown) => Transition };
+
+/** WebKitGTK 2.52+/2.54+ crashes with a null AcceleratedBackingStore SIGSEGV (WebKit #324730) when
+ * `startViewTransition()` forces accelerated compositing on setups where DMA-BUF is disabled (forced env var,
+ * NVIDIA patches, etc.). Skip view transitions on Linux WebKitGTK until the upstream fix rolls out. */
+export const isLinuxWebKit = (ua = navigator.userAgent) =>
+  ua.includes("Linux") && /AppleWebKit/i.test(ua) && !/Chrome|Chromium/i.test(ua);
 
 let running: Transition | null = null;
 let lastShift = 0;
@@ -85,31 +91,41 @@ let lastShift = 0;
 const HELD_MS = 180;
 
 /** Makes a change between screens with the webview's view transitions (`styles.css`, "Between screens"). Where the
- * webview has none, with reduced motion, while one is running or when the key is held, the change just happens. */
+ * webview has none, on Linux WebKitGTK, with reduced motion, while one is running or when the key is held, the
+ * change just happens. */
 export function shift(kind: Shift, change: () => unknown) {
   const doc = document as WithTransitions;
   const now = performance.now();
   const held = now - lastShift < HELD_MS;
   lastShift = now;
-  if (!doc.startViewTransition || running || held || !ms("--d-base")) {
+  if (!doc.startViewTransition || isLinuxWebKit() || running || held || !ms("--d-base")) {
     void change();
     return;
   }
   const root = document.documentElement;
   root.dataset.shift = kind;
-  const t = doc.startViewTransition(change);
+  let t: Transition;
+  try {
+    t = doc.startViewTransition(change);
+  } catch {
+    delete root.dataset.shift;
+    void change();
+    return;
+  }
   running = t;
   const done = () => {
     if (running !== t) return;
     running = null;
     delete root.dataset.shift;
   };
+  t.ready?.catch(() => {});
+  t.updateCallbackDone?.catch(() => {});
   t.finished.then(done, done);
 }
 
 /** The webview holds the old screen until the new one is drawn: a mail that takes longer than this to come out of
  * the store moves in anyway, and fills in where it stands. */
-export const settle = <T>(work: Promise<T>) => Promise.race([work, new Promise((r) => setTimeout(r, 120))]);
+export const settle = <T>(work: Promise<T>) => Promise.race([work.catch(() => {}), new Promise((r) => setTimeout(r, 120))]);
 
 /** A message opened or closed in a thread: what is below it glides down or up instead of jumping (idea 85). The
  * rows are measured before and after the change, and each one that moved starts where it was. */

@@ -141,6 +141,9 @@ struct File {
 }
 
 fn key(passphrase: &str, salt: &[u8], rounds: u32) -> Result<LessSafeKey> {
+    if rounds > 5_000_000 {
+        bail!("That file isn't Tern settings.");
+    }
     let rounds = NonZeroU32::new(rounds).ok_or_else(|| anyhow!("That file isn't Tern settings."))?;
     let mut bytes = [0u8; 32];
     ring::pbkdf2::derive(ring::pbkdf2::PBKDF2_HMAC_SHA256, rounds, salt, passphrase.as_bytes(), &mut bytes);

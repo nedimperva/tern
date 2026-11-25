@@ -14,13 +14,24 @@ const SNIPPET_LEN: usize = 160;
 /// preview shows it). Quoted replies are text too: the first match wins wherever it is.
 pub(super) fn snippet_around(text: &str, words: &[String]) -> Option<String> {
     let flat: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    let lower = flat.to_lowercase();
+    let fold = |s: &str| -> String {
+        s.chars()
+            .map(|c| {
+                let mut lc = c.to_lowercase();
+                match (lc.next(), lc.next()) {
+                    (Some(one), None) if one.len_utf8() == c.len_utf8() => one,
+                    _ => c,
+                }
+            })
+            .collect()
+    };
+    let lower = fold(&flat);
     let starts_word = |i: usize| i == 0 || !lower[..i].chars().next_back().is_some_and(char::is_alphanumeric);
     let at = words
         .iter()
         .filter_map(|w| {
-            let w = w.trim_matches('"').to_lowercase();
-            lower.match_indices(&w).map(|(i, _)| i).find(|&i| starts_word(i))
+            let w = fold(w.trim_matches('"'));
+            (!w.is_empty()).then(|| lower.match_indices(&w).map(|(i, _)| i).find(|&i| starts_word(i)))?
         })
         .min()?;
     if at < SNIPPET_LEN - SNIPPET_BEFORE {
@@ -53,47 +64,12 @@ impl Store {
         &self,
         id: Option<i64>,
         account_id: i64,
-        mut draft: Draft,
+        draft: Draft,
         upload_now: bool,
     ) -> Result<i64> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        let existing: Option<String> = match id {
-            Some(id) => {
-                tx.query_row("SELECT payload FROM drafts WHERE id = ?1", [id], |r| r.get(0)).optional()?
-            }
-            None => None,
-        };
-        if let Some(payload) = &existing {
-            draft.message_id = serde_json::from_str::<Draft>(payload)?.message_id;
-        }
-        if draft.message_id.is_none() {
-            let email: String =
-                tx.query_row("SELECT email FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
-            draft.message_id =
-                Some(crate::smtp::new_message_id(email.rsplit_once('@').map_or("localhost", |p| p.1))?);
-        }
-        let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
-        let payload = serde_json::to_string(&draft)?;
-        let id = match (id, existing) {
-            (Some(id), Some(_)) => {
-                tx.execute(
-                    "UPDATE drafts SET payload = ?2, updated_at = ?3, upload_now = upload_now OR ?4, version = version + 1,
-                                       discarded_at = NULL, sent_at = NULL
-                     WHERE id = ?1",
-                    params![id, payload, now(), upload_now],
-                )?;
-                id
-            }
-            _ => {
-                tx.execute(
-                    "INSERT INTO drafts (account_id, message_id, payload, updated_at, upload_now) VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![account_id, bare, payload, now(), upload_now],
-                )?;
-                tx.last_insert_rowid()
-            }
-        };
-        mirror_draft(&tx, account_id, &draft)?;
+        let id = write_draft(&tx, id, account_id, draft, upload_now)?;
         tx.commit()?;
         Ok(id)
     }
@@ -222,27 +198,38 @@ impl Store {
 
     /// Turns a send that was refused into a draft again, for the person to fix and send (problems list "Edit").
     pub fn problem_to_draft(&self, outbox_id: i64) -> Result<DraftRecord> {
-        let (account_id, payload): (i64, String) = self.conn().query_row(
-            "SELECT account_id, payload FROM outbox
-             WHERE id = ?1 AND (gave_up_at IS NOT NULL OR (scheduled = 1 AND claimed = 0))",
-            [outbox_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )?;
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let (account_id, payload): (i64, String) = tx
+            .query_row(
+                "SELECT account_id, payload FROM outbox
+                 WHERE id = ?1 AND (gave_up_at IS NOT NULL OR (scheduled = 1 AND claimed = 0))",
+                [outbox_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("That send is already on its way or gone"))?;
         let OutboxOp::Send(draft) = serde_json::from_str(&payload)? else {
             bail!("Only a send can be edited")
         };
         let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
-        let existing: Option<i64> = self
-            .conn()
+        let existing: Option<i64> = tx
             .query_row(
                 "SELECT id FROM drafts WHERE account_id = ?1 AND message_id = ?2",
                 params![account_id, bare],
                 |r| r.get(0),
             )
             .optional()?;
-        let id = self.save_draft(existing, account_id, draft, false)?;
-        self.conn().execute("DELETE FROM outbox WHERE id = ?1", [outbox_id])?;
-        Ok(self.draft(id)?.expect("just saved"))
+        // One transaction: the send goes only once its draft is saved, so a failed save loses nothing.
+        let id = write_draft(&tx, existing, account_id, draft, false)?;
+        tx.execute(
+            "DELETE FROM reminders WHERE kind = 'followup' AND account_id = ?1 AND message_id = ?2",
+            params![account_id, bare],
+        )?;
+        tx.execute("DELETE FROM outbox WHERE id = ?1", [outbox_id])?;
+        tx.commit()?;
+        drop(conn);
+        self.draft(id)?.ok_or_else(|| anyhow::anyhow!("That draft is gone"))
     }
 
     /// The server work drafts of this account need now.
@@ -653,10 +640,9 @@ impl Store {
              FROM messages m LEFT JOIN bodies b ON b.message_id = m.id
              WHERE m.account_id = (SELECT account_id FROM messages WHERE id = ?1)
                AND m.thread_id = (SELECT thread_id FROM messages WHERE id = ?1)
-             GROUP BY COALESCE(m.message_id, m.id)
              ORDER BY m.date, m.id"
         ))?;
-        let messages = stmt
+        let raw = stmt
             .query_map([id], |r| {
                 Ok(ThreadMessage {
                     row: row(r)?,
@@ -676,6 +662,34 @@ impl Store {
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        // A message kept in several folders (Gmail's INBOX and All Mail, or a copy in Sent) appears once, keeping
+        // the requested row id when one copy is `id` and taking the body and parts from whichever copy has them.
+        let mut messages: Vec<ThreadMessage> = Vec::with_capacity(raw.len());
+        let mut by_mid: HashMap<String, usize> = HashMap::new();
+        for m in raw {
+            if let Some(mid) = m.message_id.clone() {
+                if let Some(&idx) = by_mid.get(&mid) {
+                    let existing = &mut messages[idx];
+                    if m.row.id == id {
+                        existing.row = m.row;
+                    }
+                    if (!existing.body_loaded && m.body_loaded)
+                        || (existing.body_text.is_none() && m.body_text.is_some())
+                        || (existing.body_html.is_none() && m.body_html.is_some())
+                    {
+                        existing.body_text = m.body_text.or(existing.body_text.take());
+                        existing.body_html = m.body_html.or(existing.body_html.take());
+                        existing.body_loaded |= m.body_loaded;
+                    }
+                    if existing.attachments.is_empty() && !m.attachments.is_empty() {
+                        existing.attachments = m.attachments;
+                    }
+                    continue;
+                }
+                by_mid.insert(mid, messages.len());
+            }
+            messages.push(m);
+        }
         Ok(messages)
     }
 
@@ -746,7 +760,10 @@ impl Store {
         let mut seen = HashSet::new();
         let mut kept = Vec::with_capacity(rows.len());
         for r in rows {
-            let message_id: Option<String> = ids.query_row([r.id], |x| x.get(0))?;
+            let Some(message_id) = ids.query_row([r.id], |x| x.get::<_, Option<String>>(0)).optional()?
+            else {
+                continue;
+            };
             if message_id.is_none_or(|m| seen.insert((r.account_id, m))) {
                 kept.push(r);
             }
@@ -873,7 +890,60 @@ impl Store {
             window = (window * limit / got * 5 / 4).max(window * 2);
         };
         let mut one = conn.prepare_cached(&format!("SELECT {ROW} FROM messages m WHERE m.id = ?"))?;
-        let rows = ids.iter().map(|id| one.query_row([id], row)).collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut rows = Vec::with_capacity(ids.len());
+        for id in &ids {
+            if let Some(r) = one.query_row([id], row).optional()? {
+                rows.push(r);
+            }
+        }
         Ok(Some(rows))
     }
+}
+
+/// Saves a draft inside the caller's transaction: `save_draft`, and turning a refused send back into a draft, which
+/// must drop the send in the same step or neither.
+fn write_draft(
+    tx: &rusqlite::Transaction,
+    id: Option<i64>,
+    account_id: i64,
+    mut draft: Draft,
+    upload_now: bool,
+) -> Result<i64> {
+    let existing: Option<String> = match id {
+        Some(id) => {
+            tx.query_row("SELECT payload FROM drafts WHERE id = ?1", [id], |r| r.get(0)).optional()?
+        }
+        None => None,
+    };
+    if let Some(payload) = &existing {
+        draft.message_id = serde_json::from_str::<Draft>(payload)?.message_id;
+    }
+    if draft.message_id.is_none() {
+        let email: String =
+            tx.query_row("SELECT email FROM accounts WHERE id = ?1", [account_id], |r| r.get(0))?;
+        draft.message_id =
+            Some(crate::smtp::new_message_id(email.rsplit_once('@').map_or("localhost", |p| p.1))?);
+    }
+    let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
+    let payload = serde_json::to_string(&draft)?;
+    let id = match (id, existing) {
+        (Some(id), Some(_)) => {
+            tx.execute(
+                "UPDATE drafts SET payload = ?2, updated_at = ?3, upload_now = upload_now OR ?4, version = version + 1,
+                                   discarded_at = NULL, sent_at = NULL
+                 WHERE id = ?1",
+                params![id, payload, now(), upload_now],
+            )?;
+            id
+        }
+        _ => {
+            tx.execute(
+                "INSERT INTO drafts (account_id, message_id, payload, updated_at, upload_now) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![account_id, bare, payload, now(), upload_now],
+            )?;
+            tx.last_insert_rowid()
+        }
+    };
+    mirror_draft(tx, account_id, &draft)?;
+    Ok(id)
 }

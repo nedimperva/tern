@@ -57,20 +57,25 @@ impl Store {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         let Some(first) = ids.first() else { bail!("Pick the conversations to join.") };
-        let (account, target): (i64, String) =
-            tx.query_row("SELECT account_id, thread_id FROM messages WHERE id = ?1", [first], |r| {
+        let (account, target): (i64, String) = tx
+            .query_row("SELECT account_id, thread_id FROM messages WHERE id = ?1", [first], |r| {
                 Ok((r.get(0)?, r.get(1)?))
-            })?;
+            })
+            .optional()?
+            .ok_or_else(|| anyhow!("That message is gone."))?;
+        let mut seen_threads = HashSet::from([target.clone()]);
         let mut moving = Vec::new();
         for id in &ids[1..] {
-            let (a, t): (i64, String) =
-                tx.query_row("SELECT account_id, thread_id FROM messages WHERE id = ?1", [id], |r| {
+            let (a, t): (i64, String) = tx
+                .query_row("SELECT account_id, thread_id FROM messages WHERE id = ?1", [id], |r| {
                     Ok((r.get(0)?, r.get(1)?))
-                })?;
+                })
+                .optional()?
+                .ok_or_else(|| anyhow!("That message is gone."))?;
             if a != account {
                 bail!("Conversations from two accounts can't be joined.");
             }
-            if t == target {
+            if !seen_threads.insert(t.clone()) {
                 continue;
             }
             let mut stmt = tx.prepare("SELECT id FROM messages WHERE account_id = ?1 AND thread_id = ?2")?;
@@ -91,8 +96,38 @@ impl Store {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         if let Some((new, old)) = &undo.split {
-            tx.execute("DELETE FROM thread_moves WHERE thread_id = ?1", [new])?;
-            tx.execute("UPDATE messages SET thread_id = ?2 WHERE thread_id = ?1", params![new, old])?;
+            let account: Option<i64> = undo
+                .moves
+                .first()
+                .and_then(|(id, _)| {
+                    tx.query_row("SELECT account_id FROM messages WHERE id = ?1", [id], |r| r.get(0))
+                        .optional()
+                        .ok()
+                        .flatten()
+                })
+                .or_else(|| {
+                    tx.query_row(
+                        "SELECT account_id FROM thread_moves WHERE thread_id = ?1 LIMIT 1",
+                        [new],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .ok()
+                    .flatten()
+                });
+            if let Some(account) = account {
+                tx.execute(
+                    "DELETE FROM thread_moves WHERE account_id = ?1 AND thread_id = ?2",
+                    params![account, new],
+                )?;
+                tx.execute(
+                    "UPDATE messages SET thread_id = ?3 WHERE account_id = ?1 AND thread_id = ?2",
+                    params![account, new, old],
+                )?;
+            } else {
+                tx.execute("DELETE FROM thread_moves WHERE thread_id = ?1", [new])?;
+                tx.execute("UPDATE messages SET thread_id = ?2 WHERE thread_id = ?1", params![new, old])?;
+            }
         }
         for (id, thread) in &undo.moves {
             tx.execute("UPDATE messages SET thread_id = ?2 WHERE id = ?1", params![id, thread])?;

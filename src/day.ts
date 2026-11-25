@@ -28,7 +28,7 @@ let since = 0;
 
 /** Reads the counts again (mail came in, something was done). */
 export async function refreshStart() {
-  if (!since) return;
+  if (!since) since = settings.lastSeen || now() - 12 * 3600;
   try {
     setStart(await api.dayStart(since));
   } catch {
@@ -56,7 +56,7 @@ export const closeScreen = () => setScreen(false);
 /** The morning screen on asking (`g o`), counted afresh. */
 export async function openScreen() {
   await refreshStart();
-  setScreen(true);
+  if (start()) setScreen(true);
 }
 
 /** Call once settings are loaded. Keeps "last here" up to date while the window shows, so the next visit counts

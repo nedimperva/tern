@@ -71,6 +71,10 @@ export function withoutTrackers(html: string): Remote {
     if (secure(url) !== url) (el.setAttribute("background", secure(url)), (changed = true));
   }
   for (const img of [...doc.images]) {
+    if (img.hasAttribute("loading")) {
+      img.removeAttribute("loading");
+      changed = true;
+    }
     const srcset = img.getAttribute("srcset");
     if (srcset && /(^|,)\s*(http:)?\/\//i.test(srcset)) {
       img.setAttribute("srcset", srcset.replace(/(^|,)(\s*)(?:http:)?\/\//gi, "$1$2https://"));
@@ -111,11 +115,11 @@ const page = (remote: boolean, css: string, html: string) => `<!doctype html><ht
 <style>${css}
   /* The frame is sized to the mail, so the mail must not size itself to the frame: a body at height 100% would
      keep whatever height the frame last had. */
-  html,body{height:auto!important;min-height:0!important}
+  html,body{height:auto!important;min-height:0!important;max-height:none!important}
   img{max-width:100%;height:auto}
   pre{white-space:pre-wrap}
   ${HTML_FOLD_CSS}
-</style></head><body>${html}</body></html>`;
+</style></head><body>${html}<style>html,body{height:auto!important;min-height:0!important;max-height:none!important}</style></body></html>`;
 
 /** Sizes a mail's frame to its content: the mail's own height, never the frame's current one (which only ever
  * grew, leaving space below a mail shown after a taller one), and mail laid out wider than the frame (fixed-width
@@ -123,8 +127,18 @@ const page = (remote: boolean, css: string, html: string) => `<!doctype html><ht
 export function fitFrame(frame: HTMLIFrameElement, doc: Document) {
   const body = doc.body;
   if (!body) return;
+  // Newsletter templates routinely include `<style>html,body{height:100%!important}</style>` or inline heights;
+  // inline !important here beats every stylesheet or body attribute so the frame measures the full document.
+  for (const el of [doc.documentElement, body]) {
+    if (el.style.height !== "auto") el.style.setProperty("height", "auto", "important");
+    if (el.style.minHeight !== "0px" && el.style.minHeight !== "0") el.style.setProperty("min-height", "0", "important");
+    if (el.style.maxHeight !== "none") el.style.setProperty("max-height", "none", "important");
+  }
   const room = doc.documentElement.clientWidth;
-  const overflows = () => Math.max(body.scrollWidth, doc.documentElement.scrollWidth) > room + 1;
+  const curZoom = Number.parseFloat(body.style.zoom) || 1;
+  // body.scrollWidth stays in unzoomed coordinates, so scale it by curZoom before checking for overflow;
+  // otherwise every resize tick thinks a zoomed newsletter still overflows and flashes by resetting zoom.
+  const overflows = () => Math.max(body.scrollWidth * curZoom, doc.documentElement.scrollWidth) > room + 1;
   // The zoom is worked out again only when the frame's width changed or the mail no longer fits (a picture came
   // in). Resetting it on every resize made the body change size, which fired the observer that calls this, around
   // and around: the mail flashed, many times a second.
@@ -134,7 +148,8 @@ export function fitFrame(frame: HTMLIFrameElement, doc: Document) {
     const wide = Math.max(body.scrollWidth, doc.documentElement.scrollWidth);
     if (room > 0 && wide > room + 1) body.style.zoom = String(room / wide);
   }
-  const height = `${Math.ceil(body.getBoundingClientRect().height)}px`;
+  const zoom = Number.parseFloat(body.style.zoom) || 1;
+  const height = `${Math.ceil(Math.max(body.getBoundingClientRect().height, body.scrollHeight * zoom))}px`;
   if (frame.style.height !== height) frame.style.height = height;
 }
 

@@ -10,7 +10,7 @@ Use the roadmap's end-to-end performance evidence; a signal-update timing is not
 Direction (owner's decision): **match Superhuman's look and feel as closely as reasonable.** Dense,
 calm, keyboard-first, one accent colour, no chrome. Since 2026-10-28 (canvas "Tern warm directions", A, the
 owner's pick) the greys are warm neutrals and the accent is the logo's navy, in the spirit of the Claude desktop
-app; the window draws its own title bar and the sidebar stays open beside the list.
+app; each column has its own head (no title bar) and the sidebar stays open beside the list.
 
 ## 1. Principles
 
@@ -107,9 +107,9 @@ search field's placeholder is "Search" alone with the `/` keycap at its end (ide
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ [▯]           ·  drags the window, double click maximizes  ·    –  ▢  ✕ │  ← 40 px title bar
-├──────────┬───────────────────────────────────────────────────┬───────────┤
-│ ✎ New    │  Important · 12   Other · 48   Calendar · 2   [⌕]  │           │
+│ [▯] ✎ New│  Important · 12   Other · 48    [⌕]  ● │ ←  tools Done … –▢✕ │  ← 48 px heads
+├──────────┼────────────────────────────────────────┼───────────┤
+│          │                                         │           │
 │ ▭ Inbox  │    Ana Rossi, me 3   Q3 numbers — here's the… 14:02 │   conv    │
 │ Snoozed  │    GitHub            [tern] CI failed on main  Mon  │   pane    │
 │ account  │    Linear            LIN-233 moved to Done     Mon  │  (opt.)   │
@@ -120,16 +120,19 @@ search field's placeholder is "Search" alone with the `/` keycap at its end (ide
 ```
 
 - **Window minimum** 720 × 480. At < 960 px wide the conversation always opens full-width over the list.
-- **Title bar** (owner's pick, 2026-10-28): the system draws no frame (`decorations: false`). Tern's bar is 40 px:
-  the sidebar button (`panel-left`, `Ctrl+\`) at the left, then New mail when the sidebar is hidden; minimize,
-  maximize/restore and close (red under the pointer) at the right, 46 px each. The rest drags the window and a
-  double click maximizes (`data-tauri-drag-region="deep"`). No app name. Over the docked sidebar (or settings'
-  sections) the bar takes `--bg-1`; elsewhere a `--line` rule runs under it. Full-window overlays (scrims,
-  dialogs, settings, the viewer, the day screen) start under it, so the window can always be moved and closed.
-  **Windows only** (owner, 2026-10-29): on Linux the window manager frames the window (Hyprland draws nothing and
-  ignores minimize and maximize), so there is no bar; the sidebar button sits at the left of the list header and
-  overlays start at the top (`--titlebar-h: 0`).
-- **Sidebar** (`Ctrl+\`, the title bar's button): 240 px (`--side-w`) on `--bg-1`, docked beside the list from 1100 px
+- **Column heads, no title bar** (owner's pick 2026-11-21, canvas "Tern toolbar directions", B): the same on Windows
+  and Linux. The sidebar, the list and the open mail each have a head `--head-h` (48 px) high with a `--line` rule
+  under it, so one line runs across the window. The sidebar's head holds its button (`panel-left`, `Ctrl+\`) and New
+  mail; with the sidebar hidden both lead the list's head (New mail only while the list has the window). The list's
+  head holds the tabs, search and the sync button. The mail's head holds a back arrow, the subject once its heading
+  has scrolled away, and the tools. The subject itself is a heading at the top of the mail, never in a bar. Each
+  head's empty part drags the window and a double click maximizes (`data-tauri-drag-region="deep"`). No app name.
+  **Windows** draws no frame (`decorations: false`): its minimize, maximize/restore and close (red under the pointer,
+  46 px each) sit fixed in the top right corner, at the end of whichever head is rightmost, and that head keeps
+  `--window-buttons-w` clear (also the viewer's and day screen's headers, and the companion, which starts under them).
+  **Linux** (owner, 2026-10-29) leaves framing to the window manager (Hyprland draws nothing and ignores minimize and
+  maximize), so there are no window buttons and `--window-buttons-w` is 0. Overlays start at the top of the window.
+- **Sidebar** (`Ctrl+\`, the button in its head): 240 px (`--side-w`) on `--bg-1`, docked beside the list from 1100 px
   wide and open by default (Settings → Appearance → Sidebar); the button hides it for good until shown again.
   Narrower, turned off, or in focus mode, the same column slides over the list with a scrim and closes on `Esc`
   or after going somewhere. New mail at the top (the one raised control: `--bg-0`, a `--line` edge, `--raise`),
@@ -151,8 +154,8 @@ search field's placeholder is "Search" alone with the `/` keycap at its end (ide
   subject and labels under them, no snippet. Its search is a "/" key after the tabs that spreads over the header
   when focused; `Ctrl K` is not shown there (the key still works).
 - **Conversation pane**: opens with `Enter`, closes with `Esc`. Mode setting: `split` (beside the list) or `full` (over it). Default `split` ≥ 1200 px, else `full`.
-- **Title bar** (since 2.1, canvas "Tern title bar ideas", 1–4): the list's tabs and search; with a conversation open, its subject, people and tools after the list's column (the header in the pane keeps the labels and people, its heading kept for screen readers); with conversations selected, the bar turns `--accent` and holds their actions with keycaps; search grows over the tabs on focus, filters as `--accent-soft` chips (a space after a filter makes it one, Backspace takes the last off) and a "Narrow it" panel of six filters. New people is a quiet tab after Starred, its icon and count with a small `--accent` dot and no name, only while someone waits and the sidebar (which lists it) is closed. Without Tern's own title bar (Linux) the conversation keeps its header and the selection's actions take a row over the list.
-- **Sync button** (since 2.1, canvas "Tern toolbar and status bar", A; it replaced the status strip): at the right of the title bar (at the end of the list header where Tern draws no title bar, on Linux). Arrows and a dot (`--ok`, `--accent` while syncing, `--warn`, `--danger`); a word or two only when something needs a look ("2 problems", "3 waiting", "Paused", "Offline", a download's percent, "Restart to update"). A click opens each account's state, what waits, an export's progress, Sync now and Pause. No key hints: `?` and the palette hold them.
+- **List head** (since 2.1, canvas "Tern title bar ideas", 1–4; its own head since 2026-11-21): the list's tabs and search; with conversations selected, a row over the list turns `--accent` and holds their actions with keycaps; search grows over the tabs on focus, filters as `--accent-soft` chips (a space after a filter makes it one, Backspace takes the last off) and a "Narrow it" panel of six filters. New people is a quiet tab after Starred, its icon and count with a small `--accent` dot and no name, only while someone waits and the sidebar (which lists it) is closed.
+- **Sync button** (since 2.1, canvas "Tern toolbar and status bar", A; it replaced the status strip): at the end of the list's head. Arrows and a dot (`--ok`, `--accent` while syncing, `--warn`, `--danger`); a word or two only when something needs a look ("2 problems", "3 waiting", "Paused", "Offline", a download's percent, "Restart to update"). A click opens each account's state, what waits, an export's progress, Sync now and Pause. No key hints: `?` and the palette hold them.
   A downloaded update shows as a filled `--accent` pill ("Update ready · Restart"), the one control in the strip
   that is a button; a toast says so once when it arrives.
 
@@ -198,13 +201,15 @@ search field's placeholder is "Search" alone with the `/` keycap at its end (ide
 - Header: the subject in `--t-head` (24 px). For two or more messages a line under it: the message count and the
   days it spans ("7 messages · Mon 26 Oct – Tue 27 Oct"); while the companion is closed, up to four sender avatars and
   the people ("you" last) before it (the companion's header says who otherwise). On the right, icons that show only when they apply, each saying
-  more in a tooltip: a green shield with the tracker count (what Tern blocked; a click loads the images), a clock
+  more in a tooltip: a green shield with the tracker count (what Tern blocked; a click loads the images and trusts
+  their sender from then on, owner 2026-11-21), a clock
   (reading time from 2 minutes), a book (reading view for designed mail), a leave icon (List-Unsubscribe: a web
-  link opens in the browser, a `mailto:` one opens compose; it turns into a check). Then Done (its key on hover),
-  `…` and close (in Tern's own title bar the close is a back arrow before the subject, so it sits away from the
-  window's ✕, and a short rule parts the window buttons from the tools). "Always load images from this sender" is in `…` while images are blocked.
-  The header scrolls away with the messages; once the subject is out of view a 48 px bar (subject, Done) fades in
-  over the top of the pane. The bar takes no space, so nothing moves as it comes and goes.
+  link opens in the browser, a `mailto:` one opens compose; it turns into a check). Then Done (its key on hover) and
+  `…`; these tools sit in the mail's head, after a back arrow that closes the conversation (no ✕ beside the window's
+  ✕). "Always load images from this sender" is in `…` while images are blocked, and "Ask before loading this
+  sender's images" once they are trusted.
+  The heading scrolls away with the messages; once it is out of view the subject (and, in a thread, whose message is
+  under the head) fades into the head, which was there all along, so nothing moves.
 - A thread (owner, 2026-10-29; laid out as canvas "Tern thread directions" A, 2026-10-30): every message is one
   line, oldest first, on the page itself, under a heading for its day ("Today", "Yesterday", "Monday 26 Oct", `--t-xs`
   uppercase with a `--line` rule); a line shows the time, as the day is above it. Their lines carry a 24 px avatar

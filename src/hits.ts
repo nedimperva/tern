@@ -87,7 +87,7 @@ export function drawHits(words: string[]) {
   for (const card of document.querySelectorAll<HTMLElement>(".card[data-message]")) {
     // WebKit throws, rather than answering null, for a frame it no longer lets us into (one on its way out).
     try {
-      const frame = card.querySelector<HTMLIFrameElement>("iframe");
+      const frame = card.querySelector<HTMLIFrameElement>("iframe.active") ?? card.querySelector<HTMLIFrameElement>("iframe");
       const root = frame ? docOf(frame)?.body : card.querySelector(".body");
       if (root) roots.push(root);
       const w = windowOf(frame);

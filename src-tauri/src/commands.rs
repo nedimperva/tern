@@ -719,16 +719,21 @@ pub struct Offered(Mutex<HashSet<std::path::PathBuf>>);
 
 impl Offered {
     pub fn offer(&self, paths: impl IntoIterator<Item = std::path::PathBuf>) {
-        self.0.lock().unwrap().extend(paths);
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).extend(paths);
     }
 }
 
-/// Files dropped on the window: offered, then told to the window, which attaches them while compose is open.
-pub fn files_dropped(app: &AppHandle, paths: &[std::path::PathBuf], at: tauri::PhysicalPosition<f64>) {
+/// Files dropped on the window: offered, then told to that window, which attaches them while compose is open.
+pub fn files_dropped(window: &tauri::Window, paths: &[std::path::PathBuf], at: tauri::PhysicalPosition<f64>) {
+    let app = window.app_handle();
     app.state::<Offered>().offer(paths.iter().cloned());
     let shown: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
     // Where they were dropped, in the window's pixels: pictures dropped on compose's text go in it.
-    let _ = app.emit("files-dropped", serde_json::json!({ "paths": shown, "x": at.x, "y": at.y }));
+    let _ = app.emit_to(
+        window.label(),
+        "files-dropped",
+        serde_json::json!({ "paths": shown, "x": at.x, "y": at.y }),
+    );
 }
 
 /// The system's file picker, for attaching. The paths picked are offered for `add_attachments`.
@@ -783,7 +788,7 @@ pub async fn add_attachments(
     let mut added = Vec::new();
     for path in paths {
         let source = std::path::PathBuf::from(&path);
-        if !offered.0.lock().unwrap().remove(&source) {
+        if !offered.0.lock().unwrap_or_else(|e| e.into_inner()).remove(&source) {
             return Err(format!("{path}: pick the file or drop it on the window to attach it"));
         }
         let name = source.file_name().map(|n| n.to_string_lossy().into_owned()).ok_or("Not a file")?;
@@ -1034,11 +1039,15 @@ pub async fn import_eml(
     Ok(Imported { token, folder, total: 1 })
 }
 
-/// Every file received or sent, newest first (All files, idea 108).
+/// Every file received or sent, newest first (All files, idea 108), from mail dated in `since..until` (seconds).
 #[tauri::command]
-pub async fn all_files(state: State<'_, AppState>) -> Reply<Vec<tern_core::PersonFile>> {
+pub async fn all_files(
+    state: State<'_, AppState>,
+    since: i64,
+    until: i64,
+) -> Reply<Vec<tern_core::PersonFile>> {
     let store = state.store.clone();
-    blocking(move || store.all_files(2000)).await
+    blocking(move || store.all_files(3000, since, until)).await
 }
 
 /// The account a message belongs to, to fetch from its server.
@@ -1732,7 +1741,7 @@ pub async fn restore_secrets(
 /// Forgets a sealed backup picked or opened, when the person cancels.
 #[tauri::command]
 pub fn forget_backup(locked: State<'_, Locked>) {
-    *locked.0.lock().unwrap() = None;
+    *locked.0.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 /// The `mailto:` link Tern was started with, once; the window asks when it is ready.
@@ -1744,6 +1753,7 @@ pub fn take_mailto(app: AppHandle) -> Option<tern_core::mailto::Mailto> {
 /// Quits for good (the window has saved what was being written). Closing the window only hides it.
 #[tauri::command]
 pub fn quit(app: AppHandle) {
+    crate::status::clear();
     app.exit(0);
 }
 
@@ -2125,6 +2135,16 @@ pub async fn ai_ask_mail(
         })
     })
     .await
+}
+
+/// Checks Paper trail candidates with AI to filter out statements, credit offers and reminders.
+#[tauri::command]
+pub async fn ai_check_papers(
+    state: State<'_, AppState>,
+    candidates: Vec<ai::PaperCandidate>,
+) -> Reply<ai::PaperCheck> {
+    let store = state.store.clone();
+    blocking(move || ai::check_papers(&store, &providers::Router, &candidates)).await
 }
 
 /// A task the AI proposes from the conversation of message `id`, for the task box; nothing is created.

@@ -109,7 +109,7 @@ export function RecipientField(props: {
   let input!: HTMLInputElement;
   const suggest = async (q: string) => {
     const ticket = ++asked;
-    const found = q.trim().length ? await api.contacts(q.trim()) : [];
+    const found = q.trim().length ? await api.contacts(q.trim()).catch(() => []) : [];
     if (ticket !== asked) return;
     const word = q.trim().toLowerCase();
     const groups = word
@@ -189,7 +189,7 @@ export function RecipientField(props: {
         onInput={(e) => (setText(e.currentTarget.value), void suggest(e.currentTarget.value))}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        onBlur={() => (setPeople([]), commit())}
+        onBlur={() => (asked++, setPeople([]), commit())}
         role="combobox"
         placeholder={props.value.length ? undefined : props.placeholder}
         aria-label={props.label}

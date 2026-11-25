@@ -20,7 +20,7 @@ pub fn one_click_url(list_unsubscribe: &str) -> Option<String> {
     list_unsubscribe
         .split('<')
         .filter_map(|part| part.split_once('>').map(|(link, _)| link.trim()))
-        .find(|link| link.len() > 8 && link[..8].eq_ignore_ascii_case("https://"))
+        .find(|link| link.len() > 8 && link.get(..8).is_some_and(|p| p.eq_ignore_ascii_case("https://")))
         .map(str::to_string)
 }
 
