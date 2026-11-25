@@ -166,7 +166,7 @@ pub async fn connect_with(
             let after_ok = plain.starttls().await.context("The server did not start TLS")?;
             // RFC 3501 forbids anything after the OK; bytes there could only be an attacker's commands waiting
             // to be read as if they came over TLS.
-            if !after_ok.is_empty() {
+            if !after_ok.is_empty() || !plain.mend.line.is_empty() || plain.mend.literal > 0 {
                 bail!("The server sent data before TLS started; refusing the connection");
             }
             // A server that answered NO fails here at the handshake: there is no fall back to plain text.
@@ -465,6 +465,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> Imap<S> {
                 }
                 ImapCoroutineState::Yielded(ImapIdleYield::WantsWrite(bytes)) => {
                     self.conn.stream.write_all(&bytes).await?;
+                    self.conn.stream.flush().await?;
                 }
                 ImapCoroutineState::Yielded(ImapIdleYield::Event(_)) => {
                     outcome = Idled::Changed;

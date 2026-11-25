@@ -90,8 +90,6 @@ export const SIDEBAR_WIDTH = 1100;
 // Focus mode: the open conversation over the whole window, list hidden, until F again. Kept for the session.
 export const [focusMode, setFocusMode] = createSignal(false);
 export const [compose, setCompose] = createSignal<ComposeInit | null>(null);
-/** Compose in focus mode: what the title bar says in place of the tabs, search and sync (idea 25); null otherwise. */
-export const [writingTitle, setWritingTitle] = createSignal<string | null>(null);
 // New mail folded into a corner card while the person reads; a new compose always opens unfolded.
 export const [composeMin, setComposeMin] = createSignal(false);
 export const [palette, setPalette] = createSignal(false);
@@ -113,13 +111,10 @@ export const [perf, setPerf] = createSignal(false);
 // A few useful keys in the status strip once the keyboard has been still for a moment.
 export const [idle, setIdle] = createSignal(false);
 
-/** Tern draws its own title bar on Windows only. On Linux the window manager handles the window (Hyprland draws no
- * frame and ignores minimize and maximize), so the bar's buttons would do nothing there. */
-export const ownTitleBar = !navigator.userAgent.includes("Linux");
-/** Where the list's tabs and search go in Tern's own title bar (the list keeps them itself without one). */
-export const [titleSlot, setTitleSlot] = createSignal<HTMLElement | null>(null);
-/** Where an open conversation's subject and tools go in Tern's own title bar (canvas "Tern title bar ideas", 1). */
-export const [convSlot, setConvSlot] = createSignal<HTMLElement | null>(null);
+/** Tern draws the window's own buttons on Windows only, at the end of the rightmost column's head. On Linux the
+ * window manager handles the window (Hyprland draws no frame and ignores minimize and maximize). There is no title
+ * bar on either: each column has its own head, the same on both (canvas "Tern toolbar directions", B). */
+export const ownWindowButtons = !navigator.userAgent.includes("Linux");
 
 /** The sidebar sits beside the list now: turned on, room for it, and not in focus mode. */
 export const docked = () => settings.sidebar && width() >= SIDEBAR_WIDTH && !focusMode();
@@ -156,9 +151,13 @@ export const dialog = () =>
   screen() || deck() !== null || reviewing() || palette() || sheet() || settingsOpen() !== null || (compose() !== null && !composeMin() && (!compose()!.inline || replyFocused())) || setup() || rail() || snoozing() !== null || labeling() !== null ||
   viewing() !== null || askingMail() || filesOpen() || paperOpen() || eml() !== null;
 export const searching = () => query().trim() !== "";
-/** All files (`g f`, idea 108) and Paper trail (`g $`, idea 115), each over the list. */
-export const [filesOpen, setFilesOpen] = createSignal(false);
-export const [paperOpen, setPaperOpen] = createSignal(false);
+/** All files (`g f`, idea 108) or Paper trail (`g $`, idea 115): a screen in the place of the list and the open
+ * mail, which stay as they were behind it. One at a time. */
+export const [toolScreen, setToolScreen] = createSignal<"files" | "paper" | null>(null);
+export const filesOpen = () => toolScreen() === "files";
+export const paperOpen = () => toolScreen() === "paper";
+export const setFilesOpen = (on: boolean) => setToolScreen(on ? "files" : null);
+export const setPaperOpen = (on: boolean) => setToolScreen(on ? "paper" : null);
 /** A `.eml` file being shown (idea 132), by path. */
 export const [eml, setEml] = createSignal<string | null>(null);
 /** Ask your mail is open (`A`, package 17 F). */

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, onMount } from "solid-js";
+import { createEffect, createMemo, createRenderEffect, createSignal, For, type JSX, on, onCleanup, onMount } from "solid-js";
 
 /// Draws only the rows in view (plus a few either side), so 50 rows or 50,000 cost the same.
 export function VirtualList<T>(props: {
@@ -19,13 +19,52 @@ export function VirtualList<T>(props: {
   const [top, setTop] = createSignal(0);
   const [height, setHeight] = createSignal(800);
   const overscan = 8;
+  let savedTop = 0;
+  let wasHidden = false;
+  let snapFrame = 0;
+  // Switching between split and full list changes row height and day headings at once: snap rows into their new
+  // places instead of sliding every row across headings.
+  const snap = () => {
+    if (!el) return;
+    el.classList.add("no-slide");
+    cancelAnimationFrame(snapFrame);
+    snapFrame = requestAnimationFrame(() => {
+      snapFrame = requestAnimationFrame(() => el?.classList.remove("no-slide"));
+    });
+  };
+  createRenderEffect(on(() => [props.rowHeight, !!props.heading] as const, snap, { defer: true }));
 
   onMount(() => {
+    if (el.clientHeight > 0) setHeight(el.clientHeight);
+    let raf = 0;
     // Read on the next frame: drawing more rows inside the callback can resize the list in the same frame, and the
-    // observer then reports a loop.
-    const ro = new ResizeObserver(() => requestAnimationFrame(() => setHeight(el.clientHeight)));
+    // observer then reports a loop. Ignore height 0 while hidden (`display: none`) so returning from full reading
+    // mode does not flash a blank list while rows remount.
+    const ro = new ResizeObserver(() => {
+      const h = el.clientHeight;
+      if (h === 0) {
+        wasHidden = true;
+        return;
+      }
+      if (wasHidden) {
+        wasHidden = false;
+        snap();
+        if (savedTop > 0 && el.scrollTop !== savedTop) {
+          el.scrollTop = savedTop;
+          if (el.scrollTop !== top()) setTop(el.scrollTop);
+        }
+      }
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        if (el.clientHeight > 0) setHeight(el.clientHeight);
+      });
+    });
     ro.observe(el);
-    onCleanup(() => ro.disconnect());
+    onCleanup(() => {
+      ro.disconnect();
+      cancelAnimationFrame(raf);
+      cancelAnimationFrame(snapFrame);
+    });
   });
 
   // Where each row starts, and the headings among them. Without headings a row is at index × height, as before;
@@ -78,12 +117,17 @@ export function VirtualList<T>(props: {
   createEffect(() => {
     const h = props.rowHeight;
     const y = rowTop(props.selected);
+    if (el.clientHeight === 0) return;
     const band = el.clientHeight * 0.2;
     if (y < el.scrollTop + band) el.scrollTop = Math.max(0, y - band);
     else if (y + h > el.scrollTop + el.clientHeight - band) el.scrollTop = y + h - el.clientHeight + band;
+    savedTop = el.scrollTop;
+    if (el.scrollTop !== top()) setTop(el.scrollTop);
   });
 
   const onScroll = () => {
+    if (el.clientHeight === 0) return;
+    savedTop = el.scrollTop;
     setTop(el.scrollTop);
     if (props.onEnd && el.scrollTop + el.clientHeight > el.scrollHeight - props.rowHeight * 50) props.onEnd();
   };

@@ -703,20 +703,22 @@ function askAbout(messages: () => ThreadMessage[], chatKey: () => string) {
   const [turns, setTurns] = createSignal<Turn[]>(chats.get(chatKey()) ?? []);
   createEffect(on(chatKey, (k) => setTurns(chats.get(k) ?? []), { defer: true }));
   const [busy, setBusy] = createSignal(false);
-  const keep = (next: Turn[]) => {
-    setTurns(next);
-    chats.set(chatKey(), next);
+  const keepFor = (key: string, next: Turn[]) => {
+    chats.set(key, next);
+    if (chatKey() === key) setTurns(next);
   };
   const send = async (q: string) => {
     const newest = messages()[messages().length - 1];
-    if (!q || busy() || !newest) return;
+    const key = chatKey();
+    if (!q || busy() || !newest || !key) return;
     setBusy(true);
-    const earlier = turns()
+    const list = () => chats.get(key) ?? [];
+    const earlier = list()
       .filter((t) => t.done)
       .map((t) => [t.question, t.answer] as [string, string]);
-    const at = turns().length;
-    keep([...turns(), { question: q, answer: "", done: null, error: "" }]);
-    const update = (patch: Partial<Turn>) => keep(turns().map((t, i) => (i === at ? { ...t, ...patch } : t)));
+    const at = list().length;
+    keepFor(key, [...list(), { question: q, answer: "", done: null, error: "" }]);
+    const update = (patch: Partial<Turn>) => keepFor(key, list().map((t, i) => (i === at ? { ...t, ...patch } : t)));
     try {
       let streamed = "";
       const done = await api.aiAsk(newest.id, q, earlier, (w) => update({ answer: (streamed += w) }));

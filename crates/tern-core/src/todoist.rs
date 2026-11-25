@@ -168,7 +168,7 @@ fn projects_at(agent: &ureq::Agent, api: &str, token: &str) -> Result<Vec<Projec
         let mut url = format!("{api}/projects?limit=200");
         if let Some(c) = &cursor {
             url.push_str("&cursor=");
-            url.push_str(c);
+            url.extend(url::form_urlencoded::byte_serialize(c.as_bytes()));
         }
         let response = agent
             .get(&url)

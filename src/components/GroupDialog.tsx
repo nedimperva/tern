@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { setSetting, settings } from "../settings";
 
 /** "Save these people as a group" (idea 126): a name, and who is in it (everyone in the conversation but you, to
@@ -27,6 +27,8 @@ export function GroupDialog(props: { people: { email: string; name: string }[]; 
     e.preventDefault();
     e.stopPropagation();
   };
+  onMount(() => window.addEventListener("keydown", onKeyDown, true));
+  onCleanup(() => window.removeEventListener("keydown", onKeyDown, true));
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a click beside the dialog closes it, as Esc does
     <div class="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
@@ -38,7 +40,6 @@ export function GroupDialog(props: { people: { email: string; name: string }[]; 
             placeholder="Name it, such as Design team"
             value={name()}
             onInput={(e) => setName(e.currentTarget.value)}
-            onKeyDown={onKeyDown}
           />
         </div>
         <ul>

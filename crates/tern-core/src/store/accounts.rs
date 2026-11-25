@@ -28,7 +28,13 @@ impl Store {
         let id = conn.last_insert_rowid();
         drop(conn);
         // A backup brings its aliases along; a new account has none.
-        let aliases = self.set_aliases(id, &c.aliases)?;
+        let aliases = match self.set_aliases(id, &c.aliases) {
+            Ok(a) => a,
+            Err(e) => {
+                let _ = self.conn().execute("DELETE FROM accounts WHERE id = ?1", [id]);
+                return Err(e);
+            }
+        };
         Ok(Account { id, config: AccountConfig { aliases, label: clean_label(&c.label), ..c.clone() } })
     }
 
@@ -263,16 +269,22 @@ impl Store {
     pub fn label(&self, ids: &[i64], label_folder: i64, add: bool, delay: i64) -> Result<Applied> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        let (account_id, label): (i64, String) = tx.query_row(
-            "SELECT account_id, name FROM folders WHERE id = ?1 AND role = 'label'",
-            [label_folder],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )?;
-        let (all, validity): (String, Option<u32>) = tx.query_row(
-            "SELECT name, uid_validity FROM folders WHERE account_id = ?1 AND role = 'all'",
-            [account_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )?;
+        let (account_id, label): (i64, String) = tx
+            .query_row(
+                "SELECT account_id, name FROM folders WHERE id = ?1 AND role = 'label'",
+                [label_folder],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("That label is gone"))?;
+        let (all, validity): (String, Option<u32>) = tx
+            .query_row(
+                "SELECT name, uid_validity FROM folders WHERE account_id = ?1 AND role = 'all'",
+                [account_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("This account has no All Mail folder"))?;
         let mut stmt = tx.prepare_cached(
             "SELECT DISTINCT m.id, m.uid, m.message_id FROM messages m JOIN folders f ON f.id = m.folder_id
              WHERE f.account_id = ?1 AND f.role = 'all' AND m.uid IS NOT NULL AND m.message_id IS NOT NULL

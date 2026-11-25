@@ -5,6 +5,7 @@ export type Part = { index: number; pos: number; size: number; label: string; as
 // A question mark, or the usual ways of asking in English and Bosnian. Unicode-aware edges, as in facts.ts.
 const ASKS =
   /\?|(?<![\p{L}\p{N}])(please|could you|can you|would you|let me know|by (monday|tuesday|wednesday|thursday|friday|tomorrow|the end of)|molim|možete li|možeš li|javi(te)? mi)(?![\p{L}\p{N}])/iu;
+const FORWARDED = /^-{5,}\s*Forwarded message\s*-{5,}/;
 
 /** The parts of the person's own text: not the quote at the end, not the signature, not empty lines. */
 export function partsOf(doc: ProseNode, signature: string): Part[] {
@@ -16,7 +17,7 @@ export function partsOf(doc: ProseNode, signature: string): Part[] {
   doc.forEach((node, pos, index) => {
     if (signed || node.type.name === "blockquote") return;
     const text = flat(node.textBetween(0, node.content.size, " ", " "));
-    if (/^--( |$)/.test(text)) signed = true;
+    if (/^--( |$)/.test(text) || FORWARDED.test(text)) signed = true;
     if (!text || signed) return;
     out.push({ index, pos, size: node.nodeSize, label: text, ask: ASKS.test(text), greeting: false, heading: false });
   });
@@ -40,6 +41,11 @@ export function signatureRange(doc: ProseNode): { from: number; to: number; name
   let to = doc.content.size;
   const lines: string[] = [];
   doc.forEach((node, pos) => {
+    if (pos >= to) return;
+    if (FORWARDED.test(node.textContent.trim())) {
+      to = pos;
+      return;
+    }
     if (from >= 0 && to === doc.content.size && node.type.name === "blockquote") to = pos;
     if (from >= 0 || node.type.name === "blockquote") {
       if (from >= 0 && pos < to) lines.push(...node.textBetween(0, node.content.size, "\n", "\n").split("\n"));

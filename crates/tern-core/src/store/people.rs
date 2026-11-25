@@ -103,14 +103,18 @@ impl Store {
     /// account sent them (walking the date index, as far as the newest 50 such messages).
     pub fn person_files(&self, email: &str, limit: usize) -> Result<Vec<PersonFile>> {
         let email = email.trim().to_lowercase();
-        let like = format!("%{}%", email.replace(['%', '_'], ""));
+        let clean = email.replace(['%', '_'], "");
+        if clean.is_empty() {
+            return Ok(Vec::new());
+        }
+        let like = format!("%{clean}%");
         let conn = self.reader();
-        let pick = |r: &Row, mine: bool| -> rusqlite::Result<(MessageRow, bool, Option<String>)> {
-            Ok((row(r)?, mine, r.get(12)?))
-        };
-        let mut found: Vec<(MessageRow, bool, Option<String>)> = conn
+        type Found = (MessageRow, bool, Option<String>, Option<String>);
+        let pick =
+            |r: &Row, mine: bool| -> rusqlite::Result<Found> { Ok((row(r)?, mine, r.get(12)?, r.get(13)?)) };
+        let mut found: Vec<Found> = conn
             .prepare_cached(&format!(
-                "SELECT {ROW}, m.parts FROM messages m INDEXED BY messages_from
+                "SELECT {ROW}, m.parts, m.message_id FROM messages m INDEXED BY messages_from
                  WHERE m.from_addr = ?1 COLLATE NOCASE AND m.has_attachments = 1
                  ORDER BY m.date DESC LIMIT 100"
             ))?
@@ -118,22 +122,29 @@ impl Store {
             .collect::<rusqlite::Result<_>>()?;
         let sent = conn
             .prepare_cached(&format!(
-                "SELECT {ROW}, m.parts FROM messages m INDEXED BY messages_date JOIN accounts a ON a.id = m.account_id
+                "SELECT {ROW}, m.parts, m.message_id FROM messages m INDEXED BY messages_date JOIN accounts a ON a.id = m.account_id
                  WHERE m.has_attachments = 1 AND m.to_addrs LIKE ?1 AND {MINE_M}
                  ORDER BY m.date DESC, m.id DESC LIMIT 50"
             ))?
             .query_map([&like], |r| pick(r, true))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         found.extend(sent);
-        found.sort_by(|a, b| b.0.date.cmp(&a.0.date).then(b.0.id.cmp(&a.0.id)));
+        found.sort_by(|a, b| {
+            b.0.date.cmp(&a.0.date).then(b.2.is_some().cmp(&a.2.is_some())).then(b.0.id.cmp(&a.0.id))
+        });
         // The same message can be in two folders (a copy in Sent and in a label): its files once.
         let mut seen = HashSet::new();
         let mut files = Vec::new();
-        for (m, mine, parts) in found {
-            if !seen.insert((m.account_id, m.subject.clone(), m.date)) {
+        for (m, mine, parts, mid) in found {
+            let attachments = attachments_of(parts.as_deref());
+            if attachments.is_empty() {
                 continue;
             }
-            for (index, a) in attachments_of(parts.as_deref()).into_iter().enumerate() {
+            let key = mid.unwrap_or_else(|| format!("{}\0{}", m.subject, m.date));
+            if !seen.insert((m.account_id, key)) {
+                continue;
+            }
+            for (index, a) in attachments.into_iter().enumerate() {
                 files.push(PersonFile {
                     message_id: m.id,
                     account_id: m.account_id,
@@ -183,26 +194,52 @@ impl Store {
             "bestellung",
             "quittung",
         ];
-        let like: Vec<String> = words.iter().map(|w| format!("lower(m.subject) LIKE '%{w}%'")).collect();
+        // SQLite's lower() only folds ASCII, so non-ASCII letters use `_` in SQL and are checked in Rust.
+        let like: Vec<String> = words
+            .iter()
+            .map(|w| {
+                let pattern: String = w.chars().map(|c| if c.is_ascii() { c } else { '_' }).collect();
+                format!("lower(m.subject) LIKE '%{pattern}%'")
+            })
+            .collect();
         let sql = format!(
-            "SELECT {ROW}, b.text, b.html FROM messages m INDEXED BY messages_date
+            "SELECT {ROW}, b.text, b.html, m.message_id FROM messages m INDEXED BY messages_date
                JOIN folders f ON f.id = m.folder_id
                LEFT JOIN bodies b ON b.message_id = m.id
-             WHERE m.date >= ?1 AND f.role NOT IN ('trash', 'junk', 'drafts', 'sent') AND ({})
-             ORDER BY m.date DESC, m.id DESC LIMIT 1500",
+             WHERE m.date >= ?1
+               AND f.role NOT IN ('trash', 'junk', 'drafts', 'sent')
+               AND ({})
+             ORDER BY m.date DESC, (b.message_id IS NOT NULL) DESC, m.id DESC LIMIT 1500",
             like.join(" OR ")
         );
         let mut stmt = conn.prepare(&sql)?;
         let found = stmt
             .query_map([since], |r| {
-                Ok((row(r)?, r.get::<_, Option<String>>(12)?, r.get::<_, Option<String>>(13)?))
+                Ok((
+                    row(r)?,
+                    r.get::<_, Option<String>>(12)?,
+                    r.get::<_, Option<String>>(13)?,
+                    r.get::<_, Option<String>>(14)?,
+                ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let mut seen = HashSet::new();
         Ok(found
             .into_iter()
-            .filter(|(m, _, _)| seen.insert((m.account_id, m.subject.clone(), m.date)))
-            .map(|(m, text, html)| {
+            .filter(|(m, _, _, _)| {
+                let trimmed = m.subject.trim_start();
+                let lower = trimmed.to_lowercase();
+                // Replies and forwards are conversations about a bill, not new receipts or invoices.
+                let is_reply_or_fwd = ["re:", "fwd:", "fw:", "aw:", "wg:", "odg:", "sv:", "tr:"]
+                    .iter()
+                    .any(|p| lower.starts_with(p));
+                !is_reply_or_fwd && words.iter().any(|w| lower.contains(w))
+            })
+            .filter(|(m, _, _, mid)| {
+                let key = mid.clone().unwrap_or_else(|| format!("{}\0{}", m.subject, m.date));
+                seen.insert((m.account_id, key))
+            })
+            .map(|(m, text, html, _)| {
                 let words = match (text, html) {
                     (Some(t), _) if !t.trim().is_empty() => t,
                     (_, Some(h)) => crate::ai::html_text(&h),
@@ -213,28 +250,39 @@ impl Store {
             .collect())
     }
 
-    /// Every file received or sent, newest first (All files, idea 108), up to `limit`. Mail in Trash, Spam and
-    /// Drafts is left out; a message kept in two folders gives its files once.
-    pub fn all_files(&self, limit: usize) -> Result<Vec<PersonFile>> {
+    /// Every file received or sent, newest first (All files, idea 108), up to `limit`, from mail dated in
+    /// `since..until` (seconds; the Files screen's date filter, so an old month is reached past the newest
+    /// `limit`). Mail in Trash, Spam and Drafts is left out; a message kept in two folders gives its files once.
+    pub fn all_files(&self, limit: usize, since: i64, until: i64) -> Result<Vec<PersonFile>> {
         let conn = self.reader();
         let mut stmt = conn.prepare_cached(&format!(
-            "SELECT {ROW}, m.parts, {MINE_M} FROM messages m INDEXED BY messages_date
+            "SELECT {ROW}, m.parts, {MINE_M}, m.message_id FROM messages m INDEXED BY messages_date
                JOIN folders f ON f.id = m.folder_id JOIN accounts a ON a.id = m.account_id
-             WHERE m.has_attachments = 1 AND f.role NOT IN ('trash', 'junk', 'drafts')
-             ORDER BY m.date DESC, m.id DESC LIMIT ?1"
+             WHERE m.has_attachments = 1 AND m.date >= ?2 AND m.date < ?3 AND f.role NOT IN ('trash', 'junk', 'drafts')
+             ORDER BY m.date DESC, (m.parts IS NOT NULL) DESC, m.id DESC LIMIT ?1"
         ))?;
         let found = stmt
-            .query_map([limit as i64 * 2], |r| {
-                Ok((row(r)?, r.get::<_, Option<String>>(12)?, r.get::<_, bool>(13)?))
+            .query_map(rusqlite::params![limit as i64 * 2, since, until], |r| {
+                Ok((
+                    row(r)?,
+                    r.get::<_, Option<String>>(12)?,
+                    r.get::<_, bool>(13)?,
+                    r.get::<_, Option<String>>(14)?,
+                ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let mut seen = HashSet::new();
         let mut files = Vec::new();
-        for (m, parts, mine) in found {
-            if !seen.insert((m.account_id, m.subject.clone(), m.date)) {
+        for (m, parts, mine, mid) in found {
+            let attachments = attachments_of(parts.as_deref());
+            if attachments.is_empty() {
                 continue;
             }
-            for (index, a) in attachments_of(parts.as_deref()).into_iter().enumerate() {
+            let key = mid.unwrap_or_else(|| format!("{}\0{}", m.subject, m.date));
+            if !seen.insert((m.account_id, key)) {
+                continue;
+            }
+            for (index, a) in attachments.into_iter().enumerate() {
                 files.push(PersonFile {
                     message_id: m.id,
                     account_id: m.account_id,
@@ -275,7 +323,9 @@ impl Store {
                 "SELECT account_id, thread_id, from_name, from_addr, subject, message_id FROM messages WHERE id = ?1",
                 [id],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
-            )?;
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("That message is gone"))?;
         let due = input.due.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(str::to_string);
         tx.execute(
             "INSERT INTO tasks (account_id, thread_id, title, due, created, source) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -350,10 +400,12 @@ impl Store {
     pub fn queue_task_done(&self, local: i64, done: bool, delay: i64) -> Result<(i64, Vec<i64>)> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        let (account_id, todoist_id): (i64, Option<String>) =
-            tx.query_row("SELECT account_id, todoist_id FROM tasks WHERE id = ?1", [local], |r| {
+        let (account_id, todoist_id): (i64, Option<String>) = tx
+            .query_row("SELECT account_id, todoist_id FROM tasks WHERE id = ?1", [local], |r| {
                 Ok((r.get(0)?, r.get(1)?))
-            })?;
+            })
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("That task is gone"))?;
         tx.execute("UPDATE tasks SET done = ?2 WHERE id = ?1", params![local, done])?;
         let token = match todoist_id {
             Some(todoist_id) => {

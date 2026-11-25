@@ -24,6 +24,7 @@ import { keyOf } from "./rows";
 import { showToast } from "./toast";
 
 let readTimer: number | undefined;
+let openGen = 0;
 
 /** Opens a conversation. From search, `row` is the message that matched: it opens and comes into view, wherever
  * it sits in the conversation; otherwise the newest message is the one to read. It comes in from the right, or
@@ -32,18 +33,25 @@ export async function open(row: ThreadRow | undefined, matched = searching(), ho
   clearTimeout(readTimer);
   if (!row) return close();
   if (openRow() && keyOf(openRow()!) === keyOf(row)) return show(row, matched);
-  shift(how ?? (openRow() ? "switch" : "open"), () => settle(show(row, matched)));
+  // With view transitions (Windows) the change runs later, once the old screen is captured: wait for it there too.
+  await new Promise<void>((done) =>
+    shift(how ?? (openRow() ? "switch" : "open"), () => {
+      const loading = show(row, matched).finally(done);
+      return settle(loading);
+    }),
+  );
 }
 
 async function show(row: ThreadRow, matched: boolean) {
+  const gen = ++openGen;
   // A draft being written in Tern opens in compose, not as a conversation.
   if (folders().find((f) => f.id === row.folderId)?.role === "drafts") {
     const record = await api.draftForMessage(row.id);
+    if (gen !== openGen) return;
     if (record) return resume(record);
   }
-  setOpenRow(row);
   const found = await api.thread(row.id);
-  if (openRow() !== row) return;
+  if (gen !== openGen) return;
   // The conversation lists each message once, so the copy that matched may be another folder's row of it.
   const at = !matched
     ? -1
@@ -51,6 +59,7 @@ async function show(row: ThreadRow, matched: boolean) {
       ? found.findIndex((m) => m.id === row.id)
       : found.findIndex((m) => m.date === row.date && m.fromAddr === row.fromAddr && m.subject === row.subject);
   batch(() => {
+    setOpenRow(row);
     setMessages(found);
     // Only the newest message starts open (owner, 2026-10-29): the rest are one line each, opened as the person
     // goes. Unread ones keep their dot, and "Since you last read" jumps to the first.
@@ -71,6 +80,7 @@ async function show(row: ThreadRow, matched: boolean) {
 }
 
 export function close() {
+  openGen++;
   clearTimeout(readTimer);
   const now = () => batch(() => (setOpenRow(null), setMessages([])));
   if (openRow()) shift("close", now);
@@ -96,7 +106,12 @@ export function viewFiles() {
 
 /** The conversation's own effects; App runs this once. */
 export function watchConversation() {
-  createEffect(on(openRow, (row) => (row ? void api.muted(row.id).then(setOpenMuted) : setOpenMuted(false))));
+  createEffect(
+    on(openRow, (row) => {
+      if (!row) return void setOpenMuted(false);
+      void api.muted(row.id).then((m) => openRow()?.id === row.id && setOpenMuted(m), () => {});
+    }),
+  );
 }
 
 export async function unmute() {

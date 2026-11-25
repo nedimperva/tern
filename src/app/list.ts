@@ -47,6 +47,8 @@ import {
   waiting,
   splitUnread,
   target,
+  setToolScreen,
+  toolScreen,
 } from "./state";
 
 const PAGE = 100;
@@ -232,6 +234,7 @@ async function reloadConversation() {
   const ids = [open.id, ...messages.map((m) => m.id)];
   for (const id of ids) {
     const found = await api.thread(id);
+    if (openRow() !== open) return;
     if (found.length) return void setMessages(found);
   }
 }
@@ -270,7 +273,8 @@ export const onChange = (threads: string[] | null) => {
 };
 
 export const go = (t: Target) => {
-  batch(() => (setQuery(""), setTarget(t)));
+  // A place in the sidebar closes Files or Paper trail, as it would close a folder.
+  batch(() => (setQuery(""), setTarget(t), setToolScreen(null)));
   if ("folder" in t) void api.checkFolder(t.folder);
   else if ("label" in t) void api.checkFolder(t.label);
 };
@@ -367,7 +371,7 @@ export function escape() {
 
 // MARK: What the header shows
 
-export const isTarget = (t: Target) => JSON.stringify(t) === JSON.stringify(target()) && !query();
+export const isTarget = (t: Target) => JSON.stringify(t) === JSON.stringify(target()) && !query() && !toolScreen();
 
 export const title = () => {
   if (searching()) return `Search: ${query()}`;

@@ -57,7 +57,9 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
 /// The attached files of a raw message: (name, type, contents). For forwarding and opening them.
 pub fn attachment_files(raw: &[u8]) -> Vec<FileBytes> {
     let Some(msg) = MessageParser::default().parse(raw) else { return Vec::new() };
+    let html = msg.body_html(0).map(|h| h.to_ascii_lowercase()).unwrap_or_default();
     msg.attachments()
+        .filter(|a| !shown_in_html(a, &html))
         .map(|a| {
             let mime = a
                 .content_type()
@@ -230,19 +232,20 @@ pub fn runs_as_program(name: &str) -> bool {
 }
 
 /// The attachments of a parsed message, as parts. They have no IMAP section number (the body is already here).
+fn shown_in_html(a: &mail_parser::MessagePart, html: &str) -> bool {
+    a.content_type().is_some_and(|t| t.ctype().eq_ignore_ascii_case("image"))
+        && a.content_id().is_some_and(|id| {
+            let id = id.trim().trim_start_matches('<').trim_end_matches('>').to_ascii_lowercase();
+            !id.is_empty() && html.contains(&format!("cid:{id}"))
+        })
+}
+
 /// Pictures the message's own HTML shows (`cid:`), such as the logo and icons in a signature, are part of the
 /// message, not files sent with it.
 fn attachments(msg: &mail_parser::Message) -> Vec<Part> {
     let html = msg.body_html(0).map(|h| h.to_ascii_lowercase()).unwrap_or_default();
-    let shown = |a: &mail_parser::MessagePart| {
-        a.content_type().is_some_and(|t| t.ctype().eq_ignore_ascii_case("image"))
-            && a.content_id().is_some_and(|id| {
-                let id = id.trim().trim_start_matches('<').trim_end_matches('>').to_ascii_lowercase();
-                !id.is_empty() && html.contains(&format!("cid:{id}"))
-            })
-    };
     msg.attachments()
-        .filter(|a| !shown(a))
+        .filter(|a| !shown_in_html(a, &html))
         .map(|a| {
             let mime = a
                 .content_type()

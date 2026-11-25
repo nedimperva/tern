@@ -223,11 +223,15 @@ export function Editor(props: {
     if (!p || !props.snippets) return;
     setPicker(null);
     const text = await props.snippets.fill(snippet);
+    if (view.isDestroyed) return;
     props.snippets.used(snippet);
     const marked = text.includes("{cursor}") ? text.replace("{cursor}", CARET) : text + CARET;
     const doc = fromText(marked);
+    const max = view.state.doc.content.size;
+    const from = Math.max(0, Math.min(p.from, max));
+    const to = Math.max(from, Math.min(view.state.selection.from, max));
     // Open at both ends, so a one-line snippet joins the line it was typed on.
-    const tr = view.state.tr.replaceRange(p.from, view.state.selection.from, new Slice(doc.content, 1, 1));
+    const tr = view.state.tr.replaceRange(from, to, new Slice(doc.content, 1, 1));
     let caret = -1;
     tr.doc.descendants((node, pos) => {
       if (caret < 0 && node.isText && node.text!.includes(CARET)) caret = pos + node.text!.indexOf(CARET);
@@ -332,7 +336,7 @@ export function Editor(props: {
     const files = [...(data?.files ?? [])].filter((f) => f.type.startsWith("image/"));
     if (!files.length || !props.onPictures) return false;
     event.preventDefault();
-    void props.onPictures(files).then((pictures) => insertPictures(view, pictures, at));
+    void props.onPictures(files).then((pictures) => !view.isDestroyed && insertPictures(view, pictures, at));
     return true;
   };
 

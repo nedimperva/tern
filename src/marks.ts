@@ -44,7 +44,7 @@ export function rangeOf(root: Node, text: string): Range | null {
 function rootOf(messageId: number): Node | null {
   const card = document.querySelector<HTMLElement>(`.card[data-message="${messageId}"]`);
   if (!card) return null;
-  const frame = card.querySelector<HTMLIFrameElement>("iframe");
+  const frame = card.querySelector<HTMLIFrameElement>("iframe.active") ?? card.querySelector<HTMLIFrameElement>("iframe");
   return frame ? (docOf(frame)?.body ?? null) : card.querySelector(".body");
 }
 

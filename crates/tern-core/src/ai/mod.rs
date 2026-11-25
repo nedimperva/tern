@@ -390,7 +390,10 @@ pub fn html_text(html: &str) -> String {
     let mut i = 0;
     while let Some(start) = html[i..].find('<').map(|p| p + i) {
         out.push_str(&html[i..start]);
-        let Some(end) = html[start..].find('>').map(|p| p + start) else { break };
+        let Some(end) = html[start..].find('>').map(|p| p + start) else {
+            i = start;
+            break;
+        };
         let tag = &lower[start + 1..end];
         let name: String =
             tag.trim_start_matches('/').chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
@@ -894,21 +897,28 @@ pub fn overnight(
     newest.truncate(OVERNIGHT_MAX);
     let mut user = String::from("<mail>\n");
     let mut ids = Vec::new();
-    for (i, n) in newest.iter().enumerate() {
+    for n in &newest {
         let Some(m) = store.thread(n.id)?.into_iter().find(|x| x.row.id == n.id) else { continue };
-        let from = if s.redact || m.row.from_name.trim().is_empty() {
-            m.row.from_name.trim().to_string()
+        let name = m.row.from_name.trim();
+        let from = if name.is_empty() {
+            if s.redact {
+                "[email]".to_string()
+            } else {
+                m.row.from_addr.clone()
+            }
+        } else if s.redact {
+            name.to_string()
         } else {
-            format!("{} <{}>", m.row.from_name.trim(), m.row.from_addr)
+            format!("{name} <{}>", m.row.from_addr)
         };
+        ids.push(m.row.id);
         user.push_str(&format!(
             "<conversation n=\"{}\" from=\"{}\" subject=\"{}\">\n{}\n</conversation>\n",
-            i + 1,
+            ids.len(),
             fence(&from).replace('"', "'"),
             fence(&m.row.subject).replace('"', "'"),
             words_of(&m, s.redact)
         ));
-        ids.push(m.row.id);
     }
     user.push_str("</mail>");
     let req = Request { provider: r.provider, model: r.model.clone(), system: OVERNIGHT_PROMPT, user };
@@ -959,26 +969,33 @@ pub fn ask_mail(
         .collect();
     let mut user = String::from("<mail>\n");
     let mut ids = Vec::new();
-    for (i, row) in rows.iter().enumerate() {
+    for row in &rows {
         let Some(m) = store.thread(row.id)?.into_iter().find(|x| x.row.id == row.id) else { continue };
         let mine =
             own_address(store, m.row.account_id)?.iter().any(|a| m.row.from_addr.eq_ignore_ascii_case(a));
+        let name = m.row.from_name.trim();
         let from = if mine {
             "you".to_string()
-        } else if s.redact || m.row.from_name.trim().is_empty() {
-            m.row.from_name.trim().to_string()
+        } else if name.is_empty() {
+            if s.redact {
+                "[email]".to_string()
+            } else {
+                m.row.from_addr.clone()
+            }
+        } else if s.redact {
+            name.to_string()
         } else {
-            format!("{} <{}>", m.row.from_name.trim(), m.row.from_addr)
+            format!("{name} <{}>", m.row.from_addr)
         };
+        ids.push(m.row.id);
         user.push_str(&format!(
             "<message n=\"{}\" from=\"{}\" date=\"{}\" subject=\"{}\">\n{}\n</message>\n",
-            i + 1,
+            ids.len(),
             fence(&from).replace('"', "'"),
             date(m.row.date),
             fence(&m.row.subject).replace('"', "'"),
             words_of(&m, s.redact)
         ));
-        ids.push(m.row.id);
     }
     user.push_str("</mail>");
     if !earlier.is_empty() {
@@ -998,6 +1015,212 @@ pub fn ask_mail(
         bail!("The AI sent back nothing. Try again.");
     }
     Ok(Answer { text, messages: ids, sent_chars: words_req.user.len() + req.user.len(), route: r })
+}
+
+// MARK: Paper trail check
+
+const PAPERS_PROMPT: &str = include_str!("prompts/papers.md");
+const PAPER_CHECK_BATCH: usize = 30;
+const PAPER_CHECK_MAX: usize = 90;
+const PAPER_EXCERPT_CHARS: usize = 700;
+
+/// A local Paper trail candidate handed to the AI to verify.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaperCandidate {
+    pub id: i64,
+    pub kind: String,
+    pub amount: Option<f64>,
+    pub currency: Option<String>,
+}
+
+/// The AI's verdict on one Paper trail candidate.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaperVerdict {
+    pub id: i64,
+    pub keep: bool,
+    pub kind: Option<String>,
+    pub amount: Option<f64>,
+    pub currency: Option<String>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaperCheck {
+    pub verdicts: Vec<PaperVerdict>,
+    pub checked: usize,
+    pub skipped: usize,
+    pub sent_chars: usize,
+    pub route: Route,
+}
+
+fn canonical_paper_kind(s: &str) -> Option<String> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "receipt" => Some("Receipt".into()),
+        "invoice" => Some("Invoice".into()),
+        "order" => Some("Order".into()),
+        "booking" => Some("Booking".into()),
+        "payment" => Some("Payment".into()),
+        "subscription" => Some("Subscription".into()),
+        _ => None,
+    }
+}
+
+fn parse_paper_money(raw: &str) -> (Option<f64>, Option<String>) {
+    let raw = raw.trim();
+    if raw.is_empty() || raw.eq_ignore_ascii_case("none") || raw.eq_ignore_ascii_case("null") {
+        return (None, None);
+    }
+    let parse_num = |s: &str| {
+        let s: String = s.chars().filter(|c| !matches!(c, '\'' | ' ' | '\u{a0}')).collect();
+        if s.is_empty() || !s.chars().all(|c| c.is_ascii_digit() || c == '.' || c == ',') {
+            return None;
+        }
+        let last_dot = s.rfind('.');
+        let last_comma = s.rfind(',');
+        let normalized = match last_dot.max(last_comma) {
+            None => s,
+            Some(dec) => {
+                let tail = &s[dec + 1..];
+                let only_one_sep = last_dot.is_none() || last_comma.is_none();
+                if tail.len() == 3 && only_one_sep {
+                    s.replace(['.', ','], "")
+                } else {
+                    format!("{}.{}", s[..dec].replace(['.', ','], ""), tail)
+                }
+            }
+        };
+        normalized.parse::<f64>().ok().filter(|n| n.is_finite() && *n > 0.0 && *n <= 1_000_000.0)
+    };
+    let parse_cur = |s: &str| match s.trim().to_ascii_uppercase().as_str() {
+        "KM" | "BAM" => Some("BAM".to_string()),
+        "€" | "EUR" => Some("EUR".to_string()),
+        "$" | "USD" | "US$" => Some("USD".to_string()),
+        "£" | "GBP" => Some("GBP".to_string()),
+        other if other.len() == 3 && other.chars().all(|c| c.is_ascii_alphabetic()) => {
+            Some(other.to_string())
+        }
+        _ => None,
+    };
+    // Accept both "19.00 EUR" / "EUR 19.00" and attached symbols like "€19.00" / "19,00€".
+    let (a, b) = match raw.split_once(char::is_whitespace) {
+        Some((left, right)) => (left.trim(), right.trim()),
+        None => {
+            let split = raw
+                .find(|c: char| c.is_ascii_digit())
+                .filter(|&i| i > 0)
+                .or_else(|| raw.rfind(|c: char| c.is_ascii_digit()).map(|i| i + 1));
+            let Some(at) = split.filter(|&i| i > 0 && i < raw.len()) else { return (None, None) };
+            (&raw[..at], &raw[at..])
+        }
+    };
+    if let (Some(n), Some(c)) = (parse_num(a), parse_cur(b)) {
+        (Some(n), Some(c))
+    } else if let (Some(c), Some(n)) = (parse_cur(a), parse_num(b)) {
+        (Some(n), Some(c))
+    } else {
+        (None, None)
+    }
+}
+
+fn paper_verdicts_of(text: &str, ids: &[i64]) -> Vec<PaperVerdict> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for line in text.lines() {
+        let parts: Vec<&str> = line.split('|').map(str::trim).collect();
+        if parts.len() < 3 {
+            continue;
+        }
+        let Ok(n) = parts[0].trim_start_matches(['-', '*', '#', ' ']).parse::<usize>() else {
+            continue;
+        };
+        let Some(&id) = n.checked_sub(1).and_then(|i| ids.get(i)) else { continue };
+        if !seen.insert(id) {
+            continue;
+        }
+        if parts[1].eq_ignore_ascii_case("DROP") {
+            out.push(PaperVerdict {
+                id,
+                keep: false,
+                kind: None,
+                amount: None,
+                currency: None,
+                reason: parts[2..].join(" | "),
+            });
+        } else if parts[1].eq_ignore_ascii_case("KEEP") {
+            let kind = canonical_paper_kind(parts[2]);
+            let (amount, currency) = parts.get(3).map_or((None, None), |m| parse_paper_money(m));
+            out.push(PaperVerdict { id, keep: true, kind, amount, currency, reason: String::new() });
+        }
+    }
+    out
+}
+
+/// Checks Paper trail candidates with AI to drop bank statements, credit offers and payment reminders and fix
+/// misread amounts. Behind the summaries switch, only for allowed accounts, and only when asked.
+pub fn check_papers(store: &Store, model: &dyn Model, candidates: &[PaperCandidate]) -> Result<PaperCheck> {
+    let s = settings(store)?;
+    let accounts: Vec<i64> = store.accounts()?.iter().map(|a| a.id).collect();
+    let r = across(&s, &accounts)?;
+    if candidates.is_empty() {
+        bail!("Nothing to check.");
+    }
+    let mut items = Vec::new();
+    let mut skipped = 0usize;
+    for c in candidates.iter().take(PAPER_CHECK_MAX) {
+        let Some(m) = store.thread(c.id)?.into_iter().find(|x| x.row.id == c.id) else { continue };
+        if allowed(&s, Feature::Summaries, m.row.account_id).is_err() {
+            skipped += 1;
+            continue;
+        }
+        items.push((c, m));
+    }
+    if items.is_empty() {
+        bail!("AI is not allowed to read any of these accounts. Check Settings → AI.");
+    }
+    let mut verdicts = Vec::new();
+    let mut sent_chars = 0usize;
+    for chunk in items.chunks(PAPER_CHECK_BATCH) {
+        let mut user = String::from("<papers>\n");
+        let mut ids = Vec::with_capacity(chunk.len());
+        for (c, m) in chunk {
+            let name = m.row.from_name.trim();
+            let from = if name.is_empty() {
+                if s.redact {
+                    "[email]".to_string()
+                } else {
+                    m.row.from_addr.clone()
+                }
+            } else if s.redact {
+                name.to_string()
+            } else {
+                format!("{name} <{}>", m.row.from_addr)
+            };
+            let parsed = match (c.amount, c.currency.as_deref()) {
+                (Some(a), Some(cur)) => format!("{} {:.2} {}", c.kind, a, cur),
+                _ => format!("{} none", c.kind),
+            };
+            let excerpt: String = words_of(m, s.redact).chars().take(PAPER_EXCERPT_CHARS).collect();
+            ids.push(c.id);
+            user.push_str(&format!(
+                "<paper n=\"{}\" from=\"{}\" subject=\"{}\" attachments=\"{}\" parsed=\"{}\">\n{}\n</paper>\n",
+                ids.len(),
+                fence(&from).replace('"', "'"),
+                fence(&m.row.subject).replace('"', "'"),
+                if m.row.has_attachments { "yes" } else { "no" },
+                fence(&parsed).replace('"', "'"),
+                excerpt
+            ));
+        }
+        user.push_str("</papers>");
+        sent_chars += user.len();
+        let req = Request { provider: r.provider, model: r.model.clone(), system: PAPERS_PROMPT, user };
+        let text = ask(store, &s, model, &req, &mut |_| {})?;
+        verdicts.extend(paper_verdicts_of(&text, &ids));
+    }
+    Ok(PaperCheck { verdicts, checked: items.len(), skipped, sent_chars, route: r })
 }
 
 // MARK: A task from the mail
@@ -1229,7 +1452,8 @@ pub fn learn_style(store: &Store, model: &dyn Model, account: i64) -> Result<Lea
         bail!("The AI sent back nothing. Try again.");
     }
     store.set_ai_style(account, &note, samples.len() as i64)?;
-    Ok(Learned { style: store.ai_style(account)?.expect("just saved"), preview })
+    let style = store.ai_style(account)?.ok_or_else(|| anyhow::anyhow!("That account is gone."))?;
+    Ok(Learned { style, preview })
 }
 
 /// A style just learned, and the sample that shows it: made-up notes written plainly and in the person's style.
@@ -1877,5 +2101,30 @@ Me
         assert_eq!((s.line.as_str(), s.points.len()), ("only points", 1));
         let s = summary_of("Line.\n\n• a\n* b\nstray text", true);
         assert_eq!((s.line.as_str(), s.points, s.cached), ("Line.", vec!["a".to_string(), "b".into()], true));
+    }
+
+    #[test]
+    fn paper_verdicts_read_drops_and_keeps() {
+        let got = paper_verdicts_of(
+            "1 | DROP | Payment reminder for overdue invoices\n\
+             2 | KEEP | Invoice | 1.250,50 KM\n\
+             3 | KEEP | Receipt | none\n\
+             4 | KEEP | Order | €19.99\n\
+             5 | KEEP | Subscription | 49,90 EUR\n\
+             99 | DROP | Out of range",
+            &[10, 20, 30, 40, 50],
+        );
+        assert_eq!(got.len(), 5);
+        assert!(!got[0].keep);
+        assert_eq!(got[0].id, 10);
+        assert!(got[1].keep);
+        assert_eq!(got[1].id, 20);
+        assert_eq!(got[1].kind.as_deref(), Some("Invoice"));
+        assert_eq!(got[1].amount, Some(1250.5));
+        assert_eq!(got[1].currency.as_deref(), Some("BAM"));
+        assert!(got[2].keep);
+        assert_eq!(got[2].amount, None);
+        assert_eq!((got[3].amount, got[3].currency.as_deref()), (Some(19.99), Some("EUR")));
+        assert_eq!((got[4].amount, got[4].currency.as_deref()), (Some(49.9), Some("EUR")));
     }
 }

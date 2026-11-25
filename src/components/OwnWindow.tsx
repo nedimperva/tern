@@ -25,8 +25,9 @@ export function OwnWindow(props: { id: number }) {
     try {
       const got = (await api.thread(props.id)).filter((m) => m.draftId == null);
       if (!got.length) return setGone(true);
+      const first = messages().length === 0;
       setMessages(got);
-      setFocused((f) => Math.min(f, got.length - 1) || got.length - 1);
+      setFocused((f) => (first ? got.length - 1 : Math.min(f, got.length - 1)));
       document.title = got[0].subject || "(no subject)";
     } catch {
       setGone(true);

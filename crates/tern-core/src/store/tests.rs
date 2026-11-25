@@ -67,6 +67,22 @@ fn searches_by_prefix() {
 }
 
 #[test]
+fn in_archive_on_gmail_is_all_mail_outside_the_inbox() {
+    let store = Store::open_in_memory().unwrap();
+    let account = store.add_account(&config()).unwrap().id;
+    let inbox = store.upsert_folder(account, "INBOX", "inbox").unwrap();
+    let all = store.upsert_folder(account, "[Gmail]/All Mail", "all").unwrap();
+    // Uid 1 is in the inbox (and so in All Mail too); uid 2 was archived.
+    store.insert_messages(account, inbox, &[message(1, "Still here", 100)]).unwrap();
+    store
+        .insert_messages(account, all, &[message(1, "Still here", 100), message(2, "Archived", 50)])
+        .unwrap();
+    let subjects: Vec<String> =
+        store.search("in:archive", None, 10).unwrap().rows.into_iter().map(|r| r.subject).collect();
+    assert_eq!(subjects, ["Archived"]);
+}
+
+#[test]
 fn search_filters_narrow_by_field_folder_and_state() {
     let (store, account, inbox, archive) = setup();
     let mut from_grace = message(1, "Budget", 100);
@@ -2855,4 +2871,25 @@ fn migration_38_keeps_split_and_joined_conversations() {
     store.undo_thread_moves(&undo).unwrap();
     assert_eq!(thread(2), thread(1));
     assert_eq!(thread(4), thread(1), "the reply that came after the split goes back too");
+}
+
+#[test]
+fn paper_candidates_find_invoices_and_skip_replies() {
+    let (store, account, inbox, _) = setup();
+    store
+        .insert_messages(
+            account,
+            inbox,
+            &[
+                message(1, "Faktura 2026-041", 1_000),
+                message(2, "Re: Faktura 2026-041", 2_000),
+                message(3, "Fwd: Your receipt", 3_000),
+                message(4, "Your receipt from Coffee", 4_000),
+                message(5, "Lunch tomorrow?", 5_000),
+            ],
+        )
+        .unwrap();
+    let got = store.paper_candidates(0).unwrap();
+    let subjects: Vec<&str> = got.iter().map(|(m, _)| m.subject.as_str()).collect();
+    assert_eq!(subjects, ["Your receipt from Coffee", "Faktura 2026-041"]);
 }

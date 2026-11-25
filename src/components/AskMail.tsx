@@ -1,4 +1,4 @@
-import { createSignal, For, onMount, Show } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Icon } from "./Icon";
 import { api, type AiAnswer } from "../api";
 import { askFirst, setAskFirst, setAskingMail } from "../app/state";
@@ -17,7 +17,17 @@ export function AskMail(props: { onOpen: (id: number) => void }) {
   setAskFirst("");
   const [busy, setBusy] = createSignal(false);
   let field!: HTMLTextAreaElement;
-  onMount(() => queueMicrotask(() => field.focus()));
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    setAskingMail(false);
+  };
+  onMount(() => {
+    window.addEventListener("keydown", onKey, true);
+    queueMicrotask(() => field.focus());
+  });
+  onCleanup(() => window.removeEventListener("keydown", onKey, true));
   const keep = (next: Turn[]) => {
     kept = next;
     setTurns(next);

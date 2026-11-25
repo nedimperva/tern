@@ -192,9 +192,10 @@ impl Store {
         at: Option<i64>,
         follow_up: Option<i64>,
     ) -> Result<i64> {
-        let conn = self.conn();
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
         // Who the person writes to ranks first in autocomplete, before the copy in Sent is even synced.
-        let me = own_addresses(&conn, account_id)?;
+        let me = own_addresses(&tx, account_id)?;
         // An address the account no longer has (an alias taken off while this was being written) goes out as the
         // account's own, as smtp::build does.
         let sender = draft.from.as_deref().map(str::to_lowercase).filter(|f| me.contains(f));
@@ -206,24 +207,25 @@ impl Store {
             date: now(),
             ..Default::default()
         };
-        note_people(&conn, &me, &sent)?;
+        note_people(&tx, &me, &sent)?;
         if draft.message_id.is_none() {
             let domain = sender.rsplit_once('@').map_or("localhost", |(_, d)| d);
             draft.message_id = Some(crate::smtp::new_message_id(domain)?);
         }
         let bare = bare_id(draft.message_id.as_deref().unwrap_or_default());
-        let id = enqueue(&conn, account_id, &OutboxOp::Send(draft), delay)?;
+        let id = enqueue(&tx, account_id, &OutboxOp::Send(draft), delay)?;
         if let Some(at) = at {
-            conn.execute("UPDATE outbox SET not_before = ?2, scheduled = 1 WHERE id = ?1", params![id, at])?;
+            tx.execute("UPDATE outbox SET not_before = ?2, scheduled = 1 WHERE id = ?1", params![id, at])?;
         }
         if let Some(due) = follow_up {
             // Keyed by the Message-ID until the copy in Sent says which conversation it is in.
-            conn.execute(
+            tx.execute(
                 "INSERT OR REPLACE INTO reminders (account_id, thread_id, kind, due, created, message_id)
                  VALUES (?1, ?2, 'followup', ?3, ?4, ?2)",
                 params![account_id, bare, due, at.unwrap_or(now() + delay)],
             )?;
         }
+        tx.commit()?;
         Ok(id)
     }
 
@@ -407,10 +409,10 @@ impl Store {
     pub fn outbox_sent(&self, id: i64, copy: Option<OutboxOp>) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        let account_id: i64 =
-            tx.query_row("SELECT account_id FROM outbox WHERE id = ?1", [id], |r| r.get(0))?;
+        let account_id: Option<i64> =
+            tx.query_row("SELECT account_id FROM outbox WHERE id = ?1", [id], |r| r.get(0)).optional()?;
         tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
-        if let Some(copy) = copy {
+        if let (Some(account_id), Some(copy)) = (account_id, copy) {
             enqueue(&tx, account_id, &copy, 0)?;
         }
         tx.commit()?;
