@@ -1,4 +1,4 @@
-use mail_parser::{HeaderValue, MessageParser, MimeHeaders, PartType};
+use mail_parser::{MessageParser, TextList};
 
 use crate::models::{NewMessage, Part};
 use crate::smtp::FileBytes;
@@ -12,18 +12,16 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
         .and_then(|a| a.first())
         .map(|a| (a.name().unwrap_or_default().to_string(), a.address().unwrap_or_default().to_string()))
         .unwrap_or_default();
-    let addrs = |list: Option<&mail_parser::Address>| {
-        list.map(|list| list.iter().filter_map(|a| a.address()).collect::<Vec<_>>().join(", "))
+    let addrs = |list: Option<mail_parser::AddressList>| {
+        list.map(|list| list.mailboxes().filter_map(|a| a.address()).collect::<Vec<_>>().join(", "))
             .unwrap_or_default()
     };
     let to_addrs = addrs(msg.to());
 
     let body_text = msg.body_text(0).map(|t| t.into_owned());
-    // mail-parser turns a text-only message into HTML; keep that as plain text so the reader can theme it.
-    let body_html = match msg.html_part(0).map(|p| &p.body) {
-        Some(PartType::Html(html)) => Some(sanitize_html(html)),
-        _ => None,
-    };
+    // mail-parser copies a text-only message into the HTML body; keep that as plain text so the reader can theme it
+    // (html_utf8 is None for anything but a real HTML part). Its charset <meta> says UTF-8, as the text now is.
+    let body_html = msg.html_body().next().and_then(|p| p.html_utf8()).map(|html| sanitize_html(&html));
 
     Some(NewMessage {
         uid,
@@ -51,7 +49,7 @@ pub fn parse(uid: u32, raw: &[u8], seen: bool, flagged: bool) -> Option<NewMessa
             .is_some_and(|p| ["bulk", "list", "junk"].contains(&p.to_ascii_lowercase().as_str())),
         cc_addrs: addrs(msg.cc()),
         reply_to: addrs(msg.reply_to()),
-        followup_to: msg.header_raw("Mail-Followup-To").map(raw_addresses).unwrap_or_default(),
+        followup_to: raw_header(&msg, "Mail-Followup-To").map(|v| raw_addresses(&v)).unwrap_or_default(),
         parts: Some(attachments(&msg)),
     })
 }
@@ -67,7 +65,7 @@ pub fn attachment_files(raw: &[u8]) -> Vec<FileBytes> {
                 .content_type()
                 .map(|t| format!("{}/{}", t.ctype(), t.subtype().unwrap_or("octet-stream")).to_lowercase())
                 .unwrap_or_else(|| "application/octet-stream".into());
-            (a.attachment_name().unwrap_or("Untitled").to_string(), mime, a.contents().to_vec())
+            (a.attachment_name().unwrap_or("Untitled").to_string(), mime, a.decoded().into_owned())
         })
         .collect()
 }
@@ -78,13 +76,13 @@ pub fn inline_images(raw: &[u8], limit: usize) -> Vec<(String, String)> {
     let Some(msg) = MessageParser::default().parse(raw) else { return Vec::new() };
     let mut total = 0;
     let mut out = Vec::new();
-    for part in &msg.parts {
+    for part in msg.root().parts() {
         let Some(cid) = part.content_id() else { continue };
         let Some(kind) = part.content_type() else { continue };
         if !kind.ctype().eq_ignore_ascii_case("image") {
             continue;
         }
-        let bytes = part.contents();
+        let bytes = part.decoded();
         total += bytes.len();
         if total > limit {
             break;
@@ -95,7 +93,7 @@ pub fn inline_images(raw: &[u8], limit: usize) -> Vec<(String, String)> {
             continue;
         }
         let cid = cid.trim().trim_start_matches('<').trim_end_matches('>').to_string();
-        out.push((cid, format!("data:image/{subtype};base64,{}", base64(bytes))));
+        out.push((cid, format!("data:image/{subtype};base64,{}", base64(&bytes))));
     }
     out
 }
@@ -257,7 +255,7 @@ fn attachments(msg: &mail_parser::Message) -> Vec<Part> {
                 section: String::new(),
                 charset: None,
                 encoding: String::new(),
-                size: a.len() as u32,
+                size: a.decoded_len() as u32,
                 name: Some(a.attachment_name().unwrap_or("Untitled").to_string()),
                 mime,
                 attachment: true,
@@ -322,7 +320,8 @@ fn raw_addresses(raw: &str) -> String {
 
 /// A header's raw value on one line, for the fields mail-parser does not model (List-*).
 fn raw_header(msg: &mail_parser::Message, name: &str) -> Option<String> {
-    let value = msg.header_raw(name)?;
+    let header = msg.headers().get(name)?;
+    let value = String::from_utf8_lossy(header.raw_value());
     let one_line = value.split_whitespace().collect::<Vec<_>>().join(" ");
     (!one_line.is_empty()).then_some(one_line)
 }
@@ -378,12 +377,8 @@ pub fn part_snippet(part: &Part, start: &[u8]) -> String {
         .unwrap_or_default()
 }
 
-fn ids(value: &HeaderValue) -> Vec<String> {
-    match value {
-        HeaderValue::Text(id) => vec![id.to_string()],
-        HeaderValue::TextList(list) => list.iter().map(|id| id.to_string()).collect(),
-        _ => Vec::new(),
-    }
+fn ids(value: Option<TextList>) -> Vec<String> {
+    value.map(|list| list.iter().map(str::to_string).collect()).unwrap_or_default()
 }
 
 /// The first words of the body, without quoted replies, on one line.
