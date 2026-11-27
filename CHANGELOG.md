@@ -7,6 +7,18 @@ every release needs one here before it is tagged.
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-11-27
+
+One head across the window instead of a title bar, Files and Paper trail as full screens with filters, and mail that
+opens without a blink.
+
+### Added
+
+- Paper trail keeps to real transactions: bank statements, credit offers and reminders stay out. Delete marks a row
+  "Not a paper", a sender can be hidden from it, and hidden ones come back on request.
+- Check with AI on the Paper trail drops what is not an invoice and checks the amounts, when AI summaries are on.
+  Only for accounts ticked in Settings → AI, and only when you press it.
+
 ### Changed
 
 - One toolbar on Windows and Linux: no title bar any more. The sidebar, the list and the open mail each have their
@@ -27,6 +39,18 @@ every release needs one here before it is tagged.
 - Paper trail: the span's total and a bar for each of the last twelve months (pick one to see that month), filters
   for date, kind, sender, currency and amount, a ⟳ mark and a Repeats filter for papers that come every month, and
   rows grouped by month or by sender. Export CSV takes what is shown.
+
+### Fixed
+
+- Opening mail no longer blinks or flashes white, in split view and for zoomed newsletters; `cid:` pictures swap in
+  place. Long newsletters are no longer cut short, and the conversation's toolbar stays put as you scroll.
+- A newsletter could stay hidden on open, and the list flashed when a mail closed.
+- Crashes on Omarchy: within a minute of boot, and on WebKitGTK 2.52 with the DMA-BUF workaround (now
+  shared-memory rendering). Copy code from a notification works on Wayland.
+- Edit on a failed send no longer loses the message if saving the draft fails. `in:archive` on Gmail means All
+  Mail outside the inbox.
+- DIN standards, kN forces and km distances are no longer read as amounts; receipts from iOS and with card or date
+  lines are no longer dropped.
 
 ## [2.5.0] - 2026-11-20
 
@@ -816,7 +840,8 @@ The Linux private alpha, and the first installers built from a version tag.
 - Mail HTML renders sandboxed without scripts; remote images wait until you load them.
 - Passwords live only in the system keyring.
 
-[Unreleased]: https://github.com/nedimperva/tern/compare/v2.5.0...HEAD
+[Unreleased]: https://github.com/nedimperva/tern/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/nedimperva/tern/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/nedimperva/tern/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/nedimperva/tern/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/nedimperva/tern/compare/v2.2.0...v2.3.0

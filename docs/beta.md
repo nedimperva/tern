@@ -93,7 +93,7 @@ are kept). To go back:
    | 1.8.0 | 30 |
    | 2.0.0 | 34 |
    | 2.1.0–2.4.0 | 37 |
-   | 2.5.0 | 38 |
+   | 2.5.0, 2.6.0 | 38 |
 
 5. Start the earlier version. Mail that arrived since syncs again from the server; changes made in the newer
    version that already reached the server are there too.
